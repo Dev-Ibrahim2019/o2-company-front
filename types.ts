@@ -299,6 +299,7 @@ export interface Hall {
 
 export interface Table {
   id: string;
+  name: string;
   number: number;
   status: TableStatus;
   capacity: number;

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useApp } from '../store';
+import { useApp } from '../../../store';
 import { 
   TrendingUp, 
   Package, 
@@ -20,6 +20,8 @@ import {
   Activity,
   ChefHat,
 } from 'lucide-react';
+import { OrderStatus } from '../../../types';
+
 
 const DepartmentsPage = () => {
   const { 

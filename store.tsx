@@ -1,12 +1,20 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { 
-  Order, OrderType, OrderStatus, MenuItem, OrderItem, User, PaymentMethod, 
-  Transaction, SavedCard, Table, Shift, Branch, Department, JobTitle, JobType, Employee,
-  TableStatus, FinancialTransaction, FinancialTransactionType,
-  CustomerFeedback, StaffTask, TableAssignment, Customer, CustomerType, CustomerAddress,
-  EmployeeStatus, Attendance, WorkSchedule, ActivityLog
+  OrderType, OrderStatus, PaymentMethod, 
+  TableStatus, FinancialTransactionType,
+  CustomerType, 
+  EmployeeStatus
 } from './types';
+
+import  type { 
+  Order, MenuItem, OrderItem, User, 
+  Transaction, SavedCard, Table, Shift, Branch, Department, JobTitle, JobType, Employee,
+  FinancialTransaction,
+  CustomerFeedback, StaffTask, TableAssignment, Customer, CustomerAddress,
+  Attendance, WorkSchedule, ActivityLog
+} from './types';
+
 import { TABLES, MENU_ITEMS } from './constants';
 
 interface AppContextType {
