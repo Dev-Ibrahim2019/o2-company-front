@@ -31,6 +31,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
 
   const renderSuppliers = () => <CustomerManagement initialType={CustomerType.SUPPLIER} />;
     const [view, setView] = useState(initialView);
+    console.log('currentUser', currentUser);
     return (
     <div className="h-full flex flex-col gap-6">
       {/* Header */}
