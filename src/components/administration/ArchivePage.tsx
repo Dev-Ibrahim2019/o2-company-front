@@ -6,11 +6,12 @@ import {
   Download,
   Eye
 } from 'lucide-react';
-const { 
-    financialTransactions,
-  } = useApp();
+
 
 const ArchivePage = () => {
+    const { 
+        financialTransactions,
+    } = useApp();
     const [search, setSearch] = useState('');
     const [typeFilter, setTypeFilter] = useState<FinancialTransactionType | 'ALL'>('ALL');
     const [dateFilter, setDateFilter] = useState('');

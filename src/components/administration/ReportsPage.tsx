@@ -14,38 +14,36 @@ import {
   Users2
 } from 'lucide-react';
 
-
-const [generatingReport, setGeneratingReport] = useState<string | null>(null);
-
-const { 
-    activeOrders, 
-    financialTransactions,
-  } = useApp();
-
-  interface ReportCardProps {
-    title: string;
-    description: string;
-    icon: React.ElementType;
-    color: string;
-    onClick?: () => void; 
- }
-
-const ReportCard: React.FC<ReportCardProps> = ({ title, description, icon: Icon, color }) => (
-  <div className="bg-slate-900/50 border border-white/5 rounded-2xl p-6 hover:border-red-500/30 transition-all group cursor-pointer">
-    <div className={`w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center ${color} mb-4 group-hover:scale-110 transition-transform`}>
-      <Icon size={24} />
-    </div>
-    <h3 className="text-lg font-bold text-white mb-2">{title}</h3>
-    <p className="text-sm text-slate-500 mb-6">{description}</p>
-    <div className="flex items-center justify-between text-red-500 font-bold text-sm">
-      <span>توليد الآن</span>
-      <ChevronRight size={18} />
-    </div>
-  </div>
-);
-
 const ReportsPage = () => {
     const [reportData, setReportData] = useState<any[]>([]);
+    const [generatingReport, setGeneratingReport] = useState<string | null>(null);
+
+    const { 
+        activeOrders, 
+        financialTransactions,
+    } = useApp();
+
+    interface ReportCardProps {
+        title: string;
+        description: string;
+        icon: React.ElementType;
+        color: string;
+        onClick?: () => void; 
+    }
+
+    const ReportCard: React.FC<ReportCardProps> = ({ title, description, icon: Icon, color }) => (
+    <div className="bg-slate-900/50 border border-white/5 rounded-2xl p-6 hover:border-red-500/30 transition-all group cursor-pointer">
+        <div className={`w-12 h-12 rounded-2xl bg-slate-800 flex items-center justify-center ${color} mb-4 group-hover:scale-110 transition-transform`}>
+        <Icon size={24} />
+        </div>
+        <h3 className="text-lg font-bold text-white mb-2">{title}</h3>
+        <p className="text-sm text-slate-500 mb-6">{description}</p>
+        <div className="flex items-center justify-between text-red-500 font-bold text-sm">
+        <span>توليد الآن</span>
+        <ChevronRight size={18} />
+        </div>
+    </div>
+    );
     
     useEffect(() => {
       if (generatingReport) {

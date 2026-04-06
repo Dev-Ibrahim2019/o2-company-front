@@ -32,18 +32,16 @@ import {
   Archive,
   XCircle as XCircleIcon,
 } from 'lucide-react';
+  
+const renderOrderDetails = (order: Order) => {
   const { 
     activeOrders, 
     cancelOrder, transferOrder, mergeOrders, splitOrder, refundOrder,
     updateOrderItemStatus,
     tables
   } = useApp();
-
-const renderOrderDetails = (order: Order) => {
   const table = tables.find(t => t.id === order.tableId);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [orderSearchQuery, setOrderSearchQuery] = useState('');
-
 
   const [showCancelPrompt, setShowCancelPrompt] = useState(false);
   const [cancelReason, setCancelReason] = useState('');

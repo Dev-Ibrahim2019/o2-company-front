@@ -1,9 +1,5 @@
 import { useState } from 'react';
 import { useApp } from '../../../store';
-const {  
-    employees, 
-    activityLogs
-  } = useApp();
 
 import { 
   Search,
@@ -12,6 +8,10 @@ import {
 } from 'lucide-react';
 
 const AuditLogPage = () => {
+  const {  
+    employees, 
+    activityLogs
+  } = useApp();
     const [searchQuery, setSearchQuery] = useState('');
     
     const filteredLogs = activityLogs.filter(log => 
