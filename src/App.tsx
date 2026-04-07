@@ -1,11 +1,15 @@
 
+import { AppLayout } from "./components/administration/Layout";
 import { FinancePortal } from './components/administration/FinancePortal'
+import { useState } from "react";
 
 function App() {
+  const [activeView, setActiveView] = useState("finance_dashboard");
+
   return (
-    <div>
+    <AppLayout activeView={activeView} setActiveView={setActiveView}>
       <FinancePortal />
-    </div>
+    </AppLayout>
   )
 }
 
