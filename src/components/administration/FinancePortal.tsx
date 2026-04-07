@@ -50,7 +50,8 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-        {view === 'DASHBOARD' && <DashboardPage />}
+        <DepartmentsPage />
+        {/* {view === 'DASHBOARD' && <DashboardPage />}
         {view === 'DEPARTMENTS' && <DepartmentsPage />}
         {view === 'MENU' && <MenuPage />}
         {view === 'ORDERS' && <OrdersPage />}
@@ -61,7 +62,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
         {view === 'REPORTS' && <ReportsPage />}
         {view === 'AUDIT_LOG' && (canAudit ? <AuditLogPage /> : <div className="p-20 text-center text-slate-500">ليس لديك صلاحية للوصول إلى سجل التدقيق</div>)}
         {view === 'ARCHIVE' && (canManageFinance ? <ArchivePage /> : <div className="p-20 text-center text-slate-500">ليس لديك صلاحية للوصول إلى الأرشيف</div>)}
-        {view === 'SETTINGS' && (canEditSettings ? <SettingsPage /> : <div className="p-20 text-center text-slate-500">ليس لديك صلاحية للوصول إلى الإعدادات</div>)}
+        {view === 'SETTINGS' && (canEditSettings ? <SettingsPage /> : <div className="p-20 text-center text-slate-500">ليس لديك صلاحية للوصول إلى الإعدادات</div>)} */}
       </div>
 
       {renderModal()}
