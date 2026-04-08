@@ -1,7 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../../store';
 import { motion, AnimatePresence } from 'framer-motion';
+import api from '../../api/axios'
 import {
     ShoppingCart,
     ClipboardList,
@@ -66,7 +66,7 @@ export const AppLayout: React.FC<{
     activeView: string;
     setActiveView: (view: string) => void;
 }> = ({ children, activeView, setActiveView }) => {
-    const { currentUser, logout, currentShift, userRole, branches } = useApp();
+    const { currentUser, onLogout, currentShift, userRole, branches } = useApp();
     const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);
 
     useEffect(() => {
@@ -85,6 +85,21 @@ export const AppLayout: React.FC<{
     const isFinance = userRole === 'FINANCE';
     const isEmployee = userRole === 'EMPLOYEE';
     const isCustomer = userRole === 'CUSTOMER';
+
+    const [loading, setLoading] = useState(false);
+
+    const handleLogout = async () => {
+        setLoading(true);
+    try {
+      await api.post("/logout");
+    } catch {
+      // ignore errors — always clear local state
+    } finally {
+      localStorage.removeItem("token");
+      setLoading(false);
+      onLogout();
+    }
+  };
 
     return (
         <div className="flex h-screen bg-slate-950 overflow-hidden text-slate-100 font-['Tajawal']" dir="rtl">
@@ -344,7 +359,8 @@ export const AppLayout: React.FC<{
                         <p className="text-sm font-black text-slate-100 truncate">{currentUser?.name}</p>
                     </div>
                     <button
-                        onClick={logout}
+                        onClick={handleLogout}
+                        disabled={loading}
                         title={!isSidebarOpen ? "تسجيل الخروج" : undefined}
                         className={`w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors ${!isSidebarOpen ? 'lg:justify-center lg:px-0' : ''}`}
                     >

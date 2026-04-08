@@ -61,6 +61,7 @@ interface AppContextType {
 
   login: (name: string, role: 'CASHIER' | 'CUSTOMER' | 'WAITER' | 'ADMIN' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | 'HEAD_CHEF' | 'COOK' | 'EMPLOYEE', phone?: string, branchId?: string, departmentId?: string) => void;
   logout: () => void;
+  onLogout: () => void;
   addToCart: (item: MenuItem, customization?: any) => void;
   removeFromCart: (uniqueId: string) => void;
   updateCartQuantity: (uniqueId: string, delta: number) => void;

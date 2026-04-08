@@ -1,16 +1,118 @@
-
 import { AppLayout } from "./components/administration/Layout";
-import { FinancePortal } from './components/administration/FinancePortal'
-import { useState } from "react";
+import { FinancePortal } from "./components/administration/FinancePortal";
+import { useState, useEffect } from "react";
+import { Navigate, Route, Routes } from "react-router-dom";
+import RegisterForm from "./components/RegisterForm";
+import LoginForm from "./components/LoginForm";
+import api from "./api/axios";
 
 function App() {
   const [activeView, setActiveView] = useState("finance_dashboard");
+  const [user, setUser] = useState<any>(null);
+  const [ready, setReady] = useState(false);
+
+  // Helper to refresh user from API after login/register
+  const refreshUser = async () => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      try {
+        const { data } = await api.get("/auth/me");
+        setUser(data.user);
+      } catch {
+        setUser(null);
+        localStorage.removeItem("token");
+      }
+    } else {
+      setUser(null);
+    }
+  };
+
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      api
+        .get("/auth/me")
+        .then(({ data }) => setUser(data.user))
+        .catch(() => {
+          setUser(null);
+          localStorage.removeItem("token");
+        })
+        .finally(() => setReady(true));
+    } else {
+      setReady(true);
+    }
+  }, []);
+
+  if (!ready)
+    return (
+      <div className="root">
+        <div className="loader-wrap">
+          <span className="spinner dark" />
+        </div>
+      </div>
+    );
 
   return (
-    <AppLayout activeView={activeView} setActiveView={setActiveView}>
-      <FinancePortal />
-    </AppLayout>
-  )
+    <>
+      <Routes>
+        <Route
+          path="/login"
+          element={
+            user ? (
+              <Navigate to="/dashboard" replace />
+            ) : (
+              <LoginForm onLogin={refreshUser} />
+            )
+          }
+        />
+        <Route
+          path="/register"
+          element={
+            user ? (
+              <Navigate to="/dashboard" replace />
+            ) : (
+              <RegisterForm onLogin={refreshUser} />
+            )
+          }
+        />
+        <Route
+          path="/dashboard"
+          element={
+            user ? (
+              <AppLayout
+                user={user}
+                onLogout={() => {
+                  setUser(null);
+                  localStorage.removeItem("token");
+                }}
+                activeView={activeView}
+                setActiveView={setActiveView}
+              >
+                <FinancePortal />
+              </AppLayout>
+            ) : (
+              // <Dashboard
+              //   user={user}
+              //   onLogout={() => {
+              //     setUser(null);
+              //     localStorage.removeItem("token");
+              //   }}
+              // />
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
+          path="*"
+          element={<Navigate to={user ? "/dashboard" : "/login"} replace />}
+        />
+      </Routes>
+
+      {/* <AppLayout activeView={activeView} setActiveView={setActiveView}>
+        <FinancePortal />
+      </AppLayout> */}
+    </>
+  );
 }
 
 export default App;
