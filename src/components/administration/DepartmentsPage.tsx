@@ -22,7 +22,6 @@ import {
 } from 'lucide-react';
 import { OrderStatus } from '../../../types';
 
-
 const DepartmentsPage = () => {
   const { 
     activeOrders, 

@@ -79,6 +79,7 @@ export interface MenuItem {
   comboItems?: { itemId: string; quantity: number }[];
   departmentId: string; // Required
   stats?: { salesCount: number; totalRevenue: number; lastSoldAt?: Date };
+  categoryId: string;
 }
 
 export interface OrderItem {
@@ -94,6 +95,7 @@ export interface OrderItem {
   size?: string;
   addons?: string[];
   note?: string;
+  menuItemId: string;
 }
 
 export interface OrderTimeline {
@@ -138,10 +140,45 @@ export interface Order {
 export interface Branch {
   id: string;
   name: string;
+  code: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'MAINTENANCE' | 'BUSY';
+  isMainBranch: boolean;
+  parentId?: string;
+  
+  // Location
+  city: string;
   address: string;
+  googleMapUrl?: string;
+  
+  // Contact
   phone: string;
+  whatsapp?: string;
+  email?: string;
+  
+  // Operational Settings
+  openingTime: string; // "08:00"
+  closingTime: string; // "23:00"
+  is24Hours: boolean;
+  timezone?: string;
+  
+  // Financial Settings
+  currency: string;
+  defaultTax: number;
+  allowDiscount: boolean;
+  maxDiscountLimit: number;
+  
+  // Cashier Settings
+  requireShiftOpening: boolean;
+  cashierCount: number;
+  firstInvoiceNumber: number;
+  defaultPrinter?: string;
+  
+  // Advanced
   managerId?: string;
-  status: 'ACTIVE' | 'INACTIVE';
+  hasDelivery: boolean;
+  specialHours?: { day: number; open: string; close: string }[];
+  
+  createdAt: Date;
 }
 
 export interface Department {
