@@ -1,3 +1,4 @@
+
 import { AppLayout } from "./components/administration/Layout";
 import { FinancePortal } from './components/administration/FinancePortal'
 import React, { useState, useEffect } from 'react';
@@ -116,49 +117,6 @@ const Main: React.FC = () => {
 
 function App() {
   const [activeView, setActiveView] = useState("finance_dashboard");
-  const [user, setUser] = useState<any>(null);
-  const [ready, setReady] = useState(false);
-
-  // Helper to refresh user from API after login/register
-  const refreshUser = async () => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      try {
-        const { data } = await api.get("/auth/me");
-        setUser(data.user);
-      } catch {
-        setUser(null);
-        localStorage.removeItem("token");
-      }
-    } else {
-      setUser(null);
-    }
-  };
-
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      api
-        .get("/auth/me")
-        .then(({ data }) => setUser(data.user))
-        .catch(() => {
-          setUser(null);
-          localStorage.removeItem("token");
-        })
-        .finally(() => setReady(true));
-    } else {
-      setReady(true);
-    }
-  }, []);
-
-  if (!ready)
-    return (
-      <div className="root">
-        <div className="loader-wrap">
-          <span className="spinner dark" />
-        </div>
-      </div>
-    );
 
   return (
     <div>

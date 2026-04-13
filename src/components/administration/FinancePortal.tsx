@@ -10,7 +10,7 @@ import AuditLogPage from '../administration/AuditLogPage';
 import AccountingPage from '../administration/AccountingPage';
 import ArchivePage from '../administration/ArchivePage';
 import SettingsPage from '../administration/SettingsPage';
-import MenuPage from '../administration/MenuPage';
+import MenuPage from '../administration/Items/MenuPage';
 import renderModal from '../administration/renderModal';
 import BranchesPage from '../administration/BranchesPage/BranchesPage';
 

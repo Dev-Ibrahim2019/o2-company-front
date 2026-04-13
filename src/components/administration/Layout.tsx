@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../../store';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -75,8 +76,8 @@ export const AppLayout: React.FC<{
             </AnimatePresence>
 
             <aside className={`fixed top-0 right-0 h-full bg-slate-900 border-l border-white/5 flex flex-col p-4 shadow-2xl transition-all duration-300 z-50 ${isSidebarOpen
-                ? 'w-64 translate-x-0'
-                : 'w-64 translate-x-full lg:w-20 lg:translate-x-0'
+                    ? 'w-64 translate-x-0'
+                    : 'w-64 translate-x-full lg:w-20 lg:translate-x-0'
                 }`}>
                 <div className={`mb-8 flex items-center gap-3 ${!isSidebarOpen ? 'justify-center' : 'px-4'}`}>
                     <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-red-900/20 shrink-0">R</div>
