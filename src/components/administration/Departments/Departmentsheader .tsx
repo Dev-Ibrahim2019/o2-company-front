@@ -7,7 +7,11 @@ interface DepartmentsHeaderProps {
     subView: SubView;
     onSubViewChange: (view: SubView) => void;
     onAddDepartment: () => void;
+    searchQuery: string;           // ← أضف
+    onSearchChange: (q: string) => void; // ← أضف
 }
+
+
 
 const DepartmentsHeader = ({ subView, onSubViewChange, onAddDepartment }: DepartmentsHeaderProps) => {
     return (
@@ -50,8 +54,8 @@ const ViewToggleButton = ({ active, onClick, icon, label }: ViewToggleButtonProp
     <button
         onClick={onClick}
         className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${active
-                ? 'bg-red-600 text-white shadow-lg shadow-red-900/20'
-                : 'text-slate-400 hover:text-white'
+            ? 'bg-red-600 text-white shadow-lg shadow-red-900/20'
+            : 'text-slate-400 hover:text-white'
             }`}
     >
         {icon}

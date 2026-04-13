@@ -1,33 +1,65 @@
-// DepartmentsPage.tsx
+// src/components/administration/Departments/DepartmentsPage.tsx
+
 import { useState } from 'react';
-import { useApp } from '../../../../store';
-import DepartmentsHeader from './Departmentsheader ';
-import DepartmentCard from './Departmentcard';
+import { useDepartments } from '../../../hooks/useDepartments';
+import DepartmentsHeader from './DepartmentsHeader ';
+import DepartmentCard from './DepartmentCard';
 import DepartmentKitchenMap from './Departmentkitchenmap';
+import DepartmentModal from './DepartmentModal';
 
 type SubView = 'LIST' | 'MAP';
-type ModalType = 'DEPARTMENT' | 'MENU_ITEM' | 'EMPLOYEE' | 'CUSTOMER' | null;
 
 const DepartmentsPage = () => {
-  const { activeOrders, menuItems, employees, departments, deleteDepartment } = useApp();
+  const {
+    departments,
+    loading,
+    error,
+    addDepartment,
+    updateDepartment,
+    deleteDepartment,
+  } = useDepartments();
 
   const [subView, setSubView] = useState<SubView>('LIST');
-  const [modalType, setModalType] = useState<ModalType>(null);
-  const [editingItem, setEditingItem] = useState<any>(null);
+  const [editingDept, setEditingDept] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const openModal = (type: ModalType, item: any = null) => {
-    setModalType(type);
-    setEditingItem(item);
+  const openModal = (dept: any = null) => {
+    setEditingDept(dept);
     setIsModalOpen(true);
   };
+
+  const handleSave = async (formData: any) => {
+    if (editingDept) {
+      await updateDepartment(editingDept.id, formData);
+    } else {
+      await addDepartment(formData);
+    }
+    setIsModalOpen(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('هل أنت متأكد من حذف هذا القسم؟')) return;
+    await deleteDepartment(Number(id));
+  };
+
+  if (loading) return (
+    <div className="flex items-center justify-center h-64 text-slate-400">
+      جاري التحميل...
+    </div>
+  );
+
+  if (error) return (
+    <div className="flex items-center justify-center h-64 text-red-400">
+      {error}
+    </div>
+  );
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <DepartmentsHeader
         subView={subView}
         onSubViewChange={setSubView}
-        onAddDepartment={() => openModal('DEPARTMENT')}
+        onAddDepartment={() => openModal()}
       />
 
       {subView === 'LIST' ? (
@@ -36,19 +68,27 @@ const DepartmentsPage = () => {
             <DepartmentCard
               key={dept.id}
               dept={dept}
-              menuItems={menuItems}
-              activeOrders={activeOrders}
-              employees={employees}
-              onEdit={d => openModal('DEPARTMENT', d)}
-              onDelete={deleteDepartment}
+              menuItems={[]}
+              activeOrders={[]}
+              employees={[]}
+              onEdit={openModal}
+              onDelete={handleDelete}
             />
           ))}
         </div>
       ) : (
         <DepartmentKitchenMap
           departments={departments}
-          activeOrders={activeOrders}
-          onEditDepartment={d => openModal('DEPARTMENT', d)}
+          activeOrders={[]}
+          onEditDepartment={openModal}
+        />
+      )}
+
+      {isModalOpen && (
+        <DepartmentModal
+          dept={editingDept}
+          onSave={handleSave}
+          onClose={() => setIsModalOpen(false)}
         />
       )}
     </div>

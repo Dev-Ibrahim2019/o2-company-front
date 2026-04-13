@@ -1,14 +1,15 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { 
-  OrderType, OrderStatus, PaymentMethod, 
+import {
+  OrderType, OrderStatus, PaymentMethod,
   TableStatus, FinancialTransactionType,
-  CustomerType, 
+  CustomerType,
   EmployeeStatus
 } from './types';
+import { create } from 'zustand';
 
-import  type { 
-  Order, MenuItem, OrderItem, User, 
+import type {
+  Order, MenuItem, OrderItem, User,
   Transaction, SavedCard, Table, Shift, Branch, Department, JobTitle, JobType, Employee,
   FinancialTransaction,
   CustomerFeedback, StaffTask, TableAssignment, Customer, CustomerAddress,
@@ -23,7 +24,7 @@ interface AppContextType {
   currentCart: OrderItem[];
   cartOrderType: OrderType;
   userRole: 'CASHIER' | 'CUSTOMER' | 'WAITER' | 'ADMIN' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | 'HEAD_CHEF' | 'COOK' | 'EMPLOYEE' | null;
-  
+
   branches: Branch[];
   departments: Department[];
   jobTitles: JobTitle[];
@@ -31,7 +32,7 @@ interface AppContextType {
   employees: Employee[];
   menuItems: MenuItem[];
   customers: Customer[];
-  
+
   addBranch: (branch: Omit<Branch, 'id'>) => void;
   updateBranch: (id: string, branch: Partial<Branch>) => void;
   deleteBranch: (id: string) => void;
@@ -80,7 +81,7 @@ interface AppContextType {
   setOrderType: (type: OrderType) => void;
   reorder: (orderId: string) => void;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
-  
+
   tables: Table[];
   selectedTable: Table | null;
   setSelectedTable: (table: Table | null) => void;
@@ -96,22 +97,22 @@ interface AppContextType {
   deliverOrder: (orderId: string) => void;
   assignShelfToOrder: (orderId: string, shelf: string) => void;
   collectOrderItemByAggregator: (orderId: string, itemUniqueId: string) => void;
-  
+
   currentShift: Shift | null;
   shifts: Shift[];
   openShift: (openingBalance: number, type: 'MORNING' | 'EVENING' | 'NIGHT') => void;
   closeShift: (closingBalance: number) => void;
   financialTransactions: FinancialTransaction[];
   addFinancialTransaction: (tx: Omit<FinancialTransaction, 'id' | 'timestamp' | 'status'>) => void;
-  
+
   feedbacks: CustomerFeedback[];
   addFeedback: (fb: Omit<CustomerFeedback, 'id' | 'timestamp' | 'status'>) => void;
   updateFeedback: (id: string, fb: Partial<CustomerFeedback>) => void;
-  
+
   staffTasks: StaffTask[];
   addTask: (task: Omit<StaffTask, 'id' | 'status'>) => void;
   updateTask: (id: string, task: Partial<StaffTask>) => void;
-  
+
   tableAssignments: TableAssignment[];
   assignTable: (tableId: string, staffId: string) => void;
   seatTable: (tableId: string, guestCount: number) => void;
@@ -123,7 +124,7 @@ interface AppContextType {
   attendances: Attendance[];
   workSchedules: WorkSchedule[];
   activityLogs: ActivityLog[];
-  
+
   checkIn: (employeeId: string, note?: string) => void;
   checkOut: (employeeId: string) => void;
   recordAttendance: (attendance: Omit<Attendance, 'id'>) => void;
@@ -180,7 +181,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [tables, setTables] = useState<Table[]>(TABLES);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [financialTransactions, setFinancialTransactions] = useState<FinancialTransaction[]>([]);
-  
+
   const [menuItems, setMenuItems] = useState<MenuItem[]>(MENU_ITEMS);
   const [customers, setCustomers] = useState<Customer[]>([
     {
@@ -279,12 +280,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     { id: 'b2', name: 'فرع الرمال', address: 'دوار حيدر', phone: '0599112233', status: 'ACTIVE' }
   ]);
   const [departments, setDepartments] = useState<Department[]>([
-    { 
-      id: 'd-italian', 
-      name: 'القسم الإيطالي', 
+    {
+      id: 'd-italian',
+      name: 'القسم الإيطالي',
       nameAr: 'المطبخ الإيطالي',
       shortName: 'ITA',
-      branchId: 'b1', 
+      branchId: 'b1',
       description: 'تحضير المأكولات الإيطالية والبيتزا والباستا',
       icon: '🍕',
       color: '#ef4444',
@@ -304,12 +305,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       orderTypeVisibility: [OrderType.DINE_IN, OrderType.TAKEAWAY, OrderType.DELIVERY],
       requiresAssembly: true
     },
-    { 
-      id: 'd-shawarma', 
-      name: 'قسم الشاورما', 
+    {
+      id: 'd-shawarma',
+      name: 'قسم الشاورما',
       nameAr: 'قسم الشاورما',
       shortName: 'SHA',
-      branchId: 'b1', 
+      branchId: 'b1',
       description: 'تحضير الشاورما والوجبات السريعة',
       icon: '🌯',
       color: '#f59e0b',
@@ -329,12 +330,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       orderTypeVisibility: [OrderType.DINE_IN, OrderType.TAKEAWAY, OrderType.DELIVERY],
       requiresAssembly: true
     },
-    { 
-      id: 'd-bar', 
-      name: 'البار (المشروبات)', 
+    {
+      id: 'd-bar',
+      name: 'البار (المشروبات)',
       nameAr: 'بار المشروبات',
       shortName: 'BAR',
-      branchId: 'b1', 
+      branchId: 'b1',
       description: 'تحضير المشروبات والكوكتيلات والقهوة',
       icon: '🥤',
       color: '#3b82f6',
@@ -354,12 +355,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       orderTypeVisibility: [OrderType.DINE_IN, OrderType.TAKEAWAY, OrderType.DELIVERY],
       requiresAssembly: false
     },
-    { 
-      id: 'd-grills', 
-      name: 'قسم المشاوي', 
+    {
+      id: 'd-grills',
+      name: 'قسم المشاوي',
       nameAr: 'قسم المشاوي واللحوم',
       shortName: 'GRL',
-      branchId: 'b1', 
+      branchId: 'b1',
       description: 'تحضير المشاوي واللحوم على الفحم',
       icon: '🍖',
       color: '#f59e0b',
@@ -379,12 +380,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       orderTypeVisibility: [OrderType.DINE_IN, OrderType.TAKEAWAY, OrderType.DELIVERY],
       requiresAssembly: true
     },
-    { 
-      id: 'd-fastfood', 
-      name: 'الوجبات السريعة', 
+    {
+      id: 'd-fastfood',
+      name: 'الوجبات السريعة',
       nameAr: 'قسم الوجبات السريعة',
       shortName: 'FF',
-      branchId: 'b1', 
+      branchId: 'b1',
       description: 'تحضير البرجر والبطاطس والوجبات السريعة',
       icon: '🍔',
       color: '#10b981',
@@ -404,12 +405,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       orderTypeVisibility: [OrderType.DINE_IN, OrderType.TAKEAWAY, OrderType.DELIVERY],
       requiresAssembly: true
     },
-    { 
-      id: 'd-desserts', 
-      name: 'قسم الحلويات', 
+    {
+      id: 'd-desserts',
+      name: 'قسم الحلويات',
       nameAr: 'قسم الحلويات والشرقيات',
       shortName: 'DES',
-      branchId: 'b1', 
+      branchId: 'b1',
       description: 'تحضير الحلويات والشرقيات والكيك',
       icon: '🍰',
       color: '#ec4899',
@@ -438,15 +439,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     { id: 'ty2', name: 'دوام جزئي (Part-time)', description: 'نظام الساعات' }
   ]);
   const [employees, setEmployees] = useState<Employee[]>([
-    { 
-      id: 'e1', employeeId: 'EMP-101', name: 'ياسين أحمد', phone: '0599111222', email: 'admin@resto.com', 
+    {
+      id: 'e1', employeeId: 'EMP-101', name: 'ياسين أحمد', phone: '0599111222', email: 'admin@resto.com',
       address: 'غزة - الرمال', nationalId: '401122334', dob: new Date(1985, 2, 15),
       jobTitleId: 'jt1', departmentId: 'd1', branchId: 'b1', typeId: 'ty1',
       hireDate: new Date(2020, 0, 1), salary: 5000, status: EmployeeStatus.ACTIVE, role: 'ADMIN',
       permissions: ['ALL'], pin: '0000'
     },
-    { 
-      id: 'e2', employeeId: 'EMP-102', name: 'محمد علي', phone: '0599111333', email: 'b_manager@resto.com', 
+    {
+      id: 'e2', employeeId: 'EMP-102', name: 'محمد علي', phone: '0599111333', email: 'b_manager@resto.com',
       address: 'غزة - الرمال', nationalId: '401122335', dob: new Date(1988, 5, 20),
       jobTitleId: 'jt1', departmentId: 'd1', branchId: 'b2', typeId: 'ty1',
       hireDate: new Date(2021, 0, 1), salary: 3500, status: EmployeeStatus.ACTIVE, role: 'BRANCH_MANAGER',
@@ -510,15 +511,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     { id: 'att14', employeeId: 'e4', date: new Date(2026, 2, 26), checkIn: new Date(2026, 2, 26, 8, 20), status: 'LATE' },
   ]);
   const [workSchedules, setWorkSchedules] = useState<WorkSchedule[]>([
-    { 
-      id: 'ws1', 
-      employeeId: 'e4', 
-      branchId: 'b1', 
-      departmentId: 'd-shawarma', 
-      shiftId: 'sh1', 
+    {
+      id: 'ws1',
+      employeeId: 'e4',
+      branchId: 'b1',
+      departmentId: 'd-shawarma',
+      shiftId: 'sh1',
       dayOfWeek: 6, // Saturday
-      startTime: '08:00', 
-      endTime: '16:00' 
+      startTime: '08:00',
+      endTime: '16:00'
     },
     { id: 'ws2', employeeId: 'e4', branchId: 'b1', departmentId: 'd-shawarma', shiftId: 'sh1', dayOfWeek: 0, startTime: '08:00', endTime: '16:00' },
     { id: 'ws3', employeeId: 'e4', branchId: 'b1', departmentId: 'd-shawarma', shiftId: 'sh1', dayOfWeek: 1, startTime: '08:00', endTime: '16:00' },
@@ -538,15 +539,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (o.id === id) {
         const newTimeline = [...o.timeline, { status, time: new Date() }];
         // If order becomes READY, mark all items as READY too if they aren't
-        const newItems = status === OrderStatus.READY 
+        const newItems = status === OrderStatus.READY
           ? o.items.map(item => ({ ...item, status: OrderStatus.READY, preparedAt: item.preparedAt || new Date() }))
           : o.items;
-        
+
         return { ...o, status, timeline: newTimeline, items: newItems };
       }
       return o;
     }));
-    
+
     const order = activeOrders.find(o => o.id === id);
     if (status === OrderStatus.READY && order) {
       addNotification(`الطلب #${order.orderNumber} جاهز الآن!`);
@@ -625,14 +626,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const login = (name: string, role: 'CASHIER' | 'CUSTOMER' | 'WAITER' | 'ADMIN' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | 'HEAD_CHEF' | 'COOK' | 'EMPLOYEE', phone: string = '', branchId: string = 'b1', departmentId?: string) => {
     setUserRole(role);
-    
+
     // Try to find matching employee for richer profile
     const existingEmp = employees.find(e => e.name === name || e.employeeId === name);
-    
+
     setCurrentUser({
       id: existingEmp?.id || 'u_' + Math.random().toString(36).substr(2, 5),
-      name: existingEmp?.name || name, 
-      phone: existingEmp?.phone || phone, 
+      name: existingEmp?.name || name,
+      phone: existingEmp?.phone || phone,
       role: existingEmp?.role || (role === 'ADMIN' ? 'ADMIN' : role === 'BRANCH_MANAGER' ? 'BRANCH_MANAGER' : role),
       branchId: existingEmp?.branchId || ((role === 'BRANCH_MANAGER' || role === 'DEPARTMENT_STAFF' || role === 'ORDER_AGGREGATOR' || role === 'FINANCE') ? branchId : undefined),
       departmentId: existingEmp?.departmentId || (role === 'DEPARTMENT_STAFF' ? departmentId : undefined),
@@ -643,11 +644,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const logout = () => { setCurrentUser(null); setUserRole(null); };
   const openShift = (openingBalance: number, type: 'MORNING' | 'EVENING' | 'NIGHT') => {
     if (!currentUser) return;
-    setCurrentShift({ 
-      id: 'sh_' + Math.random().toString(36).substr(2, 5), 
-      cashierId: currentUser.id, 
-      startTime: new Date(), 
-      openingBalance, 
+    setCurrentShift({
+      id: 'sh_' + Math.random().toString(36).substr(2, 5),
+      cashierId: currentUser.id,
+      startTime: new Date(),
+      openingBalance,
       status: 'OPEN',
       type
     });
@@ -655,7 +656,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
   const closeShift = (closingBalance: number) => {
     if (!currentShift || !currentUser) return;
-    
+
     // Calculate expected balance
     const shiftTransactions = financialTransactions.filter(tx => tx.shiftId === currentShift.id);
     const totalSales = shiftTransactions.filter(tx => tx.type === FinancialTransactionType.SALE).reduce((sum, tx) => sum + tx.amount, 0);
@@ -663,13 +664,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const totalWithdrawals = shiftTransactions.filter(tx => tx.type === FinancialTransactionType.WITHDRAWAL).reduce((sum, tx) => sum + tx.amount, 0);
     const totalDeposits = shiftTransactions.filter(tx => tx.type === FinancialTransactionType.DEPOSIT).reduce((sum, tx) => sum + tx.amount, 0);
     const totalRefunds = shiftTransactions.filter(tx => tx.type === FinancialTransactionType.REFUND).reduce((sum, tx) => sum + tx.amount, 0);
-    
+
     const expectedBalance = currentShift.openingBalance + totalSales + totalDeposits - totalExpenses - totalWithdrawals - totalRefunds;
-    
-    const closedShift: Shift = { 
-      ...currentShift, 
-      status: 'CLOSED', 
-      endTime: new Date(), 
+
+    const closedShift: Shift = {
+      ...currentShift,
+      status: 'CLOSED',
+      endTime: new Date(),
       closingBalance,
       expectedBalance,
       totalSales,
@@ -707,9 +708,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const checkOut = (employeeId: string) => {
-    setAttendances(prev => prev.map(att => 
-      att.employeeId === employeeId && !att.checkOut 
-        ? { ...att, checkOut: new Date() } 
+    setAttendances(prev => prev.map(att =>
+      att.employeeId === employeeId && !att.checkOut
+        ? { ...att, checkOut: new Date() }
         : att
     ));
   };
@@ -780,11 +781,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const seatTable = (tableId: string, guestCount: number) => {
-    setTables(prev => prev.map(t => t.id === tableId ? { 
-      ...t, 
-      status: TableStatus.OCCUPIED, 
-      seatedAt: new Date(), 
-      guestCount 
+    setTables(prev => prev.map(t => t.id === tableId ? {
+      ...t,
+      status: TableStatus.OCCUPIED,
+      seatedAt: new Date(),
+      guestCount
     } : t));
   };
 
@@ -814,16 +815,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return prev.map(t => {
           if (t.id === masterId || t.mergedWithId === masterId) {
             const isClearing = status === TableStatus.AVAILABLE || status === TableStatus.CLEANING;
-            return { 
-              ...t, 
-              status, 
-              currentOrderId: isClearing ? undefined : (t.currentOrderId || extra?.currentOrderId), 
-              seatedAt: isClearing ? undefined : (t.seatedAt || extra?.seatedAt), 
+            return {
+              ...t,
+              status,
+              currentOrderId: isClearing ? undefined : (t.currentOrderId || extra?.currentOrderId),
+              seatedAt: isClearing ? undefined : (t.seatedAt || extra?.seatedAt),
               guestCount: isClearing ? undefined : (t.guestCount || extra?.guestCount),
               mergedWithId: isClearing ? undefined : t.mergedWithId,
               reservationName: isClearing ? undefined : t.reservationName,
               reservationTime: isClearing ? undefined : t.reservationTime,
-              ...extra 
+              ...extra
             };
           }
           return t;
@@ -841,12 +842,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!fromTable || !toTable || fromTable.status !== TableStatus.OCCUPIED) return;
 
     const orderId = fromTable.currentOrderId;
-    
+
     // Move order to new table if exists
     if (orderId) {
       setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, tableId: toId } : o));
     }
-    
+
     // Update tables
     setTables(prev => prev.map(t => {
       if (t.id === fromId) return { ...t, status: TableStatus.CLEANING, currentOrderId: undefined, seatedAt: undefined, guestCount: undefined };
@@ -901,13 +902,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // If no order existed at all, we might need to create one or just update table guest counts
     // But usually merge is done when there's at least one order or guests seated.
-    
+
     if (masterOrderId) {
       const subtotal = mergedItems.reduce((s, i) => s + (i.price * i.quantity), 0);
-      setActiveOrders(prev => prev.map(o => o.id === masterOrderId ? { 
-        ...o, 
-        items: mergedItems, 
-        subtotal, 
+      setActiveOrders(prev => prev.map(o => o.id === masterOrderId ? {
+        ...o,
+        items: mergedItems,
+        subtotal,
         total: subtotal - o.discount,
         tableId: targetTableId // Ensure it's linked to the master table
       } : o));
@@ -916,10 +917,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Update all tables to be OCCUPIED and linked to the master order
     setTables(prev => prev.map(t => {
       if (tableIds.includes(t.id)) {
-        return { 
-          ...t, 
-          status: TableStatus.OCCUPIED, 
-          currentOrderId: masterOrderId, 
+        return {
+          ...t,
+          status: TableStatus.OCCUPIED,
+          currentOrderId: masterOrderId,
           guestCount: t.id === targetTableId ? totalGuestCount : 0, // Master table holds total count
           seatedAt: earliestSeatedAt || new Date(),
           mergedWithId: t.id === targetTableId ? undefined : targetTableId
@@ -930,9 +931,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const confirmOrder = (orderId: string) => {
-    setActiveOrders(prev => prev.map(order => 
-      order.id === orderId ? { 
-        ...order, 
+    setActiveOrders(prev => prev.map(order =>
+      order.id === orderId ? {
+        ...order,
         status: OrderStatus.CONFIRMED,
         timeline: [...order.timeline, { status: OrderStatus.CONFIRMED, time: new Date() }]
       } : order
@@ -940,15 +941,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const cancelOrder = (orderId: string, reason: string) => {
-    setActiveOrders(prev => prev.map(order => 
-      order.id === orderId ? { 
-        ...order, 
+    setActiveOrders(prev => prev.map(order =>
+      order.id === orderId ? {
+        ...order,
         status: OrderStatus.CANCELED,
         cancelReason: reason,
         timeline: [...order.timeline, { status: OrderStatus.CANCELED, time: new Date(), note: reason }]
       } : order
     ));
-    
+
     // Free up table if it was a dine-in order
     const order = activeOrders.find(o => o.id === orderId);
     if (order && order.tableId) {
@@ -959,21 +960,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateOrderItemStatus = (orderId: string, uniqueId: string, status: OrderStatus) => {
     setActiveOrders(prev => prev.map(order => {
       if (order.id !== orderId) return order;
-      const updatedItems = order.items.map(item => 
+      const updatedItems = order.items.map(item =>
         item.uniqueId === uniqueId ? { ...item, status } : item
       );
-      
+
       // Check if all items are ready to update order status
       const allReady = updatedItems.every(i => i.status === OrderStatus.READY);
       const allDelivered = updatedItems.every(i => i.status === OrderStatus.DELIVERED);
-      
+
       let newOrderStatus = order.status;
       if (allDelivered) newOrderStatus = OrderStatus.DELIVERED;
       else if (allReady) newOrderStatus = OrderStatus.READY;
       else if (updatedItems.some(i => i.status === OrderStatus.PREPARING)) newOrderStatus = OrderStatus.PREPARING;
 
-      return { 
-        ...order, 
+      return {
+        ...order,
         items: updatedItems,
         status: newOrderStatus,
         timeline: newOrderStatus !== order.status ? [...order.timeline, { status: newOrderStatus, time: new Date() }] : order.timeline
@@ -1094,12 +1095,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!currentUser || currentCart.length === 0) return;
     const subtotal = currentCart.reduce((s, i) => s + (i.price * i.quantity), 0);
     const total = subtotal - discount;
-    
+
     if (paymentMethod === PaymentMethod.WALLET && currentUser.balance < total) {
       addNotification('الرصيد غير كافٍ في المحفظة لإتمام العملية');
       return;
     }
-    
+
     // Check if we should merge with an existing table order
     if (selectedTable && selectedTable.status === TableStatus.OCCUPIED && selectedTable.currentOrderId && !editingOrderId) {
       const existingOrder = activeOrders.find(o => o.id === selectedTable.currentOrderId);
@@ -1123,7 +1124,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const existingOrder = editingOrderId ? activeOrders.find(o => o.id === editingOrderId) : null;
     const orderId = editingOrderId || Math.random().toString(36).substr(2, 9);
-    
+
     // Determine status: 
     // 1. If customer, always PENDING_CONFIRMATION
     // 2. If explicitly closing or canceling, use that status
@@ -1139,22 +1140,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         finalStatus = existingOrder.status === OrderStatus.PENDING_CONFIRMATION ? OrderStatus.CONFIRMED : existingOrder.status;
       }
     }
-    
+
     const newOrder: Order = {
       id: orderId,
       orderNumber: existingOrder?.orderNumber || `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
-      type: cartOrderType, 
-      status: finalStatus, 
-      items: [...currentCart], 
-      customerId: currentUser.id, 
-      tableId: selectedTable?.id, 
-      branchId: currentUser.branchId || 'b1', 
-      createdAt: existingOrder?.createdAt || new Date(), 
-      subtotal, 
-      tax: 0, 
-      discount, 
-      total, 
-      paymentMethod, 
+      type: cartOrderType,
+      status: finalStatus,
+      items: [...currentCart],
+      customerId: currentUser.id,
+      tableId: selectedTable?.id,
+      branchId: currentUser.branchId || 'b1',
+      createdAt: existingOrder?.createdAt || new Date(),
+      subtotal,
+      tax: 0,
+      discount,
+      total,
+      paymentMethod,
       customerName: customerDetails?.name || existingOrder?.customerName,
       customerPhone: customerDetails?.phone || existingOrder?.customerPhone,
       note: customerDetails?.note || existingOrder?.note,
@@ -1184,9 +1185,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Update table status if it's a dine-in order
     if (selectedTable) {
       const tableStatus = finalStatus === OrderStatus.DELIVERED ? TableStatus.PAID : TableStatus.OCCUPIED;
-      updateTableStatus(selectedTable.id, tableStatus, { 
-        currentOrderId: orderId, 
-        seatedAt: selectedTable.status === TableStatus.PAID ? new Date() : (selectedTable.seatedAt || new Date()) 
+      updateTableStatus(selectedTable.id, tableStatus, {
+        currentOrderId: orderId,
+        seatedAt: selectedTable.status === TableStatus.PAID ? new Date() : (selectedTable.seatedAt || new Date())
       });
     }
 
@@ -1261,7 +1262,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (cartOrderType === OrderType.DINE_IN && item.dineInPrice) price = item.dineInPrice;
       else if (cartOrderType === OrderType.TAKEAWAY && item.takeawayPrice) price = item.takeawayPrice;
       else if (cartOrderType === OrderType.DELIVERY && item.deliveryPrice) price = item.deliveryPrice;
-      
+
       // Check for active offer
       if (item.offerPrice && item.offerStartDate && item.offerEndDate) {
         const now = new Date();
@@ -1272,16 +1273,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
 
-      const newOrderItem: OrderItem = { 
-        itemId: item.id, 
-        uniqueId: Math.random().toString(36).substr(2, 9), 
-        name: item.nameAr, 
-        quantity: 1, 
-        basePrice: price, 
-        price: price, 
+      const newOrderItem: OrderItem = {
+        itemId: item.id,
+        uniqueId: Math.random().toString(36).substr(2, 9),
+        name: item.nameAr,
+        quantity: 1,
+        basePrice: price,
+        price: price,
         departmentId: item.departmentId,
         status: OrderStatus.PREPARING,
-        ...customization 
+        ...customization
       };
       return [...prev, newOrderItem];
     });
@@ -1298,9 +1299,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (o.tableId) {
           updateTableStatus(o.tableId, TableStatus.CLEANING, { currentOrderId: undefined, seatedAt: undefined });
         }
-        return { 
-          ...o, 
-          status: OrderStatus.DELIVERED, 
+        return {
+          ...o,
+          status: OrderStatus.DELIVERED,
           shelfLocation: undefined,
           timeline: [...o.timeline, { status: OrderStatus.DELIVERED, time: new Date() }]
         };
@@ -1308,7 +1309,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return o;
     }));
   };
-  
+
   const assignShelfToOrder = (orderId: string, shelf: string) => {
     setActiveOrders(prev => prev.map(o => {
       if (o.id === orderId) {
@@ -1328,10 +1329,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
           return item;
         });
-        
+
         // Check if all items are now READY or COLLECTED
         const allReady = updatedItems.every(i => i.status === OrderStatus.READY || i.status === OrderStatus.COLLECTED || i.status === OrderStatus.DELIVERED);
-        
+
         let newStatus = o.status;
         if (allReady && o.status !== OrderStatus.READY) {
           newStatus = OrderStatus.READY;
@@ -1372,11 +1373,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       tableAssignments, assignTable,
       seatTable,
       attendances, workSchedules, activityLogs,
-      checkIn, 
-      checkOut, 
+      checkIn,
+      checkOut,
       recordAttendance,
       deleteAttendance,
-      addActivityLog, 
+      addActivityLog,
       updateWorkSchedule
     }}>
       {children}
@@ -1385,7 +1386,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 };
 
 export const useApp = () => {
-  const context = useContext(AppContext);
-  if (!context) throw new Error('useApp must be used within AppProvider');
-  return context;
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error('useApp must be used within AppProvider');
+  return ctx;
 };
+
+
+

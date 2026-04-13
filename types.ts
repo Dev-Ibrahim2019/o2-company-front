@@ -1,45 +1,44 @@
-
 export enum OrderType {
-  DINE_IN = 'DINE_IN',
-  TAKEAWAY = 'TAKEAWAY',
-  DELIVERY = 'DELIVERY'
+  DINE_IN = "DINE_IN",
+  TAKEAWAY = "TAKEAWAY",
+  DELIVERY = "DELIVERY",
 }
 
 export enum OrderStatus {
-  PENDING = 'PENDING',
-  PREPARING = 'PREPARING',
-  READY = 'READY',
-  ON_DELIVERY = 'ON_DELIVERY',
-  DELIVERED = 'DELIVERED',
-  CANCELED = 'CANCELED',
-  REFUNDED = 'REFUNDED',
-  COMPLETED = 'COMPLETED',
-  IN_PROGRESS = 'IN_PROGRESS',
-  PENDING_CONFIRMATION = 'PENDING_CONFIRMATION',
-  CONFIRMED = 'CONFIRMED',
-  COLLECTED = 'COLLECTED'
+  PENDING = "PENDING",
+  PREPARING = "PREPARING",
+  READY = "READY",
+  ON_DELIVERY = "ON_DELIVERY",
+  DELIVERED = "DELIVERED",
+  CANCELED = "CANCELED",
+  REFUNDED = "REFUNDED",
+  COMPLETED = "COMPLETED",
+  IN_PROGRESS = "IN_PROGRESS",
+  PENDING_CONFIRMATION = "PENDING_CONFIRMATION",
+  CONFIRMED = "CONFIRMED",
+  COLLECTED = "COLLECTED",
 }
 
 export enum PaymentMethod {
-  CASH = 'CASH',
-  CREDIT_CARD = 'CREDIT_CARD',
-  WALLET = 'WALLET',
-  QR = 'QR',
-  ONLINE = 'ONLINE'
+  CASH = "CASH",
+  CREDIT_CARD = "CREDIT_CARD",
+  WALLET = "WALLET",
+  QR = "QR",
+  ONLINE = "ONLINE",
 }
 
 export interface Transaction {
   id: string;
   date: Date;
   amount: number;
-  type: 'DEPOSIT' | 'PURCHASE' | 'REFUND' | 'BONUS';
-  status: 'SUCCESS' | 'FAILED' | 'PENDING';
+  type: "DEPOSIT" | "PURCHASE" | "REFUND" | "BONUS";
+  status: "SUCCESS" | "FAILED" | "PENDING";
   description: string;
 }
 
 export interface SavedCard {
   id: string;
-  brand: 'VISA' | 'MASTERCARD';
+  brand: "VISA" | "MASTERCARD";
   last4: string;
   expiry: string;
 }
@@ -49,8 +48,8 @@ export interface MenuItem {
   name: string;
   nameAr: string;
   shortName?: string;
-  code: string; // SKU
-  price: number; // Base price
+  code?: string; // ✅ optional (كان required)
+  price: number;
   dineInPrice?: number;
   takeawayPrice?: number;
   deliveryPrice?: number;
@@ -61,23 +60,23 @@ export interface MenuItem {
   image: string;
   description?: string;
   descriptionAr?: string;
-  prepTime: number; // in minutes
-  status: 'AVAILABLE' | 'UNAVAILABLE' | 'OUT_OF_STOCK';
-  displayOrder: number;
-  requiresKitchen: boolean;
+  prepTime?: number; // ✅ optional (كان required)
+  status?: "AVAILABLE" | "UNAVAILABLE" | "OUT_OF_STOCK"; // ✅ optional
+  displayOrder?: number; // ✅ optional (كان required)
+  requiresKitchen?: boolean; // ✅ optional (كان required)
   barcode?: string;
   kitchenNotes?: string;
   popular?: boolean;
   chefRecommended?: boolean;
   seasonal?: { startDate: Date; endDate: Date };
-  visibility: { pos: boolean; qrMenu: boolean; delivery: boolean };
+  visibility?: { pos: boolean; qrMenu: boolean; delivery: boolean }; // ✅ optional
   dietary?: { vegan?: boolean; glutenFree?: boolean; spicyLevel?: number };
   sizes?: { id: string; name: string; price: number }[];
   addons?: { id: string; name: string; price: number; maxQuantity?: number }[];
-  removals?: string[]; // Ingredients that can be removed
+  removals?: string[];
   isCombo?: boolean;
   comboItems?: { itemId: string; quantity: number }[];
-  departmentId: string; // Required
+  departmentId: string;
   stats?: { salesCount: number; totalRevenue: number; lastSoldAt?: Date };
 }
 
@@ -86,7 +85,7 @@ export interface OrderItem {
   uniqueId: string;
   name: string;
   quantity: number;
-  price: number; 
+  price: number;
   basePrice: number;
   departmentId?: string;
   status?: OrderStatus;
@@ -141,7 +140,7 @@ export interface Branch {
   address: string;
   phone: string;
   managerId?: string;
-  status: 'ACTIVE' | 'INACTIVE';
+  status: "ACTIVE" | "INACTIVE";
 }
 
 export interface Department {
@@ -159,18 +158,20 @@ export interface Department {
   hasKds: boolean;
   kdsScreenId?: string;
   kdsDeviceName?: string;
-  defaultPrepTime: number; // in minutes
-  type: 'MAIN_KITCHEN' | 'FAST_FOOD' | 'BAR' | 'COLD_PREP' | 'BAKERY' | 'DESSERT';
+  defaultPrepTime: number;
+  type:
+    | "MAIN_KITCHEN"
+    | "FAST_FOOD"
+    | "BAR"
+    | "COLD_PREP"
+    | "BAKERY"
+    | "DESSERT";
   displayOrder: number;
-  status: 'ACTIVE' | 'INACTIVE' | 'BUSY';
+  status: "ACTIVE" | "INACTIVE" | "BUSY";
   maxConcurrentOrders: number;
   priority: number;
   autoPrintTicket: boolean;
-  notifications: {
-    sound: boolean;
-    flash: boolean;
-    push: boolean;
-  };
+  notifications: { sound: boolean; flash: boolean; push: boolean };
   orderTypeVisibility: OrderType[];
   requiresAssembly: boolean;
 }
@@ -189,36 +190,36 @@ export interface JobType {
 }
 
 export enum EmployeeStatus {
-  ACTIVE = 'ACTIVE',
-  ON_LEAVE = 'ON_LEAVE',
-  TERMINATED = 'TERMINATED',
-  SUSPENDED = 'SUSPENDED',
-  RESIGNED = 'RESIGNED'
+  ACTIVE = "ACTIVE",
+  ON_LEAVE = "ON_LEAVE",
+  TERMINATED = "TERMINATED",
+  SUSPENDED = "SUSPENDED",
+  RESIGNED = "RESIGNED",
 }
 
 export interface Employee {
   id: string;
-  employeeId: string; // EMP-102
+  employeeId?: string;
   name: string;
   phone: string;
-  email: string;
-  address: string;
-  nationalId: string;
-  dob: Date;
+  email?: string;
+  address?: string;
+  nationalId?: string;
+  dob?: Date;
   image?: string;
-  jobTitleId: string;
+  jobTitleId?: string;
   departmentId: string;
   branchId: string;
-  typeId: string;
+  typeId?: string;
   managerId?: string;
   hireDate: Date;
-  salary: number;
-  status: EmployeeStatus;
-  role: 'CASHIER' | 'WAITER' | 'MANAGER' | 'ADMIN' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'KITCHEN' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | 'HEAD_CHEF' | 'COOK';
+  salary?: number;
+  status: EmployeeStatus | string;
+  role: string;
   username?: string;
   password?: string;
-  pin?: string; // 4 digits
-  permissions: string[];
+  pin?: string;
+  permissions?: string[];
   notes?: string;
   rating?: number;
   performance?: {
@@ -229,17 +230,17 @@ export interface Employee {
 }
 
 export enum CustomerType {
-  REGULAR = 'REGULAR',
-  LOYAL = 'LOYAL',
-  VIP = 'VIP',
-  COMPANY = 'COMPANY',
-  EMPLOYEE = 'EMPLOYEE',
-  SUPPLIER = 'SUPPLIER'
+  REGULAR = "REGULAR",
+  LOYAL = "LOYAL",
+  VIP = "VIP",
+  COMPANY = "COMPANY",
+  EMPLOYEE = "EMPLOYEE",
+  SUPPLIER = "SUPPLIER",
 }
 
 export interface CustomerAddress {
   id: string;
-  label: string; // Home, Work, etc.
+  label: string;
   city: string;
   district: string;
   street: string;
@@ -255,7 +256,7 @@ export interface Customer {
   points: number;
   totalSpent: number;
   ordersCount: number;
-  balance: number; // For credit
+  balance: number;
   allowCredit: boolean;
   isBlocked: boolean;
   addresses: CustomerAddress[];
@@ -269,12 +270,12 @@ export interface User {
   id: string;
   name: string;
   phone: string;
-  role: 'CASHIER' | 'CUSTOMER' | 'WAITER' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'KITCHEN' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | 'ADMIN' | 'HEAD_CHEF' | 'COOK';
+  role: string;
   branchId?: string;
   departmentId?: string;
   points: number;
   balance: number;
-  tier: 'SILVER' | 'GOLD' | 'PLATINUM';
+  tier: "SILVER" | "GOLD" | "PLATINUM";
   vouchers: any[];
   favorites: string[];
   addresses: any[];
@@ -284,12 +285,12 @@ export interface User {
 }
 
 export enum TableStatus {
-  AVAILABLE = 'AVAILABLE',
-  OCCUPIED = 'OCCUPIED',
-  PAYMENT_PENDING = 'PAYMENT_PENDING',
-  PAID = 'PAID',
-  RESERVED = 'RESERVED',
-  CLEANING = 'CLEANING'
+  AVAILABLE = "AVAILABLE",
+  OCCUPIED = "OCCUPIED",
+  PAYMENT_PENDING = "PAYMENT_PENDING",
+  PAID = "PAID",
+  RESERVED = "RESERVED",
+  CLEANING = "CLEANING",
 }
 
 export interface Hall {
@@ -314,13 +315,13 @@ export interface Table {
 }
 
 export enum FinancialTransactionType {
-  SALE = 'SALE',             // مبيعات
-  EXPENSE = 'EXPENSE',       // مصروفات
-  WITHDRAWAL = 'WITHDRAWAL', // سحوبات (مدير)
-  DEPOSIT = 'DEPOSIT',       // إيداع (توريد)
-  REFUND = 'REFUND',         // مرتجع
-  CASH_DROP = 'CASH_DROP',   // توريد للبنك/الإدارة
-  VOID = 'VOID'              // إلغاء فاتورة
+  SALE = "SALE",
+  EXPENSE = "EXPENSE",
+  WITHDRAWAL = "WITHDRAWAL",
+  DEPOSIT = "DEPOSIT",
+  REFUND = "REFUND",
+  CASH_DROP = "CASH_DROP",
+  VOID = "VOID",
 }
 
 export interface FinancialTransaction {
@@ -331,8 +332,8 @@ export interface FinancialTransaction {
   amount: number;
   reason: string;
   timestamp: Date;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  attachment?: string; // Optional image/receipt
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  attachment?: string;
 }
 
 export interface CustomerFeedback {
@@ -340,11 +341,11 @@ export interface CustomerFeedback {
   orderId?: string;
   customerId?: string;
   customerName: string;
-  type: 'COMPLAINT' | 'SUGGESTION' | 'COMPLIMENT';
-  category: 'FOOD' | 'SERVICE' | 'CLEANLINESS' | 'ATMOSPHERE' | 'OTHER';
-  rating: number; // 1-5
+  type: "COMPLAINT" | "SUGGESTION" | "COMPLIMENT";
+  category: "FOOD" | "SERVICE" | "CLEANLINESS" | "ATMOSPHERE" | "OTHER";
+  rating: number;
   comment: string;
-  status: 'NEW' | 'REVIEWED' | 'RESOLVED';
+  status: "NEW" | "REVIEWED" | "RESOLVED";
   timestamp: Date;
 }
 
@@ -352,15 +353,15 @@ export interface StaffTask {
   id: string;
   title: string;
   description: string;
-  assignedTo: string; // Employee ID
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+  assignedTo: string;
+  priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+  status: "PENDING" | "IN_PROGRESS" | "COMPLETED";
   dueDate: Date;
 }
 
 export interface TableAssignment {
   tableId: string;
-  staffId: string; // Employee ID (Captain/Waiter)
+  staffId: string;
   shiftId: string;
 }
 
@@ -375,8 +376,8 @@ export interface Shift {
   totalSales?: number;
   totalExpenses?: number;
   totalWithdrawals?: number;
-  status: 'OPEN' | 'CLOSED';
-  type: 'MORNING' | 'EVENING' | 'NIGHT';
+  status: "OPEN" | "CLOSED";
+  type: "MORNING" | "EVENING" | "NIGHT";
 }
 
 export interface Attendance {
@@ -385,7 +386,7 @@ export interface Attendance {
   date: Date;
   checkIn: Date;
   checkOut?: Date;
-  status: 'PRESENT' | 'LATE' | 'ABSENT';
+  status: "PRESENT" | "LATE" | "ABSENT";
   note?: string;
 }
 
@@ -395,15 +396,15 @@ export interface WorkSchedule {
   branchId: string;
   departmentId: string;
   shiftId: string;
-  dayOfWeek: number; // 0-6 (Sunday-Saturday)
-  startTime: string; // "08:00"
-  endTime: string;   // "16:00"
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
 }
 
 export interface ActivityLog {
   id: string;
   employeeId: string;
-  action: string; // "Created Order #1025"
+  action: string;
   timestamp: Date;
   details?: any;
 }

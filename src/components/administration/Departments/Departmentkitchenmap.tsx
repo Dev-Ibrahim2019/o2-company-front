@@ -1,18 +1,17 @@
-// DepartmentKitchenMap.tsx
 import { ChefHat } from 'lucide-react';
-import DepartmentStationCard from "./Departmentstationcard";
+import type { Department, Order } from '../../../../types';
+import DepartmentStationCard from './DepartmentStationCard';
 
 const STATION_COUNT = 8;
 
 interface DepartmentKitchenMapProps {
-    departments: any[];
-    activeOrders: any[];
-    onEditDepartment: (dept: any) => void;
+    departments: Department[];
+    activeOrders: Order[];
+    onEditDepartment: (dept: Department) => void;
 }
 
 const DepartmentKitchenMap = ({ departments, activeOrders, onEditDepartment }: DepartmentKitchenMapProps) => (
     <div className="bg-slate-900/50 border border-white/5 rounded-3xl p-8 min-h-[600px] relative overflow-hidden">
-        {/* Dot grid background */}
         <div
             className="absolute inset-0 opacity-10 pointer-events-none"
             style={{ backgroundImage: 'radial-gradient(#ffffff 1px, transparent 1px)', backgroundSize: '20px 20px' }}
@@ -23,7 +22,6 @@ const DepartmentKitchenMap = ({ departments, activeOrders, onEditDepartment }: D
             <MapSummary departments={departments} activeOrders={activeOrders} />
 
             <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {/* Aggregator banner spans full width */}
                 <AggregatorArea />
 
                 {Array.from({ length: STATION_COUNT }, (_, i) => i + 1).map(stationNum => {
@@ -42,8 +40,6 @@ const DepartmentKitchenMap = ({ departments, activeOrders, onEditDepartment }: D
         </div>
     </div>
 );
-
-// ─── Sub-sections ───────────────────────────────────────────────────────────────
 
 const MapHeader = () => (
     <div className="flex items-center justify-between mb-8">
@@ -66,7 +62,7 @@ const LegendItem = ({ color, label }: { color: string; label: string }) => (
     </div>
 );
 
-const MapSummary = ({ departments, activeOrders }: { departments: any[]; activeOrders: any[] }) => (
+const MapSummary = ({ departments, activeOrders }: { departments: Department[]; activeOrders: Order[] }) => (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
         <SummaryCard label="إجمالي الأقسام" value={departments.length} colorClass="bg-slate-800/40 border-white/5" textClass="" />
         <SummaryCard label="أقسام نشطة" value={departments.filter(d => d.status === 'ACTIVE').length} colorClass="bg-emerald-500/5 border-emerald-500/10" textClass="text-emerald-500" />

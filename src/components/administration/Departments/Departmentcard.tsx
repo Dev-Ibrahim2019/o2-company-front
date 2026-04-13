@@ -1,18 +1,18 @@
-// DepartmentCard.tsx
 import {
     TrendingUp, Package, Layers, Clock, Edit2, Trash2,
     Printer, Users2, Map, Monitor, Zap, EyeOff, Activity,
 } from 'lucide-react';
 import { OrderStatus } from '../../../../types';
-import StatusBadge from './ui/Statusbadge';
-import IconButton from './ui/Iconbutton';
+import type { Department, MenuItem, Order, Employee } from "../../../../types"
+import StatusBadge from "./ui/Statusbadge";
+import IconButton from './ui/IconButton';
 
 interface DepartmentCardProps {
-    dept: any;
-    menuItems: any[];
-    activeOrders: any[];
-    employees: any[];
-    onEdit: (dept: any) => void;
+    dept: Department;
+    menuItems: MenuItem[];
+    activeOrders: Order[];
+    employees: Employee[];
+    onEdit: (dept: Department) => void;
     onDelete: (id: string) => void;
 }
 
@@ -26,7 +26,7 @@ const DepartmentCard = ({
 }: DepartmentCardProps) => {
     const deptItems = menuItems.filter(item => item.departmentId === dept.id);
     const activeDeptOrders = activeOrders.filter(
-        o => o.items.some((i: any) => i.departmentId === dept.id) && o.status !== OrderStatus.COMPLETED
+        o => o.items.some(i => i.departmentId === dept.id) && o.status !== OrderStatus.COMPLETED
     );
     const deptEmployees = employees.filter(e => e.departmentId === dept.id);
     const capacity = dept.maxConcurrentOrders || 10;
@@ -34,13 +34,9 @@ const DepartmentCard = ({
 
     return (
         <div className="bg-slate-900/50 border border-white/5 rounded-2xl p-6 hover:border-red-500/30 transition-all group relative overflow-hidden">
-            {/* Color bar */}
             <div className="absolute top-0 right-0 w-1.5 h-full" style={{ backgroundColor: dept.color || '#ef4444' }} />
-
             <CardHeader dept={dept} onEdit={onEdit} onDelete={onDelete} />
-
-            <CardStats dept={dept} activeDeptOrders={activeDeptOrders} />
-
+            <CardStats dept={dept} />
             <CardMetrics
                 deptItems={deptItems}
                 activeDeptOrders={activeDeptOrders}
@@ -48,21 +44,16 @@ const DepartmentCard = ({
                 capacity={capacity}
                 capacityRatio={capacityRatio}
             />
-
             <CardFooter dept={dept} />
         </div>
     );
 };
 
-// ─── Sub-sections ───────────────────────────────────────────────────────────────
-
 const CardHeader = ({
-    dept,
-    onEdit,
-    onDelete,
+    dept, onEdit, onDelete,
 }: {
-    dept: any;
-    onEdit: (d: any) => void;
+    dept: Department;
+    onEdit: (d: Department) => void;
     onDelete: (id: string) => void;
 }) => (
     <div className="flex items-start justify-between mb-4">
@@ -85,39 +76,37 @@ const CardHeader = ({
             </div>
         </div>
         <div className="flex items-center gap-1">
-            <IconButton onClick={() => onEdit(dept)}><Edit2 size={16} /></IconButton>
-            <IconButton onClick={() => onDelete(dept.id)} variant="danger"><Trash2 size={16} /></IconButton>
+            <IconButton onClick={() => onEdit(dept)} title="تعديل"><Edit2 size={16} /></IconButton>
+            <IconButton onClick={() => onDelete(dept.id)} variant="danger" title="حذف"><Trash2 size={16} /></IconButton>
         </div>
     </div>
 );
 
-const CardStats = ({ dept, activeDeptOrders }: { dept: any; activeDeptOrders: any[] }) => (
+const CardStats = ({ dept }: { dept: Department }) => (
     <div className="grid grid-cols-2 gap-4 mb-6">
-        <StatBox icon={<Map size={14} className="text-red-500" />} label="الموقع / المحطة" value={dept.location || `Station ${dept.stationNumber || '?'}`} />
-        <StatBox icon={<Clock size={14} className="text-emerald-500" />} label="وقت التحضير" value={`${dept.defaultPrepTime || 0} دقيقة`} />
-    </div>
-);
-
-const StatBox = ({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) => (
-    <div className="bg-slate-800/50 rounded-xl p-3 border border-white/5">
-        <p className="text-[10px] text-slate-500 mb-1">{label}</p>
-        <div className="flex items-center gap-2">
-            {icon}
-            <span className="text-sm font-bold text-white">{value}</span>
+        <div className="bg-slate-800/50 rounded-xl p-3 border border-white/5">
+            <p className="text-[10px] text-slate-500 mb-1">الموقع / المحطة</p>
+            <div className="flex items-center gap-2">
+                <Map size={14} className="text-red-500" />
+                <span className="text-sm font-bold text-white">{dept.location || `Station ${dept.stationNumber || '?'}`}</span>
+            </div>
+        </div>
+        <div className="bg-slate-800/50 rounded-xl p-3 border border-white/5">
+            <p className="text-[10px] text-slate-500 mb-1">وقت التحضير</p>
+            <div className="flex items-center gap-2">
+                <Clock size={14} className="text-emerald-500" />
+                <span className="text-sm font-bold text-white">{dept.defaultPrepTime || 0} دقيقة</span>
+            </div>
         </div>
     </div>
 );
 
 const CardMetrics = ({
-    deptItems,
-    activeDeptOrders,
-    deptEmployees,
-    capacity,
-    capacityRatio,
+    deptItems, activeDeptOrders, deptEmployees, capacity, capacityRatio,
 }: {
-    deptItems: any[];
-    activeDeptOrders: any[];
-    deptEmployees: any[];
+    deptItems: MenuItem[];
+    activeDeptOrders: Order[];
+    deptEmployees: Employee[];
     capacity: number;
     capacityRatio: number;
 }) => (
@@ -125,7 +114,7 @@ const CardMetrics = ({
         <MetricRow icon={<Package size={12} />} label="الأصناف" value={`${deptItems.length} صنف`} valueClass="text-white" />
         <MetricRow icon={<Activity size={12} />} label="طلبات نشطة" value={`${activeDeptOrders.length} طلب`} valueClass="text-blue-500" />
         <MetricRow icon={<Users2 size={12} />} label="الموظفين" value={`${deptEmployees.length} موظف`} valueClass="text-white" />
-        <MetricRow icon={<TrendingUp size={12} />} label="الأكثر مبيعاً" value="بيتزا مارغريتا" valueClass="text-emerald-500" />
+        <MetricRow icon={<TrendingUp size={12} />} label="الأكثر مبيعاً" value="—" valueClass="text-emerald-500" />
         <div className="flex items-center justify-between text-xs">
             <span className="text-slate-500 flex items-center gap-1">
                 <Zap size={12} />
@@ -153,7 +142,7 @@ const MetricRow = ({
     </div>
 );
 
-const CardFooter = ({ dept }: { dept: any }) => (
+const CardFooter = ({ dept }: { dept: Department }) => (
     <div className="flex items-center justify-between mt-6 pt-4 border-t border-white/5">
         <div className="flex items-center gap-2">
             {dept.hasKds ? (

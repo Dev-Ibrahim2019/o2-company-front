@@ -1,4 +1,3 @@
-// ui/StatusBadge.tsx
 type Status = 'ACTIVE' | 'BUSY' | 'INACTIVE' | string;
 
 interface StatusBadgeProps {

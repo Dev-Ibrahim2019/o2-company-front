@@ -1,18 +1,17 @@
-// DepartmentStationCard.tsx
 import { Plus, Layers, AlertCircle } from 'lucide-react';
 import { OrderStatus } from '../../../../types';
-
+import type { Department, Order } from '../../../../types';
 interface DepartmentStationCardProps {
     stationNum: number;
-    dept?: any;
-    activeOrders: any[];
-    onEdit: (dept: any) => void;
+    dept?: Department;
+    activeOrders: Order[];
+    onEdit: (dept: Department) => void;
 }
 
 const DepartmentStationCard = ({ stationNum, dept, activeOrders, onEdit }: DepartmentStationCardProps) => {
     const activeDeptOrders = dept
         ? activeOrders.filter(
-            o => o.items.some((i: any) => i.departmentId === dept.id) && o.status !== OrderStatus.COMPLETED
+            o => o.items.some(i => i.departmentId === dept.id) && o.status !== OrderStatus.COMPLETED
         )
         : [];
 
@@ -32,13 +31,12 @@ const DepartmentStationCard = ({ stationNum, dept, activeOrders, onEdit }: Depar
             <div className="absolute top-3 left-3 text-[10px] font-bold text-slate-600 tracking-widest">
                 STATION {stationNum}
             </div>
-
             {dept ? <FilledStation dept={dept} activeDeptOrders={activeDeptOrders} /> : <EmptyStation />}
         </div>
     );
 };
 
-const FilledStation = ({ dept, activeDeptOrders }: { dept: any; activeDeptOrders: any[] }) => (
+const FilledStation = ({ dept, activeDeptOrders }: { dept: Department; activeDeptOrders: Order[] }) => (
     <>
         <div
             className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl mb-3 shadow-lg group-hover:scale-110 transition-transform"
@@ -64,7 +62,6 @@ const FilledStation = ({ dept, activeDeptOrders }: { dept: any; activeDeptOrders
             </div>
         )}
 
-        {/* Hover Overlay */}
         <div className="absolute inset-0 bg-slate-900/95 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center p-4 text-center">
             <p className="text-xs font-bold text-white mb-3">{dept.name}</p>
             <div className="flex flex-col gap-2 w-full max-w-[140px]">

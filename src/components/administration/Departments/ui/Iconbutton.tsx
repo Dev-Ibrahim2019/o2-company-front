@@ -1,4 +1,3 @@
-// ui/IconButton.tsx
 import { ReactNode } from 'react';
 
 interface IconButtonProps {
