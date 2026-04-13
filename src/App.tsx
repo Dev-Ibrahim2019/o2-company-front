@@ -1,8 +1,8 @@
 
+import { AppLayout } from "./components/administration/Layout";
 import { FinancePortal } from './components/administration/FinancePortal'
 import React, { useState, useEffect } from 'react';
 import { AppProvider, useApp } from '../store';
-import { AppLayout } from './components/administration/Layout'
 
 const Main: React.FC = () => {
   const { currentUser, currentShift, userRole, editingOrderId } = useApp();
@@ -116,6 +116,8 @@ const Main: React.FC = () => {
 };
 
 function App() {
+  const [activeView, setActiveView] = useState("finance_dashboard");
+
   return (
     <div>
       <Main />

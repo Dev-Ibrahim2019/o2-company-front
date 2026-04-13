@@ -274,8 +274,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [tableAssignments, setTableAssignments] = useState<TableAssignment[]>([]);
 
   const [branches, setBranches] = useState<Branch[]>([
-    { id: 'b1', name: 'فرع غزة الرئيسي', address: 'شارع الثلاثيني', phone: '0599001122', status: 'ACTIVE' },
-    { id: 'b2', name: 'فرع الرمال', address: 'دوار حيدر', phone: '0599112233', status: 'ACTIVE' }
+    { id: 'b1', name: 'فرع غزة الرئيسي', address: 'شارع الثلاثيني', phone: '0599001122', status: 'ACTIVE', code: 'GZ-MAIN', isMainBranch: true, city: 'غزة', closingTime: '12:00 AM', openingTime: '10:00 AM'},
+    { id: 'b2', name: 'فرع الرمال', address: 'دوار حيدر', phone: '0599112233', status: 'ACTIVE', code: 'GZ-RMAL', isMainBranch: false, city: 'نابلس', closingTime: '12:00 AM', openingTime: '10:00 AM' }
   ]);
   const [departments, setDepartments] = useState<Department[]>([
     { 

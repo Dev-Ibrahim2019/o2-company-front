@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../../store';
 import DashboardPage from '../administration/DashboardPage';
-import DepartmentsPage from '../administration/DepartmentsPage';
+import DepartmentsPage from './Departments/DepartmentsPage';
 import OrdersPage from '../administration/OrdersPage';
 import CustomerManagement from '../administration/CustomerManagement';
 import EmployeeManagement from '../administration/EmployeeManagement';
@@ -12,7 +12,7 @@ import ArchivePage from '../administration/ArchivePage';
 import SettingsPage from '../administration/SettingsPage';
 import MenuPage from '../administration/MenuPage';
 import renderModal from '../administration/renderModal';
-import BranchesPage from '../administration/BranchesPage';
+import BranchesPage from '../administration/BranchesPage/BranchesPage';
 
 import { Calendar } from 'lucide-react';
 import { CustomerType } from '../../../types';
@@ -21,19 +21,19 @@ import { CustomerType } from '../../../types';
 interface FinancePortalProps {
   initialView?: 'DASHBOARD' | 'BRANCHES' | 'DEPARTMENTS' | 'MENU' | 'ORDERS' | 'CUSTOMERS' | 'SUPPLIERS' | 'EMPLOYEES' | 'ACCOUNTING' | 'REPORTS' | 'SETTINGS' | 'AUDIT_LOG' | 'ARCHIVE';
 }
-  
+
 export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DASHBOARD' }) => {
   const { currentUser } = useApp();
   const canAudit = currentUser?.role === 'ADMIN' || currentUser?.role === 'BRANCH_MANAGER';
   const canManageFinance = currentUser?.role === 'ADMIN' || currentUser?.role === 'FINANCE' || currentUser?.role === 'BRANCH_MANAGER';
   const canEditSettings = currentUser?.role === 'ADMIN';
-  
+
   const renderCustomers = () => <CustomerManagement initialType={CustomerType.REGULAR} />;
 
   const renderSuppliers = () => <CustomerManagement initialType={CustomerType.SUPPLIER} />;
-    const [view, setView] = useState(initialView);
-    console.log('currentUser', currentUser);
-    return (
+  const [view, setView] = useState(initialView);
+  console.log('currentUser', currentUser);
+  return (
     <div className="h-full flex flex-col gap-6">
       {/* Header */}
       <div className="flex items-center justify-between">
