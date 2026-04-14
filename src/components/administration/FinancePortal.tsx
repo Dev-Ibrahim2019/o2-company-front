@@ -4,7 +4,7 @@ import DashboardPage from '../administration/DashboardPage';
 import DepartmentsPage from './Departments/DepartmentsPage';
 import OrdersPage from '../administration/OrdersPage';
 import CustomerManagement from '../administration/CustomerManagement';
-import EmployeeManagement from '../administration/EmployeeManagement';
+import EmployeeManagement from "../administration/EmployeeManagement/EmployeeManagement";
 import ReportsPage from '../administration/ReportsPage';
 import AuditLogPage from '../administration/AuditLogPage';
 import AccountingPage from '../administration/AccountingPage';
