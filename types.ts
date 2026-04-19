@@ -140,6 +140,7 @@ export interface Branch {
   id: string;
   name: string;
   code: string;
+  is_active: boolean;
   status: "ACTIVE" | "INACTIVE" | "MAINTENANCE" | "BUSY";
   isMainBranch: boolean;
   parentId?: string;
