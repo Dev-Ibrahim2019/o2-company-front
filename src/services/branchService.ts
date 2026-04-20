@@ -1,18 +1,6 @@
-// src/services/departmentService.ts
+// src/services/branchService.ts
 
-import axios from "axios";
-
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:8000/api",
-  headers: { "Content-Type": "application/json" },
-});
-
-// إضافة التوكن تلقائياً لكل طلب
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+import api from "../api/axios"; // ← استخدم الـ instance المشترك
 
 export interface Branch {
   id: number;
@@ -22,14 +10,14 @@ export interface Branch {
   is_active?: boolean;
   code?: string;
   isMainBranch?: boolean;
-  closingTime: Date;
-  openingTime: Date;
+  closingTime?: string;
+  openingTime?: string;
 }
 
 export const branchService = {
   getAll: async (): Promise<Branch[]> => {
     const { data } = await api.get("/branches");
-    return data.data; // Laravel يلف البيانات في "data"
+    return data.data; // ← بعد تعديل BranchController ليستخدم $this->success()
   },
 
   create: async (payload: Omit<Branch, "id">): Promise<Branch> => {
@@ -37,15 +25,12 @@ export const branchService = {
     return data.data;
   },
 
-  update: async (
-    id: number,
-    payload: Partial<Branch>,
-  ): Promise<Branch> => {
+  update: async (id: number, payload: Partial<Branch>): Promise<Branch> => {
     const { data } = await api.put(`/branches/${id}`, payload);
     return data.data;
   },
 
-  delete: async (id: number): Promise<void> => {  
+  delete: async (id: number): Promise<void> => {
     await api.delete(`/branches/${id}`);
   },
 };

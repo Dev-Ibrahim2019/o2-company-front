@@ -2,28 +2,22 @@
 
 import { useState } from 'react';
 import { useDepartments } from '../../../hooks/useDepartments';
-import DepartmentsHeader from './DepartmentsHeader ';
-import DepartmentCard from './DepartmentCard';
+import DepartmentsHeader from './Departmentsheader ';
 import DepartmentKitchenMap from './Departmentkitchenmap';
 import DepartmentModal from './DepartmentModal';
+import DepartmentApiCard from './DepartmentApiCard';    // ← الكارد الجديدة
+import type { Department } from '../../../services/departmentService';
 
 type SubView = 'LIST' | 'MAP';
 
 const DepartmentsPage = () => {
-  const {
-    departments,
-    loading,
-    error,
-    addDepartment,
-    updateDepartment,
-    deleteDepartment,
-  } = useDepartments();
+  const { departments, loading, error, addDepartment, updateDepartment, deleteDepartment } = useDepartments();
 
   const [subView, setSubView] = useState<SubView>('LIST');
-  const [editingDept, setEditingDept] = useState<any>(null);
+  const [editingDept, setEditingDept] = useState<Department | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const openModal = (dept: any = null) => {
+  const openModal = (dept: Department | null = null) => {
     setEditingDept(dept);
     setIsModalOpen(true);
   };
@@ -37,21 +31,34 @@ const DepartmentsPage = () => {
     setIsModalOpen(false);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string | number) => {
     if (!confirm('هل أنت متأكد من حذف هذا القسم؟')) return;
     await deleteDepartment(Number(id));
   };
 
+  // Skeleton loading
   if (loading) return (
-    <div className="flex items-center justify-center h-64 text-slate-400">
-      جاري التحميل...
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} className="bg-slate-900 border border-white/5 rounded-2xl p-6 animate-pulse">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="w-14 h-14 rounded-2xl bg-slate-800" />
+            <div className="space-y-2 flex-1">
+              <div className="h-4 bg-slate-800 rounded w-3/4" />
+              <div className="h-3 bg-slate-800 rounded w-1/2" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <div className="h-3 bg-slate-800 rounded" />
+            <div className="h-3 bg-slate-800 rounded w-5/6" />
+          </div>
+        </div>
+      ))}
     </div>
   );
 
   if (error) return (
-    <div className="flex items-center justify-center h-64 text-red-400">
-      {error}
-    </div>
+    <div className="flex items-center justify-center h-64 text-red-400">{error}</div>
   );
 
   return (
@@ -65,23 +72,18 @@ const DepartmentsPage = () => {
       {subView === 'LIST' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {departments.map(dept => (
-            <DepartmentCard
+            <DepartmentApiCard
               key={dept.id}
               dept={dept}
-              menuItems={[]}
-              activeOrders={[]}
-              employees={[]}
-              onEdit={openModal}
-              onDelete={handleDelete}
+              onEdit={() => openModal(dept)}
+              onDelete={() => handleDelete(dept.id)}
             />
           ))}
         </div>
       ) : (
-        <DepartmentKitchenMap
-          departments={departments}
-          activeOrders={[]}
-          onEditDepartment={openModal}
-        />
+        <div className="text-center py-10 text-slate-500">
+          خريطة المطبخ — قريباً
+        </div>
       )}
 
       {isModalOpen && (

@@ -9,7 +9,7 @@ interface Props {
     onClose: () => void;
 }
 
-const TYPES = ['KITCHEN', 'BAR', 'GRILL', 'PASTRY', 'OTHER'];
+const TYPES = ['sale', 'production', 'storage'];
 const STATUSES = ['ACTIVE', 'BUSY', 'INACTIVE'];
 
 const DepartmentModal = ({ dept, onSave, onClose }: Props) => {
@@ -18,7 +18,7 @@ const DepartmentModal = ({ dept, onSave, onClose }: Props) => {
         nameAr: dept?.nameAr ?? '',
         shortName: dept?.shortName ?? '',
         color: dept?.color ?? '#ef4444',
-        type: dept?.type ?? 'KITCHEN',
+        type: dept?.type ?? 'sale',
         status: dept?.status ?? 'ACTIVE',
         location: dept?.location ?? '',
         stationNumber: dept?.stationNumber ?? '',
