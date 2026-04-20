@@ -1,74 +1,93 @@
-import React from 'react';
-import { Search, LayoutGrid, List } from 'lucide-react';
-import { EmployeeStatus } from '../../../../../types';
-import type { Department } from '../../../../../types';
-import { getStatusLabel } from '../utils';
+// src/features/employees/components/EmployeeFilters.tsx
 
-interface EmployeeFiltersProps {
+import type { ReactNode } from "react";
+import { Search, LayoutGrid, List } from "lucide-react";
+import { STATUSES } from "../utils";
+
+interface Props {
     searchQuery: string;
     onSearchChange: (v: string) => void;
-    selectedDept: string;
-    onDeptChange: (v: string) => void;
+    selectedDept: number | "ALL";
+    onDeptChange: (v: number | "ALL") => void;
     selectedStatus: string;
     onStatusChange: (v: string) => void;
-    viewMode: 'GRID' | 'TABLE';
-    onViewModeChange: (v: 'GRID' | 'TABLE') => void;
-    departments: Department[];
+    viewMode: "GRID" | "TABLE";
+    onViewModeChange: (v: "GRID" | "TABLE") => void;
+    departments: { id: number; name: string }[];
 }
 
-const EmployeeFilters: React.FC<EmployeeFiltersProps> = ({
+const selectCls =
+    "bg-slate-900 border border-white/5 text-white px-4 py-2.5 rounded-2xl text-sm" +
+    " focus:outline-none focus:border-red-500/50 transition-all";
+
+const EmployeeFilters = ({
     searchQuery, onSearchChange,
     selectedDept, onDeptChange,
     selectedStatus, onStatusChange,
     viewMode, onViewModeChange,
     departments,
-}) => (
+}: Props) => (
     <div className="bg-slate-900/50 border border-white/5 p-4 rounded-3xl flex flex-col md:flex-row items-center gap-4">
+
+        {/* البحث */}
         <div className="relative flex-1 w-full">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
             <input
                 type="text"
                 value={searchQuery}
-                onChange={e => onSearchChange(e.target.value)}
-                placeholder="البحث بالاسم أو الرقم الوظيفي..."
+                onChange={(e) => onSearchChange(e.target.value)}
+                placeholder="ابحث بالاسم أو الرقم الوظيفي أو الهاتف..."
                 className="w-full bg-slate-900 border border-white/5 rounded-2xl py-2.5 pr-10 pl-4 text-sm text-white focus:outline-none focus:border-red-500/50 transition-all"
             />
         </div>
-        <div className="flex items-center gap-2 w-full md:w-auto">
+
+        <div className="flex items-center gap-2 w-full md:w-auto flex-wrap">
+            {/* فلتر القسم */}
             <select
                 value={selectedDept}
-                onChange={e => onDeptChange(e.target.value)}
-                className="bg-slate-900 border border-white/5 text-white px-4 py-2.5 rounded-2xl text-sm focus:outline-none focus:border-red-500/50 transition-all"
+                onChange={(e) =>
+                    onDeptChange(e.target.value === "ALL" ? "ALL" : Number(e.target.value))
+                }
+                className={selectCls}
             >
                 <option value="ALL">جميع الأقسام</option>
-                {departments.map(d => <option key={d.id} value={d.id}>{d.nameAr}</option>)}
+                {departments.map((d) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                ))}
             </select>
 
-            <select
-                value={selectedStatus}
-                onChange={e => onStatusChange(e.target.value)}
-                className="bg-slate-900 border border-white/5 text-white px-4 py-2.5 rounded-2xl text-sm focus:outline-none focus:border-red-500/50 transition-all"
-            >
+            {/* فلتر الحالة */}
+            <select value={selectedStatus} onChange={(e) => onStatusChange(e.target.value)} className={selectCls}>
                 <option value="ALL">جميع الحالات</option>
-                {Object.values(EmployeeStatus).map(s => <option key={s} value={s}>{getStatusLabel(s)}</option>)}
+                {STATUSES.map((s) => (
+                    <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
             </select>
 
+            {/* تبديل العرض */}
             <div className="flex bg-slate-900 p-1 rounded-2xl border border-white/5">
-                <button
-                    onClick={() => onViewModeChange('GRID')}
-                    className={`p-2 rounded-xl transition-all ${viewMode === 'GRID' ? 'bg-red-500 text-white shadow-lg shadow-red-500/20' : 'text-slate-500 hover:text-white'}`}
-                >
-                    <LayoutGrid size={18} />
-                </button>
-                <button
-                    onClick={() => onViewModeChange('TABLE')}
-                    className={`p-2 rounded-xl transition-all ${viewMode === 'TABLE' ? 'bg-red-500 text-white shadow-lg shadow-red-500/20' : 'text-slate-500 hover:text-white'}`}
-                >
-                    <List size={18} />
-                </button>
+                <ViewBtn active={viewMode === "GRID"} onClick={() => onViewModeChange("GRID")} title="عرض شبكي">
+                    <LayoutGrid size={17} />
+                </ViewBtn>
+                <ViewBtn active={viewMode === "TABLE"} onClick={() => onViewModeChange("TABLE")} title="عرض جدولي">
+                    <List size={17} />
+                </ViewBtn>
             </div>
         </div>
     </div>
+);
+
+const ViewBtn = ({
+    active, onClick, title, children,
+}: { active: boolean; onClick: () => void; title: string; children: ReactNode }) => (
+    <button
+        onClick={onClick}
+        title={title}
+        className={`p-2 rounded-xl transition-all ${active ? "bg-red-500 text-white shadow-lg shadow-red-500/20" : "text-slate-500 hover:text-white"
+            }`}
+    >
+        {children}
+    </button>
 );
 
 export default EmployeeFilters;

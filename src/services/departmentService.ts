@@ -29,12 +29,18 @@ export interface Department {
   maxConcurrentOrders?: number;
   hasKds?: boolean;
   autoPrintTicket?: boolean;
+  displayOrder?: number;
+  priority?: number;
+  requiresAssembly?: boolean;
+  notifications?: { sound: boolean; flash: boolean; push: boolean };
+  orderTypeVisibility?: string[];
+  branchId?: string;
 }
 
 export const departmentService = {
   getAll: async (): Promise<Department[]> => {
     const { data } = await api.get("/departments");
-    return data.data; // Laravel يلف البيانات في "data"
+    return data.data; // ← الباك يرجع { data: [...], message, status }
   },
 
   create: async (payload: Omit<Department, "id">): Promise<Department> => {
