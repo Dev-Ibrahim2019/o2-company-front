@@ -184,8 +184,7 @@ export interface Branch {
 export interface Department {
   id: string;
   name: string;
-  nameAr: string;
-  shortName?: string;
+  // shortName?: string;
   description?: string;
   parentId?: string;
   branchId: string;

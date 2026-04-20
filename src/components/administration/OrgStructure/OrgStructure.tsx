@@ -52,9 +52,9 @@ export const OrgStructure: React.FC = () => {
   };
 
   const closeModal = () => {
-      setModalType(null);
-      setEditingId(null);
-    };
+    setModalType(null);
+    setEditingId(null);
+  };
 
   const [modalType, setModalType] = useState<
     "BRANCH" | "DEPT" | "JOB_TITLE" | "JOB_TYPE" | "EMP" | null

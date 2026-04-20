@@ -100,7 +100,7 @@ const RenderKDS: React.FC = () => {
     onStatusChange: (status: OrderStatus) => void;
     isDraggable?: boolean;
   }> = ({ order, isDraggable }) => {
-    const {} = useSortable({
+    const { } = useSortable({
       id: order.id,
       data: {
         type: "Order",
@@ -119,7 +119,7 @@ const RenderKDS: React.FC = () => {
           "https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3",
       };
       const audio = new Audio(sounds[type]);
-      audio.play().catch(() => {});
+      audio.play().catch(() => { });
     };
 
     const handleDragEnd = (event: any) => {
