@@ -16,10 +16,11 @@ import BranchesPage from '../administration/BranchesPage/BranchesPage';
 
 import { Calendar } from 'lucide-react';
 import { CustomerType } from '../../../types';
+import { OrgStructure } from './OrgStructure/OrgStructure';
 
 
 interface FinancePortalProps {
-  initialView?: 'DASHBOARD' | 'BRANCHES' | 'DEPARTMENTS' | 'MENU' | 'ORDERS' | 'CUSTOMERS' | 'SUPPLIERS' | 'EMPLOYEES' | 'ACCOUNTING' | 'REPORTS' | 'SETTINGS' | 'AUDIT_LOG' | 'ARCHIVE';
+  initialView?: 'DASHBOARD' | 'BRANCHES' | 'DEPARTMENTS' | 'MENU' | 'ORDERS' | 'CUSTOMERS' | 'SUPPLIERS' | 'EMPLOYEES' | 'ACCOUNTING' | 'REPORTS' | 'SETTINGS' | 'AUDIT_LOG' | 'ARCHIVE' | 'ORGSTRUCTURE';
 }
 
 export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DASHBOARD' }) => {
@@ -65,6 +66,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
         {view === 'AUDIT_LOG' && (canAudit ? <AuditLogPage /> : <div className="p-20 text-center text-slate-500">ليس لديك صلاحية للوصول إلى سجل التدقيق</div>)}
         {view === 'ARCHIVE' && (canManageFinance ? <ArchivePage /> : <div className="p-20 text-center text-slate-500">ليس لديك صلاحية للوصول إلى الأرشيف</div>)}
         {view === 'SETTINGS' && (canEditSettings ? <SettingsPage /> : <div className="p-20 text-center text-slate-500">ليس لديك صلاحية للوصول إلى الإعدادات</div>)}
+        {view === 'ORGSTRUCTURE' && <OrgStructure />}
       </div>
 
       {renderModal()}
