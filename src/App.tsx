@@ -3,8 +3,8 @@ import { AppLayout } from "./components/administration/Layout";
 import { FinancePortal } from './components/administration/FinancePortal'
 import React, { useState, useEffect } from 'react';
 import { AppProvider, useApp } from '../store';
-import api from "./api/axios";
-
+// import api from "./api/axios";
+ 
 const Main: React.FC = () => {
   const { currentUser, currentShift, userRole, editingOrderId } = useApp();
   const [activeView, setActiveView] = useState('finance_departments');
@@ -87,6 +87,7 @@ const Main: React.FC = () => {
       case 'finance_audit': return <FinancePortal key="f_audit" initialView="AUDIT_LOG" />;
       case 'finance_archive': return <FinancePortal key="f_arch" initialView="ARCHIVE" />;
       case 'finance_settings': return <FinancePortal key="f_sett" initialView="SETTINGS" />;
+      case 'finance_orgstructure': return <FinancePortal key="f_org" initialView="ORGSTRUCTURE" />;
       // case 'finance': return <FinanceReports />;
       // case 'shift': return <ShiftView />;
       // case 'org': return <OrgStructure />;
