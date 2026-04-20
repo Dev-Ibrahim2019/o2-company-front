@@ -13,7 +13,8 @@ interface DepartmentsHeaderProps {
 
 
 
-const DepartmentsHeader = ({ subView, onSubViewChange, onAddDepartment }: DepartmentsHeaderProps) => {
+const DepartmentsHeader = ({ subView, onSubViewChange, onAddDepartment, searchQuery,
+    onSearchChange }: DepartmentsHeaderProps) => {
     return (
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             {/* View Toggle */}
@@ -34,7 +35,10 @@ const DepartmentsHeader = ({ subView, onSubViewChange, onAddDepartment }: Depart
 
             {/* Search + Add */}
             <div className="flex items-center gap-2 w-full md:w-auto">
-                <SearchInput />
+                <SearchInput
+                    value={searchQuery}
+                    onChange={onSearchChange}
+                />
                 <AddButton onClick={onAddDepartment} />
             </div>
         </div>
@@ -63,11 +67,19 @@ const ViewToggleButton = ({ active, onClick, icon, label }: ViewToggleButtonProp
     </button>
 );
 
-const SearchInput = () => (
+const SearchInput = ({
+    value,
+    onChange
+}: {
+    value: string;
+    onChange: (v: string) => void;
+}) => (
     <div className="relative flex-1 md:w-64">
         <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
         <input
             type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
             placeholder="البحث عن قسم..."
             className="w-full bg-slate-900 border border-white/5 rounded-xl py-2 pr-10 pl-4 text-sm text-white focus:outline-none focus:border-red-500/50 transition-all"
         />

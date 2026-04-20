@@ -1,80 +1,107 @@
-import React from 'react';
-import { Briefcase, Building2, Calendar, Edit2, Trash2, Eye, ChevronRight } from 'lucide-react';
-import { motion } from 'framer-motion';
-import type { Employee, Department, JobTitle } from '../../../../../types';
-import { getStatusColor, getStatusLabel } from '../utils';
+// src/features/employees/components/EmployeeCard.tsx
 
-interface EmployeeCardProps {
-    emp: Employee;
-    dept?: Department;
-    title?: JobTitle;
-    onEdit: (emp: Employee) => void;
-    onDelete: (id: string) => void;
-    onSelect: (id: string) => void;
+import { Briefcase, Building2, Calendar, Edit2, Trash2, Eye, ChevronRight } from "lucide-react";
+import type { EmployeeFromApi } from "../../../../services/employeeService";
+import { getStatusColor, getStatusLabel } from "../utils";
+
+interface Props {
+    emp: EmployeeFromApi;
+    departments: { id: number; name: string }[];
+    onEdit: (emp: EmployeeFromApi) => void;
+    onDelete: (id: number) => void;
+    onSelect: (emp: EmployeeFromApi) => void;
 }
 
-const EmployeeCard: React.FC<EmployeeCardProps> = ({ emp, dept, title, onEdit, onDelete, onSelect }) => (
-    <motion.div
-        layout
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-slate-900 border border-white/5 rounded-2xl p-5 hover:border-red-500/30 transition-all group relative overflow-hidden"
-    >
-        <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 blur-3xl rounded-full -mr-16 -mt-16 group-hover:bg-red-500/10 transition-all" />
+const EmployeeCard = ({ emp, departments, onEdit, onDelete, onSelect }: Props) => {
+    const dept = departments.find((d) => d.id === emp.department_id);
 
-        <div className="flex items-start justify-between mb-4 relative z-10">
-            <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-slate-800 border border-white/10 flex items-center justify-center text-2xl font-bold text-red-500 overflow-hidden">
-                    {emp.image
-                        ? <img src={emp.image} alt={emp.name} className="w-full h-full object-cover" />
-                        : emp.name.charAt(0)}
+    return (
+        <div className="bg-slate-900 border border-white/5 rounded-2xl p-5 hover:border-red-500/30 transition-all group relative overflow-hidden">
+
+            {/* Glow خلفي عند الـ hover */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 blur-3xl rounded-full -mr-16 -mt-16 group-hover:bg-red-500/10 transition-all pointer-events-none" />
+
+            {/* ── رأس الكارت ── */}
+            <div className="flex items-start justify-between mb-4 relative z-10">
+                <div className="flex items-center gap-3">
+                    {/* الصورة أو الحرف الأول */}
+                    <div className="w-14 h-14 rounded-2xl bg-slate-800 border border-white/10 flex items-center justify-center text-2xl font-bold text-red-500 overflow-hidden shrink-0">
+                        {emp.image
+                            ? <img src={emp.image} alt={emp.name} className="w-full h-full object-cover" />
+                            : emp.name.charAt(0)}
+                    </div>
+                    <div>
+                        <h3 className="font-bold text-white group-hover:text-red-400 transition-colors leading-tight">
+                            {emp.name}
+                        </h3>
+                        <p className="text-xs text-slate-500 font-mono mt-0.5">
+                            {emp.employeeId || `#${emp.id}`}
+                        </p>
+                    </div>
                 </div>
-                <div>
-                    <h3 className="font-bold text-white group-hover:text-red-400 transition-colors">{emp.name}</h3>
-                    <p className="text-xs text-slate-500">{emp.employeeId}</p>
+
+                {/* أزرار الإجراءات */}
+                <div className="flex items-center gap-1 shrink-0">
+                    <button
+                        onClick={() => onEdit(emp)}
+                        className="p-1.5 hover:bg-emerald-500/10 rounded-lg text-slate-500 hover:text-emerald-500 transition-all"
+                        title="تعديل"
+                    >
+                        <Edit2 size={14} />
+                    </button>
+                    <button
+                        onClick={() => onDelete(emp.id)}
+                        className="p-1.5 hover:bg-red-500/10 rounded-lg text-slate-500 hover:text-red-500 transition-all"
+                        title="حذف"
+                    >
+                        <Trash2 size={14} />
+                    </button>
+                    <button
+                        onClick={() => onSelect(emp)}
+                        className="p-1.5 hover:bg-blue-500/10 rounded-lg text-slate-500 hover:text-blue-500 transition-all"
+                        title="عرض الملف"
+                    >
+                        <Eye size={14} />
+                    </button>
                 </div>
             </div>
-            <div className="flex items-center gap-2">
-                <button onClick={() => onEdit(emp)} className="p-2 hover:bg-emerald-500/10 rounded-lg text-slate-500 hover:text-emerald-500 transition-all">
-                    <Edit2 size={16} />
-                </button>
-                <button onClick={() => onDelete(emp.id)} className="p-2 hover:bg-red-500/10 rounded-lg text-slate-500 hover:text-red-500 transition-all">
-                    <Trash2 size={16} />
-                </button>
-                <button onClick={() => onSelect(emp.id)} className="p-2 hover:bg-blue-500/10 rounded-lg text-slate-500 hover:text-blue-500 transition-all">
-                    <Eye size={18} />
-                </button>
-            </div>
-        </div>
 
-        <div className="space-y-3 mb-6 relative z-10">
-            <div className="flex items-center gap-2 text-sm">
-                <Briefcase size={14} className="text-slate-500" />
-                <span className="text-slate-300">{title?.name || 'بدون مسمى'}</span>
+            {/* ── تفاصيل ── */}
+            <div className="space-y-2 mb-4 relative z-10">
+                <InfoRow icon={<Briefcase size={13} />} text={emp.role} />
+                <InfoRow icon={<Building2 size={13} />} text={dept?.name || "بدون قسم"} />
+                <InfoRow
+                    icon={<Calendar size={13} />}
+                    text={emp.hireDate ? `توظيف: ${new Date(emp.hireDate).toLocaleDateString("ar-SA")}` : "---"}
+                    muted
+                />
             </div>
-            <div className="flex items-center gap-2 text-sm">
-                <Building2 size={14} className="text-slate-500" />
-                <span className="text-slate-300">{dept?.nameAr || 'بدون قسم'}</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-                <Calendar size={14} className="text-slate-500" />
-                <span className="text-slate-400 text-xs">توظيف: {new Date(emp.hireDate).toLocaleDateString('ar-SA')}</span>
-            </div>
-        </div>
 
-        <div className="flex items-center justify-between relative z-10">
-            <span className={`px-3 py-1 rounded-full text-[10px] font-bold ${getStatusColor(emp.status)}`}>
-                {getStatusLabel(emp.status)}
-            </span>
-            <button
-                onClick={() => onSelect(emp.id)}
-                className="text-xs font-bold text-red-500 hover:text-red-400 flex items-center gap-1 transition-all"
-            >
-                الملف الشخصي
-                <ChevronRight size={14} />
-            </button>
+            {/* ── تذييل ── */}
+            <div className="flex items-center justify-between relative z-10">
+                <span className={`px-3 py-1 rounded-full text-[10px] font-bold ${getStatusColor(emp.status)}`}>
+                    {getStatusLabel(emp.status)}
+                </span>
+                <button
+                    onClick={() => onSelect(emp)}
+                    className="text-xs font-bold text-red-500 hover:text-red-400 flex items-center gap-1 transition-all"
+                >
+                    الملف الشخصي
+                    <ChevronRight size={12} />
+                </button>
+            </div>
         </div>
-    </motion.div>
+    );
+};
+
+// مكوّن مساعد لصف المعلومات
+const InfoRow = ({
+    icon, text, muted = false,
+}: { icon: React.ReactNode; text: string; muted?: boolean }) => (
+    <div className="flex items-center gap-2 text-sm">
+        <span className="text-slate-500 shrink-0">{icon}</span>
+        <span className={`truncate ${muted ? "text-slate-400 text-xs" : "text-slate-300"}`}>{text}</span>
+    </div>
 );
 
 export default EmployeeCard;

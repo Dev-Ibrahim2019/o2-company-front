@@ -170,12 +170,10 @@ export const AppLayout: React.FC<{
                 icon={Settings} label="الإعدادات العامة" 
                 active={activeView === 'finance_settings'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_settings'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }} 
               />
-              {isAdmin && (
                 <SidebarItem 
                   icon={Building2} label="الهيكل التنظيمي" 
-                  active={activeView === 'org'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('org'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }} 
+                  active={activeView === 'finance_orgstructure'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_orgstructure'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }} 
                 />
-              )}
             </>
           ) : isBranchManager ? (
             <>
