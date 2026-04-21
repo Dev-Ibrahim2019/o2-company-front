@@ -18,9 +18,9 @@ interface DepartmentCardProps {
 
 const DepartmentCard = ({
     dept,
-    menuItems,
-    activeOrders,
-    employees,
+    menuItems = [],
+    activeOrders = [],
+    employees = [],
     onEdit,
     onDelete,
 }: DepartmentCardProps) => {

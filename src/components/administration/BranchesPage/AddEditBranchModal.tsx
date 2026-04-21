@@ -1,26 +1,23 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { X } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
 import { useBranch } from "../../../hooks/useBranch";
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   editingItem?: any;
+  refetch: () => Promise<void>; // ✅ أُضيف هنا
 }
 
 const AddEditBranchModal: React.FC<Props> = ({
   isOpen,
   onClose,
   editingItem,
-  refetch
+  refetch,
 }) => {
-  const { employees, branches, addBranch, updateBranch } = useBranch();
-  const [modalType, setModalType] = useState<
-    "BRANCH" | "DEPARTMENT" | "MENU_ITEM" | "EMPLOYEE" | "CUSTOMER" | null
-  >(null);
+  const { addBranch, updateBranch } = useBranch();
+
   const closeModal = () => {
-    setModalType(null);
     onClose();
   };
 
@@ -33,10 +30,7 @@ const AddEditBranchModal: React.FC<Props> = ({
     const branchData = {
       ...data,
       isMainBranch: data.isMainBranch === "on",
-      is24Hours: data.is24Hours === "on",
-      allowDiscount: data.allowDiscount === "on",
-      requireShiftOpening: data.requireShiftOpening === "on",
-      hasDelivery: data.hasDelivery === "on",
+      is_active: data.is_active === "1" || data.is_active === 1,
       cashierCount: parseInt(data.cashierCount as string) || 1,
       defaultTax: parseFloat(data.defaultTax as string) || 0,
       maxDiscountLimit: parseFloat(data.maxDiscountLimit as string) || 0,
@@ -159,11 +153,11 @@ const AddEditBranchModal: React.FC<Props> = ({
               </label>
               <select
                 name="is_active"
-                defaultValue={editingItem?.is_active ?? 1}
+                defaultValue={editingItem?.is_active ? "1" : "0"}
                 className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none"
               >
-                <option value={1}>نشط</option>
-                <option value={0}>غير نشط</option>
+                <option value="1">نشط</option>
+                <option value="0">غير نشط</option>
               </select>
             </div>
           </div>
