@@ -1,13 +1,19 @@
 
-import { AppLayout } from "./components/administration/Layout";
+import { AdminLayout } from "./components/administration/Layout";
+import { POSLayout } from "./components/POS/Layout";
 import { FinancePortal } from './components/administration/FinancePortal'
 import React, { useState, useEffect } from 'react';
 import { AppProvider, useApp } from '../store';
+import { POS } from "./components/POS/pos";
+import { TablesView } from "./components/POS/Tables";
+import { OrdersView } from "./components/POS/Orders";
+import { Login } from "./components/Login";
+import { ShiftView } from "./components/POS/Shift";
 // import api from "./api/axios";
  
 const Main: React.FC = () => {
   const { currentUser, currentShift, userRole, editingOrderId } = useApp();
-  const [activeView, setActiveView] = useState('finance_departments');
+  const [activeView, setActiveView] = useState('finance_dashboard');
   // useEffect(() => {
   //   if (userRole === 'ADMIN' || userRole === 'FINANCE') {
   //     setActiveView('finance_dashboard');
@@ -28,7 +34,7 @@ const Main: React.FC = () => {
   //   }
   // }, [userRole, editingOrderId]);
 
-  // if (!currentUser) return <Login />;
+  if (!currentUser) return <Login />;
   const showContent = () => {
     const isAdmin = userRole === 'ADMIN';
     const isBranchManager = userRole === 'BRANCH_MANAGER';
@@ -37,32 +43,33 @@ const Main: React.FC = () => {
     const isAggregator = userRole === 'ORDER_AGGREGATOR';
 
     // Branch Managers, Super Admins, Hospitality, and Dept Staff bypass shift check
-    // if (!currentShift && !isAdmin && !isBranchManager && !isHospitality && !isDeptStaff && !isAggregator && activeView !== 'shift' && userRole !== 'CUSTOMER' && userRole !== 'EMPLOYEE') {
-    //   return (
-    //     <div className="h-full flex flex-col items-center justify-center space-y-6 bg-white rounded-[3rem] shadow-sm">
-    //       <div className="w-24 h-24 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 shadow-inner">
-    //         <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-    //           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-    //         </svg>
-    //       </div>
-    //       <div className="text-center max-w-sm px-6">
-    //         <h3 className="text-3xl font-black text-slate-800">تنبيه: الشفت مغلق</h3>
-    //         <p className="text-slate-500 mt-2 font-medium">يجب فتح شفت جديد وتسجيل الرصيد الافتتاحي لبدء استقبال الطلبات.</p>
-    //       </div>
-    //       <button
-    //         onClick={() => setActiveView('shift')}
-    //         className="px-12 py-4 bg-orange-500 text-white rounded-2xl font-black hover:bg-orange-600 transition-all shadow-xl shadow-orange-100"
-    //       >
-    //         فتح شفت العمل الآن
-    //       </button>
-    //     </div>
-    //   );
-    // }
+    if (!currentShift && !isAdmin && !isBranchManager && !isHospitality && !isDeptStaff && !isAggregator && activeView !== 'shift' && userRole !== 'CUSTOMER' && userRole !== 'EMPLOYEE') {
+      return (
+        <div className="h-full flex flex-col items-center justify-center space-y-6 bg-white rounded-[3rem] shadow-sm">
+          <div className="w-24 h-24 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 shadow-inner">
+            <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <div className="text-center max-w-sm px-6">
+            <h3 className="text-3xl font-black text-slate-800">تنبيه: الشفت مغلق</h3>
+            <p className="text-slate-500 mt-2 font-medium">يجب فتح شفت جديد وتسجيل الرصيد الافتتاحي لبدء استقبال الطلبات.</p>
+          </div>
+          <button
+            onClick={() => setActiveView('shift')}
+            className="px-12 py-4 bg-orange-500 text-white rounded-2xl font-black hover:bg-orange-600 transition-all shadow-xl shadow-orange-100"
+          >
+            فتح شفت العمل الآن
+          </button>
+        </div>
+      );
+    }
 
     switch (activeView) {
-      // case 'pos': return <POS onViewTables={() => setActiveView('tables')} />;
-      // case 'tables': return <TablesView onSelect={() => setActiveView('pos')} />;
-      // case 'orders': return <OrdersView />;
+      case 'pos': return <POS onViewTables={() => setActiveView('tables')} />;
+      case 'tables': return <TablesView onSelect={() => setActiveView('pos')} />;
+      case 'orders': return <OrdersView />;
+      case 'shift': return <ShiftView />;
       // case 'hospitality_tables': return <HospitalityView key="h_tables" initialTab="tables" setActiveView={setActiveView} />;
       // case 'hospitality_pos': return <POS onViewTables={() => setActiveView('hospitality_tables')} />;
       // case 'hospitality_new_orders': return <HospitalityView key="h_new" initialTab="new_orders" setActiveView={setActiveView} />;
@@ -89,7 +96,6 @@ const Main: React.FC = () => {
       case 'finance_settings': return <FinancePortal key="f_sett" initialView="SETTINGS" />;
       case 'finance_orgstructure': return <FinancePortal key="f_org" initialView="ORGSTRUCTURE" />;
       // case 'finance': return <FinanceReports />;
-      // case 'shift': return <ShiftView />;
       // case 'org': return <OrgStructure />;
       // case 'branch_dashboard': return <BranchManagerPortal />;
       // case 'branch_live': return <BranchManagerPortal />; // Shared for now
@@ -109,10 +115,18 @@ const Main: React.FC = () => {
     }
   };
 
+  if (userRole === 'ADMIN' || userRole === 'FINANCE') {
+    return (
+      <AdminLayout activeView={activeView} setActiveView={setActiveView}>
+        {showContent()}
+      </AdminLayout>
+    );
+  }
+
   return (
-    <AppLayout activeView={activeView} setActiveView={setActiveView}>
+    <POSLayout activeView={activeView} setActiveView={setActiveView}>
       {showContent()}
-    </AppLayout>
+    </POSLayout>
   );
 };
 
