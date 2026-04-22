@@ -54,7 +54,7 @@ const SidebarItem: React.FC<SidebarItemProps> = ({
   </button>
 );
 
-export const AppLayout: React.FC<{
+export const AdminLayout: React.FC<{
   children: React.ReactNode;
   activeView: string;
   setActiveView: (view: string) => void;
