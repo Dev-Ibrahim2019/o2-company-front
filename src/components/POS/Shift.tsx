@@ -16,12 +16,12 @@ export const ShiftView: React.FC = () => {
           </div>
           <h2 className="text-2xl font-bold text-white mb-2">بدء شفت جديد</h2>
           <p className="text-slate-500 mb-8">يرجى إدخال المبلغ الافتتاحي في الصندوق لبدء العمل</p>
-          
+
           <div className="space-y-4">
             <div className="text-right">
               <label className="text-sm font-bold text-slate-400 block mb-2">الرصيد الابتدائي (₪)</label>
-              <input 
-                type="number" 
+              <input
+                type="number"
                 value={balance}
                 onChange={(e) => setBalance(e.target.value)}
                 onKeyDown={(e) => {
@@ -33,7 +33,7 @@ export const ShiftView: React.FC = () => {
                 className="w-full px-4 py-3 bg-slate-800 border border-white/5 rounded-xl focus:ring-2 focus:ring-red-600 outline-none text-center text-xl font-bold text-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
             </div>
-            <button 
+            <button
               onClick={() => openShift(Number(balance))}
               disabled={!balance}
               className="w-full py-4 bg-red-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-red-700 transition-all shadow-lg shadow-red-900/20 disabled:opacity-50"
@@ -59,7 +59,7 @@ export const ShiftView: React.FC = () => {
             <p className="text-sm text-slate-500 font-bold">بدأ منذ: {new Date(currentShift.startTime).toLocaleTimeString('ar-EG')}</p>
           </div>
         </div>
-        <button 
+        <button
           onClick={() => {
             const final = prompt('أدخل المبلغ النهائي في الصندوق');
             if (final) closeShift(Number(final));

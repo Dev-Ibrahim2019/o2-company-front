@@ -25,11 +25,11 @@ const useOptions = () => {
 
     useEffect(() => {
         api.get('/departments')
-            .then(r => setDepartments((r.data.data as any[]).map(d => ({ id: d.id, name: d.name }))))
+            .then(req => setDepartments((req.data.data as any[]).map(d => ({ id: d.id, name: d.name }))))
             .catch(() => { });
 
         api.get('/branches')
-            .then(r => setBranches((r.data.data as any[]).map(b => ({ id: b.id, name: b.name }))))
+            .then(req => setBranches((req.data.data as any[]).map(b => ({ id: b.id, name: b.name }))))
             .catch(() => { });
 
         jobTitleService.getAll()

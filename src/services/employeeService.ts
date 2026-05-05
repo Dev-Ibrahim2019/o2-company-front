@@ -1,11 +1,6 @@
 // src/services/employeeService.ts
-//
-// طبقة الاتصال مع API الموظفين.
-// كل الأنواع (types) معرَّفة هنا وتُصدَّر للاستخدام في باقي الملفات.
 
-import api from "../api/axios"; // ← هاد هو الصحيح
-
-// ── نوع البيانات القادمة من الـ API ─────────────────────────────────────────
+import api from "../api/axios";
 
 export interface EmployeeFromApi {
   id: number;
@@ -35,12 +30,9 @@ export interface EmployeeFromApi {
     totalSales: number;
     hoursWorked: number;
   };
-  // من الـ eager loading
   branch?: { id: number; name: string };
   department?: { id: number; name: string };
 }
-
-// ── نوع البيانات المُرسَلة إلى الـ API ──────────────────────────────────────
 
 export interface EmployeePayload {
   name: string;
@@ -48,14 +40,14 @@ export interface EmployeePayload {
   email?: string;
   address?: string;
   nationalId?: string;
-  dob?: string; // 'YYYY-MM-DD'
+  dob?: string;
   image?: string;
   branch_id: number;
   department_id: number;
   jobTitleId?: string;
   typeId?: string;
   managerId?: string;
-  hireDate: string; // 'YYYY-MM-DD'
+  hireDate: string;
   salary?: number;
   role: string;
   status: string;
@@ -67,8 +59,6 @@ export interface EmployeePayload {
   notes?: string;
 }
 
-// ── فلاتر البحث ──────────────────────────────────────────────────────────────
-
 export interface EmployeeFilters {
   branch_id?: number;
   department_id?: number;
@@ -76,28 +66,28 @@ export interface EmployeeFilters {
   search?: string;
 }
 
-// ── دوال الـ API ─────────────────────────────────────────────────────────────
-
 export const employeeService = {
-  /** جلب كل الموظفين مع إمكانية الفلترة */
   getAll: async (filters?: EmployeeFilters): Promise<EmployeeFromApi[]> => {
     const { data } = await api.get("/employees", { params: filters });
-    return data.data;
+
+    // ✅ الباك ممكن يرجع paginated { data: { data: [], pagination: {} } }
+    // أو بسيط { data: [] }
+    const payload = data.data;
+    if (Array.isArray(payload)) return payload; // الشكل البسيط
+    if (Array.isArray(payload?.data)) return payload.data; // الشكل paginated
+    return [];
   },
 
-  /** جلب موظف واحد */
   getOne: async (id: number): Promise<EmployeeFromApi> => {
     const { data } = await api.get(`/employees/${id}`);
     return data.data;
   },
 
-  /** إضافة موظف */
   create: async (payload: EmployeePayload): Promise<EmployeeFromApi> => {
     const { data } = await api.post("/employees", payload);
     return data.data;
   },
 
-  /** تعديل موظف */
   update: async (
     id: number,
     payload: Partial<EmployeePayload>,
@@ -106,7 +96,6 @@ export const employeeService = {
     return data.data;
   },
 
-  /** حذف موظف */
   delete: async (id: number): Promise<void> => {
     await api.delete(`/employees/${id}`);
   },

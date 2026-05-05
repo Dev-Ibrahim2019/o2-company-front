@@ -1,6 +1,6 @@
 import { ChefHat } from 'lucide-react';
 import type { Department, Order } from '../../../../types';
-import DepartmentStationCard from './DepartmentStationCard';
+import DepartmentStationCard from "./Departmentcard";
 
 const STATION_COUNT = 8;
 

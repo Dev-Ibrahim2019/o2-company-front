@@ -10,7 +10,7 @@ import { OrdersView } from "./components/POS/Orders";
 import { Login } from "./components/Login";
 import { ShiftView } from "./components/POS/Shift";
 // import api from "./api/axios";
- 
+
 const Main: React.FC = () => {
   const { currentUser, currentShift, userRole, editingOrderId } = useApp();
   const [activeView, setActiveView] = useState('finance_dashboard');
@@ -69,7 +69,25 @@ const Main: React.FC = () => {
       case 'pos': return <POS onViewTables={() => setActiveView('tables')} />;
       case 'tables': return <TablesView onSelect={() => setActiveView('pos')} />;
       case 'orders': return <OrdersView />;
-      case 'shift': return <ShiftView />;
+      case 'shift':
+        return (
+          <ShiftView
+            currentShift={currentShift}
+            summary={null} // مؤقت
+            shiftLoading={false} // مؤقت
+            currentUserName={currentUser?.name || ''}
+            onOpen={async (balance) => {
+              console.log("فتح شفت:", balance);
+              // TODO: اربطها مع API
+            }}
+            onClose={async (balance) => {
+              console.log("إغلاق شفت:", balance);
+            }}
+            onFetchSummary={async () => {
+              console.log("fetch summary");
+            }}
+          />
+        );
       // case 'hospitality_tables': return <HospitalityView key="h_tables" initialTab="tables" setActiveView={setActiveView} />;
       // case 'hospitality_pos': return <POS onViewTables={() => setActiveView('hospitality_tables')} />;
       // case 'hospitality_new_orders': return <HospitalityView key="h_new" initialTab="new_orders" setActiveView={setActiveView} />;
