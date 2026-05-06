@@ -1,40 +1,57 @@
+import React, { useState, useEffect } from "react";
+import { AuthProvider, useAuthContext } from "./contexts/AuthContext";
+import LoginPage from "./components/auth/LoginPage";
 
-import { AdminLayout } from "./components/administration/Layout";
+// استيراد المكونات من ملفك الأصلي
 import { POSLayout } from "./components/POS/Layout";
-import { FinancePortal } from './components/administration/FinancePortal'
-import React, { useState, useEffect } from 'react';
-import { AppProvider, useApp } from '../store';
+import { FinancePortal } from './components/administration/FinancePortal';
+import { AppProvider, useApp } from "../store";
 import { POS } from "./components/POS/pos";
 import { TablesView } from "./components/POS/Tables";
 import { OrdersView } from "./components/POS/Orders";
-import { Login } from "./components/Login";
 import { ShiftView } from "./components/POS/Shift";
-// import api from "./api/axios";
+import { AdminLayout } from "../src/components/administration/Layout"; // افتراض وجود هذا المكون
 
+// ── Shell الداخلي (يُرنَّد بعد التحقق من المصادقة) ──────────────────────────
+const AppShell: React.FC = () => {
+  const { user, loading, isAuthenticated, logout } = useAuthContext();
+
+  // شاشة تحميل أولية
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 border-2 border-red-600 border-t-transparent rounded-full animate-spin mx-auto" />
+          <p className="text-slate-500 font-bold text-sm">جاري التحميل...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // إذا لم يكن مسجلاً → صفحة الدخول
+  if (!isAuthenticated || !user) {
+    return <LoginPage />;
+  }
+
+  // ✅ المستخدم مسجل دخول — نمرر بياناته للتطبيق الرئيسي
+  // نستخدم AppProvider من ملفك الأصلي لتوفير السياق اللازم للمكونات الداخلية
+  // ونمرر بيانات المستخدم من AuthContext إلى AppProvider إذا كان يدعم ذلك.
+  // هنا نفترض أن AppProvider يمكنه استخدام `user` مباشرة أو أن `useApp` سيقوم بجلب البيانات بناءً على حالة المصادقة.
+  return (
+    <AppProvider initialUser={user} onLogout={logout}> {/* افتراض أن AppProvider يقبل initialUser و onLogout */}
+      <Main />
+    </AppProvider>
+  );
+};
+
+// ── المكون الرئيسي للتطبيق بعد الدخول (من ملفك الأصلي) ─────────────────────
 const Main: React.FC = () => {
   const { currentUser, currentShift, userRole, editingOrderId } = useApp();
   const [activeView, setActiveView] = useState('finance_dashboard');
-  // useEffect(() => {
-  //   if (userRole === 'ADMIN' || userRole === 'FINANCE') {
-  //     setActiveView('finance_dashboard');
-  //   } else if (userRole === 'BRANCH_MANAGER') {
-  //     setActiveView('branch_dashboard');
-  //   } else if (userRole === 'HOSPITALITY') {
-  //     setActiveView('hospitality_tables');
-  //   } else if (userRole === 'DEPARTMENT_STAFF') {
-  //     setActiveView('dept_dashboard');
-  //   } else if (userRole === 'ORDER_AGGREGATOR') {
-  //     setActiveView('aggregator_dashboard');
-  //   } else if (userRole === 'EMPLOYEE') {
-  //     setActiveView('employee_dashboard');
-  //   } else if (userRole === 'CUSTOMER') {
-  //     setActiveView('customer_home');
-  //   } else if (editingOrderId) {
-  //     setActiveView('pos');
-  //   }
-  // }, [userRole, editingOrderId]);
 
-  if (!currentUser) return <Login />;
+  // لا نحتاج إلى فحص !currentUser هنا لأن AppShell يتعامل مع المصادقة
+  // if (!currentUser) return <Login />;
+
   const showContent = () => {
     const isAdmin = userRole === 'ADMIN';
     const isBranchManager = userRole === 'BRANCH_MANAGER';
@@ -88,17 +105,6 @@ const Main: React.FC = () => {
             }}
           />
         );
-      // case 'hospitality_tables': return <HospitalityView key="h_tables" initialTab="tables" setActiveView={setActiveView} />;
-      // case 'hospitality_pos': return <POS onViewTables={() => setActiveView('hospitality_tables')} />;
-      // case 'hospitality_new_orders': return <HospitalityView key="h_new" initialTab="new_orders" setActiveView={setActiveView} />;
-      // case 'hospitality_tracking': return <HospitalityView key="h_track" initialTab="tracking" setActiveView={setActiveView} />;
-      // case 'hospitality_feedback': return <HospitalityView key="h_feed" initialTab="feedback" setActiveView={setActiveView} />;
-      // case 'hospitality_tasks': return <HospitalityView key="h_tasks" initialTab="tasks" setActiveView={setActiveView} />;
-      // case 'dept_dashboard': return <DepartmentView key="d_dash" />;
-      // case 'dept_orders': return <DepartmentView key="d_orders" initialView="ORDERS" />;
-      // case 'departments': return <DepartmentView key="d_main" />;
-      // case 'aggregator_dashboard': return <OrderAggregatorDashboard />;
-      // case 'aggregator_shelves': return <ShelfGridView />;
       case 'finance_dashboard': return <FinancePortal key="f_dash" initialView="DASHBOARD" />;
       case 'finance_branches': return <FinancePortal key="f_branches" initialView="BRANCHES" />;
       case 'finance_departments': return <FinancePortal key="f_depts" initialView="DEPARTMENTS" />;
@@ -113,23 +119,7 @@ const Main: React.FC = () => {
       case 'finance_archive': return <FinancePortal key="f_arch" initialView="ARCHIVE" />;
       case 'finance_settings': return <FinancePortal key="f_sett" initialView="SETTINGS" />;
       case 'finance_orgstructure': return <FinancePortal key="f_org" initialView="ORGSTRUCTURE" />;
-      // case 'finance': return <FinanceReports />;
-      // case 'org': return <OrgStructure />;
-      // case 'branch_dashboard': return <BranchManagerPortal />;
-      // case 'branch_live': return <BranchManagerPortal />; // Shared for now
-      // case 'branch_orders': return <OrdersView />; // Reusable component
-      // case 'customer_home': return <CustomerPortal key="c_home" initialTab="home" />;
-      // case 'customer_menu': return <CustomerPortal key="c_menu" initialTab="menu" />;
-      // case 'customer_orders': return <CustomerPortal key="c_orders" initialTab="orders" />;
-      // case 'customer_wallet': return <CustomerPortal key="c_wallet" initialTab="wallet" />;
-      // case 'customer_profile': return <CustomerPortal key="c_profile" initialTab="profile" />;
-      // case 'employee_dashboard': return <EmployeeDashboard key="e_dash" initialTab="DASHBOARD" />;
-      // case 'employee_personal': return <EmployeeDashboard key="e_pers" initialTab="PERSONAL" />;
-      // case 'employee_shift': return <EmployeeDashboard key="e_shift" initialTab="SHIFT" />;
-      // case 'employee_timesheet': return <EmployeeDashboard key="e_time" initialTab="TIMESHEET" />;
-      // case 'employee_finance': return <EmployeeDashboard key="e_fin" initialTab="FINANCE" />;
-      // case 'employee_policies': return <EmployeeDashboard key="e_pol" initialTab="POLICIES" />;
-      // default: return <div className="p-10 text-center text-slate-400 font-bold">هذه الخاصية قيد التطوير</div>;
+      default: return <div className="p-10 text-center text-slate-400 font-bold">هذه الخاصية قيد التطوير</div>;
     }
   };
 
@@ -148,127 +138,11 @@ const Main: React.FC = () => {
   );
 };
 
-function App() {
-  const [activeView, setActiveView] = useState("finance_dashboard");
-
-  return (
-    <div>
-      <Main />
-    </div>
-  )
-}
+// ── Root Export ───────────────────────────────────────────────────────────────
+const App: React.FC = () => (
+  <AuthProvider>
+    <AppShell />
+  </AuthProvider>
+);
 
 export default App;
-
-// import { useState, useEffect } from "react";
-// import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-// import './App.css';
-// import api from "./api/axios";
-// import LoginForm from "./components/LoginForm";
-// import RegisterForm from "./components/RegisterForm";
-// import Dashboard from "./components/Dashboard";
-
-// function AppRoutes() {
-//   const [user, setUser]   = useState<any>(null);
-//   const [ready, setReady] = useState(false);
-
-//   // Helper to refresh user from API after login/register
-//   const refreshUser = async () => {
-//     const token = localStorage.getItem("token");
-//     if (token) {
-//       try {
-//         const { data } = await api.get("/auth/me");
-//         setUser(data.user);
-//       } catch {
-//         setUser(null);
-//         localStorage.removeItem("token");
-//       }
-//     } else {
-//       setUser(null);
-//     }
-//   };
-
-//   useEffect(() => {
-//     const token = localStorage.getItem("token");
-//     if (token) {
-//       api.get("/auth/me")
-//         .then(({ data }) => setUser(data.user))
-//         .catch(() => {
-//           setUser(null);
-//           localStorage.removeItem("token");
-//         })
-//         .finally(() => setReady(true));
-//     } else {
-//       setReady(true);
-//     }
-//   }, []);
-
-//   if (!ready) return (
-//     <div className="root">
-//       <div className="loader-wrap"><span className="spinner dark" /></div>
-//     </div>
-//   );
-
-//   return (
-//     <div className="root">
-//       <div className="bg-grid" />
-//       <div className="bg-blob b1" />
-//       <div className="bg-blob b2" />
-//       <div className={`card ${user ? "wide" : ""}`}>
-//         {!user && (
-//           <div className="card-side">
-//             <div className="side-text">
-//               <div className="logo">◈ AUTH</div>
-//               <p>A clean, secure authentication experience built with React + Axios.</p>
-//             </div>
-//             <div className="side-shapes">
-//               <div className="shape s1" />
-//               <div className="shape s2" />
-//               <div className="shape s3" />
-//             </div>
-//           </div>
-//         )}
-//         <div className="card-body">
-//           <Routes>
-//             <Route
-//               path="/login"
-//               element={
-//                 user
-//                   ? <Navigate to="/dashboard" replace />
-//                   : <LoginForm onLogin={refreshUser} />
-//               }
-//             />
-//             <Route
-//               path="/register"
-//               element={
-//                 user
-//                   ? <Navigate to="/dashboard" replace />
-//                   : <RegisterForm onLogin={refreshUser} />
-//               }
-//             />
-//             <Route
-//               path="/dashboard"
-//               element={
-//                 user
-//                   ? <Dashboard user={user} onLogout={() => { setUser(null); localStorage.removeItem("token"); }} />
-//                   : <Navigate to="/login" replace />
-//               }
-//             />
-//             <Route
-//               path="*"
-//               element={<Navigate to={user ? "/dashboard" : "/login"} replace />}
-//             />
-//           </Routes>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
-
-// export default function AuthApp() {
-//   return (
-//     <BrowserRouter>
-//       <AppRoutes />
-//     </BrowserRouter>
-//   );
-// }

@@ -18,18 +18,27 @@ interface SimpleOpt { id: number; name: string }
 
 // ── Hook لجلب الأقسام والفروع والمسميات ──────────────────────────────────────
 
+// src/components/administration/EmployeeManagement/EmployeeManagement.tsx
+
 const useOptions = () => {
     const [departments, setDepartments] = useState<SimpleOpt[]>([]);
     const [branches, setBranches] = useState<SimpleOpt[]>([]);
     const [jobTitles, setJobTitles] = useState<JobTitle[]>([]);
 
     useEffect(() => {
+        const token = localStorage.getItem('token');
+        if (!token) return; // ✅ guard
+
         api.get('/departments')
-            .then(req => setDepartments((req.data.data as any[]).map(d => ({ id: d.id, name: d.name }))))
+            .then(req => setDepartments(
+                (req.data.data as any[]).map(d => ({ id: d.id, name: d.name }))
+            ))
             .catch(() => { });
 
         api.get('/branches')
-            .then(req => setBranches((req.data.data as any[]).map(b => ({ id: b.id, name: b.name }))))
+            .then(req => setBranches(
+                (req.data.data as any[]).map(b => ({ id: b.id, name: b.name }))
+            ))
             .catch(() => { });
 
         jobTitleService.getAll()
@@ -39,7 +48,6 @@ const useOptions = () => {
 
     return { departments, branches, jobTitles };
 };
-
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 const EmployeeManagement: React.FC = () => {
