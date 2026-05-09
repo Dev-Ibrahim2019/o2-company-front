@@ -1,21 +1,13 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
-  OrderType, OrderStatus, PaymentMethod,
-  TableStatus, FinancialTransactionType,
-  CustomerType,
-  EmployeeStatus
-} from './types';
-import { create } from 'zustand';
-
-import type {
-  Order, MenuItem, OrderItem, User,
+  Order, OrderType, OrderStatus, MenuItem, OrderItem, User, PaymentMethod,
   Transaction, SavedCard, Table, Shift, Branch, Department, JobTitle, JobType, Employee,
-  FinancialTransaction,
-  CustomerFeedback, StaffTask, TableAssignment, Customer, CustomerAddress,
-  Attendance, WorkSchedule, ActivityLog
+  TableStatus, FinancialTransaction, FinancialTransactionType,
+  CustomerFeedback, StaffTask, TableAssignment, Customer, CustomerType, CustomerAddress,
+  EmployeeStatus, Attendance, WorkSchedule, ActivityLog,
+  FiscalYear, ChartOfAccount, CostCenter, JournalEntry, Supplier, BankAccount, CashBox, AccountType
 } from './types';
-
 import { TABLES, MENU_ITEMS } from './constants';
 
 interface AppContextType {
@@ -62,7 +54,6 @@ interface AppContextType {
 
   login: (name: string, role: 'CASHIER' | 'CUSTOMER' | 'WAITER' | 'ADMIN' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | 'HEAD_CHEF' | 'COOK' | 'EMPLOYEE', phone?: string, branchId?: string, departmentId?: string) => void;
   logout: () => void;
-  onLogout: () => void;
   addToCart: (item: MenuItem, customization?: any) => void;
   removeFromCart: (uniqueId: string) => void;
   updateCartQuantity: (uniqueId: string, delta: number) => void;
@@ -124,6 +115,31 @@ interface AppContextType {
   attendances: Attendance[];
   workSchedules: WorkSchedule[];
   activityLogs: ActivityLog[];
+
+  fiscalYears: FiscalYear[];
+  chartOfAccounts: ChartOfAccount[];
+  costCenters: CostCenter[];
+  journalEntries: JournalEntry[];
+  suppliers: Supplier[];
+  bankAccounts: BankAccount[];
+  cashBoxes: CashBox[];
+
+  addFiscalYear: (fy: Omit<FiscalYear, 'id'>) => void;
+  updateFiscalYear: (id: string, fy: Partial<FiscalYear>) => void;
+  addCOA: (coa: Omit<ChartOfAccount, 'id'>) => void;
+  updateCOA: (id: string, coa: Partial<ChartOfAccount>) => void;
+  deleteCOA: (id: string) => void;
+  addCostCenter: (cc: Omit<CostCenter, 'id'>) => void;
+  updateCostCenter: (id: string, cc: Partial<CostCenter>) => void;
+  addJournalEntry: (je: Omit<JournalEntry, 'id' | 'fiscalYearId' | 'createdBy'>) => void;
+  updateJournalEntry: (id: string, je: Partial<JournalEntry>) => void;
+  deleteJournalEntry: (id: string) => void;
+  addSupplier: (s: Omit<Supplier, 'id' | 'createdAt' | 'balance'>) => void;
+  updateSupplier: (id: string, s: Partial<Supplier>) => void;
+  addBankAccount: (ba: Omit<BankAccount, 'id' | 'balance'>) => void;
+  updateBankAccount: (id: string, ba: Partial<BankAccount>) => void;
+  addCashBox: (cb: Omit<CashBox, 'id' | 'balance'>) => void;
+  updateCashBox: (id: string, cb: Partial<CashBox>) => void;
 
   checkIn: (employeeId: string, note?: string) => void;
   checkOut: (employeeId: string) => void;
@@ -193,7 +209,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       points: 420,
       totalSpent: 1200,
       ordersCount: 12,
-      balance: 0,
+      balance: 1500,
       allowCredit: true,
       isBlocked: false,
       addresses: [
@@ -202,7 +218,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       rating: 5,
       notes: 'لا يحب البصل، يطلب دائماً شاورما',
       lastVisit: new Date(Date.now() - 86400000),
-      createdAt: new Date(Date.now() - 30 * 86400000)
+      createdAt: new Date(Date.now() - 30 * 86400000),
+      linkedAccountId: 'coa1301'
     },
     {
       id: 'c2',
@@ -219,7 +236,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addresses: [],
       rating: 4,
       lastVisit: new Date(),
-      createdAt: new Date(Date.now() - 15 * 86400000)
+      createdAt: new Date(Date.now() - 15 * 86400000),
+      linkedAccountId: 'coa1302'
     }
   ]);
   const [feedbacks, setFeedbacks] = useState<CustomerFeedback[]>([
@@ -276,10 +294,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [tableAssignments, setTableAssignments] = useState<TableAssignment[]>([]);
 
   const [branches, setBranches] = useState<Branch[]>([
-    { id: 'b1', name: 'فرع غزة الرئيسي', address: 'شارع الثلاثيني', phone: '0599001122', status: 'ACTIVE', code: 'GZ-MAIN', isMainBranch: true, city: 'غزة', closingTime: '12:00 AM', openingTime: '10:00 AM' },
-    { id: 'b2', name: 'فرع الرمال', address: 'دوار حيدر', phone: '0599112233', status: 'ACTIVE', code: 'GZ-RMAL', isMainBranch: false, city: 'نابلس', closingTime: '12:00 AM', openingTime: '10:00 AM' }
+    { id: 'b1', name: 'فرع غزة الرئيسي', address: 'شارع الثلاثيني', phone: '0599001122', status: 'ACTIVE' },
+    { id: 'b2', name: 'فرع الرمال', address: 'دوار حيدر', phone: '0599112233', status: 'ACTIVE' }
   ]);
-
   const [departments, setDepartments] = useState<Department[]>([
     {
       id: 'd-italian',
@@ -535,6 +552,168 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     { id: 'log_4', employeeId: 'emp-1', action: 'إلغاء طلب #ORD-1005', timestamp: new Date(Date.now() - 600000), details: { reason: 'خطأ في الطلب' } },
   ]);
 
+  const [fiscalYears, setFiscalYears] = useState<FiscalYear[]>([
+    { id: 'fy1', name: 'سنة 2024', startDate: '2024-01-01', endDate: '2024-12-31', status: 'OPEN' },
+    { id: 'fy2', name: 'سنة 2025', startDate: '2025-01-01', endDate: '2025-12-31', status: 'OPEN' }
+  ]);
+
+  const [chartOfAccounts, setChartOfAccounts] = useState<ChartOfAccount[]>([
+    // 1. Assets (الأصول)
+    { id: 'coa1000', code: '1000', name: 'Assets', nameAr: 'الأصول', type: AccountType.ASSET, isPosting: false, balance: 0 },
+
+    // Cash Boxes
+    { id: 'coa1100', code: '1100', name: 'Cash Boxes', nameAr: 'الصناديق', type: AccountType.ASSET, parentId: 'coa1000', isPosting: false, balance: 0 },
+    { id: 'coa1101', code: '1101', name: 'Main Cash Box', nameAr: 'صندوق رئيسي', type: AccountType.ASSET, parentId: 'coa1100', isPosting: true, balance: 5000 },
+    { id: 'coa1102', code: '1102', name: 'Gaza Box', nameAr: 'صندوق فرع غزة', type: AccountType.ASSET, parentId: 'coa1100', isPosting: true, balance: 0 },
+    { id: 'coa1103', code: '1103', name: 'Nablus Box', nameAr: 'صندوق فرع نابلس', type: AccountType.ASSET, parentId: 'coa1100', isPosting: true, balance: 0 },
+
+    // Banks
+    { id: 'coa1200', code: '1200', name: 'Banks', nameAr: 'البنوك', type: AccountType.ASSET, parentId: 'coa1000', isPosting: false, balance: 0 },
+    { id: 'coa1201', code: '1201', name: 'Bank of Palestine', nameAr: 'بنك فلسطين', type: AccountType.ASSET, parentId: 'coa1200', isPosting: true, balance: 25000 },
+    { id: 'coa1202', code: '1202', name: 'Arab Bank', nameAr: 'بنك عربي', type: AccountType.ASSET, parentId: 'coa1200', isPosting: true, balance: 0 },
+
+    // Customers
+    { id: 'coa1300', code: '1300', name: 'Customer Accounts', nameAr: 'حسابات الزبائن', type: AccountType.ASSET, parentId: 'coa1000', isPosting: false, balance: 0 },
+    { id: 'coa1301', code: '1301', name: 'Customer Ahmed', nameAr: 'زبون أحمد', type: AccountType.ASSET, parentId: 'coa1300', isPosting: true, balance: 1500 },
+    { id: 'coa1302', code: '1302', name: 'Customer Mohamed', nameAr: 'زبون محمد', type: AccountType.ASSET, parentId: 'coa1300', isPosting: true, balance: 0 },
+
+    // Employees
+    { id: 'coa1400', code: '1400', name: 'Employee Accounts', nameAr: 'حسابات الموظفين', type: AccountType.ASSET, parentId: 'coa1000', isPosting: false, balance: 0 },
+    { id: 'coa1401', code: '1401', name: 'Ahmed (Staff)', nameAr: 'أحمد', type: AccountType.ASSET, parentId: 'coa1400', isPosting: true, balance: 0 },
+    { id: 'coa1402', code: '1402', name: 'Khaled (Staff)', nameAr: 'خالد', type: AccountType.ASSET, parentId: 'coa1400', isPosting: true, balance: 0 },
+
+    // Custody
+    { id: 'coa1500', code: '1500', name: 'Custody / Advances', nameAr: 'العهد / السلف', type: AccountType.ASSET, parentId: 'coa1000', isPosting: false, balance: 0 },
+    { id: 'coa1501', code: '1501', name: 'Employee Custody', nameAr: 'عهدة موظفين', type: AccountType.ASSET, parentId: 'coa1500', isPosting: true, balance: 300 },
+    { id: 'coa1502', code: '1502', name: 'Rep Custody', nameAr: 'عهدة مندوبين', type: AccountType.ASSET, parentId: 'coa1500', isPosting: true, balance: 0 },
+
+    { id: 'coa1600', code: '1600', name: 'Inventory', nameAr: 'المخزون', type: AccountType.ASSET, parentId: 'coa1000', isPosting: true, balance: 45000 },
+    { id: 'coa1700', code: '1700', name: 'Other Receivables', nameAr: 'ذمم مدينة أخرى', type: AccountType.ASSET, parentId: 'coa1000', isPosting: true, balance: 0 },
+
+    // 2. Liabilities (الالتزامات)
+    { id: 'coa2000', code: '2000', name: 'Liabilities', nameAr: 'الالتزامات', type: AccountType.LIABILITY, isPosting: false, balance: 0 },
+    { id: 'coa2100', code: '2100', name: 'Suppliers', nameAr: 'حسابات الموردين', type: AccountType.LIABILITY, parentId: 'coa2000', isPosting: false, balance: 0 },
+    { id: 'coa2101', code: '2101', name: 'Supplier 1', nameAr: 'مورد 1', type: AccountType.LIABILITY, parentId: 'coa2100', isPosting: true, balance: 2200 },
+    { id: 'coa2102', code: '2102', name: 'Supplier 2', nameAr: 'مورد 2', type: AccountType.LIABILITY, parentId: 'coa2100', isPosting: true, balance: 1200 },
+    { id: 'coa2200', code: '2200', name: 'Accrued Salaries', nameAr: 'رواتب مستحقة', type: AccountType.LIABILITY, parentId: 'coa2000', isPosting: true, balance: 0 },
+    { id: 'coa2300', code: '2300', name: 'Accrued Expenses', nameAr: 'مصاريف مستحقة', type: AccountType.LIABILITY, parentId: 'coa2000', isPosting: true, balance: 0 },
+    { id: 'coa2400', code: '2400', name: 'Sales Tax', nameAr: 'ضريبة مبيعات', type: AccountType.LIABILITY, parentId: 'coa2000', isPosting: true, balance: 0 },
+    { id: 'coa2500', code: '2500', name: 'Other Payables', nameAr: 'ذمم دائنة أخرى', type: AccountType.LIABILITY, parentId: 'coa2000', isPosting: true, balance: 0 },
+
+    // 3. Equity (حقوق الملكية)
+    { id: 'coa3000', code: '3000', name: 'Equity', nameAr: 'حقوق الملكية', type: AccountType.EQUITY, isPosting: false, balance: 0 },
+    { id: 'coa3100', code: '3100', name: 'Capital', nameAr: 'رأس المال', type: AccountType.EQUITY, parentId: 'coa3000', isPosting: true, balance: 100000 },
+    { id: 'coa3200', code: '3200', name: 'Withdrawals', nameAr: 'سحوبات المالك', type: AccountType.EQUITY, parentId: 'coa3000', isPosting: true, balance: 0 },
+    { id: 'coa3300', code: '3300', name: 'Retained Earnings', nameAr: 'أرباح محتجزة', type: AccountType.EQUITY, parentId: 'coa3000', isPosting: true, balance: 0 },
+
+    // 4. Revenue (الإيرادات)
+    { id: 'coa4000', code: '4000', name: 'Revenue', nameAr: 'الإيرادات', type: AccountType.REVENUE, isPosting: false, balance: 0 },
+    { id: 'coa4100', code: '4100', name: 'Sales', nameAr: 'المبيعات', type: AccountType.REVENUE, parentId: 'coa4000', isPosting: false, balance: 0 },
+    { id: 'coa4101', code: '4101', name: 'Cash Sales', nameAr: 'مبيعات كاش', type: AccountType.REVENUE, parentId: 'coa4100', isPosting: true, balance: 12500 },
+    { id: 'coa4102', code: '4102', name: 'Credit Sales', nameAr: 'مبيعات آجل', type: AccountType.REVENUE, parentId: 'coa4100', isPosting: true, balance: 3100 },
+    { id: 'coa4200', code: '4200', name: 'Services', nameAr: 'إيرادات خدمات', type: AccountType.REVENUE, parentId: 'coa4000', isPosting: true, balance: 0 },
+    { id: 'coa4300', code: '4300', name: 'Earned Discount', nameAr: 'خصم مكتسب', type: AccountType.REVENUE, parentId: 'coa4000', isPosting: true, balance: 0 },
+
+    // 5. Expenses (المصروفات)
+    { id: 'coa5000', code: '5000', name: 'Expenses', nameAr: 'المصروفات', type: AccountType.EXPENSE, isPosting: false, balance: 0 },
+    { id: 'coa5100', code: '5100', name: 'Salaries', nameAr: 'الرواتب', type: AccountType.EXPENSE, parentId: 'coa5000', isPosting: true, balance: 4500 },
+    { id: 'coa5200', code: '5200', name: 'Electricity', nameAr: 'كهرباء', type: AccountType.EXPENSE, parentId: 'coa5000', isPosting: true, balance: 150 },
+    { id: 'coa5300', code: '5300', name: 'Water', nameAr: 'ماء', type: AccountType.EXPENSE, parentId: 'coa5000', isPosting: true, balance: 50 },
+    { id: 'coa5400', code: '5400', name: 'Internet', nameAr: 'إنترنت', type: AccountType.EXPENSE, parentId: 'coa5000', isPosting: true, balance: 100 },
+    { id: 'coa5500', code: '5500', name: 'Rent', nameAr: 'إيجار', type: AccountType.EXPENSE, parentId: 'coa5000', isPosting: true, balance: 1200 },
+    { id: 'coa5600', code: '5600', name: 'Operations', nameAr: 'مصاريف تشغيل', type: AccountType.EXPENSE, parentId: 'coa5000', isPosting: true, balance: 0 },
+    { id: 'coa5700', code: '5700', name: 'Transport', nameAr: 'مصاريف نقل', type: AccountType.EXPENSE, parentId: 'coa5000', isPosting: true, balance: 0 },
+    { id: 'coa5800', code: '5800', name: 'Maintenance', nameAr: 'مصاريف صيانة', type: AccountType.EXPENSE, parentId: 'coa5000', isPosting: true, balance: 0 },
+    { id: 'coa5900', code: '5900', name: 'Allowed Discount', nameAr: 'خصم مسموح', type: AccountType.EXPENSE, parentId: 'coa5000', isPosting: true, balance: 0 },
+  ]);
+
+  const [costCenters, setCostCenters] = useState<CostCenter[]>([
+    { id: 'cc1', code: 'CC01', name: 'Kitchen', nameAr: 'المطبخ', type: 'OPERATIONAL' },
+    { id: 'cc2', code: 'CC02', name: 'Delivery', nameAr: 'التوصيل', type: 'OPERATIONAL' },
+    { id: 'cc3', code: 'CC03', name: 'Administration', nameAr: 'الإدارة', type: 'SUPPORT' },
+  ]);
+
+  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([
+    {
+      id: 'je1', date: '2024-01-01', description: 'سلفة للموظف أحمد', status: 'POSTED', fiscalYearId: 'fy1', createdBy: 'e1',
+      lines: [
+        { accountId: 'coa1101', debit: 0, credit: 100, description: 'صرف من الصندوق' },
+        { accountId: 'coa1501', debit: 100, credit: 0, description: 'سلفة أحمد' },
+      ]
+    },
+    {
+      id: 'je2', date: '2024-01-05', description: 'عهدة للموظف أحمد', status: 'POSTED', fiscalYearId: 'fy1', createdBy: 'e1',
+      lines: [
+        { accountId: 'coa1101', debit: 0, credit: 200, description: 'صرف من الصندوق' },
+        { accountId: 'coa1501', debit: 200, credit: 0, description: 'عهدة أحمد' },
+      ]
+    }
+  ]);
+
+  const [suppliers, setSuppliers] = useState<Supplier[]>([
+    { id: 's1', name: 'شركة النور للدواجن', phone: '0599000111', email: 'noor@poultry.com', address: 'غزة', balance: 2200, createdAt: new Date().toISOString(), linkedAccountId: 'coa2101' },
+    { id: 's2', name: 'مطاحن الشرق', phone: '0599222333', email: 'east@mills.com', address: 'خانيونس', balance: 1200, createdAt: new Date().toISOString(), linkedAccountId: 'coa2102' },
+  ]);
+
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([
+    { id: 'ba1', name: 'حساب بنك فلسطين الرئيسي', bankName: 'BoP', accountNumber: '123456789', balance: 25000, linkedAccountId: 'coa1201' },
+    { id: 'ba2', name: 'حساب بنك الإسلامي الوطني', bankName: 'NIB', accountNumber: '987654321', balance: 0, linkedAccountId: 'coa1202' },
+  ]);
+
+  const [cashBoxes, setCashBoxes] = useState<CashBox[]>([
+    { id: 'cb1', name: 'صندوق الكاشير الصباحي', branchId: 'b1', balance: 5000, linkedAccountId: 'coa1101' },
+    { id: 'cb2', name: 'صندوق الكاشير المسائي', branchId: 'b1', balance: 0, linkedAccountId: 'coa1102' },
+  ]);
+
+  const addFiscalYear = (fy: Omit<FiscalYear, 'id'>) => setFiscalYears(p => [...p, { ...fy, id: 'fy_' + Math.random().toString(36).substr(2, 5) }]);
+  const updateFiscalYear = (id: string, fy: Partial<FiscalYear>) => setFiscalYears(p => p.map(x => x.id === id ? { ...x, ...fy } : x));
+
+  const addCOA = (coa: Omit<ChartOfAccount, 'id'>) => setChartOfAccounts(p => [...p, { ...coa, id: 'coa_' + Math.random().toString(36).substr(2, 5) }]);
+  const updateCOA = (id: string, coa: Partial<ChartOfAccount>) => setChartOfAccounts(p => p.map(x => x.id === id ? { ...x, ...coa } : x));
+  const deleteCOA = (id: string) => setChartOfAccounts(p => p.filter(x => x.id !== id));
+
+  const addCostCenter = (cc: Omit<CostCenter, 'id'>) => setCostCenters(p => [...p, { ...cc, id: 'cc_' + Math.random().toString(36).substr(2, 5) }]);
+  const updateCostCenter = (id: string, cc: Partial<CostCenter>) => setCostCenters(p => p.map(x => x.id === id ? { ...x, ...cc } : x));
+
+  const addJournalEntry = (je: Omit<JournalEntry, 'id' | 'fiscalYearId' | 'createdBy'>) => {
+    if (!currentUser) return;
+    const activeYear = fiscalYears.find(fy => fy.status === 'OPEN');
+    const newJe: JournalEntry = {
+      ...je,
+      id: 'je_' + Math.random().toString(36).substr(2, 5),
+      fiscalYearId: activeYear?.id || 'fy1',
+      createdBy: currentUser.id,
+      status: je.status || 'DRAFT'
+    };
+    setJournalEntries(p => [newJe, ...p]);
+
+    // Simple balance update for the demo
+    if (newJe.status === 'POSTED') {
+      setChartOfAccounts(prev => prev.map(acc => {
+        const line = newJe.lines.find(l => l.accountId === acc.id);
+        if (line) {
+          // Typically: Debit increases Assets/Expenses, Credit increases Liabilities/Equity/Revenue
+          const isDebitPositive = acc.type === AccountType.ASSET || acc.type === AccountType.EXPENSE;
+          const change = isDebitPositive ? (line.debit - line.credit) : (line.credit - line.debit);
+          return { ...acc, balance: acc.balance + change };
+        }
+        return acc;
+      }));
+    }
+  };
+
+  const updateJournalEntry = (id: string, je: Partial<JournalEntry>) => setJournalEntries(p => p.map(x => x.id === id ? { ...x, ...je } : x));
+  const deleteJournalEntry = (id: string) => setJournalEntries(p => p.filter(x => x.id !== id));
+
+  const addSupplier = (s: Omit<Supplier, 'id' | 'createdAt' | 'balance'>) => setSuppliers(p => [...p, { ...s, id: 's_' + Math.random().toString(36).substr(2, 5), createdAt: new Date().toISOString(), balance: 0 }]);
+  const updateSupplier = (id: string, s: Partial<Supplier>) => setSuppliers(p => p.map(x => x.id === id ? { ...x, ...s } : x));
+
+  const addBankAccount = (ba: Omit<BankAccount, 'id' | 'balance'>) => setBankAccounts(p => [...p, { ...ba, id: 'ba_' + Math.random().toString(36).substr(2, 5), balance: 0 }]);
+  const updateBankAccount = (id: string, ba: Partial<BankAccount>) => setBankAccounts(p => p.map(x => x.id === id ? { ...x, ...ba } : x));
+
+  const addCashBox = (cb: Omit<CashBox, 'id' | 'balance'>) => setCashBoxes(p => [...p, { ...cb, id: 'cb_' + Math.random().toString(36).substr(2, 5), balance: 0 }]);
+  const updateCashBox = (id: string, cb: Partial<CashBox>) => setCashBoxes(p => p.map(x => x.id === id ? { ...x, ...cb } : x));
+
   const updateOrderStatus = (id: string, status: OrderStatus) => {
     setActiveOrders(prev => prev.map(o => {
       if (o.id === id) {
@@ -638,7 +817,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       role: existingEmp?.role || (role === 'ADMIN' ? 'ADMIN' : role === 'BRANCH_MANAGER' ? 'BRANCH_MANAGER' : role),
       branchId: existingEmp?.branchId || ((role === 'BRANCH_MANAGER' || role === 'DEPARTMENT_STAFF' || role === 'ORDER_AGGREGATOR' || role === 'FINANCE') ? branchId : undefined),
       departmentId: existingEmp?.departmentId || (role === 'DEPARTMENT_STAFF' ? departmentId : undefined),
-      points: 120, balance: 350.0, tier: 'GOLD', vouchers: [], favorites: ['1', '3'], addresses: [], savedCards: [], transactions: []
+      points: 120, balance: 1500.0, tier: 'GOLD', vouchers: [], favorites: ['1', '3'], addresses: [], savedCards: [], transactions: [],
+      linkedAccountId: existingEmp?.nationalId === '123456789' ? 'coa1401' : 'coa1301'
     });
   };
 
@@ -795,6 +975,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const totalDeposit = amount + bonus;
     const newTransaction: Transaction = { id: 'tr_' + Math.random().toString(36).substr(2, 9), date: new Date(), amount, type: 'DEPOSIT', status: 'SUCCESS', description: `شحن محفظة` };
     setCurrentUser({ ...currentUser, balance: currentUser.balance + totalDeposit, transactions: [newTransaction, ...currentUser.transactions] });
+
+    // Journal Entry for Deposit
+    addJournalEntry({
+      date: new Date().toISOString().split('T')[0],
+      description: `شحن محفظة - ${currentUser.name}`,
+      status: 'POSTED',
+      lines: [
+        { accountId: 'coa1101', debit: amount, credit: 0, description: 'تحصيل كاش' },
+        { accountId: currentUser.linkedAccountId || 'coa1301', debit: 0, credit: amount, description: 'إيداع في حساب العميل' }
+      ]
+    });
   };
 
   const refundToWallet = (orderId: string) => {
@@ -803,6 +994,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const refundTransaction: Transaction = { id: 'ref_' + Math.random().toString(36).substr(2, 9), date: new Date(), amount: order.total, type: 'REFUND', status: 'SUCCESS', description: `استرداد طلب #${order.orderNumber}` };
     setCurrentUser({ ...currentUser, balance: currentUser.balance + order.total, transactions: [refundTransaction, ...currentUser.transactions] });
     setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: OrderStatus.REFUNDED } : o));
+
+    // Journal Entry for Refund
+    addJournalEntry({
+      date: new Date().toISOString().split('T')[0],
+      description: `مرتجع مبيعات طلب #${order.orderNumber}`,
+      status: 'POSTED',
+      lines: [
+        { accountId: 'coa4101', debit: order.total, credit: 0, description: 'إلغاء إيراد مبيعات' },
+        { accountId: currentUser.linkedAccountId || 'coa1301', debit: 0, credit: order.total, description: 'رد للمحفظة' }
+      ]
+    });
   };
 
   const updateTableStatus = (tableId: string, status: TableStatus, extra?: Partial<Table>) => {
@@ -1171,6 +1373,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         amount: total,
         reason: `Order #${newOrder.orderNumber}`,
       });
+
+      // Automatic Journal Entry for the sale
+      const debitAccountId = paymentMethod === PaymentMethod.CASH ? 'coa1101' : (currentUser.linkedAccountId || 'coa1301');
+      const creditAccountId = (paymentMethod === PaymentMethod.CASH || paymentMethod === PaymentMethod.WALLET) ? 'coa4101' : 'coa4102';
+
+      addJournalEntry({
+        date: new Date().toISOString().split('T')[0],
+        description: `فاتورة مبيعات رقم ${newOrder.orderNumber}`,
+        status: 'POSTED',
+        lines: [
+          { accountId: debitAccountId, debit: total, credit: 0, description: 'إثبات مديونية/تحصيل' },
+          { accountId: creditAccountId, debit: 0, credit: total, description: 'إثبات إيراد مبيعات' }
+        ]
+      });
     }
 
     if (paymentMethod === PaymentMethod.WALLET) {
@@ -1366,7 +1582,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addCustomer, updateCustomer, deleteCustomer, addCustomerAddress, removeCustomerAddress, toggleBlockCustomer, adjustCustomerPoints, adjustCustomerBalance,
       login, logout, addToCart, removeFromCart, updateCartQuantity, updateCartItem, updateOrderItemStatus, updateOrderStatus, cancelOrder, transferOrder, mergeOrders, splitOrder, refundOrder, submitOrder, depositToWallet, refundToWallet, saveNewCard, toggleFavorite, setOrderType,
       reorder,
-      tables, selectedTable, setSelectedTable, updateTableStatus, transferTable, mergeTables, editingOrderId, clearCart, voidOrder, completeOrder, loadOrderToPOS, confirmOrder, deliverOrder, assignShelfToOrder, collectOrderItemByAggregator, currentShift, shifts, openShift, closeShift,
+      tables, selectedTable, setSelectedTable, updateTableStatus, transferTable, mergeTables, editingOrderId, clearCart, voidOrder, completeOrder, loadOrderToPOS, confirmOrder, deliverOrder, assignShelfToOrder, collectOrderItemByAggregator,
+
+      fiscalYears, chartOfAccounts, costCenters, journalEntries, suppliers, bankAccounts, cashBoxes,
+      addFiscalYear, updateFiscalYear, addCOA, updateCOA, deleteCOA, addCostCenter, updateCostCenter, addJournalEntry, updateJournalEntry, deleteJournalEntry,
+      addSupplier, updateSupplier, addBankAccount, updateBankAccount, addCashBox, updateCashBox,
+
+      currentShift, shifts, openShift, closeShift,
       financialTransactions, addFinancialTransaction,
       feedbacks, addFeedback, updateFeedback,
       notifications, addNotification, markNotificationRead,
@@ -1387,10 +1609,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 };
 
 export const useApp = () => {
-  const ctx = useContext(AppContext);
-  if (!ctx) throw new Error('useApp must be used within AppProvider');
-  return ctx;
+  const context = useContext(AppContext);
+  if (!context) throw new Error('useApp must be used within AppProvider');
+  return context;
 };
-
-
-

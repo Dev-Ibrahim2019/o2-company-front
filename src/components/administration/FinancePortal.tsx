@@ -17,6 +17,7 @@ import BranchesPage from '../administration/BranchesPage/BranchesPage';
 import { Calendar } from 'lucide-react';
 import { CustomerType } from '../../../types';
 import { OrgStructure } from './OrgStructure/OrgStructure';
+import { AccountingPortal } from './GL/AccountingPortal';
 
 
 interface FinancePortalProps {
@@ -37,7 +38,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
   return (
     <div className="h-full flex flex-col gap-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-black text-white tracking-tight">بوابة الإدارة المالية</h1>
           <p className="text-slate-500 text-sm font-medium">إدارة العمليات، الموظفين، والتقارير المالية</p>
@@ -48,7 +49,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
             <span className="text-sm font-bold text-white">{new Date().toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
           </div>
         </div>
-      </div>
+      </div> */}
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
@@ -61,7 +62,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
         {view === 'CUSTOMERS' && renderCustomers()}
         {view === 'SUPPLIERS' && renderSuppliers()}
         {view === 'EMPLOYEES' && <EmployeeManagement />}
-        {view === 'ACCOUNTING' && <AccountingPage />}
+        {view === 'ACCOUNTING' && <AccountingPortal />}
         {view === 'REPORTS' && <ReportsPage />}
         {view === 'AUDIT_LOG' && (canAudit ? <AuditLogPage /> : <div className="p-20 text-center text-slate-500">ليس لديك صلاحية للوصول إلى سجل التدقيق</div>)}
         {view === 'ARCHIVE' && (canManageFinance ? <ArchivePage /> : <div className="p-20 text-center text-slate-500">ليس لديك صلاحية للوصول إلى الأرشيف</div>)}

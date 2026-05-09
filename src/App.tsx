@@ -9,7 +9,10 @@ import { TablesView } from "./components/POS/Tables";
 import { OrdersView } from "./components/POS/Orders";
 import { Login } from "./components/Login";
 import { ShiftView } from "./components/POS/Shift";
+import { AccountingPortal } from "./components/administration/GL/AccountingPortal";
 // import api from "./api/axios";
+
+import { AdminLayout } from "../src/components/administration/Layout"; // افتراض وجود هذا المكون
 
 const Main: React.FC = () => {
   const { currentUser, currentShift, userRole, editingOrderId } = useApp();
@@ -113,6 +116,12 @@ const Main: React.FC = () => {
       case 'finance_archive': return <FinancePortal key="f_arch" initialView="ARCHIVE" />;
       case 'finance_settings': return <FinancePortal key="f_sett" initialView="SETTINGS" />;
       case 'finance_orgstructure': return <FinancePortal key="f_org" initialView="ORGSTRUCTURE" />;
+      case 'accounting_dashboard': return <AccountingPortal key="a_dash" initialTab="DASHBOARD" />;
+      case 'accounting_gl': return <AccountingPortal key="a_gl" initialTab="GL" />;
+      case 'accounting_ar': return <AccountingPortal key="a_ar" initialTab="AR" />;
+      case 'accounting_ap': return <AccountingPortal key="a_ap" initialTab="AP" />;
+      case 'accounting_cash': return <AccountingPortal key="a_cash" initialTab="CASH" />;
+      case 'accounting_hr': return <AccountingPortal key="a_hr" initialTab="HR" />;
       // case 'finance': return <FinanceReports />;
       // case 'org': return <OrgStructure />;
       // case 'branch_dashboard': return <BranchManagerPortal />;
@@ -130,6 +139,7 @@ const Main: React.FC = () => {
       // case 'employee_finance': return <EmployeeDashboard key="e_fin" initialTab="FINANCE" />;
       // case 'employee_policies': return <EmployeeDashboard key="e_pol" initialTab="POLICIES" />;
       // default: return <div className="p-10 text-center text-slate-400 font-bold">هذه الخاصية قيد التطوير</div>;
+      default: return <div className="p-10 text-center text-slate-400 font-bold">هذه الخاصية قيد التطوير</div>;
     }
   };
 
