@@ -4,20 +4,20 @@ import { useApp } from '../../../store';
 import { TableStatus, OrderType } from '../../../types';
 import type { Table } from '../../../types';
 import { HALLS } from '../../../constants';
-import { 
-  Users, Clock, DollarSign, Move, Merge, Split, 
+import {
+  Users, Clock, DollarSign, Move, Merge, Split,
   Trash2, ExternalLink, X, Info, Map as MapIcon, Grid,
   ChevronRight, ChevronLeft, ZoomIn, ZoomOut, Layout, Plus
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onSelect }) => {
-  const { 
-    tables, selectedTable, setSelectedTable, activeOrders, 
+  const {
+    tables, selectedTable, setSelectedTable, activeOrders,
     updateTableStatus, transferTable, mergeTables, loadOrderToPOS,
     currentUser, seatTable, setOrderType
   } = useApp();
-  
+
   const [viewMode, setViewMode] = useState<'MAP' | 'GRID'>('GRID');
   const [selectedHallId, setSelectedHallId] = useState<string>(HALLS[0].id);
   const [zoom, setZoom] = useState(1);
@@ -26,26 +26,26 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
   const [mergeMode, setMergeMode] = useState<string[]>([]);
   const [seatingTableId, setSeatingTableId] = useState<string | null>(null);
   const [guestCount, setGuestCount] = useState<number>(2);
-  
+
   const mapRef = useRef<HTMLDivElement>(null);
 
   const filteredTables = tables.filter(t => t.hallId === selectedHallId);
 
   const getStatusConfig = (status: TableStatus) => {
-    switch(status) {
-      case TableStatus.AVAILABLE: 
+    switch (status) {
+      case TableStatus.AVAILABLE:
         return { color: 'bg-emerald-500', label: 'فارغة', border: 'border-emerald-600/20' };
-      case TableStatus.OCCUPIED: 
+      case TableStatus.OCCUPIED:
         return { color: 'bg-red-600', label: 'مشغولة', border: 'border-red-700/20' };
-      case TableStatus.PAYMENT_PENDING: 
+      case TableStatus.PAYMENT_PENDING:
         return { color: 'bg-orange-500', label: 'بانتظار الدفع', border: 'border-orange-600/20' };
-      case TableStatus.PAID: 
+      case TableStatus.PAID:
         return { color: 'bg-emerald-600', label: 'تم الدفع', border: 'border-emerald-700/20' };
-      case TableStatus.RESERVED: 
+      case TableStatus.RESERVED:
         return { color: 'bg-blue-600', label: 'محجوزة', border: 'border-blue-700/20' };
-      case TableStatus.CLEANING: 
+      case TableStatus.CLEANING:
         return { color: 'bg-slate-500', label: 'قيد التنظيف', border: 'border-slate-600/20' };
-      default: 
+      default:
         return { color: 'bg-slate-800', label: 'غير معروف', border: 'border-white/5' };
     }
   };
@@ -121,13 +121,13 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
           </div>
 
           <div className="flex bg-slate-900 p-1 rounded-2xl border border-white/5">
-            <button 
+            <button
               onClick={() => setViewMode('MAP')}
               className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-xs transition-all ${viewMode === 'MAP' ? 'bg-red-600 text-white shadow-lg shadow-red-900/20' : 'text-slate-500 hover:text-slate-300'}`}
             >
               <MapIcon size={16} /> خريطة
             </button>
-            <button 
+            <button
               onClick={() => setViewMode('GRID')}
               className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-xs transition-all ${viewMode === 'GRID' ? 'bg-red-600 text-white shadow-lg shadow-red-900/20' : 'text-slate-500 hover:text-slate-300'}`}
             >
@@ -145,7 +145,7 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
 
           {mergeMode.length > 0 && (
             <div className="flex gap-2">
-              <button 
+              <button
                 onClick={() => { mergeTables(mergeMode); setMergeMode([]); }}
                 className="bg-blue-600 text-white px-6 py-2.5 rounded-2xl font-black text-xs shadow-lg shadow-blue-900/20 flex items-center gap-2"
               >
@@ -183,9 +183,8 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => handleTableClick(table)}
-                  className={`relative aspect-square rounded-3xl border-2 p-4 flex flex-col items-center justify-center gap-2 transition-all ${
-                    mergeMode.includes(table.id) ? 'ring-4 ring-blue-600 ring-offset-4 ring-offset-slate-950' : ''
-                  } ${table.mergedWithId ? 'opacity-60 border-dashed' : ''} ${config.color} ${config.border} text-white shadow-xl`}
+                  className={`relative aspect-square rounded-3xl border-2 p-4 flex flex-col items-center justify-center gap-2 transition-all ${mergeMode.includes(table.id) ? 'ring-4 ring-blue-600 ring-offset-4 ring-offset-slate-950' : ''
+                    } ${table.mergedWithId ? 'opacity-60 border-dashed' : ''} ${config.color} ${config.border} text-white shadow-xl`}
                 >
                   <span className="text-2xl font-black">#{table.number}</span>
                   <div className="flex flex-col items-center gap-1">
@@ -195,8 +194,8 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
                       </span>
                     )}
                     <span className="text-[10px] font-black bg-black/20 px-2 py-0.5 rounded-full">
-                      {table.mergedWithId ? `مدمجة مع #${tables.find(t => t.id === table.mergedWithId)?.number}` : 
-                       table.status === TableStatus.OCCUPIED || table.status === TableStatus.PAID ? `${table.guestCount || 0} أشخاص` : `${table.capacity} سعة`}
+                      {table.mergedWithId ? `مدمجة مع #${tables.find(t => t.id === table.mergedWithId)?.number}` :
+                        table.status === TableStatus.OCCUPIED || table.status === TableStatus.PAID ? `${table.guestCount || 0} أشخاص` : `${table.capacity} سعة`}
                     </span>
                     {order && !table.mergedWithId && (
                       <div className="flex flex-col items-center gap-1">
@@ -221,15 +220,15 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
             })}
           </div>
         ) : (
-          <div 
+          <div
             ref={mapRef}
             className="w-full h-full overflow-auto p-20 custom-scrollbar"
             style={{ cursor: transferMode ? 'crosshair' : 'default' }}
           >
-            <div 
+            <div
               className="relative bg-slate-800/20 rounded-[4rem] border-4 border-dashed border-white/5"
-              style={{ 
-                width: 1500 * zoom, 
+              style={{
+                width: 1500 * zoom,
                 height: 1500 * zoom,
                 transformOrigin: 'top left'
               }}
@@ -241,16 +240,15 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
                   <motion.button
                     key={table.id}
                     initial={false}
-                    animate={{ 
-                      left: table.position.x * zoom, 
+                    animate={{
+                      left: table.position.x * zoom,
                       top: table.position.y * zoom,
                       width: 100 * zoom,
                       height: 100 * zoom
                     }}
                     onClick={() => handleTableClick(table)}
-                    className={`absolute rounded-2xl border-2 flex flex-col items-center justify-center gap-1 shadow-2xl transition-all ${
-                      mergeMode.includes(table.id) ? 'ring-4 ring-blue-600' : ''
-                    } ${table.mergedWithId ? 'opacity-60 border-dashed' : ''} ${config.color} ${config.border} text-white`}
+                    className={`absolute rounded-2xl border-2 flex flex-col items-center justify-center gap-1 shadow-2xl transition-all ${mergeMode.includes(table.id) ? 'ring-4 ring-blue-600' : ''
+                      } ${table.mergedWithId ? 'opacity-60 border-dashed' : ''} ${config.color} ${config.border} text-white`}
                   >
                     <span className="font-black" style={{ fontSize: `${18 * zoom}px` }}>#{table.number}</span>
                     {table.status === TableStatus.PAID && (
@@ -262,7 +260,7 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
                       <div className="flex flex-col items-center">
                         <span className="font-black bg-black/20 px-1.5 py-0.5 rounded-full" style={{ fontSize: `${8 * zoom}px` }}>
                           {table.mergedWithId ? `مدمجة مع #${tables.find(t => t.id === table.mergedWithId)?.number}` :
-                           table.status === TableStatus.OCCUPIED || table.status === TableStatus.PAID ? `${table.guestCount || 0} أشخاص` : `${table.capacity} سعة`}
+                            table.status === TableStatus.OCCUPIED || table.status === TableStatus.PAID ? `${table.guestCount || 0} أشخاص` : `${table.capacity} سعة`}
                         </span>
                         {order && !table.mergedWithId && (
                           <div className="flex flex-col items-center">
@@ -290,7 +288,7 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
       <AnimatePresence>
         {seatingTableId && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
@@ -305,14 +303,14 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
               </div>
 
               <div className="flex items-center justify-center gap-6">
-                <button 
+                <button
                   onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
                   className="w-12 h-12 bg-slate-800 text-white rounded-2xl flex items-center justify-center hover:bg-slate-700 transition-all font-black text-xl border border-white/5"
                 >
                   -
                 </button>
                 <span className="text-4xl font-black text-white w-12 text-center">{guestCount}</span>
-                <button 
+                <button
                   onClick={() => setGuestCount(guestCount + 1)}
                   className="w-12 h-12 bg-slate-800 text-white rounded-2xl flex items-center justify-center hover:bg-slate-700 transition-all font-black text-xl border border-white/5"
                 >
@@ -321,7 +319,7 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
               </div>
 
               <div className="flex flex-col gap-3">
-                <button 
+                <button
                   onClick={() => {
                     const table = tables.find(t => t.id === seatingTableId);
                     seatTable(seatingTableId, guestCount);
@@ -337,7 +335,7 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
                 >
                   تسكين الطاولة وبدء الوقت
                 </button>
-                <button 
+                <button
                   onClick={() => setSeatingTableId(null)}
                   className="w-full bg-slate-800 text-slate-400 py-4 rounded-2xl font-black text-sm active:scale-95 transition-all"
                 >
@@ -351,7 +349,7 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
       <AnimatePresence>
         {showPopup && activePopupTable && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
@@ -405,12 +403,12 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
                             </div>
                             <p className="text-3xl font-black text-red-600">{activePopupOrder.total.toFixed(2)} ₪</p>
                           </div>
-                          <button 
-                            onClick={() => { 
-                              loadOrderToPOS(activePopupOrder); 
+                          <button
+                            onClick={() => {
+                              loadOrderToPOS(activePopupOrder);
                               setOrderType(OrderType.DINE_IN);
                               setTimeout(() => {
-                                onSelect(activePopupTable); 
+                                onSelect(activePopupTable);
                               }, 100);
                             }}
                             className="bg-red-600 text-white px-6 py-3 rounded-2xl font-black text-sm shadow-lg shadow-red-900/20 flex items-center gap-2"
@@ -418,9 +416,9 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
                             <ExternalLink size={18} /> فتح الفاتورة
                           </button>
                         </div>
-                        
+
                         {activePopupTable.status === TableStatus.OCCUPIED && (
-                          <button 
+                          <button
                             onClick={() => updateTableStatus(activePopupTable.id, TableStatus.PAYMENT_PENDING)}
                             className="w-full bg-orange-500 text-white py-3 rounded-xl font-black text-xs shadow-lg shadow-orange-900/20 flex items-center justify-center gap-2"
                           >
@@ -433,12 +431,12 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
                             <div className="bg-emerald-600/10 border border-emerald-600/20 p-3 rounded-xl text-center">
                               <p className="text-emerald-500 font-black text-xs">تم دفع الحساب بنجاح</p>
                             </div>
-                            <button 
-                              onClick={() => { 
-                                setSelectedTable(activePopupTable); 
+                            <button
+                              onClick={() => {
+                                setSelectedTable(activePopupTable);
                                 setOrderType(OrderType.DINE_IN);
                                 setTimeout(() => {
-                                  onSelect(activePopupTable); 
+                                  onSelect(activePopupTable);
                                 }, 100);
                               }}
                               className="w-full bg-blue-600 text-white py-3 rounded-xl font-black text-xs shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2"
@@ -453,12 +451,12 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
                         <div className="text-center py-2">
                           <p className="text-slate-400 font-bold text-sm">لا توجد طلبات مسجلة لهذه الطاولة بعد</p>
                         </div>
-                        <button 
-                          onClick={() => { 
-                            setSelectedTable(activePopupTable); 
+                        <button
+                          onClick={() => {
+                            setSelectedTable(activePopupTable);
                             setOrderType(OrderType.DINE_IN);
                             setTimeout(() => {
-                              onSelect(activePopupTable); 
+                              onSelect(activePopupTable);
                             }, 100);
                           }}
                           className="w-full bg-red-600 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-red-900/20 flex items-center justify-center gap-2"
@@ -469,7 +467,7 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
                     )}
 
                     <div className="grid grid-cols-3 gap-3">
-                      <button 
+                      <button
                         onClick={() => {
                           if (activePopupTable.status !== TableStatus.PAID) {
                             alert('لا يمكن تفريغ الطاولة قبل دفع الحساب');
@@ -477,23 +475,22 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
                           }
                           updateTableStatus(activePopupTable.id, TableStatus.CLEANING);
                         }}
-                        className={`flex flex-col items-center gap-2 p-4 rounded-2xl border border-white/5 transition-all ${
-                          activePopupTable.status === TableStatus.PAID 
-                            ? 'bg-slate-800 hover:bg-slate-700' 
+                        className={`flex flex-col items-center gap-2 p-4 rounded-2xl border border-white/5 transition-all ${activePopupTable.status === TableStatus.PAID
+                            ? 'bg-slate-800 hover:bg-slate-700'
                             : 'bg-slate-900 opacity-50 cursor-not-allowed'
-                        }`}
+                          }`}
                       >
                         <Trash2 size={20} className="text-red-500" />
                         <span className="text-[10px] font-black text-slate-300">تفريغ</span>
                       </button>
-                      <button 
+                      <button
                         onClick={() => { setTransferMode({ fromId: activePopupTable.id }); setShowPopup(null); }}
                         className="flex flex-col items-center gap-2 p-4 bg-slate-800 rounded-2xl border border-white/5 hover:bg-slate-700 transition-all"
                       >
                         <Move size={20} className="text-blue-500" />
                         <span className="text-[10px] font-black text-slate-300">نقل</span>
                       </button>
-                      <button 
+                      <button
                         onClick={() => { setMergeMode([activePopupTable.id]); setShowPopup(null); }}
                         className="flex flex-col items-center gap-2 p-4 bg-slate-800 rounded-2xl border border-white/5 hover:bg-slate-700 transition-all"
                       >
@@ -528,7 +525,7 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
 
                     <div className="flex flex-col gap-3">
                       {activePopupTable.status === TableStatus.CLEANING && (
-                        <button 
+                        <button
                           onClick={() => resetTable(activePopupTable.id)}
                           className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-emerald-900/20"
                         >
@@ -536,7 +533,7 @@ export const TablesView: React.FC<{ onSelect: (table: Table) => void }> = ({ onS
                         </button>
                       )}
                       <div className="flex gap-3">
-                        <button 
+                        <button
                           onClick={() => {
                             const name = prompt('اسم الحجز:');
                             const time = prompt('وقت الحجز (مثلاً 07:00 PM):');

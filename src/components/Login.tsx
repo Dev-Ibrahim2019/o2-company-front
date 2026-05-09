@@ -251,23 +251,23 @@ export const Login: React.FC = () => {
           {(mode === "BRANCH_MANAGER" ||
             mode === "DEPARTMENT_STAFF" ||
             mode === "ORDER_AGGREGATOR") && (
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 mr-2 uppercase tracking-widest">
-                اختر الفرع
-              </label>
-              <select
-                value={selectedBranch}
-                onChange={(e) => setSelectedBranch(e.target.value)}
-                className="w-full p-4 bg-slate-800 border border-white/5 rounded-2xl outline-none font-black text-sm text-white focus:ring-2 focus:ring-red-600 transition-all appearance-none"
-              >
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 mr-2 uppercase tracking-widest">
+                  اختر الفرع
+                </label>
+                <select
+                  value={selectedBranch}
+                  onChange={(e) => setSelectedBranch(e.target.value)}
+                  className="w-full p-4 bg-slate-800 border border-white/5 rounded-2xl outline-none font-black text-sm text-white focus:ring-2 focus:ring-red-600 transition-all appearance-none"
+                >
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
           {mode === "DEPARTMENT_STAFF" && (
             <div className="space-y-2">

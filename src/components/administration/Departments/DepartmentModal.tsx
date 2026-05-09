@@ -9,7 +9,7 @@ interface Props {
     onClose: () => void;
 }
 
-const TYPES = ['sale', 'production', 'storage'];
+const TYPES = ['department', 'section', 'unit'];
 const STATUSES = ['ACTIVE', 'BUSY', 'INACTIVE'];
 
 const DepartmentModal = ({ dept, onSave, onClose }: Props) => {

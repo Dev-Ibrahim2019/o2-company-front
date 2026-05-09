@@ -18,14 +18,18 @@ api.interceptors.request.use((config) => {
 
 // عالج أخطاء الـ 401 تلقائياً
 api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem("token");
-      window.location.href = "/login";
+    (response) => response,
+    (error) => {
+        if (error.response?.status === 401) {
+            const currentPath = window.location.pathname;
+            // ✅ لا تعمل redirect إذا أنت بالفعل في صفحة اللوجين
+            if (currentPath !== '/login') {
+                localStorage.removeItem("token");
+                window.location.href = "/login";
+            }
+        }
+        return Promise.reject(error);
     }
-    return Promise.reject(error);
-  }
 );
 
 export default api;
