@@ -13,7 +13,7 @@ interface DepartmentCardProps {
     activeOrders: Order[];
     employees: Employee[];
     onEdit: (dept: Department) => void;
-    onDelete: (id: string) => void;
+    onDelete: (id: string | number) => void;
 }
 
 const DepartmentCard = ({
@@ -24,11 +24,12 @@ const DepartmentCard = ({
     onEdit,
     onDelete,
 }: DepartmentCardProps) => {
-    const deptItems = menuItems.filter(item => item.departmentId === dept.id);
+    const deptId = String(dept.id);
+    const deptItems = menuItems.filter(item => String(item.departmentId) === deptId);
     const activeDeptOrders = activeOrders.filter(
-        o => o.items.some(i => i.departmentId === dept.id) && o.status !== OrderStatus.COMPLETED
+        o => o.items.some(i => String(i.departmentId) === deptId) && o.status !== OrderStatus.COMPLETED
     );
-    const deptEmployees = employees.filter(e => e.departmentId === dept.id);
+    const deptEmployees = employees.filter(e => String(e.departmentId) === deptId);
     const capacity = dept.maxConcurrentOrders || 10;
     const capacityRatio = activeDeptOrders.length / capacity;
 
@@ -54,7 +55,7 @@ const CardHeader = ({
 }: {
     dept: Department;
     onEdit: (d: Department) => void;
-    onDelete: (id: string) => void;
+    onDelete: (id: string | number) => void;
 }) => (
     <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-4">
@@ -68,7 +69,7 @@ const CardHeader = ({
                 <h3 className="text-xl font-bold text-white">{dept.nameAr || dept.name}</h3>
                 <div className="flex items-center gap-2">
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-                        {dept.shortName || dept.id.slice(0, 3).toUpperCase()}
+                        {dept.shortName || String(dept.id).slice(0, 3).toUpperCase()}
                     </span>
                     <span className="w-1 h-1 rounded-full bg-slate-700" />
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{dept.type}</span>

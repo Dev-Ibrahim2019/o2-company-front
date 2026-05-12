@@ -1,9 +1,24 @@
-// src/components/POS/MenuGrid.tsx
-
-import React, { useMemo } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
-import { Package } from 'lucide-react';
-import type { MenuCategory, MenuItem } from "../../hooks/useMenu";
+import { CATEGORIES } from '../../../constants';
+import { resolvePublicAssetUrl } from '../../services/itemService';
+
+interface MenuItem {
+  id: string;
+  nameAr: string;
+  name: string;
+  image: string;
+  /** Full URL from API when menu is loaded from backend */
+  image_url?: string | null;
+  category: string;
+  price: number;
+  dineInPrice?: number;
+  takeawayPrice?: number;
+  deliveryPrice?: number;
+  offerPrice?: number;
+  offerStartDate?: string;
+  offerEndDate?: string;
+}
 
 interface MenuGridProps {
   categories: MenuCategory[];
@@ -87,37 +102,27 @@ export const MenuGrid: React.FC<MenuGridProps> = ({
 
       {/* ── Items Grid ── */}
       <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4 overflow-y-auto pr-1 pb-6 custom-scrollbar">
-        {filteredItems.length === 0 ? (
-          <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-600 gap-3">
-            <Package size={40} strokeWidth={1} />
-            <p className="font-black text-xs">
-              {searchQuery ? 'لا توجد نتائج مطابقة' : 'لا توجد أصناف في هذا القسم'}
-            </p>
-          </div>
-        ) : (
-          filteredItems.map(item => (
-            <motion.div
-              key={item.id}
-              layout
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => addToCart(item)}
-              className="group cursor-pointer flex flex-col gap-2"
-            >
-              {/* Image */}
-              <div className="aspect-square relative rounded-2xl overflow-hidden bg-slate-900 border border-white/5 group-hover:border-red-600/50 transition-all duration-300 shadow-lg">
-                {item.image ? (
-                  <img
-                    src={item.image}
-                    alt={item.name_ar}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-in-out"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-slate-700">
-                    <Package size={32} strokeWidth={1} />
-                  </div>
-                )}
+        {filteredItems.map(item => (
+          <motion.div
+            key={item.id}
+            layout
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => addToCart(item)}
+            className="group cursor-pointer flex flex-col gap-2"
+          >
+            <div className="aspect-square relative rounded-2xl overflow-hidden bg-slate-900 border border-white/5 group-hover:border-red-600/50 transition-all duration-300 shadow-lg">
+              <img
+                src={item.image_url || resolvePublicAssetUrl(item.image)}
+                alt={item.nameAr}
+                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-in-out"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="absolute top-2 right-2 bg-red-600 text-white px-1.5 py-0.5 rounded-md text-[8px] font-black shadow-lg border border-white/10">
+                #{item.id}
+              </div>
+            </div>
 
                 {/* Overlay on hover */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />

@@ -21,7 +21,7 @@ import { AccountingPortal } from './GL/AccountingPortal';
 
 
 interface FinancePortalProps {
-  initialView?: 'DASHBOARD' | 'BRANCHES' | 'DEPARTMENTS' | 'MENU' | 'ORDERS' | 'CUSTOMERS' | 'SUPPLIERS' | 'EMPLOYEES' | 'ACCOUNTING' | 'REPORTS' | 'SETTINGS' | 'AUDIT_LOG' | 'ARCHIVE' | 'ORGSTRUCTURE';
+  initialView?: 'DASHBOARD' | 'BRANCHES' | 'DEPARTMENTS' | 'ITEM_TREE' | 'ITEMS_INDEX' | 'MENU' | 'ORDERS' | 'CUSTOMERS' | 'SUPPLIERS' | 'EMPLOYEES' | 'ACCOUNTING' | 'REPORTS' | 'SETTINGS' | 'AUDIT_LOG' | 'ARCHIVE' | 'ORGSTRUCTURE';
 }
 
 export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DASHBOARD' }) => {
@@ -33,7 +33,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
   const renderCustomers = () => <CustomerManagement initialType={CustomerType.REGULAR} />;
 
   const renderSuppliers = () => <CustomerManagement initialType={CustomerType.SUPPLIER} />;
-  const [view, setView] = useState(initialView);
+  const [view] = useState(initialView);
   console.log('currentUser', currentUser);
   return (
     <div className="h-full flex flex-col gap-6">
@@ -57,7 +57,8 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
         {view === 'DASHBOARD' && <DashboardPage />}
         {view === 'BRANCHES' && <BranchesPage />}
         {view === 'DEPARTMENTS' && <DepartmentsPage />}
-        {view === 'MENU' && <MenuPage />}
+        {(view === 'MENU' || view === 'ITEM_TREE') && <MenuPage initialMode="tree" />}
+        {view === 'ITEMS_INDEX' && <MenuPage initialMode="list" />}
         {view === 'ORDERS' && <OrdersPage />}
         {view === 'CUSTOMERS' && renderCustomers()}
         {view === 'SUPPLIERS' && renderSuppliers()}
