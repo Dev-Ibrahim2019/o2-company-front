@@ -36,11 +36,10 @@ const SidebarItem: React.FC<SidebarItemProps> = ({
   <button
     onClick={onClick}
     title={collapsed ? label : undefined}
-    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
-      active
+    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${active
         ? "bg-red-600 text-white shadow-lg shadow-red-900/30"
         : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-    } ${collapsed ? "justify-center px-0" : ""}`}
+      } ${collapsed ? "justify-center px-0" : ""}`}
   >
     <Icon size={20} />
     {!collapsed && (
@@ -86,11 +85,10 @@ export const AdminLayout: React.FC<{
       </AnimatePresence>
 
       <aside
-        className={`fixed top-0 right-0 h-full bg-slate-900 border-l border-white/5 flex flex-col p-4 shadow-2xl transition-all duration-300 z-50 ${
-          isSidebarOpen
+        className={`fixed top-0 right-0 h-full bg-slate-900 border-l border-white/5 flex flex-col p-4 shadow-2xl transition-all duration-300 z-50 ${isSidebarOpen
             ? "w-64 translate-x-0"
             : "w-64 translate-x-full lg:w-20 lg:translate-x-0"
-        }`}
+          }`}
       >
         <div
           className={`mb-8 flex items-center gap-3 ${!isSidebarOpen ? "justify-center" : "px-4"}`}

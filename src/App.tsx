@@ -10,6 +10,8 @@ import { OrdersView } from "./components/POS/Orders";
 import { Login } from "./components/Login";
 import { ShiftView } from "./components/POS/Shift";
 import { AccountingPortal } from "./components/administration/GL/AccountingPortal";
+import { AdminLayout } from "./components/administration/Layout";
+
 // import api from "./api/axios";
 
 const Main: React.FC = () => {
