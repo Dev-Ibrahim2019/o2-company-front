@@ -1,5 +1,5 @@
 
-import { AdminLayout } from "./components/administration/Layout";
+import { AppLayout } from "./components/Layout"
 import { POSLayout } from "./components/POS/Layout";
 import { FinancePortal } from './components/administration/FinancePortal'
 import React, { useState, useEffect } from 'react';
