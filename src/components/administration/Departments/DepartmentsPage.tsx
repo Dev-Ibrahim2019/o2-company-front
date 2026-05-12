@@ -3,9 +3,8 @@
 import { useState } from 'react';
 import { useDepartments } from '../../../hooks/useDepartments';
 import DepartmentsHeader from './Departmentsheader ';
-import DepartmentKitchenMap from './Departmentkitchenmap';
 import DepartmentModal from './DepartmentModal';
-import DepartmentApiCard from './DepartmentApiCard';    // ← الكارد الجديدة
+import DepartmentApiCard from './Departmentcard';
 import type { Department } from '../../../services/departmentService';
 
 type SubView = 'LIST' | 'MAP';
@@ -16,6 +15,9 @@ const DepartmentsPage = () => {
   const [subView, setSubView] = useState<SubView>('LIST');
   const [editingDept, setEditingDept] = useState<Department | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // ✅ إضافة searchQuery كان ناقصاً
+  const [searchQuery, setSearchQuery] = useState('');
 
   const openModal = (dept: Department | null = null) => {
     setEditingDept(dept);
@@ -35,6 +37,12 @@ const DepartmentsPage = () => {
     if (!confirm('هل أنت متأكد من حذف هذا القسم؟')) return;
     await deleteDepartment(Number(id));
   };
+
+  // ✅ تصفية الأقسام بناءً على searchQuery
+  const filteredDepartments = departments.filter((d) =>
+    d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (d.nameAr ?? '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   // Skeleton loading
   if (loading) return (
@@ -63,15 +71,18 @@ const DepartmentsPage = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* ✅ تمرير searchQuery و onSearchChange */}
       <DepartmentsHeader
         subView={subView}
         onSubViewChange={setSubView}
         onAddDepartment={() => openModal()}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
       />
 
       {subView === 'LIST' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {departments.map(dept => (
+          {filteredDepartments.map(dept => (
             <DepartmentApiCard
               key={dept.id}
               dept={dept}
@@ -79,6 +90,12 @@ const DepartmentsPage = () => {
               onDelete={() => handleDelete(dept.id)}
             />
           ))}
+
+          {filteredDepartments.length === 0 && (
+            <div className="col-span-3 text-center py-16 text-slate-500">
+              لا توجد أقسام مطابقة للبحث
+            </div>
+          )}
         </div>
       ) : (
         <div className="text-center py-10 text-slate-500">

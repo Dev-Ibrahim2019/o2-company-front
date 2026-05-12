@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import type { Employee, Branch } from "../../../../types";
+import React from "react";
+import type { Branch } from "../../../../types";
 import {
   Users,
   Edit2,
@@ -10,11 +10,20 @@ import {
   Smartphone,
 } from "lucide-react";
 
+// ✅ تعريف Employee بشكل مبسط (من الـ API)
+interface EmployeeFromApi {
+  id: number;
+  name: string;
+  branch_id?: number;
+  branchId?: number;
+  department_id?: number;
+}
+
 interface BranchTableProps {
   branches: Branch[];
-  employees: Employee[];
+  employees: EmployeeFromApi[];
   onEdit: (branch: Branch) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: number) => void;
 }
 
 const BranchTable: React.FC<BranchTableProps> = ({
@@ -23,17 +32,8 @@ const BranchTable: React.FC<BranchTableProps> = ({
   onEdit,
   onDelete,
 }) => {
-  const [searchQuery, setSearchQuery] = useState("");
-
-  const filteredBranches = branches.filter(
-    (b) =>
-      b.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      b.city.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
   return (
     <div className="space-y-4">
-      {/* Table */}
       <div className="bg-slate-900/50 border border-white/5 rounded-[2rem] overflow-hidden shadow-2xl">
         <div className="overflow-x-auto">
           <table className="w-full text-right border-collapse">
@@ -41,19 +41,17 @@ const BranchTable: React.FC<BranchTableProps> = ({
               <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest border-b border-white/5 bg-white/5">
                 <th className="p-6">معلومات الفرع</th>
                 <th className="p-6">الموقع والتواصل</th>
-                <th className="p-6">الإدارة</th>
                 <th className="p-6 text-center">القوى العاملة</th>
                 <th className="p-6">الحالة التشغيلية</th>
                 <th className="p-6 text-center">العمليات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {filteredBranches.map((branch) => {
-                const manager = employees.find(
-                  (e) => e.id === branch.managerId
-                );
+              {branches.map((branch) => {
+                // ✅ مقارنة branch_id أو branchId (كلاهما ممكن يأتي من الـ API)
                 const employeeCount = employees.filter(
-                  (e) => e.branchId === branch.id
+                  (e) =>
+                    e.branch_id === branch.id || e.branchId === branch.id
                 ).length;
 
                 return (
@@ -65,11 +63,10 @@ const BranchTable: React.FC<BranchTableProps> = ({
                     <td className="p-6">
                       <div className="flex items-center gap-4">
                         <div
-                          className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-lg transition-transform group-hover:scale-110 duration-500 ${
-                            branch.isMainBranch
+                          className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-lg transition-transform group-hover:scale-110 duration-500 ${branch.isMainBranch
                               ? "bg-gradient-to-br from-red-500 to-red-700 shadow-red-900/20"
                               : "bg-slate-800 shadow-black/20"
-                          }`}
+                            }`}
                         >
                           <Building2 size={24} />
                         </div>
@@ -96,39 +93,13 @@ const BranchTable: React.FC<BranchTableProps> = ({
                       <div className="flex items-center gap-2 text-slate-300">
                         <Map size={14} className="text-slate-500" />
                         <span className="text-sm font-bold">
-                          {branch.address}
+                          {branch.address || "—"}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 text-slate-500">
                         <Smartphone size={14} />
-                        <span className="text-xs">{branch.phone}</span>
+                        <span className="text-xs">{branch.phone || "—"}</span>
                       </div>
-                    </td>
-
-                    {/* Manager */}
-                    <td className="p-6">
-                      {manager ? (
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 border border-white/5 flex items-center justify-center text-sm font-black text-white shadow-inner">
-                            {manager.name.charAt(0)}
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-white">
-                              {manager.name}
-                            </p>
-                            <p className="text-[10px] text-slate-500">
-                              مدير الفرع
-                            </p>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 text-slate-600">
-                          <Shield size={14} />
-                          <span className="text-xs font-medium italic">
-                            لم يتم التعيين
-                          </span>
-                        </div>
-                      )}
                     </td>
 
                     {/* Employees */}
@@ -152,24 +123,23 @@ const BranchTable: React.FC<BranchTableProps> = ({
                           )}
                         </div>
                         <p className="text-[10px] font-black text-slate-500 uppercase">
-                          {employeeCount} موظف | {branch.cashierCount} كاشير
+                          {employeeCount} موظف
                         </p>
                       </div>
                     </td>
 
                     {/* Status */}
                     <td className="p-6">
+                      {/* ✅ استخدام is_active بدل status */}
                       <span
-                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black border transition-all ${
-                          branch.is_active
+                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black border transition-all ${branch.is_active
                             ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
                             : "bg-red-500/10 text-red-500 border-red-500/20"
-                        }`}
+                          }`}
                       >
                         <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            branch.is_active ? "bg-emerald-500" : "bg-red-500"
-                          }`}
+                          className={`w-1.5 h-1.5 rounded-full ${branch.is_active ? "bg-emerald-500" : "bg-red-500"
+                            }`}
                         />
                         {branch.is_active ? "نشط" : "غير نشط"}
                       </span>
@@ -209,7 +179,7 @@ const BranchTable: React.FC<BranchTableProps> = ({
           </table>
         </div>
 
-        {filteredBranches.length === 0 && (
+        {branches.length === 0 && (
           <div className="p-20 text-center">
             <div className="w-20 h-20 bg-slate-800 rounded-3xl flex items-center justify-center text-slate-600 mx-auto mb-6 rotate-12">
               <Building2 size={40} />

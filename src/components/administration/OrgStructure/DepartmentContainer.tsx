@@ -1,3 +1,6 @@
+// src/components/administration/OrgStructure/DepartmentContainer.tsx
+// نسخة محدّثة - تقبل formData و onChange كـ props
+
 import { useApp } from "../../../../store";
 import {
   Building2,
@@ -7,12 +10,16 @@ import {
   Monitor,
   Hash,
 } from "lucide-react";
-import { useState } from "react";
 
-const DepartmentContainer: React.FC = () => {
-  const [formData, setFormData] = useState<any>({});
-  const [editingId, setEditingId] = useState<string | null>(null);
+interface Props {
+  formData: any;
+  onChange: (data: any) => void;
+}
+
+const DepartmentContainer: React.FC<Props> = ({ formData, onChange }) => {
+  const set = (key: string, value: any) => onChange({ ...formData, [key]: value });
   const { branches, departments } = useApp();
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div className="space-y-2">
@@ -24,13 +31,9 @@ const DepartmentContainer: React.FC = () => {
           className="w-full p-3 bg-slate-800 border border-white/5 rounded-xl outline-none focus:ring-2 focus:ring-red-600 text-white font-bold text-xs transition-all"
           placeholder="مثلاً: المطبخ الإيطالي"
           value={formData.nameAr || ""}
-          onChange={(e) =>
-            setFormData({
-              ...formData,
-              nameAr: e.target.value,
-              name: e.target.value,
-            })
-          }
+          onChange={(e) => {
+            onChange({ ...formData, nameAr: e.target.value, name: e.target.value });
+          }}
         />
       </div>
       <div className="space-y-2">
@@ -42,9 +45,7 @@ const DepartmentContainer: React.FC = () => {
           className="w-full p-3 bg-slate-800 border border-white/5 rounded-xl outline-none focus:ring-2 focus:ring-red-600 text-white font-bold text-xs transition-all"
           placeholder="مثلاً: ITA"
           value={formData.shortName || ""}
-          onChange={(e) =>
-            setFormData({ ...formData, shortName: e.target.value })
-          }
+          onChange={(e) => set("shortName", e.target.value)}
         />
       </div>
       <div className="space-y-2">
@@ -54,9 +55,7 @@ const DepartmentContainer: React.FC = () => {
         <select
           className="w-full p-3 bg-slate-800 border border-white/5 rounded-xl outline-none focus:ring-2 focus:ring-red-600 text-white font-bold text-xs transition-all appearance-none"
           value={formData.branchId || ""}
-          onChange={(e) =>
-            setFormData({ ...formData, branchId: e.target.value })
-          }
+          onChange={(e) => set("branchId", e.target.value)}
         >
           <option value="">اختر الفرع...</option>
           {branches.map((b) => (
@@ -73,16 +72,14 @@ const DepartmentContainer: React.FC = () => {
         <select
           className="w-full p-3 bg-slate-800 border border-white/5 rounded-xl outline-none focus:ring-2 focus:ring-red-600 text-white font-bold text-xs transition-all appearance-none"
           value={formData.parentId || ""}
-          onChange={(e) =>
-            setFormData({ ...formData, parentId: e.target.value })
-          }
+          onChange={(e) => set("parentId", e.target.value)}
         >
           <option value="">قسم رئيسي (بدون أب)</option>
           {departments
-            .filter((d) => d.id !== editingId)
+            .filter((d) => d.id !== formData.id)
             .map((d) => (
               <option key={d.id} value={d.id}>
-                {d.nameAr || d.name}
+                {(d as any).nameAr || d.name}
               </option>
             ))}
         </select>
@@ -97,9 +94,7 @@ const DepartmentContainer: React.FC = () => {
               type="checkbox"
               className="w-5 h-5 rounded-lg accent-red-600"
               checked={formData.hasKds || false}
-              onChange={(e) =>
-                setFormData({ ...formData, hasKds: e.target.checked })
-              }
+              onChange={(e) => set("hasKds", e.target.checked)}
             />
             <span className="text-xs font-bold text-white">تفعيل نظام KDS</span>
           </label>
@@ -112,7 +107,7 @@ const DepartmentContainer: React.FC = () => {
         <select
           className="w-full p-3 bg-slate-800 border border-white/5 rounded-xl outline-none focus:ring-2 focus:ring-red-600 text-white font-bold text-xs transition-all appearance-none"
           value={formData.type || "MAIN_KITCHEN"}
-          onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+          onChange={(e) => set("type", e.target.value)}
         >
           <option value="MAIN_KITCHEN">مطبخ رئيسي</option>
           <option value="FAST_FOOD">وجبات سريعة</option>
@@ -120,6 +115,9 @@ const DepartmentContainer: React.FC = () => {
           <option value="COLD_PREP">تحضير بارد</option>
           <option value="BAKERY">مخبوزات</option>
           <option value="DESSERT">حلويات</option>
+          <option value="sale">قسم مبيعات</option>
+          <option value="production">قسم إنتاج</option>
+          <option value="storage">قسم تخزين</option>
         </select>
       </div>
     </div>

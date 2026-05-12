@@ -7,7 +7,6 @@ const api = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
-// إضافة التوكن تلقائياً لكل طلب
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -18,9 +17,13 @@ export interface Department {
   id: number;
   name: string;
   nameAr?: string;
+  parent_id?: number | null;
+  parentId?: number | null;
   shortName?: string;
+  code?: string;
   icon?: string;
   color?: string;
+  startCode?: string;
   type?: string;
   status?: string;
   location?: string;
@@ -29,23 +32,75 @@ export interface Department {
   maxConcurrentOrders?: number;
   hasKds?: boolean;
   autoPrintTicket?: boolean;
-  displayOrder?: number;
-  priority?: number;
-  requiresAssembly?: boolean;
-  notifications?: { sound: boolean; flash: boolean; push: boolean };
-  orderTypeVisibility?: string[];
-  branchId?: string;
 }
+
+interface DepartmentApiResponse {
+  id: number;
+  name: string;
+  nameAr?: string;
+  name_ar?: string;
+  parent_id?: number | null;
+  parentId?: number | null;
+  shortName?: string;
+  short_name?: string;
+  code?: string | number;
+  icon?: string;
+  color?: string;
+  startCode?: string;
+  start_code?: string;
+  type?: string;
+  status?: string;
+  location?: string;
+  stationNumber?: string;
+  station_number?: string;
+  defaultPrepTime?: number;
+  default_prep_time?: number;
+  maxConcurrentOrders?: number;
+  max_concurrent_orders?: number;
+  hasKds?: boolean;
+  has_kds?: boolean;
+  autoPrintTicket?: boolean;
+  auto_print_ticket?: boolean;
+}
+
+const normalizeDepartment = (
+  department: DepartmentApiResponse,
+): Department => ({
+  id: department.id,
+  name: department.name,
+  nameAr: department.nameAr ?? department.name_ar,
+  parent_id: department.parent_id ?? department.parentId ?? null,
+  parentId: department.parentId ?? department.parent_id ?? null,
+  shortName: department.shortName ?? department.short_name,
+  code:
+    department.code === undefined || department.code === null
+      ? undefined
+      : String(department.code),
+  icon: department.icon,
+  color: department.color,
+  startCode: department.startCode ?? department.start_code,
+  type: department.type,
+  status: department.status,
+  location: department.location,
+  stationNumber: department.stationNumber ?? department.station_number,
+  defaultPrepTime:
+    department.defaultPrepTime ?? department.default_prep_time,
+  maxConcurrentOrders:
+    department.maxConcurrentOrders ?? department.max_concurrent_orders,
+  hasKds: department.hasKds ?? department.has_kds,
+  autoPrintTicket:
+    department.autoPrintTicket ?? department.auto_print_ticket,
+});
 
 export const departmentService = {
   getAll: async (): Promise<Department[]> => {
     const { data } = await api.get("/departments");
-    return data.data; // ← الباك يرجع { data: [...], message, status }
+    return (data.data as DepartmentApiResponse[]).map(normalizeDepartment);
   },
 
   create: async (payload: Omit<Department, "id">): Promise<Department> => {
     const { data } = await api.post("/departments", payload);
-    return data.data;
+    return normalizeDepartment(data.data as DepartmentApiResponse);
   },
 
   update: async (
@@ -53,7 +108,7 @@ export const departmentService = {
     payload: Partial<Department>,
   ): Promise<Department> => {
     const { data } = await api.put(`/departments/${id}`, payload);
-    return data.data;
+    return normalizeDepartment(data.data as DepartmentApiResponse);
   },
 
   delete: async (id: number): Promise<void> => {

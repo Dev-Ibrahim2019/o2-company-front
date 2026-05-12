@@ -16,8 +16,10 @@ export const useDepartments = () => {
       setLoading(true);
       setError(null);
       const data = await departmentService.getAll();
+      console.log("Fetched departments:", data);
       setDepartments(data);
-    } catch {
+    } catch (err) {
+      console.error("Error fetching departments:", err);
       setError("فشل تحميل الأقسام");
     } finally {
       setLoading(false);
