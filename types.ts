@@ -58,6 +58,8 @@ export interface MenuItem {
   offerEndDate?: Date;
   category: string;
   image: string;
+  /** Absolute URL when synced from API (prefer over `image` path). */
+  image_url?: string | null;
   description?: string;
   descriptionAr?: string;
   prepTime?: number; // ✅ optional (كان required)

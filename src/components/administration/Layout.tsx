@@ -2,22 +2,19 @@ import React, { useState, useEffect } from "react";
 import { useApp } from "../../../store";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ClipboardList,
-  Users,
   Power,
   Building2,
   LayoutDashboard,
   ChevronRight,
   ChevronLeft,
   Menu,
-  Activity,
   Settings,
   FileText,
-  Wallet,
   Package,
   Layers,
+  ListTree,
+  Table2,
   Users2,
-  Truck,
   Archive,
 } from "lucide-react";
 
@@ -154,14 +151,42 @@ export const AdminLayout: React.FC<{
             <SidebarItem
               icon={Package}
               label="إدارة الأصناف"
-              active={activeView === "finance_menu"}
+              active={
+                activeView === "finance_menu" ||
+                activeView === "finance_item_tree" ||
+                activeView === "finance_items_index"
+              }
               collapsed={!isSidebarOpen}
               onClick={() => {
-                setActiveView("finance_menu");
+                setActiveView("finance_item_tree");
                 if (window.innerWidth <= 1024) setIsSidebarOpen(false);
               }}
             />
-            <SidebarItem
+            {!isSidebarOpen ? null : (
+              <div className="mr-4 pr-3 border-r border-white/5 space-y-1">
+                <SidebarItem
+                  icon={ListTree}
+                  label="شجرة الأصناف"
+                  active={activeView === "finance_item_tree" || activeView === "finance_menu"}
+                  collapsed={!isSidebarOpen}
+                  onClick={() => {
+                    setActiveView("finance_item_tree");
+                    if (window.innerWidth <= 1024) setIsSidebarOpen(false);
+                  }}
+                />
+                <SidebarItem
+                  icon={Table2}
+                  label="فهرس الأصناف"
+                  active={activeView === "finance_items_index"}
+                  collapsed={!isSidebarOpen}
+                  onClick={() => {
+                    setActiveView("finance_items_index");
+                    if (window.innerWidth <= 1024) setIsSidebarOpen(false);
+                  }}
+                />
+              </div>
+            )}
+            {/* <SidebarItem
               icon={ClipboardList}
               label="إدارة الطلبات"
               active={activeView === "finance_orders"}
@@ -170,7 +195,7 @@ export const AdminLayout: React.FC<{
                 setActiveView("finance_orders");
                 if (window.innerWidth <= 1024) setIsSidebarOpen(false);
               }}
-            />
+            /> */}
             <SidebarItem
               icon={Users2}
               label="إدارة الموظفين"
@@ -181,7 +206,7 @@ export const AdminLayout: React.FC<{
                 if (window.innerWidth <= 1024) setIsSidebarOpen(false);
               }}
             />
-            <SidebarItem
+            {/* <SidebarItem
               icon={Users}
               label="إدارة العملاء"
               active={activeView === "finance_customers"}
@@ -210,7 +235,7 @@ export const AdminLayout: React.FC<{
                 setActiveView("finance_accounting");
                 if (window.innerWidth <= 1024) setIsSidebarOpen(false);
               }}
-            />
+            /> */}
             <SidebarItem
               icon={FileText}
               label="مركز التقارير"
@@ -221,7 +246,7 @@ export const AdminLayout: React.FC<{
                 if (window.innerWidth <= 1024) setIsSidebarOpen(false);
               }}
             />
-            <SidebarItem
+            {/* <SidebarItem
               icon={Activity}
               label="سجل التدقيق"
               active={activeView === "finance_audit"}
@@ -230,7 +255,7 @@ export const AdminLayout: React.FC<{
                 setActiveView("finance_audit");
                 if (window.innerWidth <= 1024) setIsSidebarOpen(false);
               }}
-            />
+            /> */}
             <SidebarItem
               icon={Archive}
               label="أرشيف العمليات"

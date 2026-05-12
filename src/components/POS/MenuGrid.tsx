@@ -1,12 +1,15 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { CATEGORIES } from '../../../constants';
+import { resolvePublicAssetUrl } from '../../services/itemService';
 
 interface MenuItem {
   id: string;
   nameAr: string;
   name: string;
   image: string;
+  /** Full URL from API when menu is loaded from backend */
+  image_url?: string | null;
   category: string;
   price: number;
   dineInPrice?: number;
@@ -60,7 +63,7 @@ export const MenuGrid: React.FC<MenuGridProps> = ({
           >
             <div className="aspect-square relative rounded-2xl overflow-hidden bg-slate-900 border border-white/5 group-hover:border-red-600/50 transition-all duration-300 shadow-lg">
               <img
-                src={item.image}
+                src={item.image_url || resolvePublicAssetUrl(item.image)}
                 alt={item.nameAr}
                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-in-out"
               />
