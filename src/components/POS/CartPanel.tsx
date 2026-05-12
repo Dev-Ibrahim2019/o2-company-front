@@ -1,7 +1,6 @@
 import React from 'react';
 import {
-  ShoppingCart, Plus, Trash2, CreditCard, Save, CheckCircle, Tag,
-  Wallet, Banknote, FileText,
+  ShoppingCart, Plus, Trash2, Save, CheckCircle, Tag, FileText,
 } from 'lucide-react';
 import { OrderType, OrderStatus, PaymentMethod } from '../../../types';
 
@@ -35,7 +34,6 @@ interface CartPanelProps {
   setDiscountValue: (val: number) => void;
   setDiscountType: (type: 'AMOUNT' | 'PERCENT') => void;
   paymentMethod: PaymentMethod;
-  setPaymentMethod: (method: PaymentMethod) => void;
   editingOrderId: string | null;
   editingQty: { [id: string]: string };
   editingNames: { [id: string]: string };
@@ -57,7 +55,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
   isCartOpen, setIsCartOpen, isHospitality, cartOrderType, setOrderType, currentCart,
   manualTable, handleTableInput, onViewTables, subtotal, calculatedDiscount,
   discountType, discountValue, total, invoiceNote, setInvoiceNote, editingDiscount,
-  setEditingDiscount, setDiscountValue, setDiscountType, paymentMethod, setPaymentMethod,
+  setEditingDiscount, setDiscountValue, setDiscountType, paymentMethod,
   editingOrderId, editingQty, editingNames, handleNameChange, handleQuantityChange,
   handleQuantityBlur, handleTotalChange, setEditingNames, removeFromCart,
   getItemCurrentPrice, setPosError, submitOrder, customerName, customerPhone,
@@ -249,27 +247,6 @@ export const CartPanel: React.FC<CartPanelProps> = ({
             />
           </div>
         </div>
-
-        {/* Payment Methods */}
-        {!isHospitality && (
-          <div className="grid grid-cols-3 gap-1.5">
-            {[
-              { method: PaymentMethod.CASH, icon: <Banknote size={14} />, label: 'كاش' },
-              { method: PaymentMethod.WALLET, icon: <Wallet size={14} />, label: 'تطبيق' },
-              { method: PaymentMethod.CREDIT_CARD, icon: <CreditCard size={14} />, label: 'بطاقة' },
-            ].map(({ method, icon, label }) => (
-              <button
-                key={method}
-                onClick={() => setPaymentMethod(method)}
-                className={`flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 py-2 rounded-xl border transition-all ${paymentMethod === method ? 'bg-red-600 border-red-600 text-white shadow-lg shadow-red-900/20' : 'bg-slate-900 border-white/5 text-slate-500'}`}
-              >
-                {icon}
-                <span className="text-[8px] sm:text-[9px] font-black">{label}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
         {/* Action Buttons */}
         <div className="grid grid-cols-2 gap-2 pt-1">
           {isHospitality ? (
@@ -316,3 +293,4 @@ export const CartPanel: React.FC<CartPanelProps> = ({
     </div>
   );
 };
+

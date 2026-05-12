@@ -15,7 +15,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { POSHeader } from './POSHeader';
 import { MenuGrid } from './MenuGrid';
 import { InvoiceInfoTab } from './InvoiceInfoTab';
-import { CustomerTab } from './CustomerTab';
+import { CustomerTab, type PaymentEntry } from './CustomerTab';
 import { CartPanel } from './CartPanel';
 import {
   CustomerSearchModal,
@@ -31,7 +31,7 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
   // ── Store (للحالات القديمة غير المنقولة بعد) ──────────────────────────────
   const {
     selectedTable, setSelectedTable, tables,
-    currentUser, userRole, customers, addCustomer, employees,
+    currentUser, userRole, customers, addCustomer, employees, suppliers,
   } = useApp();
 
   const isHospitality = userRole === 'HOSPITALITY';
@@ -41,7 +41,7 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
   const branchId: number = (currentUser as any)?.branch_id ?? (currentUser as any)?.branchId ?? 1;
 
   // ── Menu from API ─────────────────────────────────────────────────────────
-  const { categories, allItems, loading: menuLoading, findByCode } = useMenu(branchId);
+  const { categories, loading: menuLoading, findByCode } = useMenu(branchId);
 
   // ── Cart ──────────────────────────────────────────────────────────────────
   const {
@@ -82,6 +82,7 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
   const [discountType, setDiscountType] = useState<'AMOUNT' | 'PERCENT'>('AMOUNT');
   const [editingDiscount, setEditingDiscount] = useState<string>('0');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.CASH);
+  const [payments, setPayments] = useState<PaymentEntry[]>([]);
   const [cartOrderType, setCartOrderType] = useState<OrderType>(OrderType.DINE_IN);
   const [accountType, setAccountType] = useState<'ACCOUNT' | 'SUPPLIER' | 'EMPLOYEE'>('ACCOUNT');
   const [accountNumber, setAccountNumber] = useState('');
@@ -148,6 +149,8 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
     ? (subtotal * discountValue) / 100
     : discountValue;
   const total = Math.max(0, subtotal - calculatedDiscount);
+  const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
+  const remainingAmount = Math.max(0, total - totalPaid);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -158,6 +161,29 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
 
   const addToCart = (item: MenuItem | any, opts?: { quantity?: number; price?: number }) => {
     addToCartRaw(item, opts);
+  };
+
+  const addPayment = (method: PaymentMethod) => {
+    if (remainingAmount <= 0) return;
+    setPaymentMethod(method);
+    setPayments(prev => [...prev, { method, amount: remainingAmount }]);
+  };
+
+  const removePayment = (index: number) => {
+    setPayments(prev => {
+      const next = prev.filter((_, i) => i !== index);
+      setPaymentMethod(next[0]?.method ?? PaymentMethod.CASH);
+      return next;
+    });
+  };
+
+  const updatePaymentAmount = (index: number, val: string) => {
+    const amount = parseFloat(val) || 0;
+    setPayments(prev => prev.map((payment, i) => i === index ? { ...payment, amount } : payment));
+  };
+
+  const updatePaymentReference = (index: number, val: string) => {
+    setPayments(prev => prev.map((payment, i) => i === index ? { ...payment, reference: val } : payment));
   };
 
   const handleTableInput = (val: string) => {
@@ -251,10 +277,13 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
       status === OrderStatus.CONFIRMED ||
       isHospitality;   // الضيافة تأكد مباشرة
 
+    const selectedPaymentMethod = payments[0]?.method ?? method;
     const paymentMap: Record<PaymentMethod, 'cash' | 'credit_card' | 'wallet'> = {
       [PaymentMethod.CASH]: 'cash',
       [PaymentMethod.CREDIT_CARD]: 'credit_card',
       [PaymentMethod.WALLET]: 'wallet',
+      [PaymentMethod.QR]: 'credit_card',
+      [PaymentMethod.ONLINE]: 'credit_card',
     };
 
     const result = await submitOrderApi(
@@ -268,7 +297,7 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
         note: meta.note || undefined,
         discount_value: discountValue || undefined,
         discount_type: discountType === 'PERCENT' ? 'percent' : 'amount',
-        payment_method: paymentMap[method],
+        payment_method: paymentMap[selectedPaymentMethod],
       },
       shouldConfirm
     );
@@ -280,6 +309,8 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
       setManualTable('');
       setCustomerName('');
       setCustomerPhone('');
+      setPayments([]);
+      setPaymentMethod(PaymentMethod.CASH);
       setShowCustomerModal(false);
     }
   };
@@ -295,7 +326,7 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
     subtotal, calculatedDiscount, discountType, discountValue, total,
     invoiceNote, setInvoiceNote,
     editingDiscount, setEditingDiscount, setDiscountValue, setDiscountType,
-    paymentMethod, setPaymentMethod,
+    paymentMethod,
     editingOrderId,
     editingQty, editingNames,
     handleNameChange,
@@ -381,6 +412,16 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
               accountType={accountType} setAccountType={setAccountType}
               accountNumber={accountNumber} setAccountNumber={setAccountNumber}
               setShowSearchModal={setShowSearchModal}
+              customers={customers ?? []}
+              suppliers={suppliers ?? []}
+              employees={employees ?? []}
+              isHospitality={isHospitality}
+              total={total}
+              payments={payments}
+              addPayment={addPayment}
+              removePayment={removePayment}
+              updatePaymentAmount={updatePaymentAmount}
+              updatePaymentReference={updatePaymentReference}
             />
           )}
         </div>

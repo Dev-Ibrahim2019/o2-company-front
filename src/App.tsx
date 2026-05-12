@@ -12,8 +12,6 @@ import { ShiftView } from "./components/POS/Shift";
 import { AccountingPortal } from "./components/administration/GL/AccountingPortal";
 // import api from "./api/axios";
 
-import { AdminLayout } from "../src/components/administration/Layout"; // افتراض وجود هذا المكون
-
 const Main: React.FC = () => {
   const { currentUser, currentShift, userRole, editingOrderId } = useApp();
   const [activeView, setActiveView] = useState('finance_dashboard');
