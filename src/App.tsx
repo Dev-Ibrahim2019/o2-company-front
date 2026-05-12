@@ -12,8 +12,6 @@ import { ShiftView } from "./components/POS/Shift";
 import { AccountingPortal } from "./components/administration/GL/AccountingPortal";
 // import api from "./api/axios";
 
-import { AdminLayout } from "../src/components/administration/Layout"; // افتراض وجود هذا المكون
-
 const Main: React.FC = () => {
   const { currentUser, currentShift, userRole, editingOrderId } = useApp();
   const [activeView, setActiveView] = useState('finance_dashboard');
@@ -106,6 +104,8 @@ const Main: React.FC = () => {
       case 'finance_branches': return <FinancePortal key="f_branches" initialView="BRANCHES" />;
       case 'finance_departments': return <FinancePortal key="f_depts" initialView="DEPARTMENTS" />;
       case 'finance_menu': return <FinancePortal key="f_menu" initialView="MENU" />;
+      case 'finance_item_tree': return <FinancePortal key="f_item_tree" initialView="ITEM_TREE" />;
+      case 'finance_items_index': return <FinancePortal key="f_items_index" initialView="ITEMS_INDEX" />;
       case 'finance_orders': return <FinancePortal key="f_orders" initialView="ORDERS" />;
       case 'finance_customers': return <FinancePortal key="f_cust" initialView="CUSTOMERS" />;
       case 'finance_suppliers': return <FinancePortal key="f_supp" initialView="SUPPLIERS" />;

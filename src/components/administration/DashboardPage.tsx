@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { resolvePublicAssetUrl } from '../../services/itemService';
 import { useApp } from '../../../store';
 import { OrderStatus, OrderType, PaymentMethod } from '../../../types';
 import { 
@@ -334,7 +335,11 @@ const DashboardPage = () =>   {
               {menuItems.slice(0, 5).map((item, idx) => (
                 <div key={item.id} className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-slate-800 overflow-hidden shrink-0">
-                    <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                    <img
+                      src={item.image_url || resolvePublicAssetUrl(item.image)}
+                      alt={item.name}
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-white truncate">{item.name}</p>
