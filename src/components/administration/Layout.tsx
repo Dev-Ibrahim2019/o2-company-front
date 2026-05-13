@@ -16,6 +16,11 @@ import {
   Table2,
   Users2,
   Archive,
+  BookOpen,
+  Receipt,
+  Wallet,
+  Banknote,
+  ChevronDown,
 } from "lucide-react";
 
 interface SidebarItemProps {
@@ -24,6 +29,7 @@ interface SidebarItemProps {
   active?: boolean;
   collapsed?: boolean;
   onClick: () => void;
+  indent?: boolean;
 }
 
 const SidebarItem: React.FC<SidebarItemProps> = ({
@@ -32,6 +38,7 @@ const SidebarItem: React.FC<SidebarItemProps> = ({
   active,
   collapsed,
   onClick,
+  indent = false,
 }) => (
   <button
     onClick={onClick}
@@ -39,9 +46,9 @@ const SidebarItem: React.FC<SidebarItemProps> = ({
     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${active
         ? "bg-red-600 text-white shadow-lg shadow-red-900/30"
         : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-      } ${collapsed ? "justify-center px-0" : ""}`}
+      } ${collapsed ? "justify-center px-0" : ""} ${indent && !collapsed ? "pr-7" : ""}`}
   >
-    <Icon size={20} />
+    <Icon size={indent ? 16 : 20} />
     {!collapsed && (
       <span className="font-semibold text-sm whitespace-nowrap overflow-hidden">
         {label}
@@ -49,6 +56,79 @@ const SidebarItem: React.FC<SidebarItemProps> = ({
     )}
   </button>
 );
+
+interface SidebarGroupProps {
+  icon: React.ElementType;
+  label: string;
+  collapsed?: boolean;
+  active?: boolean;
+  children: React.ReactNode;
+}
+
+const SidebarGroup: React.FC<SidebarGroupProps> = ({
+  icon: Icon,
+  label,
+  collapsed,
+  active,
+  children,
+}) => {
+  const [open, setOpen] = useState(active);
+
+  useEffect(() => {
+    if (active) setOpen(true);
+  }, [active]);
+
+  if (collapsed) {
+    return (
+      <div className="space-y-1">
+        <button
+          title={label}
+          className={`w-full flex items-center justify-center px-0 py-3 rounded-xl transition-all duration-200 ${active
+              ? "bg-red-600/20 text-red-400"
+              : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+            }`}
+          onClick={() => setOpen(!open)}
+        >
+          <Icon size={20} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      <button
+        onClick={() => setOpen(!open)}
+        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${active
+            ? "bg-red-600/20 text-red-300"
+            : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+          }`}
+      >
+        <Icon size={20} />
+        <span className="font-semibold text-sm whitespace-nowrap overflow-hidden flex-1 text-right">
+          {label}
+        </span>
+        <ChevronDown
+          size={14}
+          className={`transition-transform shrink-0 ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden mr-4 pr-3 border-r border-white/5 space-y-1"
+          >
+            {children}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
 
 export const AdminLayout: React.FC<{
   children: React.ReactNode;
@@ -65,6 +145,17 @@ export const AdminLayout: React.FC<{
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  const nav = (view: string) => {
+    setActiveView(view);
+    if (window.innerWidth <= 1024) setIsSidebarOpen(false);
+  };
+
+  const isAccountingActive = activeView.startsWith("accounting_");
+  const isItemsActive =
+    activeView === "finance_menu" ||
+    activeView === "finance_item_tree" ||
+    activeView === "finance_items_index";
 
   return (
     <div
@@ -90,6 +181,7 @@ export const AdminLayout: React.FC<{
             : "w-64 translate-x-full lg:w-20 lg:translate-x-0"
           }`}
       >
+        {/* Logo */}
         <div
           className={`mb-8 flex items-center gap-3 ${!isSidebarOpen ? "justify-center" : "px-4"}`}
         >
@@ -103,196 +195,169 @@ export const AdminLayout: React.FC<{
           )}
         </div>
 
+        {/* Collapse toggle */}
         <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           className="absolute -left-3 top-20 w-6 h-6 bg-red-600 rounded-full hidden lg:flex items-center justify-center text-white shadow-lg hover:scale-110 transition-transform z-50"
         >
-          {isSidebarOpen ? (
-            <ChevronRight size={14} />
-          ) : (
-            <ChevronLeft size={14} />
-          )}
+          {isSidebarOpen ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
 
+        {/* Nav */}
         <nav className="flex-1 space-y-1.5 overflow-y-auto custom-scrollbar">
-          <>
+          <SidebarItem
+            icon={LayoutDashboard}
+            label="لوحة المعلومات"
+            active={activeView === "finance_dashboard"}
+            collapsed={!isSidebarOpen}
+            onClick={() => nav("finance_dashboard")}
+          />
+          <SidebarItem
+            icon={Building2}
+            label="إدارة الأفرع"
+            active={activeView === "finance_branches"}
+            collapsed={!isSidebarOpen}
+            onClick={() => nav("finance_branches")}
+          />
+          <SidebarItem
+            icon={Layers}
+            label="إدارة الأقسام"
+            active={activeView === "finance_departments"}
+            collapsed={!isSidebarOpen}
+            onClick={() => nav("finance_departments")}
+          />
+
+          {/* Items group */}
+          <SidebarGroup
+            icon={Package}
+            label="إدارة الأصناف"
+            collapsed={!isSidebarOpen}
+            active={isItemsActive}
+          >
             <SidebarItem
-              icon={LayoutDashboard}
-              label="لوحة المعلومات"
-              active={activeView === "finance_dashboard"}
-              collapsed={!isSidebarOpen}
-              onClick={() => {
-                setActiveView("finance_dashboard");
-                if (window.innerWidth <= 1024) setIsSidebarOpen(false);
-              }}
-            />
-            <SidebarItem
-              icon={Building2}
-              label="إدارة الأفرع"
-              active={activeView === "finance_branches"}
-              collapsed={!isSidebarOpen}
-              onClick={() => {
-                setActiveView("finance_branches");
-                if (window.innerWidth <= 1024) setIsSidebarOpen(false);
-              }}
-            />
-            <SidebarItem
-              icon={Layers}
-              label="إدارة الأقسام"
-              active={activeView === "finance_departments"}
-              collapsed={!isSidebarOpen}
-              onClick={() => {
-                setActiveView("finance_departments");
-                if (window.innerWidth <= 1024) setIsSidebarOpen(false);
-              }}
-            />
-            <SidebarItem
-              icon={Package}
-              label="إدارة الأصناف"
+              icon={ListTree}
+              label="شجرة الأصناف"
               active={
-                activeView === "finance_menu" ||
                 activeView === "finance_item_tree" ||
-                activeView === "finance_items_index"
+                activeView === "finance_menu"
               }
               collapsed={!isSidebarOpen}
-              onClick={() => {
-                setActiveView("finance_item_tree");
-                if (window.innerWidth <= 1024) setIsSidebarOpen(false);
-              }}
-            />
-            {!isSidebarOpen ? null : (
-              <div className="mr-4 pr-3 border-r border-white/5 space-y-1">
-                <SidebarItem
-                  icon={ListTree}
-                  label="شجرة الأصناف"
-                  active={activeView === "finance_item_tree" || activeView === "finance_menu"}
-                  collapsed={!isSidebarOpen}
-                  onClick={() => {
-                    setActiveView("finance_item_tree");
-                    if (window.innerWidth <= 1024) setIsSidebarOpen(false);
-                  }}
-                />
-                <SidebarItem
-                  icon={Table2}
-                  label="فهرس الأصناف"
-                  active={activeView === "finance_items_index"}
-                  collapsed={!isSidebarOpen}
-                  onClick={() => {
-                    setActiveView("finance_items_index");
-                    if (window.innerWidth <= 1024) setIsSidebarOpen(false);
-                  }}
-                />
-              </div>
-            )}
-            {/* <SidebarItem
-              icon={ClipboardList}
-              label="إدارة الطلبات"
-              active={activeView === "finance_orders"}
-              collapsed={!isSidebarOpen}
-              onClick={() => {
-                setActiveView("finance_orders");
-                if (window.innerWidth <= 1024) setIsSidebarOpen(false);
-              }}
-            /> */}
-            <SidebarItem
-              icon={Users2}
-              label="إدارة الموظفين"
-              active={activeView === "finance_employees"}
-              collapsed={!isSidebarOpen}
-              onClick={() => {
-                setActiveView("finance_employees");
-                if (window.innerWidth <= 1024) setIsSidebarOpen(false);
-              }}
-            />
-            {/* <SidebarItem
-              icon={Users}
-              label="إدارة العملاء"
-              active={activeView === "finance_customers"}
-              collapsed={!isSidebarOpen}
-              onClick={() => {
-                setActiveView("finance_customers");
-                if (window.innerWidth <= 1024) setIsSidebarOpen(false);
-              }}
+              indent
+              onClick={() => nav("finance_item_tree")}
             />
             <SidebarItem
-              icon={Truck}
-              label="إدارة الموردين"
-              active={activeView === "finance_suppliers"}
+              icon={Table2}
+              label="فهرس الأصناف"
+              active={activeView === "finance_items_index"}
               collapsed={!isSidebarOpen}
-              onClick={() => {
-                setActiveView("finance_suppliers");
-                if (window.innerWidth <= 1024) setIsSidebarOpen(false);
-              }}
+              indent
+              onClick={() => nav("finance_items_index")}
+            />
+          </SidebarGroup>
+
+          <SidebarItem
+            icon={Users2}
+            label="إدارة الموظفين"
+            active={activeView === "finance_employees"}
+            collapsed={!isSidebarOpen}
+            onClick={() => nav("finance_employees")}
+          />
+
+          {/* Accounting group */}
+          <SidebarGroup
+            icon={BookOpen}
+            label="المحاسبة والمالية"
+            collapsed={!isSidebarOpen}
+            active={isAccountingActive}
+          >
+            <SidebarItem
+              icon={LayoutDashboard}
+              label="الرئيسية المالية"
+              active={activeView === "accounting_dashboard"}
+              collapsed={!isSidebarOpen}
+              indent
+              onClick={() => nav("accounting_dashboard")}
+            />
+            <SidebarItem
+              icon={BookOpen}
+              label="المحاسبة العامة"
+              active={activeView === "accounting_gl"}
+              collapsed={!isSidebarOpen}
+              indent
+              onClick={() => nav("accounting_gl")}
+            />
+            <SidebarItem
+              icon={Receipt}
+              label="حسابات العملاء"
+              active={activeView === "accounting_ar"}
+              collapsed={!isSidebarOpen}
+              indent
+              onClick={() => nav("accounting_ar")}
             />
             <SidebarItem
               icon={Wallet}
-              label="المحاسبة والمالية"
-              active={activeView === "finance_accounting"}
+              label="حسابات الموردين"
+              active={activeView === "accounting_ap"}
               collapsed={!isSidebarOpen}
-              onClick={() => {
-                setActiveView("finance_accounting");
-                if (window.innerWidth <= 1024) setIsSidebarOpen(false);
-              }}
-            /> */}
-            <SidebarItem
-              icon={FileText}
-              label="مركز التقارير"
-              active={activeView === "finance_reports"}
-              collapsed={!isSidebarOpen}
-              onClick={() => {
-                setActiveView("finance_reports");
-                if (window.innerWidth <= 1024) setIsSidebarOpen(false);
-              }}
-            />
-            {/* <SidebarItem
-              icon={Activity}
-              label="سجل التدقيق"
-              active={activeView === "finance_audit"}
-              collapsed={!isSidebarOpen}
-              onClick={() => {
-                setActiveView("finance_audit");
-                if (window.innerWidth <= 1024) setIsSidebarOpen(false);
-              }}
-            /> */}
-            <SidebarItem
-              icon={Archive}
-              label="أرشيف العمليات"
-              active={activeView === "finance_archive"}
-              collapsed={!isSidebarOpen}
-              onClick={() => {
-                setActiveView("finance_archive");
-                if (window.innerWidth <= 1024) setIsSidebarOpen(false);
-              }}
+              indent
+              onClick={() => nav("accounting_ap")}
             />
             <SidebarItem
-              icon={Settings}
-              label="الإعدادات العامة"
-              active={activeView === "finance_settings"}
+              icon={Banknote}
+              label="النقدية والبنوك"
+              active={activeView === "accounting_cash"}
               collapsed={!isSidebarOpen}
-              onClick={() => {
-                setActiveView("finance_settings");
-                if (window.innerWidth <= 1024) setIsSidebarOpen(false);
-              }}
+              indent
+              onClick={() => nav("accounting_cash")}
             />
             <SidebarItem
-              icon={Building2}
-              label="الهيكل التنظيمي"
-              active={activeView === "finance_orgstructure"}
+              icon={Users2}
+              label="الموظفون والمرتبات"
+              active={activeView === "accounting_hr"}
               collapsed={!isSidebarOpen}
-              onClick={() => {
-                setActiveView("finance_orgstructure");
-                if (window.innerWidth <= 1024) setIsSidebarOpen(false);
-              }}
+              indent
+              onClick={() => nav("accounting_hr")}
             />
-          </>
+          </SidebarGroup>
+
+          <SidebarItem
+            icon={FileText}
+            label="مركز التقارير"
+            active={activeView === "finance_reports"}
+            collapsed={!isSidebarOpen}
+            onClick={() => nav("finance_reports")}
+          />
+          <SidebarItem
+            icon={Archive}
+            label="أرشيف العمليات"
+            active={activeView === "finance_archive"}
+            collapsed={!isSidebarOpen}
+            onClick={() => nav("finance_archive")}
+          />
+          <SidebarItem
+            icon={Settings}
+            label="الإعدادات العامة"
+            active={activeView === "finance_settings"}
+            collapsed={!isSidebarOpen}
+            onClick={() => nav("finance_settings")}
+          />
+          <SidebarItem
+            icon={Building2}
+            label="الهيكل التنظيمي"
+            active={activeView === "finance_orgstructure"}
+            collapsed={!isSidebarOpen}
+            onClick={() => nav("finance_orgstructure")}
+          />
         </nav>
 
+        {/* Footer */}
         <div className="mt-auto border-t border-white/5 pt-4 space-y-2">
           <div
-            className={`px-4 py-2 transition-all duration-300 ${!isSidebarOpen && "lg:opacity-0 lg:w-0 lg:overflow-hidden"}`}
+            className={`px-4 py-2 transition-all duration-300 ${!isSidebarOpen && "lg:opacity-0 lg:w-0 lg:overflow-hidden"
+              }`}
           >
             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest truncate">
-              {"الإدارة العامة"}
+              الإدارة العامة
             </p>
             <p className="text-sm font-black text-slate-100 truncate">
               {currentUser?.name}
@@ -301,11 +366,13 @@ export const AdminLayout: React.FC<{
           <button
             onClick={logout}
             title={!isSidebarOpen ? "تسجيل الخروج" : undefined}
-            className={`w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors ${!isSidebarOpen ? "lg:justify-center lg:px-0" : ""}`}
+            className={`w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors ${!isSidebarOpen ? "lg:justify-center lg:px-0" : ""
+              }`}
           >
             <Power size={20} />
             <span
-              className={`font-semibold text-sm transition-all duration-300 ${!isSidebarOpen && "lg:opacity-0 lg:w-0 lg:overflow-hidden"}`}
+              className={`font-semibold text-sm transition-all duration-300 ${!isSidebarOpen && "lg:opacity-0 lg:w-0 lg:overflow-hidden"
+                }`}
             >
               تسجيل الخروج
             </span>
@@ -313,8 +380,10 @@ export const AdminLayout: React.FC<{
         </div>
       </aside>
 
+      {/* Main content */}
       <main
-        className={`flex-1 h-full overflow-hidden transition-all duration-300 ${isSidebarOpen ? "lg:mr-64" : "lg:mr-20"}`}
+        className={`flex-1 h-full overflow-hidden transition-all duration-300 ${isSidebarOpen ? "lg:mr-64" : "lg:mr-20"
+          }`}
       >
         <div className="h-full flex flex-col">
           <header className="lg:hidden p-4 flex items-center justify-between border-b border-white/5 bg-slate-900/50">
