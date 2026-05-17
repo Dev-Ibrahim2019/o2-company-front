@@ -146,13 +146,13 @@ export const LedgerFilterBar: React.FC<LedgerFilterBarProps> = ({
     {(["RANGE", "SPECIFIC", "BEFORE", "AFTER"] as LedgerFilterType[]).includes(
       filter.type,
     ) && (
-      <input
-        type="date"
-        value={filter.startDate || ""}
-        onChange={(e) => onChange({ ...filter, startDate: e.target.value })}
-        className="bg-slate-900 border border-white/5 text-white text-[10px] font-black p-2 rounded-xl"
-      />
-    )}
+        <input
+          type="date"
+          value={filter.startDate || ""}
+          onChange={(e) => onChange({ ...filter, startDate: e.target.value })}
+          className="bg-slate-900 border border-white/5 text-white text-[10px] font-black p-2 rounded-xl"
+        />
+      )}
     {filter.type === "RANGE" && (
       <input
         type="date"
@@ -217,13 +217,12 @@ export const COATree: React.FC<COATreeProps> = ({
                 if (hasChildren) toggleNode(account.id, e);
                 setSelectedAccountId(account.id);
               }}
-              className={`group flex items-center justify-between p-2.5 sm:p-3 rounded-2xl border transition-all cursor-pointer mb-2 relative ${
-                selectedAccountId === account.id
-                  ? "bg-red-600/20 border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.1)]"
-                  : account.isPosting
-                    ? "bg-slate-900/40 border-white/5 hover:border-red-500/20"
-                    : "bg-slate-800/40 border-white/10 font-black text-slate-300 hover:bg-slate-800/60"
-              }`}
+              className={`group flex items-center justify-between p-2.5 sm:p-3 rounded-2xl border transition-all cursor-pointer mb-2 relative ${selectedAccountId === account.id
+                ? "bg-red-600/20 border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.1)]"
+                : account.isPosting
+                  ? "bg-slate-900/40 border-white/5 hover:border-red-500/20"
+                  : "bg-slate-800/40 border-white/10 font-black text-slate-300 hover:bg-slate-800/60"
+                }`}
               style={{ marginRight: depth * 24 }}
             >
               {depth > 0 && (

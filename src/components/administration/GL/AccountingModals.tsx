@@ -1,3 +1,9 @@
+/**
+ * AccountingModals.tsx  –  النسخة المحدّثة
+ * إضافة: AddCostCenterModal + EditCostCenterModal
+ * الباقي: نفس الكود الأصلي بدون تغيير
+ */
+
 import React, { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Plus, Download, CheckCircle2, AlertCircle, Trash2 } from 'lucide-react';
@@ -372,7 +378,6 @@ export const ViewJournalModal: React.FC<{
   return (
     <ModalWrapper onClose={onClose} wide>
       <div className="p-7">
-        {/* Header */}
         <div className="flex items-start justify-between mb-6">
           <div className="text-right">
             <div className="flex items-center gap-2 mb-1">
@@ -389,13 +394,11 @@ export const ViewJournalModal: React.FC<{
           </div>
         </div>
 
-        {/* Description */}
         <div className="bg-slate-950/60 border border-white/5 rounded-2xl px-5 py-4 mb-5 text-right">
           <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1">البيان العام</p>
           <p className="text-sm font-black text-white">{entry.description}</p>
         </div>
 
-        {/* Lines table */}
         <div className="bg-slate-950/40 border border-white/5 rounded-2xl overflow-hidden mb-5">
           <table className="w-full text-right text-xs">
             <thead className="bg-white/5 border-b border-white/5">
@@ -454,6 +457,212 @@ export const ViewJournalModal: React.FC<{
           </button>
           <button className="flex items-center gap-2 px-6 py-2.5 bg-white/5 border border-white/5 text-slate-400 hover:text-white rounded-2xl font-black text-sm transition-all">
             <Download size={15} /> طباعة القيد
+          </button>
+        </div>
+      </div>
+    </ModalWrapper>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ─── AddCostCenterModal  (جديد) ───────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface CostCenterForm {
+  id?: string | number;
+  nameAr?: string;
+  name?: string;
+  code?: string;
+  type?: string;
+  parentId?: string | number | null;
+  is_active?: boolean;
+  notes?: string;
+}
+
+interface CostCenterOption2 { id: string; nameAr: string; code?: string }
+
+const COST_CENTER_TYPES = [
+  { value: 'operational', label: 'تشغيلي' },
+  { value: 'administrative', label: 'إداري' },
+  { value: 'service', label: 'خدمي' },
+  { value: 'production', label: 'إنتاجي' },
+];
+
+const CostCenterFormFields: React.FC<{
+  form: CostCenterForm;
+  setForm: (f: CostCenterForm) => void;
+  costCenters: CostCenterOption2[];
+  excludeId?: string | number;
+}> = ({ form, setForm, costCenters, excludeId }) => {
+  const parents = costCenters.filter(cc => String(cc.id) !== String(excludeId));
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <FieldLabel>اسم مركز التكلفة</FieldLabel>
+          <input
+            type="text"
+            value={form.nameAr || form.name || ''}
+            onChange={e => setForm({ ...form, nameAr: e.target.value, name: e.target.value })}
+            className={inputCls}
+            placeholder="مثال: فرع رام الله"
+          />
+        </div>
+        <div>
+          <FieldLabel>الكود (اختياري)</FieldLabel>
+          <input
+            type="text"
+            value={form.code || ''}
+            onChange={e => setForm({ ...form, code: e.target.value })}
+            className={inputCls}
+            placeholder="مثال: CC-001"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <FieldLabel>النوع</FieldLabel>
+          <select
+            value={(form.type || 'operational').toLowerCase()}
+            onChange={e => setForm({ ...form, type: e.target.value })}
+            className={selectCls}
+          >
+            {COST_CENTER_TYPES.map(t => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <FieldLabel>الحالة</FieldLabel>
+          <select
+            value={form.is_active !== false ? 'active' : 'inactive'}
+            onChange={e => setForm({ ...form, is_active: e.target.value === 'active' })}
+            className={selectCls}
+          >
+            <option value="active">نشط</option>
+            <option value="inactive">غير نشط</option>
+          </select>
+        </div>
+      </div>
+
+      {parents.length > 0 && (
+        <div>
+          <FieldLabel>المركز الأب (اختياري)</FieldLabel>
+          <select
+            value={form.parentId ? String(form.parentId) : ''}
+            onChange={e => setForm({ ...form, parentId: e.target.value || null })}
+            className={selectCls}
+          >
+            <option value="">— بلا مركز أب —</option>
+            {parents.map(cc => (
+              <option key={cc.id} value={cc.id}>
+                {cc.code ? `${cc.code} – ` : ''}{cc.nameAr}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      <div>
+        <FieldLabel>ملاحظات (اختياري)</FieldLabel>
+        <textarea
+          value={form.notes || ''}
+          onChange={e => setForm({ ...form, notes: e.target.value })}
+          rows={2}
+          className={inputCls + ' resize-none'}
+          placeholder="أي ملاحظات إضافية..."
+        />
+      </div>
+    </div>
+  );
+};
+
+export const AddCostCenterModal: React.FC<{
+  form: CostCenterForm;
+  setForm: (f: CostCenterForm) => void;
+  costCenters: CostCenterOption2[];
+  onSave: () => void;
+  onClose: () => void;
+}> = ({ form, setForm, costCenters, onSave, onClose }) => {
+  const isValid = !!(form.nameAr || form.name);
+
+  return (
+    <ModalWrapper onClose={onClose}>
+      <div className="p-7">
+        <div className="mb-6">
+          <h3 className="text-xl font-black text-white">إضافة مركز تكلفة</h3>
+          <p className="text-[11px] text-slate-500 mt-1">إنشاء مركز تكلفة جديد لتتبع التدفقات المالية</p>
+        </div>
+
+        <CostCenterFormFields form={form} setForm={setForm} costCenters={costCenters} />
+
+        <div className="mt-6 flex gap-3">
+          <button
+            onClick={onSave}
+            disabled={!isValid}
+            className={`flex-1 py-3 rounded-2xl font-black text-sm transition-all shadow-xl ${isValid
+              ? 'bg-red-600 text-white hover:bg-red-700 shadow-red-900/20 active:scale-[0.98]'
+              : 'bg-slate-800 text-slate-600 cursor-not-allowed'
+              }`}
+          >
+            حفظ مركز التكلفة
+          </button>
+          <button
+            onClick={onClose}
+            className="px-6 py-3 bg-white/5 border border-white/5 text-slate-400 hover:text-white rounded-2xl font-black text-sm transition-all"
+          >
+            إلغاء
+          </button>
+        </div>
+      </div>
+    </ModalWrapper>
+  );
+};
+
+// ─── EditCostCenterModal  (جديد) ──────────────────────────────────────────
+
+export const EditCostCenterModal: React.FC<{
+  form: CostCenterForm;
+  setForm: (f: CostCenterForm) => void;
+  costCenters: CostCenterOption2[];
+  onSave: () => void;
+  onClose: () => void;
+}> = ({ form, setForm, costCenters, onSave, onClose }) => {
+  const isValid = !!(form.nameAr || form.name);
+
+  return (
+    <ModalWrapper onClose={onClose}>
+      <div className="p-7">
+        <div className="mb-6">
+          <h3 className="text-xl font-black text-white">تعديل مركز التكلفة</h3>
+          <p className="text-[11px] text-slate-500 mt-1">تحديث بيانات مركز التكلفة</p>
+        </div>
+
+        <CostCenterFormFields
+          form={form}
+          setForm={setForm}
+          costCenters={costCenters}
+          excludeId={form.id}
+        />
+
+        <div className="mt-6 flex gap-3">
+          <button
+            onClick={onSave}
+            disabled={!isValid}
+            className={`flex-1 py-3 rounded-2xl font-black text-sm transition-all shadow-xl ${isValid
+              ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-900/20 active:scale-[0.98]'
+              : 'bg-slate-800 text-slate-600 cursor-not-allowed'
+              }`}
+          >
+            حفظ التغييرات
+          </button>
+          <button
+            onClick={onClose}
+            className="px-6 py-3 bg-white/5 border border-white/5 text-slate-400 hover:text-white rounded-2xl font-black text-sm transition-all"
+          >
+            إلغاء
           </button>
         </div>
       </div>
