@@ -1,13 +1,11 @@
 /**
- * AccountingPortal.tsx  –  النسخة المحدّثة
+ * AccountingPortal.tsx — النسخة الكاملة المُصلحة
  *
- * التغييرات الجوهرية:
- *  1. استبدال useApp() بـ useAccounting() للاتصال الحقيقي بالـ API
- *  2. تحويل handleSaveCOA / handleEditCOA / handleSaveJournal لاستدعاء API
- *  3. إضافة modal إضافة وتعديل مركز التكلفة (ADD_COST_CENTER / EDIT_COST_CENTER)
- *  4. تمرير accountTree (شجرة) + accounts (مسطحة) للمكوّنات المناسبة
- *  5. تمرير دوال fetchLedger / ledger لعرض كشف الحساب الحقيقي
- *  6. إدارة حالة التحميل والأخطاء مركزياً
+ * الإصلاحات:
+ * 1. زر Maximize → داخلي في AccountDetailPanel (لا يغير glSubTab)
+ * 2. جلب الـ Ledger من API عند تحديد حساب حركي
+ * 3. توليد كود الحساب تلقائياً من الباك عند فتح modal الإضافة
+ * 4. تمرير ledgerLines + loadingLedger + openingBalance لـ AccountDetailPanel
  */
 
 import React, { useState, useMemo, useEffect, useCallback } from "react";
@@ -18,9 +16,8 @@ import {
 } from "lucide-react";
 
 import { useAccounting } from "../../../hooks/useAccounting";
-import type {
-  Account, Transaction, CostCenter,
-} from "../../../services/accountingService";
+import { accountService } from "../../../services/accountingService";
+import type { Account, Transaction, CostCenter, LedgerLineItem as ApiLedgerLine } from "../../../services/accountingService";
 
 import { AccountingDashboard } from "./AccountingDashboard";
 import { EmployeesTab } from "./EmployeesTab";
@@ -30,7 +27,7 @@ import {
   AccountDetailPanel,
   AccountEmptyState,
 } from "./COAComponents";
-import type { LedgerFilter } from "./COAComponents";
+import type { LedgerFilter, LedgerLineItem } from "./COAComponents";
 import { ARTab, APTab, CashBankTab } from "./ARAPCashTabs";
 import {
   AddCOAModal,
@@ -56,9 +53,8 @@ type ModalType =
   | "EDIT_COST_CENTER"
   | null;
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── تحويل الأنواع ───────────────────────────────────────────────────────────
 
-/** تحويل Account (API) → تنسيق COAWithRollup المتوقع من COAComponents */
 function toCoaShape(acc: Account) {
   return {
     id: String(acc.id),
@@ -77,7 +73,6 @@ function toCoaShape(acc: Account) {
   };
 }
 
-/** تحويل Transaction (API) → تنسيق JournalEntry المتوقع من GLSubViews */
 function toJournalShape(tx: Transaction) {
   return {
     id: String(tx.id),
@@ -94,7 +89,6 @@ function toJournalShape(tx: Transaction) {
   };
 }
 
-/** تحويل CostCenter (API) → تنسيق متوقع من CostCentersView */
 function toCostCenterShape(cc: CostCenter) {
   return {
     id: String(cc.id),
@@ -133,26 +127,28 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
   // ── ledger filter ─────────────────────────────────────────────────────────
   const [ledgerFilter, setLedgerFilter] = useState<LedgerFilter>({ type: "ALL" });
 
+  // ✅ Ledger data من API مباشرة
+  const [ledgerLines, setLedgerLines] = useState<LedgerLineItem[]>([]);
+  const [ledgerOpeningBalance, setLedgerOpeningBalance] = useState(0);
+  const [loadingLedger, setLoadingLedger] = useState(false);
+
   // ── COA tree state ────────────────────────────────────────────────────────
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [coaSearchQuery, setCoaSearchQuery] = useState("");
 
-  const toggleNode = (id: string, e: React.MouseEvent) => {
+  // ✅ إصلاح toggleNode — لا يمس selectedAccountId
+  const toggleNode = useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setExpandedNodes((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
-  };
+  }, []);
 
-  // ── COA form ──────────────────────────────────────────────────────────────
-  const [coaForm, setCoaForm] = useState<Partial<any>>({
-    type: "asset",
-    isPosting: true,
-  });
+  // ── forms ─────────────────────────────────────────────────────────────────
+  const [coaForm, setCoaForm] = useState<Partial<any>>({ type: "asset", isPosting: true });
 
-  // ── journal form ──────────────────────────────────────────────────────────
   const emptyJournalForm = {
     date: new Date().toISOString().split("T")[0],
     description: "",
@@ -163,47 +159,23 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
     ],
   };
   const [journalForm, setJournalForm] = useState(emptyJournalForm);
+  const [costCenterForm, setCostCenterForm] = useState<Partial<any>>({ type: "operational", is_active: true });
 
-  // ── cost center form ──────────────────────────────────────────────────────
-  const [costCenterForm, setCostCenterForm] = useState<Partial<any>>({
-    type: "operational",
-    is_active: true,
-  });
-
-  // ── employee action ───────────────────────────────────────────────────────
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
-  const [employeeActionType, setEmployeeActionType] = useState<"ADVANCE" | "SALARY" | "DISCOUNT" | "CUSTODY" | null>(null);
+  // ── employee ──────────────────────────────────────────────────────────────
+  const [employeeActionType, setEmployeeActionType] = useState<any>(null);
   const [employeeActionAmount, setEmployeeActionAmount] = useState(0);
   const [employeeActionNote, setEmployeeActionNote] = useState("");
 
-  const handleEmployeeAction = (
-    empId: string,
-    type: "ADVANCE" | "SALARY" | "DISCOUNT" | "CUSTODY",
-  ) => {
-    setSelectedEmployeeId(empId);
+  const handleEmployeeAction = (empId: string, type: any) => {
     setEmployeeActionType(type);
     openModal("EMPLOYEE_ACTION");
   };
 
   // ── data transforms ───────────────────────────────────────────────────────
   const flatAccounts = useMemo(() => acc.accounts.map(toCoaShape), [acc.accounts]);
+  const journalEntries = useMemo(() => acc.transactions.map(toJournalShape), [acc.transactions]);
+  const costCentersView = useMemo(() => acc.costCenters.map(toCostCenterShape), [acc.costCenters]);
 
-  const accountTree = useMemo(
-    () => acc.accountTree.map(toCoaShape),
-    [acc.accountTree],
-  );
-
-  const journalEntries = useMemo(
-    () => acc.transactions.map(toJournalShape),
-    [acc.transactions],
-  );
-
-  const costCentersView = useMemo(
-    () => acc.costCenters.map(toCostCenterShape),
-    [acc.costCenters],
-  );
-
-  // filteredAccounts للـ COATree (مسطحة + بحث)
   const filteredAccounts = useMemo(() => {
     if (!coaSearchQuery) return flatAccounts;
     return flatAccounts.filter(
@@ -213,9 +185,9 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
     );
   }, [flatAccounts, coaSearchQuery]);
 
-  const selectedAccount = flatAccounts.find((a) => a.id === selectedAccountId);
+  const selectedAccount = flatAccounts.find((a) => a.id === selectedAccountId) ?? null;
 
-  // ── stats for dashboard ───────────────────────────────────────────────────
+  // ── stats ─────────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
     const sum = (type: string) =>
       acc.accounts.filter((a) => a.type === type).reduce((s, a) => s + (a.balance ?? 0), 0);
@@ -231,9 +203,124 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
     };
   }, [acc.accounts]);
 
-  // ─────────────────────────────────── HANDLERS ───────────────────────────
+  // ✅ جلب الـ Ledger عند تغيير الحساب المختار أو الفلتر
+  useEffect(() => {
+    if (!selectedAccountId) {
+      setLedgerLines([]);
+      setLedgerOpeningBalance(0);
+      return;
+    }
 
-  // ── إضافة حساب ────────────────────────────────────────────────────────────
+    const account = flatAccounts.find(a => a.id === selectedAccountId);
+    if (!account?.isPosting) {
+      setLedgerLines([]);
+      setLedgerOpeningBalance(0);
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchLedgerData = async () => {
+      setLoadingLedger(true);
+      setLedgerLines([]);
+      setLedgerOpeningBalance(0);
+
+      try {
+        // حساب from/to بناءً على الـ filter
+        let from: string | undefined;
+        let to: string | undefined;
+        const now = new Date();
+
+        switch (ledgerFilter.type) {
+          case "LAST_WEEK":
+            from = new Date(now.getTime() - 7 * 86400000).toISOString().split("T")[0];
+            to = now.toISOString().split("T")[0];
+            break;
+          case "LAST_MONTH":
+            from = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()).toISOString().split("T")[0];
+            to = now.toISOString().split("T")[0];
+            break;
+          case "MONTH_TO_DATE":
+            from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+            to = now.toISOString().split("T")[0];
+            break;
+          case "YEAR_TO_DATE":
+            from = new Date(now.getFullYear(), 0, 1).toISOString().split("T")[0];
+            to = now.toISOString().split("T")[0];
+            break;
+          case "RANGE":
+            from = ledgerFilter.startDate;
+            to = ledgerFilter.endDate;
+            break;
+          case "SPECIFIC":
+            from = ledgerFilter.startDate;
+            to = ledgerFilter.startDate;
+            break;
+          case "BEFORE":
+            to = ledgerFilter.startDate;
+            break;
+          case "AFTER":
+            from = ledgerFilter.startDate;
+            break;
+          case "ALL":
+          default:
+            // بدون تحديد نطاق → الباك يستخدم أول الشهر افتراضياً
+            // نمرر بدون from/to للحصول على كل الحركات
+            from = "2000-01-01";
+            to = now.toISOString().split("T")[0];
+            break;
+        }
+
+        const data = await accountService.getLedger(Number(selectedAccountId), { from, to });
+
+        if (!cancelled) {
+          setLedgerLines(data.lines ?? []);
+          setLedgerOpeningBalance(data.opening_balance ?? 0);
+        }
+      } catch {
+        if (!cancelled) {
+          setLedgerLines([]);
+        }
+      } finally {
+        if (!cancelled) setLoadingLedger(false);
+      }
+    };
+
+    fetchLedgerData();
+    return () => { cancelled = true; };
+  }, [selectedAccountId, ledgerFilter]);
+
+  // ─── HANDLERS ────────────────────────────────────────────────────────────
+
+  // ✅ توليد الكود التلقائي من الباك عند فتح modal الإضافة
+  const handleOpenAddRoot = async () => {
+    setCoaForm({ type: "asset", isPosting: true, code: "" });
+    openModal("ADD_COA");
+
+    try {
+      const suggested = await accountService.suggestCode();
+      setCoaForm((prev: any) => ({ ...prev, code: suggested }));
+    } catch { /* لا بأس */ }
+  };
+
+  const handleOpenAddChild = async () => {
+    if (!selectedAccount) return;
+
+    setCoaForm({
+      parentId: selectedAccount.id,
+      type: selectedAccount.type,
+      isPosting: true,
+      code: "",
+      level: (selectedAccount.level ?? 1) + 1,
+    });
+    openModal("ADD_COA");
+
+    try {
+      const suggested = await accountService.suggestCode(Number(selectedAccount.id));
+      setCoaForm((prev: any) => ({ ...prev, code: suggested }));
+    } catch { /* لا بأس */ }
+  };
+
   const handleSaveCOA = async () => {
     try {
       await acc.createAccount({
@@ -246,10 +333,9 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
         is_active: true,
       });
       closeModal();
-    } catch (_) { /* error handled in hook */ }
+    } catch { /* error handled in hook */ }
   };
 
-  // ── تعديل حساب ────────────────────────────────────────────────────────────
   const handleEditCOA = async () => {
     if (!coaForm.id) return;
     try {
@@ -259,15 +345,14 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
         allow_posting: coaForm.isPosting,
       });
       closeModal();
-    } catch (_) { /* error handled in hook */ }
+    } catch { /* error handled in hook */ }
   };
 
-  // ── حفظ قيد يومية ─────────────────────────────────────────────────────────
   const handleSaveJournal = async () => {
     const totalDebit = journalForm.lines.reduce((s, l) => s + (l.debit || 0), 0);
     const totalCredit = journalForm.lines.reduce((s, l) => s + (l.credit || 0), 0);
     if (Math.abs(totalDebit - totalCredit) > 0.001) {
-      alert("القيد غير متوازن! المدين لا يساوي الدائن.");
+      alert("القيد غير متوازن!");
       return;
     }
     try {
@@ -285,14 +370,16 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
             sort_order: i,
           })),
       });
-      // ترحيل مباشر
       await acc.postTransaction(tx.id);
       closeModal();
       setJournalForm(emptyJournalForm);
-    } catch (_) { /* error handled in hook */ }
+      // أعد تحميل الـ ledger إذا القيد يخص الحساب المختار
+      if (selectedAccountId) {
+        setLedgerFilter(f => ({ ...f })); // trigger useEffect
+      }
+    } catch { /* error handled in hook */ }
   };
 
-  // ── إضافة مركز تكلفة ──────────────────────────────────────────────────────
   const handleSaveCostCenter = async () => {
     try {
       await acc.createCostCenter({
@@ -304,10 +391,9 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
         notes: costCenterForm.notes,
       });
       closeModal();
-    } catch (_) { /* error handled in hook */ }
+    } catch { /* error handled in hook */ }
   };
 
-  // ── تعديل مركز تكلفة ──────────────────────────────────────────────────────
   const handleEditCostCenter = async () => {
     if (!costCenterForm.id) return;
     try {
@@ -320,15 +406,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
         notes: costCenterForm.notes,
       });
       closeModal();
-    } catch (_) { /* error handled in hook */ }
-  };
-
-  // ── employee action → journal entry ───────────────────────────────────────
-  const handleConfirmEmployeeAction = async () => {
-    // TODO: ربط بحسابات الموظف الحقيقية من الـ API
-    closeModal();
-    setEmployeeActionAmount(0);
-    setEmployeeActionNote("");
+    } catch { /* error handled in hook */ }
   };
 
   // ── page title ────────────────────────────────────────────────────────────
@@ -355,10 +433,9 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
     return map[activeTab];
   })();
 
-  // ─────────────────────────────────── GL RENDER ──────────────────────────
+  // ─── GL RENDER ────────────────────────────────────────────────────────────
 
   const renderGL = () => {
-    // تحميل transactions عند الانتقال لـ JOURNAL
     if (glSubTab === "JOURNAL" && acc.transactions.length === 0 && !acc.loading.transactions) {
       acc.fetchTransactions({ per_page: 100, type: "journal" });
     }
@@ -389,20 +466,19 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                     setCoaSearchQuery={setCoaSearchQuery}
                     setSelectedAccountId={setSelectedAccountId}
                     toggleNode={toggleNode}
-                    onAddRoot={() => {
-                      setCoaForm({ type: "asset", isPosting: true });
-                      openModal("ADD_COA");
-                    }}
+                    onAddRoot={handleOpenAddRoot}
                   />
 
                   {selectedAccount ? (
                     <AccountDetailPanel
                       selectedAccount={selectedAccount}
                       allAccountsWithRollup={flatAccounts}
-                      journalEntries={journalEntries}
+                      // ✅ ledger من API مباشرة
+                      ledgerLines={ledgerLines}
+                      loadingLedger={loadingLedger}
+                      openingBalance={ledgerOpeningBalance}
                       ledgerFilter={ledgerFilter}
                       setLedgerFilter={setLedgerFilter}
-                      setGlSubTab={setGlSubTab}
                       setSelectedAccountId={setSelectedAccountId}
                       onEdit={() => {
                         setCoaForm({
@@ -417,14 +493,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                           setSelectedAccountId(null);
                         }
                       }}
-                      onAddChild={() => {
-                        setCoaForm({
-                          parentId: selectedAccount.id,
-                          type: selectedAccount.type,
-                          isPosting: true,
-                        });
-                        openModal("ADD_COA");
-                      }}
+                      onAddChild={handleOpenAddChild}
                       setJournalForm={setJournalForm}
                       setModalType={setModalType}
                       setIsModalOpen={setIsModalOpen}
@@ -448,9 +517,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
             />
           )}
 
-          {glSubTab === "YEARS" && (
-            <FiscalYearsView fiscalYears={[]} />
-          )}
+          {glSubTab === "YEARS" && <FiscalYearsView fiscalYears={[]} />}
 
           {glSubTab === "COST_CENTERS" && (
             <CostCentersView
@@ -466,7 +533,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
     );
   };
 
-  // ─────────────────────────────────── RENDER ─────────────────────────────
+  // ─── RENDER ───────────────────────────────────────────────────────────────
 
   return (
     <div className="flex-1 flex flex-col gap-6 p-1 h-full min-h-0 overflow-hidden text-right">
@@ -509,8 +576,6 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
       {/* Page Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex flex-col md:flex-row md:items-center gap-8">
-
-          {/* Title */}
           <div className="flex items-center gap-3 justify-end md:justify-start">
             <div className="text-right">
               <h1 className="text-2xl font-black text-white tracking-tight uppercase">
@@ -525,7 +590,6 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
             </div>
           </div>
 
-          {/* GL sub-tabs */}
           {activeTab === "GL" && (
             <div className="flex items-center gap-2 p-1.5 bg-slate-900/50 border border-white/5 rounded-2xl w-fit">
               {[
@@ -538,8 +602,8 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                   key={sub.id}
                   onClick={() => setGlSubTab(sub.id as GLSubTab)}
                   className={`flex items-center gap-2 px-5 py-2 rounded-xl text-[10px] font-black transition-all ${glSubTab === sub.id
-                    ? "bg-red-600 text-white shadow-lg"
-                    : "text-slate-400 hover:bg-white/5"
+                      ? "bg-red-600 text-white shadow-lg"
+                      : "text-slate-400 hover:bg-white/5"
                     }`}
                 >
                   <sub.icon size={14} /> {sub.label}
@@ -565,7 +629,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
             {activeTab === "GL" && renderGL()}
             {activeTab === "HR" && (
               <EmployeesTab
-                employees={[]}          // اربط بـ employees API إذا احتجت
+                employees={[]}
                 chartOfAccounts={flatAccounts}
                 onAction={handleEmployeeAction}
               />
@@ -577,7 +641,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
         </AnimatePresence>
       </div>
 
-      {/* ─── Modals ─────────────────────────────────────────────────────────── */}
+      {/* Modals */}
       <AnimatePresence>
         {isModalOpen && (
           <>
@@ -589,7 +653,6 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                 onClose={closeModal}
               />
             )}
-
             {modalType === "EDIT_COA" && (
               <EditCOAModal
                 form={coaForm}
@@ -598,7 +661,6 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                 onClose={closeModal}
               />
             )}
-
             {modalType === "ADD_JOURNAL" && (
               <AddJournalModal
                 form={journalForm}
@@ -609,7 +671,6 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                 onClose={closeModal}
               />
             )}
-
             {modalType === "EMPLOYEE_ACTION" && (
               <EmployeeActionModal
                 amount={employeeActionAmount}
@@ -617,24 +678,24 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                 note={employeeActionNote}
                 setNote={setEmployeeActionNote}
                 actionType={employeeActionType ?? undefined}
-                onConfirm={handleConfirmEmployeeAction}
+                onConfirm={() => {
+                  closeModal();
+                  setEmployeeActionAmount(0);
+                  setEmployeeActionNote("");
+                }}
                 onClose={closeModal}
               />
             )}
-
-            {modalType === "VIEW_JOURNAL" &&
-              (() => {
-                const je = journalEntries.find((e) => e.id === selectedJournalEntryId);
-                return je ? (
-                  <ViewJournalModal
-                    entry={je}
-                    chartOfAccounts={flatAccounts}
-                    onClose={closeModal}
-                  />
-                ) : null;
-              })()}
-
-            {/* ── مراكز التكلفة ── */}
+            {modalType === "VIEW_JOURNAL" && (() => {
+              const je = journalEntries.find((e) => e.id === selectedJournalEntryId);
+              return je ? (
+                <ViewJournalModal
+                  entry={je}
+                  chartOfAccounts={flatAccounts}
+                  onClose={closeModal}
+                />
+              ) : null;
+            })()}
             {modalType === "ADD_COST_CENTER" && (
               <AddCostCenterModal
                 form={costCenterForm}
@@ -644,7 +705,6 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                 onClose={closeModal}
               />
             )}
-
             {modalType === "EDIT_COST_CENTER" && (
               <EditCostCenterModal
                 form={costCenterForm}

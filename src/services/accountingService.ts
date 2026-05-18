@@ -95,6 +95,7 @@ export interface CostCenter {
   branch?: { id: number; name: string } | null;
 }
 
+// ✅ LedgerLine: يطابق ما يرجعه الباك
 export interface LedgerLine {
   date: string;
   transaction_number: string;
@@ -120,28 +121,44 @@ export const accountService = {
     const { data } = await api.get("/accounting/accounts", { params });
     return data.data ?? [];
   },
+
   getOne: async (id: number, withBalance = false): Promise<Account> => {
     const { data } = await api.get(`/accounting/accounts/${id}`, {
       params: { with_balance: withBalance },
     });
     return data.data;
   },
+
   create: async (payload: any): Promise<Account> => {
     const { data } = await api.post("/accounting/accounts", payload);
     return data.data;
   },
+
   update: async (id: number, payload: any): Promise<Account> => {
     const { data } = await api.put(`/accounting/accounts/${id}`, payload);
     return data.data;
   },
+
   delete: async (id: number): Promise<void> => {
     await api.delete(`/accounting/accounts/${id}`);
   },
-  getLedger: async (id: number, params?: any): Promise<LedgerData> => {
+
+  getLedger: async (
+    id: number,
+    params?: { from?: string; to?: string },
+  ): Promise<LedgerData> => {
     const { data } = await api.get(`/accounting/accounts/${id}/ledger`, {
       params,
     });
     return data.data;
+  },
+
+  // ✅ FIX 3: اقتراح كود الحساب من الباك
+  suggestCode: async (parentId?: number): Promise<string> => {
+    const { data } = await api.get("/accounting/accounts/suggest-code", {
+      params: parentId ? { parent_id: parentId } : {},
+    });
+    return data.data?.code ?? "";
   },
 };
 
@@ -155,25 +172,31 @@ export const transactionService = {
       }
     );
   },
+
   getOne: async (id: number): Promise<Transaction> => {
     const { data } = await api.get(`/accounting/transactions/${id}`);
     return data.data;
   },
+
   create: async (payload: any): Promise<Transaction> => {
     const { data } = await api.post("/accounting/transactions", payload);
     return data.data;
   },
+
   update: async (id: number, payload: any): Promise<Transaction> => {
     const { data } = await api.put(`/accounting/transactions/${id}`, payload);
     return data.data;
   },
+
   delete: async (id: number): Promise<void> => {
     await api.delete(`/accounting/transactions/${id}`);
   },
+
   post: async (id: number): Promise<Transaction> => {
     const { data } = await api.post(`/accounting/transactions/${id}/post`);
     return data.data;
   },
+
   cancel: async (id: number): Promise<Transaction> => {
     const { data } = await api.post(`/accounting/transactions/${id}/cancel`);
     return data.data;
@@ -185,14 +208,17 @@ export const costCenterService = {
     const { data } = await api.get("/accounting/cost-centers", { params });
     return data.data ?? [];
   },
+
   create: async (payload: any): Promise<CostCenter> => {
     const { data } = await api.post("/accounting/cost-centers", payload);
     return data.data;
   },
+
   update: async (id: number, payload: any): Promise<CostCenter> => {
     const { data } = await api.put(`/accounting/cost-centers/${id}`, payload);
     return data.data;
   },
+
   delete: async (id: number): Promise<void> => {
     await api.delete(`/accounting/cost-centers/${id}`);
   },
