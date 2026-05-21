@@ -264,9 +264,8 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
             break;
           case "ALL":
           default:
-            // بدون تحديد نطاق → الباك يستخدم أول الشهر افتراضياً
-            // نمرر بدون from/to للحصول على كل الحركات
-            from = "2000-01-01";
+            // جلب كافة الحركات منذ البداية
+            from = "2020-01-01";
             to = now.toISOString().split("T")[0];
             break;
         }
@@ -378,6 +377,31 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
         setLedgerFilter(f => ({ ...f })); // trigger useEffect
       }
     } catch { /* error handled in hook */ }
+  };
+
+  const handleExportLedger = async () => {
+    if (!selectedAccountId) return;
+    try {
+      let from: string | undefined;
+      let to: string | undefined;
+      const now = new Date();
+
+      switch (ledgerFilter.type) {
+        case "LAST_WEEK": from = new Date(now.getTime() - 7 * 86400000).toISOString().split("T")[0]; to = now.toISOString().split("T")[0]; break;
+        case "LAST_MONTH": from = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()).toISOString().split("T")[0]; to = now.toISOString().split("T")[0]; break;
+        case "MONTH_TO_DATE": from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]; to = now.toISOString().split("T")[0]; break;
+        case "YEAR_TO_DATE": from = new Date(now.getFullYear(), 0, 1).toISOString().split("T")[0]; to = now.toISOString().split("T")[0]; break;
+        case "RANGE": from = ledgerFilter.startDate; to = ledgerFilter.endDate; break;
+        case "SPECIFIC": from = ledgerFilter.startDate; to = ledgerFilter.startDate; break;
+        case "BEFORE": to = ledgerFilter.startDate; break;
+        case "AFTER": from = ledgerFilter.startDate; break;
+        case "ALL": default: from = "2020-01-01"; to = now.toISOString().split("T")[0]; break;
+      }
+
+      await accountService.export(Number(selectedAccountId), { from, to });
+    } catch (e) {
+      alert("فشل تصدير البيانات");
+    }
   };
 
   const handleSaveCostCenter = async () => {
@@ -497,6 +521,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                       setJournalForm={setJournalForm}
                       setModalType={setModalType}
                       setIsModalOpen={setIsModalOpen}
+                      onExport={handleExportLedger}
                     />
                   ) : (
                     <AccountEmptyState />
@@ -602,8 +627,8 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                   key={sub.id}
                   onClick={() => setGlSubTab(sub.id as GLSubTab)}
                   className={`flex items-center gap-2 px-5 py-2 rounded-xl text-[10px] font-black transition-all ${glSubTab === sub.id
-                      ? "bg-red-600 text-white shadow-lg"
-                      : "text-slate-400 hover:bg-white/5"
+                    ? "bg-red-600 text-white shadow-lg"
+                    : "text-slate-400 hover:bg-white/5"
                     }`}
                 >
                   <sub.icon size={14} /> {sub.label}

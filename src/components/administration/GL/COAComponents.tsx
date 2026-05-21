@@ -1,12 +1,3 @@
-/**
- * COAComponents.tsx — النسخة الكاملة المُصلحة
- *
- * الإصلاحات:
- * 1. زر Maximize → يعرض ExpandedLedger داخل نفس الصفحة بدل تغيير الـ tab
- * 2. جدول الحركات → يستقبل ledgerLines مباشرة من API بدل البحث في journalEntries
- * 3. props جديدة: loadingLedger, ledgerLines, openingBalance
- */
-
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -58,17 +49,7 @@ export interface COAWithRollup {
   level?: number;
   is_system?: boolean;
   is_active?: boolean;
-}
-
-// سطر كشف الحساب القادم مباشرة من API ledger
-export interface LedgerLineItem {
-  date: string;
-  transaction_number: string;
-  reference?: string;
-  description?: string;
-  debit: number;
-  credit: number;
-  balance: number;
+  children?: COAWithRollup[];
 }
 
 // ─── LedgerFilterBar ─────────────────────────────────────────────────────
@@ -110,13 +91,13 @@ export const LedgerFilterBar: React.FC<LedgerFilterBarProps> = ({
     {(["RANGE", "SPECIFIC", "BEFORE", "AFTER"] as LedgerFilterType[]).includes(
       filter.type,
     ) && (
-      <input
-        type="date"
-        value={filter.startDate || ""}
-        onChange={(e) => onChange({ ...filter, startDate: e.target.value })}
-        className="bg-slate-900 border border-white/5 text-white text-[10px] font-black p-2 rounded-xl"
-      />
-    )}
+        <input
+          type="date"
+          value={filter.startDate || ""}
+          onChange={(e) => onChange({ ...filter, startDate: e.target.value })}
+          className="bg-slate-900 border border-white/5 text-white text-[10px] font-black p-2 rounded-xl"
+        />
+      )}
     {filter.type === "RANGE" && (
       <input
         type="date"
@@ -178,17 +159,18 @@ export const COATree: React.FC<COATreeProps> = ({
 
             <div
               onClick={(e) => {
-                // ✅ إصلاح: setSelectedAccountId أولاً دائماً
+                e.stopPropagation();
+                // ✅ FIX 1: اختر الحساب أولاً دائماً
                 setSelectedAccountId(account.id);
+                // ثم toggle الـ expand إذا فيه أولاد
                 if (hasChildren) toggleNode(account.id, e);
               }}
-              className={`group flex items-center justify-between p-2.5 sm:p-3 rounded-2xl border transition-all cursor-pointer mb-2 relative ${
-                selectedAccountId === account.id
-                  ? "bg-red-600/20 border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.1)]"
-                  : account.isPosting
-                    ? "bg-slate-900/40 border-white/5 hover:border-red-500/20"
-                    : "bg-slate-800/40 border-white/10 font-black text-slate-300 hover:bg-slate-800/60"
-              }`}
+              className={`group flex items-center justify-between p-2.5 sm:p-3 rounded-2xl border transition-all cursor-pointer mb-2 relative ${selectedAccountId === account.id
+                ? "bg-red-600/20 border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.1)]"
+                : account.isPosting
+                  ? "bg-slate-900/40 border-white/5 hover:border-red-500/20"
+                  : "bg-slate-800/40 border-white/10 font-black text-slate-300 hover:bg-slate-800/60"
+                }`}
               style={{ marginRight: depth * 24 }}
             >
               {depth > 0 && (
@@ -203,6 +185,10 @@ export const COATree: React.FC<COATreeProps> = ({
                   <motion.div
                     animate={{ rotate: isExpanded ? 90 : 0 }}
                     className="p-1 hover:bg-white/5 rounded-lg transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleNode(account.id, e);
+                    }}
                   >
                     <ChevronRight size={14} className="text-slate-500" />
                   </motion.div>
@@ -227,13 +213,12 @@ export const COATree: React.FC<COATreeProps> = ({
 
               <div className="text-left">
                 <span
-                  className={`text-[10px] sm:text-xs font-mono font-black ${
-                    balance === 0
-                      ? "text-slate-600"
-                      : balance < 0
-                        ? "text-emerald-500"
-                        : "text-red-500"
-                  }`}
+                  className={`text-[10px] sm:text-xs font-mono font-black ${balance === 0
+                    ? "text-slate-600"
+                    : balance < 0
+                      ? "text-emerald-500"
+                      : "text-red-500"
+                    }`}
                 >
                   ₪{Math.abs(balance).toLocaleString()}
                 </span>
@@ -298,32 +283,40 @@ export const COATree: React.FC<COATreeProps> = ({
 interface AccountDetailPanelProps {
   selectedAccount: COAWithRollup;
   allAccountsWithRollup: COAWithRollup[];
-
-  // ✅ Props الجديدة للـ ledger الحقيقي
-  ledgerLines: LedgerLineItem[];       // قادمة من API مباشرة
-  loadingLedger: boolean;
+  // ✅ FIX 2: ledgerLines مباشرة من الـ API
+  ledgerLines: LedgerLine[];
   openingBalance: number;
-
+  loadingLedger: boolean;
   ledgerFilter: LedgerFilter;
   setLedgerFilter: (f: LedgerFilter) => void;
-
-  // لم نعد نحتاج setGlSubTab لأن الـ maximize صار داخلي
+  setGlSubTab: (
+    tab: "YEARS" | "COA" | "COST_CENTERS" | "JOURNAL" | "LEDGER",
+  ) => void;
   setSelectedAccountId: (id: string) => void;
   onEdit: () => void;
   onDelete: () => void;
   onAddChild: () => void;
-
   setJournalForm: any;
   setModalType: (type: string) => void;
   setIsModalOpen: (v: boolean) => void;
+}
+
+export interface LedgerLine {
+  date: string;
+  transaction_number: string;
+  reference?: string;
+  description?: string;
+  debit: number;
+  credit: number;
+  balance: number;
 }
 
 export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
   selectedAccount,
   allAccountsWithRollup,
   ledgerLines,
-  loadingLedger,
   openingBalance,
+  loadingLedger,
   ledgerFilter,
   setLedgerFilter,
   setSelectedAccountId,
@@ -334,27 +327,21 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
   setModalType,
   setIsModalOpen,
 }) => {
-  // ✅ الـ Maximize يُدار محلياً — لا يغير الـ glSubTab
+  // ✅ FIX 1: state داخلي للـ expanded — لا يغير الـ tab الخارجي
   const [isExpanded, setIsExpanded] = useState(false);
 
-  // ── الكشف الموسّع ─────────────────────────────────────────────────────
-  if (isExpanded) {
-    return (
-      <ExpandedLedger
-        account={selectedAccount}
-        ledgerLines={ledgerLines}
-        loadingLedger={loadingLedger}
-        openingBalance={openingBalance}
-        ledgerFilter={ledgerFilter}
-        setLedgerFilter={setLedgerFilter}
-        onBack={() => setIsExpanded(false)}
-      />
-    );
-  }
+  const typeLabel = () => {
+    switch (selectedAccount.type) {
+      case AccountType.ASSET: return "أصل";
+      case AccountType.LIABILITY: return "التزام";
+      case AccountType.EQUITY: return "حقوق ملكية";
+      case AccountType.REVENUE: return "إيراد";
+      default: return "مصروف";
+    }
+  };
 
-  // ── العرض العادي ──────────────────────────────────────────────────────
-  return (
-    <div className="flex-1 bg-slate-900/50 border border-white/5 rounded-[2.5rem] overflow-hidden flex flex-col">
+  const panelContent = (
+    <div className={`${isExpanded ? "fixed inset-0 z-50 bg-slate-950" : "flex-1 bg-slate-900/50 border border-white/5 rounded-[2.5rem]"} overflow-hidden flex flex-col`}>
       {/* Header */}
       <div className="p-6 border-b border-white/5 bg-slate-950/20">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
@@ -367,26 +354,17 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
                 <h2 className="text-2xl font-black text-white">
                   {selectedAccount.nameAr}
                 </h2>
-                {/* ✅ زر Maximize يُبدّل isExpanded محلياً */}
+                {/* ✅ FIX 1: زر التكبير يعمل داخل المكوّن بدون تغيير الـ tab */}
                 <button
-                  onClick={() => setIsExpanded(true)}
+                  onClick={() => setIsExpanded(!isExpanded)}
                   className="p-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-slate-500 hover:text-white transition-all ml-2"
-                  title="عرض الكشف كاملاً"
+                  title={isExpanded ? "تصغير" : "عرض كامل الشاشة"}
                 >
-                  <Maximize2 size={14} />
+                  {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
                 </button>
               </div>
               <p className="text-xs font-black text-slate-500 uppercase tracking-widest leading-none">
-                {selectedAccount.type === AccountType.ASSET
-                  ? "أصل"
-                  : selectedAccount.type === AccountType.LIABILITY
-                    ? "التزام"
-                    : selectedAccount.type === AccountType.EQUITY
-                      ? "حقوق ملكية"
-                      : selectedAccount.type === AccountType.REVENUE
-                        ? "إيراد"
-                        : "مصروف"}
-                {" • "}
+                {typeLabel()} {" • "}
                 {selectedAccount.isPosting ? "حساب حركة" : "حساب أب"}
               </p>
             </div>
@@ -436,21 +414,20 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
             )}
           </div>
 
-          {/* الرصيد + أزرار الإجراءات */}
           <div className="flex items-end gap-6">
+            {/* ✅ FIX: عرض الرصيد الحقيقي */}
             <div className="text-left space-y-2">
               <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">
                 الرصيد الحالي
               </p>
               <div className="flex flex-col items-end">
                 <p
-                  className={`text-4xl font-black font-mono leading-none ${
-                    selectedAccount.displayBalance === 0
-                      ? "text-slate-600"
-                      : selectedAccount.displayBalance < 0
-                        ? "text-emerald-500"
-                        : "text-red-500"
-                  }`}
+                  className={`text-4xl font-black font-mono leading-none ${selectedAccount.displayBalance === 0
+                    ? "text-slate-600"
+                    : selectedAccount.displayBalance < 0
+                      ? "text-emerald-500"
+                      : "text-red-500"
+                    }`}
                 >
                   ₪{Math.abs(selectedAccount.displayBalance).toLocaleString()}
                 </p>
@@ -492,14 +469,12 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
         </div>
       </div>
 
-      {/* المحتوى */}
+      {/* Content */}
       <div className="flex-1 overflow-hidden flex flex-col">
         {selectedAccount.isPosting ? (
-          // ── جدول الحركات للحساب الحركي ──────────────────────────────────
           <div className="flex-1 overflow-y-auto px-4 py-6 custom-scrollbar">
-
+            {/* ✅ FIX 2: Loading state */}
             {loadingLedger ? (
-              // ✅ حالة التحميل
               <div className="flex items-center justify-center py-20 text-slate-500 gap-3">
                 <RefreshCw size={18} className="animate-spin" />
                 <span className="text-xs font-bold">جاري تحميل الحركات...</span>
@@ -509,28 +484,24 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
                 <thead>
                   <tr className="text-slate-500 border-b border-white/5">
                     <th className="pb-4 pr-2">التاريخ</th>
-                    <th className="pb-4 text-right">البيان / رقم القيد</th>
-                    <th className="pb-4 text-center">مدين</th>
-                    <th className="pb-4 text-center">دائن</th>
+                    <th className="pb-4 text-right">البيان / المرجع</th>
+                    <th className="pb-4 text-center">مدين (+)</th>
+                    <th className="pb-4 text-center">دائن (-)</th>
                     <th className="pb-4 pl-2 text-left">الرصيد</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-
-                  {/* ✅ سطر الرصيد الافتتاحي */}
+                  {/* ✅ FIX 2: سطر الرصيد الافتتاحي */}
                   {openingBalance !== 0 && (
                     <tr className="bg-slate-950/30">
                       <td className="py-3 pr-4 font-mono text-[10px] text-slate-600">—</td>
-                      <td className="py-3 text-slate-500 italic text-[11px] font-bold">
+                      <td className="py-3 text-slate-500 italic text-xs font-bold">
                         رصيد مرحّل من فترة سابقة
                       </td>
                       <td className="py-3 text-center text-slate-600">—</td>
                       <td className="py-3 text-center text-slate-600">—</td>
                       <td className="py-3 pl-4 text-left font-mono font-black text-slate-400">
                         ₪{Math.abs(openingBalance).toLocaleString()}
-                        <span className="text-[9px] text-slate-600 mr-1">
-                          {openingBalance > 0 ? "مدين" : "دائن"}
-                        </span>
                       </td>
                     </tr>
                   )}
@@ -545,7 +516,6 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
                       </td>
                     </tr>
                   ) : (
-                    // ✅ عرض سطور الكشف مباشرة من API — الرصيد محسوب في الباك
                     ledgerLines.map((line, idx) => (
                       <tr
                         key={idx}
@@ -558,46 +528,42 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
                           <p className="font-bold text-white">
                             {line.description || line.transaction_number}
                           </p>
-                          <p className="text-[9px] text-slate-600 font-mono mt-0.5">
+                          {line.reference && (
+                            <p className="text-[9px] text-slate-600 font-mono mt-0.5">
+                              {line.reference}
+                            </p>
+                          )}
+                          <p className="text-[9px] text-slate-600 font-mono">
                             {line.transaction_number}
-                            {line.reference ? ` · ${line.reference}` : ""}
                           </p>
                         </td>
                         <td className="py-4 text-center font-black text-red-500">
-                          {line.debit > 0
-                            ? `₪${Number(line.debit).toLocaleString()}`
-                            : "—"}
+                          {line.debit > 0 ? `₪${Number(line.debit).toLocaleString()}` : "—"}
                         </td>
                         <td className="py-4 text-center font-black text-emerald-500">
-                          {line.credit > 0
-                            ? `₪${Number(line.credit).toLocaleString()}`
-                            : "—"}
+                          {line.credit > 0 ? `₪${Number(line.credit).toLocaleString()}` : "—"}
                         </td>
                         <td className="py-4 pl-4 text-left font-mono font-black text-white">
-                          ₪{Math.abs(Number(line.balance)).toLocaleString()}
+                          ₪{Math.abs(line.balance).toLocaleString()}
                         </td>
                       </tr>
                     ))
                   )}
                 </tbody>
-
-                {/* Footer الإجماليات */}
                 {ledgerLines.length > 0 && (
                   <tfoot className="border-t border-white/10">
-                    <tr className="text-slate-500">
-                      <td colSpan={2} className="pt-4 pr-4 text-[10px] font-black uppercase tracking-widest">
+                    <tr>
+                      <td colSpan={2} className="pt-4 text-[10px] font-black text-slate-500 uppercase tracking-wider">
                         الإجماليات
                       </td>
                       <td className="pt-4 text-center font-black font-mono text-red-400">
-                        ₪{ledgerLines.reduce((s, l) => s + Number(l.debit), 0).toLocaleString()}
+                        ₪{ledgerLines.reduce((s, l) => s + l.debit, 0).toLocaleString()}
                       </td>
                       <td className="pt-4 text-center font-black font-mono text-emerald-400">
-                        ₪{ledgerLines.reduce((s, l) => s + Number(l.credit), 0).toLocaleString()}
+                        ₪{ledgerLines.reduce((s, l) => s + l.credit, 0).toLocaleString()}
                       </td>
-                      <td className="pt-4 pl-4 text-left font-mono font-black text-white">
-                        ₪{ledgerLines.length > 0
-                          ? Math.abs(Number(ledgerLines[ledgerLines.length - 1].balance)).toLocaleString()
-                          : "0"}
+                      <td className="pt-4 pl-4 text-left font-black font-mono text-white">
+                        ₪{Math.abs(ledgerLines[ledgerLines.length - 1]?.balance ?? 0).toLocaleString()}
                       </td>
                     </tr>
                   </tfoot>
@@ -606,17 +572,13 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
             )}
           </div>
         ) : (
-          // ── عرض الحسابات الفرعية للحساب الأم ────────────────────────────
+          // حساب أب — يعرض الأبناء
           <div className="flex-1 overflow-y-auto p-8 custom-scrollbar space-y-6">
             <div className="flex items-center justify-between mb-4">
               <h4 className="text-sm font-black text-white">الحسابات الفرعية</h4>
               <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
                 الإجمالي:{" "}
-                {
-                  allAccountsWithRollup.filter(
-                    (a) => a.parentId === selectedAccount.id,
-                  ).length
-                }{" "}
+                {allAccountsWithRollup.filter((a) => a.parentId === selectedAccount.id).length}{" "}
                 حساب
               </span>
             </div>
@@ -640,19 +602,15 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
                         <h5 className="text-sm font-black text-white leading-none mt-1">
                           {child.nameAr}
                         </h5>
-                        <span className={`text-[9px] font-black ${child.isPosting ? "text-emerald-500" : "text-slate-600"}`}>
-                          {child.isPosting ? "حركي" : "أب"}
-                        </span>
                       </div>
                     </div>
                     <span
-                      className={`text-sm font-black font-mono ${
-                        child.displayBalance === 0
-                          ? "text-slate-600"
-                          : child.displayBalance < 0
-                            ? "text-emerald-500"
-                            : "text-red-500"
-                      }`}
+                      className={`text-sm font-black font-mono ${child.displayBalance === 0
+                        ? "text-slate-600"
+                        : child.displayBalance < 0
+                          ? "text-emerald-500"
+                          : "text-red-500"
+                        }`}
                     >
                       ₪{Math.abs(child.displayBalance).toLocaleString()}
                     </span>
@@ -663,6 +621,27 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
         )}
       </div>
     </div>
+  );
+
+  // ✅ FIX 1: عند التكبير نعرض overlay فوق كل شيء
+  return (
+    <>
+      {!isExpanded && panelContent}
+      {isExpanded && (
+        <AnimatePresence>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-sm p-4 overflow-auto"
+          >
+            <div className="h-full flex flex-col max-w-7xl mx-auto">
+              {panelContent}
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      )}
+    </>
   );
 };
 
@@ -677,179 +656,10 @@ export const AccountEmptyState: React.FC = () => (
       <div>
         <h3 className="text-xl font-black text-white">اختر حساباً للمعاينة</h3>
         <p className="text-xs font-medium text-slate-500 max-w-[280px] mx-auto mt-2 leading-relaxed">
-          اضغط على أي حساب من الدليل المحاسبي لعرض تفاصيل الحركة المالية
-          (Ledger) أو ملخص الحسابات الفرعية.
+          اضغط على أي حساب من الدليل المحاسبي لعرض تفاصيل الحركة المالية أو ملخص
+          الحسابات الفرعية.
         </p>
       </div>
     </div>
   </div>
 );
-
-// ─── ExpandedLedger ───────────────────────────────────────────────────────
-
-interface ExpandedLedgerProps {
-  account: COAWithRollup;
-  ledgerLines: LedgerLineItem[];
-  loadingLedger: boolean;
-  openingBalance: number;
-  ledgerFilter: LedgerFilter;
-  setLedgerFilter: (f: LedgerFilter) => void;
-  onBack: () => void;
-}
-
-export const ExpandedLedger: React.FC<ExpandedLedgerProps> = ({
-  account,
-  ledgerLines,
-  loadingLedger,
-  openingBalance,
-  ledgerFilter,
-  setLedgerFilter,
-  onBack,
-}) => {
-  const closingBalance =
-    ledgerLines.length > 0
-      ? Number(ledgerLines[ledgerLines.length - 1].balance)
-      : openingBalance;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="flex-1 flex flex-col bg-slate-900/50 border border-white/5 rounded-[2.5rem] overflow-hidden text-right"
-    >
-      {/* Header */}
-      <div className="p-6 border-b border-white/10 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onBack}
-            className="p-2 hover:bg-white/5 rounded-xl text-slate-500 hover:text-white transition-all"
-            title="رجوع"
-          >
-            <Minimize2 size={18} />
-          </button>
-          <span className="px-3 py-1 bg-red-600/20 text-red-500 rounded-xl border border-red-500/20 text-xs font-black">
-            {account.code}
-          </span>
-          <h3 className="text-2xl font-black text-white">{account.nameAr}</h3>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <LedgerFilterBar filter={ledgerFilter} onChange={setLedgerFilter} />
-          <div className="h-10 w-px bg-white/10 mx-2" />
-          <div className="text-left bg-black/40 px-6 py-2 rounded-2xl border border-white/5">
-            <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest leading-none mb-1">
-              الرصيد الختامي
-            </p>
-            <p
-              className={`text-xl font-mono font-black ${
-                closingBalance >= 0 ? "text-red-500" : "text-emerald-500"
-              }`}
-            >
-              ₪{Math.abs(closingBalance).toLocaleString()}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
-        {loadingLedger ? (
-          <div className="flex items-center justify-center py-20 text-slate-500 gap-3">
-            <RefreshCw size={18} className="animate-spin" />
-            <span className="text-sm font-bold">جاري تحميل الكشف...</span>
-          </div>
-        ) : (
-          <table className="w-full text-right text-[11px]">
-            <thead className="bg-white/5 sticky top-0 z-10">
-              <tr className="text-slate-500 font-black uppercase tracking-[0.1em]">
-                <th className="px-4 py-3">التاريخ</th>
-                <th className="px-4 py-3">البيان</th>
-                <th className="px-4 py-3 text-center">مدين</th>
-                <th className="px-4 py-3 text-center">دائن</th>
-                <th className="px-4 py-3 text-left">الرصيد</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {/* سطر الرصيد الافتتاحي */}
-              {openingBalance !== 0 && (
-                <tr className="bg-slate-950/20">
-                  <td className="px-4 py-2 font-mono text-slate-600">—</td>
-                  <td className="px-4 py-2 text-slate-500 italic font-bold">رصيد مرحّل</td>
-                  <td className="px-4 py-2 text-center text-slate-600">—</td>
-                  <td className="px-4 py-2 text-center text-slate-600">—</td>
-                  <td className="px-4 py-2 text-left font-mono font-black text-slate-400">
-                    ₪{Math.abs(openingBalance).toLocaleString()}
-                  </td>
-                </tr>
-              )}
-
-              {ledgerLines.map((line, idx) => (
-                <tr
-                  key={idx}
-                  className="hover:bg-white/5 transition-colors group"
-                >
-                  <td className="px-4 py-2 font-mono text-slate-500">
-                    {line.date}
-                  </td>
-                  <td className="px-4 py-2">
-                    <div className="flex flex-col">
-                      <span className="text-white font-bold">
-                        {line.description || line.transaction_number}
-                      </span>
-                      <span className="text-[8px] text-slate-600 font-mono">
-                        {line.transaction_number}
-                        {line.reference ? ` · ${line.reference}` : ""}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-2 text-center font-mono font-black text-red-500">
-                    {Number(line.debit) > 0
-                      ? `₪${Number(line.debit).toLocaleString()}`
-                      : "—"}
-                  </td>
-                  <td className="px-4 py-2 text-center font-mono font-black text-emerald-500">
-                    {Number(line.credit) > 0
-                      ? `₪${Number(line.credit).toLocaleString()}`
-                      : "—"}
-                  </td>
-                  <td className="px-4 py-2 text-left font-mono font-black">
-                    <span
-                      className={
-                        Number(line.balance) >= 0
-                          ? "text-red-500"
-                          : "text-emerald-500"
-                      }
-                    >
-                      ₪{Math.abs(Number(line.balance)).toLocaleString()}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-
-              {ledgerLines.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="px-6 py-20 text-center text-slate-600 font-black italic"
-                  >
-                    لا توجد حركات مسجلة حسب الفلترة المختارة
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {/* Footer */}
-      <div className="p-4 bg-slate-900/30 border-t border-white/5 flex justify-end gap-2">
-        <button className="px-6 py-3 bg-white/5 text-slate-400 hover:text-white border border-white/5 rounded-2xl text-[10px] font-black transition-all flex items-center gap-2">
-          <Download size={16} /> تصدير PDF
-        </button>
-        <button className="px-10 py-3 bg-red-600 text-white rounded-2xl text-[10px] font-black shadow-xl shadow-red-900/20 hover:bg-red-700 transition-all active:scale-95">
-          طباعة الكشف
-        </button>
-      </div>
-    </motion.div>
-  );
-};
