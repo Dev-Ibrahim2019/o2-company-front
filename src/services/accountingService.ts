@@ -70,11 +70,14 @@ export interface Transaction {
   notes?: string;
   total_debit: number;
   total_credit: number;
+  // ✅ عدد الأسطر — يأتي من الداتابيز في كل استجابة
+  entries_count: number;
   is_balanced: boolean;
   is_editable: boolean;
   source_type?: string;
   source_id?: number;
   source_label?: string;
+  // entries محمّلة فقط عند show() أو عند التفاصيل
   entries?: EntryLine[];
   branch?: { id: number; name: string };
   user?: { id: number; name: string };
@@ -95,7 +98,6 @@ export interface CostCenter {
   branch?: { id: number; name: string } | null;
 }
 
-// ✅ LedgerLine: يطابق ما يرجعه الباك
 export interface LedgerLine {
   date: string;
   transaction_number: string;
@@ -153,7 +155,6 @@ export const accountService = {
     return data.data;
   },
 
-  // ✅ FIX 3: اقتراح كود الحساب من الباك
   suggestCode: async (parentId?: number): Promise<string> => {
     const { data } = await api.get("/accounting/accounts/suggest-code", {
       params: parentId ? { parent_id: parentId } : {},
@@ -173,6 +174,7 @@ export const transactionService = {
     );
   },
 
+  // ✅ جلب قيد واحد مع entries كاملة من الداتابيز
   getOne: async (id: number): Promise<Transaction> => {
     const { data } = await api.get(`/accounting/transactions/${id}`);
     return data.data;

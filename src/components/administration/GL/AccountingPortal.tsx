@@ -379,31 +379,6 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
     } catch { /* error handled in hook */ }
   };
 
-  const handleExportLedger = async () => {
-    if (!selectedAccountId) return;
-    try {
-      let from: string | undefined;
-      let to: string | undefined;
-      const now = new Date();
-
-      switch (ledgerFilter.type) {
-        case "LAST_WEEK": from = new Date(now.getTime() - 7 * 86400000).toISOString().split("T")[0]; to = now.toISOString().split("T")[0]; break;
-        case "LAST_MONTH": from = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()).toISOString().split("T")[0]; to = now.toISOString().split("T")[0]; break;
-        case "MONTH_TO_DATE": from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0]; to = now.toISOString().split("T")[0]; break;
-        case "YEAR_TO_DATE": from = new Date(now.getFullYear(), 0, 1).toISOString().split("T")[0]; to = now.toISOString().split("T")[0]; break;
-        case "RANGE": from = ledgerFilter.startDate; to = ledgerFilter.endDate; break;
-        case "SPECIFIC": from = ledgerFilter.startDate; to = ledgerFilter.startDate; break;
-        case "BEFORE": to = ledgerFilter.startDate; break;
-        case "AFTER": from = ledgerFilter.startDate; break;
-        case "ALL": default: from = "2020-01-01"; to = now.toISOString().split("T")[0]; break;
-      }
-
-      await accountService.export(Number(selectedAccountId), { from, to });
-    } catch (e) {
-      alert("فشل تصدير البيانات");
-    }
-  };
-
   const handleSaveCostCenter = async () => {
     try {
       await acc.createCostCenter({
@@ -521,7 +496,6 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                       setJournalForm={setJournalForm}
                       setModalType={setModalType}
                       setIsModalOpen={setIsModalOpen}
-                      onExport={handleExportLedger}
                     />
                   ) : (
                     <AccountEmptyState />
