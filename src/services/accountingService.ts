@@ -224,4 +224,11 @@ export const costCenterService = {
   delete: async (id: number): Promise<void> => {
     await api.delete(`/accounting/cost-centers/${id}`);
   },
+  suggestCode: async (parentId?: number): Promise<string> => {
+    const { data } = await api.get("/accounting/cost-centers/suggest-code", {
+      params: parentId ? { parent_id: parentId } : {},
+    });
+
+    return data.data?.code ?? "";
+  },
 };

@@ -14,7 +14,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Plus, Download, CheckCircle2, AlertCircle, Trash2, RefreshCw, Lock } from 'lucide-react';
 import { AccountType } from '../../../../types';
 import { accountService } from "../../../services/accountingService";
-
+import { costCenterService } from "../../../services/accountingService";
 // ─── shared modal wrapper ─────────────────────────────────────────────────
 
 const ModalWrapper: React.FC<{ onClose: () => void; children: React.ReactNode; wide?: boolean }> = ({ onClose, children, wide }) => (
@@ -634,11 +634,32 @@ interface CostCenterForm {
 export const AddCostCenterModal: React.FC<{
   form: CostCenterForm;
   setForm: (f: CostCenterForm) => void;
-  costCenters: { id: string; nameAr: string }[];
+  costCenters: { id: string; nameAr: string; code?: string }[];
   onSave: () => void;
   onClose: () => void;
 }> = ({ form, setForm, costCenters, onSave, onClose }) => {
-  const isValid = form.nameAr && form.type;
+  const [loadingCode, setLoadingCode] = useState(false);
+  const isValid = !!(form.nameAr && form.type);
+
+  const fetchSuggestedCode = async (parentId?: string) => {
+    try {
+      setLoadingCode(true);
+      const pid = parentId ? Number(parentId) : undefined;
+      const code = await costCenterService.suggestCode(pid);
+      setForm({ ...form, code, parentId });
+    } catch {
+      // المستخدم يكتب يدوياً
+    } finally {
+      setLoadingCode(false);
+    }
+  };
+
+  // جلب الكود عند فتح الـ modal أو تغيير الأب
+  useEffect(() => {
+    fetchSuggestedCode(form.parentId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.parentId]);
+
   return (
     <ModalWrapper onClose={onClose}>
       <div className="p-7">
@@ -647,22 +668,57 @@ export const AddCostCenterModal: React.FC<{
           <p className="text-[11px] text-slate-500 mt-1">تصنيف المصروفات والإيرادات بدقة</p>
         </div>
         <div className="space-y-4">
+
+          {/* الاسم + الكود */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <FieldLabel>الاسم</FieldLabel>
-              <input type="text" value={form.nameAr || ''} onChange={e => setForm({ ...form, nameAr: e.target.value })}
-                className={inputCls} placeholder="مثال: قسم المبيعات" autoFocus />
+              <FieldLabel>اسم مركز التكلفة</FieldLabel>
+              <input
+                type="text"
+                value={form.nameAr || ''}
+                onChange={e => setForm({ ...form, nameAr: e.target.value })}
+                className={inputCls}
+                placeholder="مثال: قسم المبيعات"
+                autoFocus
+              />
             </div>
             <div>
-              <FieldLabel>الكود (اختياري)</FieldLabel>
-              <input type="text" value={form.code || ''} onChange={e => setForm({ ...form, code: e.target.value })}
-                className={inputCls} placeholder="مثال: CC-01" />
+              <FieldLabel>الكود</FieldLabel>
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  value={loadingCode ? '' : (form.code || '')}
+                  onChange={e => setForm({ ...form, code: e.target.value })}
+                  placeholder={loadingCode ? 'جاري التوليد...' : 'مثال: CC-01'}
+                  className={`${inputCls} pl-9`}
+                />
+                {loadingCode ? (
+                  <RefreshCw size={13} className="absolute left-3 text-slate-500 animate-spin" />
+                ) : (
+                  <button
+                    onClick={() => fetchSuggestedCode(form.parentId)}
+                    title="إعادة توليد الكود"
+                    className="absolute left-3 text-slate-600 hover:text-red-400 transition-colors"
+                  >
+                    <RefreshCw size={13} />
+                  </button>
+                )}
+              </div>
+              <p className="text-[9px] text-slate-600 mt-1 font-bold">
+                يُولَّد تلقائياً · يمكن تعديله
+              </p>
             </div>
           </div>
+
+          {/* النوع + المركز الأب */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <FieldLabel>النوع</FieldLabel>
-              <select value={form.type || 'operational'} onChange={e => setForm({ ...form, type: e.target.value })} className={selectCls}>
+              <select
+                value={form.type || 'operational'}
+                onChange={e => setForm({ ...form, type: e.target.value })}
+                className={selectCls}
+              >
                 <option value="operational">تشغيلي</option>
                 <option value="administrative">إداري</option>
                 <option value="service">خدمي</option>
@@ -671,19 +727,55 @@ export const AddCostCenterModal: React.FC<{
             </div>
             <div>
               <FieldLabel>المركز الأب (اختياري)</FieldLabel>
-              <select value={form.parentId || ''} onChange={e => setForm({ ...form, parentId: e.target.value })} className={selectCls}>
+              <select
+                value={form.parentId || ''}
+                onChange={e => {
+                  const pid = e.target.value || undefined;
+                  setForm({ ...form, parentId: pid });
+                  // fetchSuggestedCode يُستدعى تلقائياً عبر useEffect
+                }}
+                className={selectCls}
+              >
                 <option value="">— بلا —</option>
-                {costCenters.map(cc => <option key={cc.id} value={cc.id}>{cc.nameAr}</option>)}
+                {costCenters.map(cc => (
+                  <option key={cc.id} value={cc.id}>
+                    {cc.code ? `${cc.code} - ` : ''}{cc.nameAr}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
+
+          {/* معلومة المركز الأب */}
+          {form.parentId && (() => {
+            const parent = costCenters.find(cc => cc.id === form.parentId);
+            return parent ? (
+              <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl px-4 py-3 flex items-center gap-2">
+                <Lock size={12} className="text-blue-400 shrink-0" />
+                <div>
+                  <p className="text-[10px] text-blue-400 font-black uppercase tracking-widest">المركز الأب</p>
+                  <p className="text-xs text-slate-300 font-bold mt-0.5">{parent.nameAr}</p>
+                </div>
+              </div>
+            ) : null;
+          })()}
         </div>
+
         <div className="mt-6 flex gap-3">
-          <button onClick={onSave} disabled={!isValid}
-            className={`flex-1 py-3 rounded-2xl font-black text-sm transition-all ${isValid ? 'bg-red-600 text-white hover:bg-red-700 active:scale-[0.98]' : 'bg-slate-800 text-slate-600 cursor-not-allowed'}`}>
+          <button
+            onClick={onSave}
+            disabled={!isValid || loadingCode}
+            className={`flex-1 py-3 rounded-2xl font-black text-sm transition-all shadow-xl ${isValid && !loadingCode
+                ? 'bg-red-600 text-white hover:bg-red-700 shadow-red-900/20 active:scale-[0.98]'
+                : 'bg-slate-800 text-slate-600 cursor-not-allowed'
+              }`}
+          >
             حفظ المركز
           </button>
-          <button onClick={onClose} className="px-6 py-3 bg-white/5 border border-white/5 text-slate-400 hover:text-white rounded-2xl font-black text-sm transition-all">
+          <button
+            onClick={onClose}
+            className="px-6 py-3 bg-white/5 border border-white/5 text-slate-400 hover:text-white rounded-2xl font-black text-sm transition-all"
+          >
             إلغاء
           </button>
         </div>
@@ -691,7 +783,6 @@ export const AddCostCenterModal: React.FC<{
     </ModalWrapper>
   );
 };
-
 // ─── EditCostCenterModal ──────────────────────────────────────────────────
 
 export const EditCostCenterModal: React.FC<{
