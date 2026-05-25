@@ -522,7 +522,14 @@ export const EmployeeActionModal: React.FC<{
 
 interface JournalEntry {
   id: string; date: string; description: string; status: string; reference: string;
-  lines: { accountId: string; debit: number; credit: number; description?: string }[];
+  lines: {
+    accountId: string;
+    accountName?: string | null;
+    accountCode?: string | null;
+    debit: number;
+    credit: number;
+    description?: string;
+  }[];
 }
 
 export const ViewJournalModal: React.FC<{
@@ -565,12 +572,23 @@ export const ViewJournalModal: React.FC<{
           </thead>
           <tbody className="divide-y divide-white/5">
             {entry.lines.map((line, idx) => {
-              const acc = chartOfAccounts.find(a => a.id === line.accountId);
+              const acc = chartOfAccounts.find(
+                a => a.id === line.accountId
+              );
+
+              const displayName =
+                line.accountName ??
+                acc?.nameAr ??
+                line.accountId;
+
+              const displayCode =
+                line.accountCode ??
+                acc?.code;
               return (
                 <tr key={idx} className="hover:bg-white/[0.02]">
                   <td className="py-3">
-                    <span className="font-bold text-white">{acc?.nameAr || line.accountId}</span>
-                    {acc?.code && <span className="text-[9px] text-slate-600 font-mono ml-2">{acc.code}</span>}
+                    <span className="font-bold text-white">{displayName}</span>
+                    {displayCode && <span className="text-[9px] text-slate-600 font-mono ml-2"> {displayCode}</span>}
                   </td>
                   <td className="py-3 text-center font-mono font-black text-emerald-500">
                     {line.debit > 0 ? `₪${line.debit.toLocaleString()}` : '—'}

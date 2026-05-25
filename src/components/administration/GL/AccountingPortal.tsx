@@ -80,8 +80,16 @@ function toJournalShape(tx: Transaction) {
     description: tx.description ?? tx.type_label,
     status: tx.status === "posted" ? "POSTED" : "DRAFT",
     reference: tx.transaction_number,
+
     lines: (tx.entries ?? []).map((e) => ({
       accountId: String(e.account_id),
+
+      // نأخذ اسم الحساب مباشرة من الـ API
+      accountName: e.account?.name ?? null,
+
+      // نأخذ كود الحساب مباشرة من الـ API
+      accountCode: e.account?.code ?? null,
+
       debit: e.debit,
       credit: e.credit,
       description: e.description,
