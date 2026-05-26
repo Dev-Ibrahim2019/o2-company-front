@@ -4,7 +4,10 @@ import {
   Plus, Eye, ChevronRight, Layers, Activity,
   Zap, Target, Search, Download, Filter,
   CheckCircle2, Clock, AlertCircle, X,
-  ChevronLeft,
+  ChevronLeft, ArrowUpRight, Settings, Building2,
+  TrendingUp, TrendingDown, BarChart3, Info,
+  CalendarDays, Tag, ToggleLeft, ToggleRight,
+  List, LayoutGrid,
 } from "lucide-react";
 
 // ─────────────────────────────────────────────
@@ -716,41 +719,356 @@ export const FiscalYearsView: React.FC<{ fiscalYears: FiscalYear[] }> = ({ fisca
 );
 
 // ─────────────────────────────────────────────
-// CostCentersView
+// ─────────────────────────────────────────────
+// CostCentersView — Enhanced Full Version
 // ─────────────────────────────────────────────
 
-interface CostCenter { id: string; nameAr: string; code: string; type?: string; parentId?: string }
+interface CostCenter {
+  id: string;
+  nameAr: string;
+  code: string;
+  type?: string;
+  type_label?: string;
+  parentId?: string;
+  is_active?: boolean;
+  notes?: string;
+  budget?: number | null;
+}
+
+interface CCTransaction {
+  id: string | number;
+  date: string;
+  description?: string;
+  type?: string;
+  type_label?: string;
+  total_debit?: number;
+  total_credit?: number;
+  entries?: Array<{
+    cost_center_id?: number | string;
+    account?: { name: string; code: string };
+    debit?: number;
+    credit?: number;
+    description?: string;
+  }>;
+}
 
 interface CostCentersViewProps {
   costCenters: CostCenter[];
   onAdd: () => void;
+  transactions?: CCTransaction[];
   setCostCenterForm?: (data: any) => void;
   setModalType?: (type: string) => void;
   setIsModalOpen?: (v: boolean) => void;
 }
 
-const TYPE_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: React.ElementType }> = {
-  OPERATIONAL: { label: 'تشغيلي', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20', icon: Activity },
-  SUPPORT: { label: 'خدمي', color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/20', icon: Zap },
-  PROFIT: { label: 'ربحي', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', icon: Target },
+// نوع حقيقي من الـ API — lowercase من الـ backend
+const TYPE_CONFIG: Record<string, { label: string; color: string; bg: string; border: string; icon: React.ElementType; kpiColor: string }> = {
+  // lowercase (كما يأتي من backend)
+  operational: { label: 'تشغيلي', color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20', icon: Activity, kpiColor: 'text-red-400' },
+  administrative: { label: 'إداري', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20', icon: Building2, kpiColor: 'text-blue-400' },
+  service: { label: 'خدمي', color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/20', icon: Zap, kpiColor: 'text-purple-400' },
+  production: { label: 'إنتاجي', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', icon: Target, kpiColor: 'text-emerald-400' },
+  // UPPERCASE fallback (legacy)
+  OPERATIONAL: { label: 'تشغيلي', color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20', icon: Activity, kpiColor: 'text-red-400' },
+  ADMINISTRATIVE: { label: 'إداري', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20', icon: Building2, kpiColor: 'text-blue-400' },
+  SERVICE: { label: 'خدمي', color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/20', icon: Zap, kpiColor: 'text-purple-400' },
+  PRODUCTION: { label: 'إنتاجي', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', icon: Target, kpiColor: 'text-emerald-400' },
 };
+
+const getTypeCfg = (type?: string) =>
+  TYPE_CONFIG[type ?? ''] ?? { label: type ?? '—', color: 'text-slate-400', bg: 'bg-slate-500/10', border: 'border-slate-500/20', icon: Layers, kpiColor: 'text-slate-400' };
+
+// ── Cost Center Detail Drawer ────────────────────────────────────────────────
+
+interface CCDetailDrawerProps {
+  cc: CostCenter;
+  costCenters: CostCenter[];
+  transactions: CCTransaction[];
+  onClose: () => void;
+  onEdit: () => void;
+}
+
+const CCDetailDrawer: React.FC<CCDetailDrawerProps> = ({ cc, costCenters, transactions, onClose, onEdit }) => {
+  const cfg = getTypeCfg(cc.type);
+  const IconComp = cfg.icon;
+  const parent = cc.parentId ? costCenters.find(p => p.id === cc.parentId) : null;
+
+  // حركات مرتبطة بهذا المركز
+  const relatedEntries = useMemo(() => {
+    const rows: Array<{ date: string; type_label: string; description: string; account: string; amount: number; side: 'debit' | 'credit' }> = [];
+    transactions.forEach(tx => {
+      (tx.entries ?? []).forEach(entry => {
+        if (String(entry.cost_center_id) === String(cc.id)) {
+          rows.push({
+            date: tx.date,
+            type_label: tx.type_label ?? tx.type ?? '—',
+            description: entry.description ?? tx.description ?? '—',
+            account: entry.account ? `${entry.account.code} - ${entry.account.name}` : '—',
+            amount: (entry.debit ?? 0) > 0 ? (entry.debit ?? 0) : (entry.credit ?? 0),
+            side: (entry.debit ?? 0) > 0 ? 'debit' : 'credit',
+          });
+        }
+      });
+    });
+    return rows;
+  }, [cc.id, transactions]);
+
+  const totalExpenses = relatedEntries.filter(e => e.side === 'debit').reduce((s, e) => s + e.amount, 0);
+  const totalRevenue = relatedEntries.filter(e => e.side === 'credit').reduce((s, e) => s + e.amount, 0);
+  const netProfit = totalRevenue - totalExpenses;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        key="drawer-backdrop"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="fixed inset-0 z-40 bg-slate-950/70 backdrop-blur-sm"
+      />
+      <motion.div
+        key="drawer-panel"
+        initial={{ x: '-100%', opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: '-100%', opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        className="fixed right-0 top-0 h-full z-50 w-full md:w-[520px] lg:w-[600px] bg-slate-900 border-l border-white/5 flex flex-col shadow-2xl overflow-hidden"
+        dir="rtl"
+      >
+        {/* Header */}
+        <div className={`p-6 border-b border-white/5 bg-gradient-to-l from-transparent to-${cfg.bg.replace('bg-', '')}`}>
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className={`w-14 h-14 rounded-2xl ${cfg.bg} border ${cfg.border} flex items-center justify-center ${cfg.color} shrink-0`}>
+                <IconComp size={26} />
+              </div>
+              <div>
+                <h2 className="text-xl font-black text-white leading-tight">{cc.nameAr}</h2>
+                <div className="flex items-center flex-wrap gap-2 mt-1.5">
+                  <span className={`px-2.5 py-1 rounded-xl border text-[10px] font-black ${cfg.color} ${cfg.bg} ${cfg.border}`}>
+                    {cfg.label}
+                  </span>
+                  {cc.code && (
+                    <span className="text-[10px] font-mono text-slate-500 bg-slate-950 px-2 py-0.5 rounded-lg border border-white/5">
+                      {cc.code}
+                    </span>
+                  )}
+                  <span className={`flex items-center gap-1 text-[10px] font-black ${cc.is_active !== false ? 'text-emerald-400' : 'text-slate-500'}`}>
+                    {cc.is_active !== false ? <ToggleRight size={13} /> : <ToggleLeft size={13} />}
+                    {cc.is_active !== false ? 'نشط' : 'غير نشط'}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={onEdit}
+                className="p-2 bg-white/5 hover:bg-blue-600 rounded-xl text-slate-400 hover:text-white transition-all border border-white/5"
+                title="تعديل"
+              >
+                <Settings size={15} />
+              </button>
+              <button
+                onClick={onClose}
+                className="p-2 bg-white/5 hover:bg-red-600/20 rounded-xl text-slate-400 hover:text-red-400 transition-all border border-white/5"
+              >
+                <X size={15} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
+
+          {/* Basic Info */}
+          <div className="p-6 space-y-4 border-b border-white/5">
+            <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+              <Info size={12} /> معلومات أساسية
+            </h3>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: 'المركز الأب', value: parent ? parent.nameAr : 'مركز رئيسي', icon: Building2 },
+                { label: 'الكود', value: cc.code || 'غير محدد', icon: Tag },
+                { label: 'النوع', value: cfg.label, icon: Layers },
+                { label: 'الحالة', value: cc.is_active !== false ? 'نشط' : 'غير نشط', icon: CheckCircle2 },
+              ].map((item, i) => (
+                <div key={i} className="bg-slate-950/40 border border-white/5 rounded-2xl p-3.5 text-right">
+                  <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-1 flex items-center gap-1">
+                    <item.icon size={9} /> {item.label}
+                  </p>
+                  <p className="text-xs font-black text-white">{item.value}</p>
+                </div>
+              ))}
+            </div>
+            {cc.notes && (
+              <div className="bg-slate-950/40 border border-white/5 rounded-2xl p-4 text-right">
+                <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-1">ملاحظات</p>
+                <p className="text-xs text-slate-300 font-medium leading-relaxed">{cc.notes}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Financial Summary */}
+          <div className="p-6 space-y-4 border-b border-white/5">
+            <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+              <BarChart3 size={12} /> ملخص مالي
+            </h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-slate-950/40 border border-white/5 rounded-2xl p-4 text-right">
+                <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-1">الميزانية المعتمدة</p>
+                <p className="text-base font-black font-mono text-white">
+                  {cc.budget != null ? `₪${Number(cc.budget).toLocaleString()}` : 'غير محدد'}
+                </p>
+              </div>
+              <div className="bg-slate-950/40 border border-white/5 rounded-2xl p-4 text-right">
+                <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-1 flex items-center gap-1">
+                  <TrendingDown size={9} /> إجمالي المصروفات
+                </p>
+                <p className={`text-base font-black font-mono ${totalExpenses > 0 ? 'text-rose-400' : 'text-slate-600'}`}>
+                  {totalExpenses > 0 ? `₪${totalExpenses.toLocaleString()}` : 'لا توجد بيانات'}
+                </p>
+              </div>
+              <div className="bg-slate-950/40 border border-white/5 rounded-2xl p-4 text-right">
+                <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-1 flex items-center gap-1">
+                  <TrendingUp size={9} /> إجمالي الإيرادات
+                </p>
+                <p className={`text-base font-black font-mono ${totalRevenue > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
+                  {totalRevenue > 0 ? `₪${totalRevenue.toLocaleString()}` : 'لا توجد بيانات'}
+                </p>
+              </div>
+              <div className="bg-slate-950/40 border border-white/5 rounded-2xl p-4 text-right">
+                <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-1">صافي الربح / الخسارة</p>
+                {relatedEntries.length === 0 ? (
+                  <p className="text-base font-black font-mono text-slate-600">لا توجد بيانات</p>
+                ) : (
+                  <p className={`text-base font-black font-mono ${netProfit > 0 ? 'text-emerald-400' : netProfit < 0 ? 'text-rose-400' : 'text-slate-400'}`}>
+                    {netProfit >= 0 ? '+' : ''}₪{netProfit.toLocaleString()}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Related Transactions */}
+          <div className="p-6 space-y-4">
+            <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+              <List size={12} /> الحركات المرتبطة
+              {relatedEntries.length > 0 && (
+                <span className="px-2 py-0.5 bg-red-600/20 border border-red-500/20 rounded-lg text-red-400 text-[10px]">
+                  {relatedEntries.length}
+                </span>
+              )}
+            </h3>
+
+            {relatedEntries.length === 0 ? (
+              <div className="py-12 flex flex-col items-center justify-center text-center gap-3">
+                <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center text-slate-700">
+                  <BarChart3 size={24} />
+                </div>
+                <p className="text-xs font-black text-slate-600">لا توجد حركات مرتبطة بهذا المركز حتى الآن</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto rounded-2xl border border-white/5">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-slate-950/40 border-b border-white/5">
+                    <tr className="text-slate-500 font-black uppercase tracking-wider">
+                      <th className="px-4 py-3">التاريخ</th>
+                      <th className="px-4 py-3">النوع</th>
+                      <th className="px-4 py-3">البيان</th>
+                      <th className="px-4 py-3">الحساب</th>
+                      <th className="px-4 py-3 text-center">المبلغ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {relatedEntries.map((row, idx) => (
+                      <tr key={idx} className="hover:bg-white/[0.02] transition-colors">
+                        <td className="px-4 py-3 font-mono text-[10px] text-slate-500 whitespace-nowrap">{row.date}</td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-0.5 bg-slate-800 border border-white/5 rounded-lg text-[10px] font-black text-slate-400">
+                            {row.type_label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-slate-300 font-bold max-w-[140px] truncate">{row.description}</td>
+                        <td className="px-4 py-3 text-slate-500 text-[10px] font-mono max-w-[120px] truncate">{row.account}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span className={`font-black font-mono text-xs ${row.side === 'debit' ? 'text-rose-400' : 'text-emerald-400'}`}>
+                            {row.side === 'debit' ? '-' : '+'}₪{row.amount.toLocaleString()}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
+// ── Main CostCentersView ─────────────────────────────────────────────────────
 
 export const CostCentersView: React.FC<CostCentersViewProps> = ({
   costCenters,
+  transactions = [],
   setCostCenterForm,
   setModalType,
   setIsModalOpen,
 }) => {
   const [search, setSearch] = useState('');
-  const filtered = costCenters.filter(cc =>
-    cc.nameAr.includes(search) || cc.code.includes(search)
-  );
+  const [filterType, setFilterType] = useState('');
+  const [filterActive, setFilterActive] = useState('');
+  const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
+  const [selectedCC, setSelectedCC] = useState<CostCenter | null>(null);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-  const stats = {
+  // ── KPI Stats — computed directly from real data ────────────────────────
+  const stats = useMemo(() => ({
     total: costCenters.length,
-    operational: costCenters.filter(c => c.type === 'OPERATIONAL').length,
-    support: costCenters.filter(c => c.type === 'SUPPORT').length,
-    profit: costCenters.filter(c => c.type === 'PROFIT').length,
+    operational: costCenters.filter(c => (c.type ?? '').toLowerCase() === 'operational').length,
+    administrative: costCenters.filter(c => (c.type ?? '').toLowerCase() === 'administrative').length,
+    service: costCenters.filter(c => (c.type ?? '').toLowerCase() === 'service').length,
+    production: costCenters.filter(c => (c.type ?? '').toLowerCase() === 'production').length,
+  }), [costCenters]);
+
+  // ── Filtering ────────────────────────────────────────────────────────────
+  const filtered = useMemo(() => {
+    return costCenters.filter(cc => {
+      const matchSearch = !search || cc.nameAr.includes(search) || (cc.code ?? '').includes(search);
+      const matchType = !filterType || (cc.type ?? '').toLowerCase() === filterType;
+      const matchActive = !filterActive || String(cc.is_active !== false) === filterActive;
+      return matchSearch && matchType && matchActive;
+    });
+  }, [costCenters, search, filterType, filterActive]);
+
+  const handleOpenDrawer = (cc: CostCenter) => {
+    setSelectedCC(cc);
+    setIsDrawerOpen(true);
+  };
+
+  const handleCloseDrawer = () => {
+    setIsDrawerOpen(false);
+    setTimeout(() => setSelectedCC(null), 300);
+  };
+
+  const handleEditFromDrawer = () => {
+    if (!selectedCC) return;
+    setCostCenterForm?.({
+      id: selectedCC.id,
+      nameAr: selectedCC.nameAr,
+      code: selectedCC.code,
+      type: selectedCC.type,
+      is_active: selectedCC.is_active,
+      notes: selectedCD?.notes,
+      parentId: selectedCC.parentId,
+    });
+    setModalType?.('EDIT_COST_CENTER');
+    setIsModalOpen?.(true);
+    handleCloseDrawer();
   };
 
   return (
@@ -762,114 +1080,318 @@ export const CostCentersView: React.FC<CostCentersViewProps> = ({
       className="h-full overflow-y-auto custom-scrollbar pb-10 space-y-5"
       dir="rtl"
     >
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* ── KPI Cards — real data, auto-updated ──────────────────────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {[
           { label: 'إجمالي المراكز', value: stats.total, color: 'text-white', bg: 'bg-white/5', border: 'border-white/10', icon: Layers },
-          { label: 'تشغيلية', value: stats.operational, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20', icon: Activity },
-          { label: 'خدمية', value: stats.support, color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/20', icon: Zap },
-          { label: 'ربحية', value: stats.profit, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', icon: Target },
+          { label: 'تشغيلية', value: stats.operational, color: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20', icon: Activity },
+          { label: 'إدارية', value: stats.administrative, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20', icon: Building2 },
+          { label: 'خدمية', value: stats.service, color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/20', icon: Zap },
+          { label: 'إنتاجية', value: stats.production, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', icon: Target },
         ].map((s, i) => (
-          <div key={i} className={`bg-slate-900/60 border ${s.border} rounded-2xl p-5 flex items-center justify-between`}>
+          <motion.div
+            key={i}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.05 }}
+            className={`bg-slate-900/60 border ${s.border} rounded-2xl p-4 flex items-center justify-between`}
+          >
             <div className="text-right">
-              <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1">{s.label}</p>
+              <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">{s.label}</p>
               <p className={`text-2xl font-black font-mono ${s.color}`}>{s.value}</p>
             </div>
-            <div className={`w-10 h-10 rounded-2xl ${s.bg} border ${s.border} flex items-center justify-center ${s.color}`}>
-              <s.icon size={20} />
+            <div className={`w-9 h-9 rounded-xl ${s.bg} border ${s.border} flex items-center justify-center ${s.color}`}>
+              <s.icon size={17} />
             </div>
-          </div>
+          </motion.div>
         ))}
       </div>
 
-      <div className="flex items-center justify-between gap-4">
-        <div className="relative">
-          <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
-          <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="بحث عن مركز تكلفة..."
-            className="bg-slate-900 border border-white/5 rounded-xl py-2.5 pr-9 pl-4 text-xs text-white outline-none focus:border-red-500/50 w-64" />
-        </div>
-        <button
-          onClick={() => {
-            setCostCenterForm?.({ type: 'OPERATIONAL' });
-            setModalType?.('ADD_COST_CENTER');
-            setIsModalOpen?.(true);
-          }}
-          className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-black hover:bg-red-700 transition-all shadow-lg shadow-red-900/20"
-        >
-          <Plus size={14} /> مركز تكلفة جديد
-        </button>
-      </div>
+      {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Search */}
+          <div className="relative">
+            <Search size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="بحث بالاسم أو الكود..."
+              className="bg-slate-900 border border-white/5 rounded-xl py-2 pr-9 pl-4 text-xs text-white outline-none focus:border-red-500/50 w-56"
+            />
+          </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {filtered.map((cc, i) => {
-          const cfg = TYPE_CONFIG[cc.type || 'OPERATIONAL'] || TYPE_CONFIG.OPERATIONAL;
-          const IconComp = cfg.icon;
-          const parent = costCenters.find(p => p.id === cc.parentId);
+          {/* Type Filter */}
+          <select
+            value={filterType}
+            onChange={e => setFilterType(e.target.value)}
+            className="bg-slate-900 border border-white/5 rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-red-500/50"
+          >
+            <option value="">كل الأنواع</option>
+            <option value="operational">تشغيلي</option>
+            <option value="administrative">إداري</option>
+            <option value="service">خدمي</option>
+            <option value="production">إنتاجي</option>
+          </select>
 
-          return (
-            <motion.div key={cc.id}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.06, type: 'spring', stiffness: 180 }}
-              className={`bg-slate-900/60 border border-white/5 rounded-3xl p-6 hover:border-white/15 transition-all group`}
+          {/* Active Filter */}
+          <select
+            value={filterActive}
+            onChange={e => setFilterActive(e.target.value)}
+            className="bg-slate-900 border border-white/5 rounded-xl py-2 px-3 text-xs text-white outline-none focus:border-red-500/50"
+          >
+            <option value="">كل الحالات</option>
+            <option value="true">نشط</option>
+            <option value="false">غير نشط</option>
+          </select>
+
+          {(search || filterType || filterActive) && (
+            <button
+              onClick={() => { setSearch(''); setFilterType(''); setFilterActive(''); }}
+              className="flex items-center gap-1 px-2.5 py-2 bg-red-600/10 border border-red-500/20 rounded-xl text-red-400 text-[10px] font-black hover:bg-red-600/20 transition-all"
             >
-              <div className="flex items-start justify-between mb-5">
-                <div className={`w-12 h-12 rounded-2xl ${cfg.bg} border ${cfg.border} flex items-center justify-center ${cfg.color} group-hover:scale-105 transition-transform`}>
-                  <IconComp size={24} />
-                </div>
-                <span className={`px-3 py-1 rounded-xl border text-[10px] font-black ${cfg.color} ${cfg.bg} ${cfg.border}`}>
-                  {cfg.label}
-                </span>
-              </div>
+              <X size={11} /> مسح الفلاتر
+            </button>
+          )}
+        </div>
 
-              <div className="mb-5 text-right">
-                <h4 className="text-base font-black text-white mb-1">{cc.nameAr}</h4>
-                {parent && <p className="text-[11px] text-slate-500 font-bold">تابع لـ: {parent.nameAr}</p>}
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="text-[10px] font-mono text-slate-500 bg-slate-950 px-2 py-0.5 rounded-lg border border-white/5">
-                    {cc.code}
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-slate-950/60 border border-white/5 rounded-2xl p-3 text-right">
-                  <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-1">الميزانية</p>
-                  <p className="text-sm font-black font-mono text-white">₪0</p>
-                </div>
-                <div className="bg-slate-950/60 border border-white/5 rounded-2xl p-3 text-right">
-                  <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-1">المصروف</p>
-                  <p className="text-sm font-black font-mono text-rose-400">₪0</p>
-                </div>
-              </div>
-
-              <div className="mt-4 flex items-center justify-between pt-4 border-t border-white/5">
-                <span className="text-[10px] text-slate-600 font-bold">لا توجد حركات</span>
-                <button className="text-[10px] font-black text-slate-500 hover:text-white transition-colors flex items-center gap-1">
-                  تفاصيل <ChevronRight size={12} className="rotate-180" />
-                </button>
-              </div>
-            </motion.div>
-          );
-        })}
-
-        <button
-          onClick={() => {
-            setCostCenterForm?.({ type: 'OPERATIONAL' });
-            setModalType?.('ADD_COST_CENTER');
-            setIsModalOpen?.(true);
-          }}
-          className="rounded-3xl border-2 border-dashed border-white/5 p-8 flex flex-col items-center justify-center gap-4 text-slate-600 hover:border-red-500/30 hover:text-slate-400 hover:bg-red-500/5 transition-all group min-h-[220px]"
-        >
-          <div className="w-14 h-14 rounded-3xl bg-white/5 flex items-center justify-center group-hover:scale-110 group-hover:rotate-90 transition-all duration-500">
-            <Plus size={28} />
+        <div className="flex items-center gap-2">
+          {/* View Toggle */}
+          <div className="flex items-center bg-slate-900 border border-white/5 rounded-xl p-1">
+            <button
+              onClick={() => setViewMode('cards')}
+              className={`p-1.5 rounded-lg transition-all ${viewMode === 'cards' ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-white'}`}
+            >
+              <LayoutGrid size={14} />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-1.5 rounded-lg transition-all ${viewMode === 'list' ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-white'}`}
+            >
+              <List size={14} />
+            </button>
           </div>
-          <div className="text-center">
-            <span className="text-sm font-black block">إضافة مركز تكلفة</span>
-            <p className="text-[11px] font-medium opacity-60 mt-1">إنشاء سجل تتبع مالي منفصل</p>
-          </div>
-        </button>
+
+          <button className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/5 text-slate-400 hover:text-white rounded-xl text-xs font-black transition-all">
+            <Download size={13} /> تصدير
+          </button>
+
+          <button
+            onClick={() => {
+              setCostCenterForm?.({ type: 'operational', is_active: true });
+              setModalType?.('ADD_COST_CENTER');
+              setIsModalOpen?.(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-black hover:bg-red-700 transition-all shadow-lg shadow-red-900/20"
+          >
+            <Plus size={14} /> مركز تكلفة جديد
+          </button>
+        </div>
       </div>
+
+      {/* ── Cards View ───────────────────────────────────────────────────────── */}
+      {viewMode === 'cards' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <AnimatePresence mode="popLayout">
+            {filtered.map((cc, i) => {
+              const cfg = getTypeCfg(cc.type);
+              const IconComp = cfg.icon;
+              const parent = cc.parentId ? costCenters.find(p => p.id === cc.parentId) : null;
+
+              // حساب الحركات لهذا المركز
+              const ccEntries = transactions.flatMap(tx =>
+                (tx.entries ?? []).filter(e => String(e.cost_center_id) === String(cc.id))
+              );
+              const hasMovements = ccEntries.length > 0;
+
+              return (
+                <motion.div
+                  key={cc.id}
+                  layout
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ delay: i * 0.04, type: 'spring', stiffness: 200 }}
+                  className="bg-slate-900/60 border border-white/5 rounded-3xl p-6 hover:border-white/15 transition-all group flex flex-col"
+                >
+                  {/* Card Header */}
+                  <div className="flex items-start justify-between mb-5">
+                    <div className={`w-12 h-12 rounded-2xl ${cfg.bg} border ${cfg.border} flex items-center justify-center ${cfg.color} group-hover:scale-105 transition-transform shrink-0`}>
+                      <IconComp size={22} />
+                    </div>
+                    <div className="flex flex-col items-end gap-1.5">
+                      {/* النوع — Badge ملون من البيانات الحقيقية */}
+                      <span className={`px-3 py-1 rounded-xl border text-[10px] font-black ${cfg.color} ${cfg.bg} ${cfg.border}`}>
+                        {cfg.label}
+                      </span>
+                      {/* الحالة */}
+                      <span className={`text-[10px] font-black ${cc.is_active !== false ? 'text-emerald-400' : 'text-slate-600'}`}>
+                        {cc.is_active !== false ? '● نشط' : '○ غير نشط'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Info */}
+                  <div className="mb-4 text-right flex-1">
+                    <h4 className="text-base font-black text-white mb-1 leading-tight">{cc.nameAr}</h4>
+                    {parent && (
+                      <p className="text-[11px] text-slate-500 font-bold flex items-center gap-1 justify-end">
+                        <ChevronLeft size={10} /> تابع لـ: {parent.nameAr}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-2 mt-2 justify-end">
+                      {cc.code && (
+                        <span className="text-[10px] font-mono text-slate-500 bg-slate-950 px-2 py-0.5 rounded-lg border border-white/5">
+                          {cc.code}
+                        </span>
+                      )}
+                    </div>
+                    {cc.notes && (
+                      <p className="text-[11px] text-slate-500 mt-2 leading-relaxed line-clamp-2">{cc.notes}</p>
+                    )}
+                  </div>
+
+                  {/* Financial Stats */}
+                  <div className="grid grid-cols-2 gap-2 mb-4">
+                    <div className="bg-slate-950/60 border border-white/5 rounded-2xl p-3 text-right">
+                      <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-1">الميزانية</p>
+                      <p className="text-sm font-black font-mono text-white">
+                        {cc.budget != null ? `₪${Number(cc.budget).toLocaleString()}` : 'غير محدد'}
+                      </p>
+                    </div>
+                    <div className="bg-slate-950/60 border border-white/5 rounded-2xl p-3 text-right">
+                      <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-1">الحركات</p>
+                      <p className={`text-sm font-black font-mono ${hasMovements ? 'text-blue-400' : 'text-slate-600'}`}>
+                        {hasMovements ? `${ccEntries.length} حركة` : 'لا توجد بيانات'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="flex items-center justify-between pt-4 border-t border-white/5">
+                    <span className={`text-[10px] font-bold ${hasMovements ? 'text-blue-400' : 'text-slate-600'}`}>
+                      {hasMovements ? `${ccEntries.length} حركة مرتبطة` : 'لا توجد حركات'}
+                    </span>
+                    <button
+                      onClick={() => handleOpenDrawer(cc)}
+                      className="flex items-center gap-1.5 text-[10px] font-black text-slate-400 hover:text-white transition-colors bg-white/5 hover:bg-white/10 border border-white/5 px-3 py-1.5 rounded-xl"
+                    >
+                      <Eye size={12} /> عرض التفاصيل
+                    </button>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+
+          {/* Add Button */}
+          <motion.button
+            layout
+            onClick={() => {
+              setCostCenterForm?.({ type: 'operational', is_active: true });
+              setModalType?.('ADD_COST_CENTER');
+              setIsModalOpen?.(true);
+            }}
+            className="rounded-3xl border-2 border-dashed border-white/5 p-8 flex flex-col items-center justify-center gap-4 text-slate-600 hover:border-red-500/30 hover:text-slate-400 hover:bg-red-500/5 transition-all group min-h-[240px]"
+          >
+            <div className="w-14 h-14 rounded-3xl bg-white/5 flex items-center justify-center group-hover:scale-110 group-hover:rotate-90 transition-all duration-500">
+              <Plus size={28} />
+            </div>
+            <div className="text-center">
+              <span className="text-sm font-black block">إضافة مركز تكلفة</span>
+              <p className="text-[11px] font-medium opacity-60 mt-1">إنشاء سجل تتبع مالي منفصل</p>
+            </div>
+          </motion.button>
+
+          {/* Empty State */}
+          {filtered.length === 0 && costCenters.length > 0 && (
+            <div className="col-span-full py-16 text-center">
+              <p className="text-slate-600 font-black text-sm">لا توجد نتائج مطابقة للفلاتر المحددة</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── List View ────────────────────────────────────────────────────────── */}
+      {viewMode === 'list' && (
+        <div className="bg-slate-900/60 border border-white/5 rounded-3xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-right text-xs">
+              <thead className="bg-slate-950/40 border-b border-white/5">
+                <tr className="text-slate-500 font-black uppercase tracking-wider">
+                  <th className="px-5 py-3">المركز</th>
+                  <th className="px-5 py-3">الكود</th>
+                  <th className="px-5 py-3">النوع</th>
+                  <th className="px-5 py-3">المركز الأب</th>
+                  <th className="px-5 py-3 text-center">الحالة</th>
+                  <th className="px-5 py-3 text-center">الحركات</th>
+                  <th className="px-5 py-3 text-center">إجراءات</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {filtered.map((cc) => {
+                  const cfg = getTypeCfg(cc.type);
+                  const parent = cc.parentId ? costCenters.find(p => p.id === cc.parentId) : null;
+                  const ccEntries = transactions.flatMap(tx =>
+                    (tx.entries ?? []).filter(e => String(e.cost_center_id) === String(cc.id))
+                  );
+                  return (
+                    <tr key={cc.id} className="hover:bg-white/[0.02] transition-colors group">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-xl ${cfg.bg} border ${cfg.border} flex items-center justify-center ${cfg.color} shrink-0`}>
+                            <cfg.icon size={14} />
+                          </div>
+                          <span className="font-bold text-white">{cc.nameAr}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 font-mono text-slate-500 text-[11px]">{cc.code || '—'}</td>
+                      <td className="px-5 py-4">
+                        <span className={`px-2.5 py-1 rounded-xl border text-[10px] font-black ${cfg.color} ${cfg.bg} ${cfg.border}`}>
+                          {cfg.label}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-slate-400 font-bold text-[11px]">{parent ? parent.nameAr : '—'}</td>
+                      <td className="px-5 py-4 text-center">
+                        <span className={`text-[10px] font-black ${cc.is_active !== false ? 'text-emerald-400' : 'text-slate-600'}`}>
+                          {cc.is_active !== false ? '● نشط' : '○ غير نشط'}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-center font-mono text-[11px] text-blue-400 font-black">
+                        {ccEntries.length > 0 ? ccEntries.length : '—'}
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        <button
+                          onClick={() => handleOpenDrawer(cc)}
+                          className="px-3 py-1.5 bg-white/5 border border-white/10 text-slate-400 text-[10px] font-black rounded-xl hover:bg-blue-600/20 hover:text-blue-400 hover:border-blue-500/30 transition-all inline-flex items-center gap-1"
+                        >
+                          <Eye size={11} /> تفاصيل
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {filtered.length === 0 && (
+              <div className="py-16 text-center text-slate-600 font-black text-sm">
+                لا توجد نتائج مطابقة
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Detail Drawer ─────────────────────────────────────────────────────── */}
+      {isDrawerOpen && selectedCC && (
+        <CCDetailDrawer
+          cc={selectedCC}
+          costCenters={costCenters}
+          transactions={transactions}
+          onClose={handleCloseDrawer}
+          onEdit={handleEditFromDrawer}
+        />
+      )}
     </motion.div>
   );
 };

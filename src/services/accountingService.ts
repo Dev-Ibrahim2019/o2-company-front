@@ -228,7 +228,6 @@ export const costCenterService = {
     const { data } = await api.get("/accounting/cost-centers/suggest-code", {
       params: parentId ? { parent_id: parentId } : {},
     });
-
     return data.data?.code ?? "";
   },
 };

@@ -13,8 +13,8 @@ import React, { useMemo, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Plus, Download, CheckCircle2, AlertCircle, Trash2, RefreshCw, Lock } from 'lucide-react';
 import { AccountType } from '../../../../types';
-import { accountService } from "../../../services/accountingService";
-import { costCenterService } from "../../../services/accountingService";
+import { accountService, costCenterService } from "../../../services/accountingService";
+
 // ─── shared modal wrapper ─────────────────────────────────────────────────
 
 const ModalWrapper: React.FC<{ onClose: () => void; children: React.ReactNode; wide?: boolean }> = ({ onClose, children, wide }) => (
@@ -588,7 +588,7 @@ export const ViewJournalModal: React.FC<{
                 <tr key={idx} className="hover:bg-white/[0.02]">
                   <td className="py-3">
                     <span className="font-bold text-white">{displayName}</span>
-                    {displayCode && <span className="text-[9px] text-slate-600 font-mono ml-2"> {displayCode}</span>}
+                    {displayCode && <span className="text-[9px] text-slate-600 font-mono ml-2">{displayCode}</span>}
                   </td>
                   <td className="py-3 text-center font-mono font-black text-emerald-500">
                     {line.debit > 0 ? `₪${line.debit.toLocaleString()}` : '—'}
@@ -766,8 +766,8 @@ export const AddCostCenterModal: React.FC<{
             onClick={onSave}
             disabled={!isValid || loadingCode}
             className={`flex-1 py-3 rounded-2xl font-black text-sm transition-all shadow-xl ${isValid && !loadingCode
-                ? 'bg-red-600 text-white hover:bg-red-700 shadow-red-900/20 active:scale-[0.98]'
-                : 'bg-slate-800 text-slate-600 cursor-not-allowed'
+              ? 'bg-red-600 text-white hover:bg-red-700 shadow-red-900/20 active:scale-[0.98]'
+              : 'bg-slate-800 text-slate-600 cursor-not-allowed'
               }`}
           >
             حفظ المركز

@@ -105,6 +105,7 @@ function toCostCenterShape(cc: CostCenter) {
     type: cc.type?.toUpperCase() ?? "OPERATIONAL",
     parentId: cc.parent ? String(cc.parent.id) : undefined,
     is_active: cc.is_active,
+    notes: cc.notes ?? "",
   };
 }
 
@@ -529,6 +530,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
           {glSubTab === "COST_CENTERS" && (
             <CostCentersView
               costCenters={costCentersView}
+              transactions={acc.transactions}
               onAdd={() => openModal("ADD_COST_CENTER")}
               setCostCenterForm={setCostCenterForm}
               setModalType={setModalType as any}
