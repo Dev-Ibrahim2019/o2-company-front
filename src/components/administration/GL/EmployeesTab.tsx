@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Search, Filter, DollarSign, Users,
-  TrendingUp, AlertCircle, Download,
-  Wallet, Briefcase, Clock,
+  TrendingUp, Download, Wallet,
 } from 'lucide-react';
+import EntityFinanceActions from './EntityFinanceActions';
 
 interface Employee {
   id: string;
@@ -19,13 +19,6 @@ interface Props {
   chartOfAccounts: COA[];
   onAction: (empId: string, type: 'ADVANCE' | 'SALARY' | 'DISCOUNT' | 'CUSTODY') => void;
 }
-
-const ACTIONS = [
-  { type: 'SALARY' as const, label: 'صرف راتب', color: 'hover:bg-emerald-600 hover:border-emerald-500', icon: DollarSign },
-  { type: 'ADVANCE' as const, label: 'سلفة', color: 'hover:bg-amber-600  hover:border-amber-500', icon: Wallet },
-  { type: 'DISCOUNT' as const, label: 'خصم', color: 'hover:bg-orange-600 hover:border-orange-500', icon: AlertCircle },
-  { type: 'CUSTODY' as const, label: 'عهدة', color: 'hover:bg-blue-600   hover:border-blue-500', icon: Briefcase },
-];
 
 export const EmployeesTab: React.FC<Props> = ({ employees, chartOfAccounts, onAction }) => {
   const [search, setSearch] = useState('');
@@ -133,7 +126,7 @@ export const EmployeesTab: React.FC<Props> = ({ employees, chartOfAccounts, onAc
                 <div className="grid grid-cols-2 divide-x divide-x-reverse divide-white/5 text-right">
                   <div className="p-4">
                     <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-1 flex items-center gap-1">
-                      <Clock size={9} /> الراتب الشهري
+                      💰 الراتب الشهري
                     </p>
                     <p className="text-sm font-black text-white font-mono">₪{emp.salary.toLocaleString()}</p>
                   </div>
@@ -147,16 +140,14 @@ export const EmployeesTab: React.FC<Props> = ({ employees, chartOfAccounts, onAc
                 </div>
 
                 {/* Actions */}
-                <div className="p-3 border-t border-white/5 grid grid-cols-4 gap-2">
-                  {ACTIONS.map(action => (
-                    <button key={action.type}
-                      onClick={() => onAction(emp.id, action.type)}
-                      className={`flex flex-col items-center gap-1 p-2 rounded-xl border border-white/5 bg-white/5 text-slate-400 hover:text-white transition-all text-[9px] font-black ${action.color}`}
-                    >
-                      <action.icon size={13} />
-                      {action.label}
-                    </button>
-                  ))}
+                <div className="p-4 border-t border-white/5">
+                  <EntityFinanceActions
+                    entityType="employee"
+                    entityId={parseInt(emp.id)}
+                    entityName={emp.name}
+                    currentBalance={bal}
+                    onActionSuccess={() => onAction(emp.id, 'SALARY')}
+                  />
                 </div>
               </motion.div>
             );
@@ -186,7 +177,7 @@ export const EmployeesTab: React.FC<Props> = ({ employees, chartOfAccounts, onAc
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {filtered.map((emp, i) => {
+                {filtered.map((emp) => {
                   const account = chartOfAccounts.find(a => a.nameAr === emp.name || a.name === emp.name);
                   const bal = account?.balance ?? 0;
                   return (
@@ -208,13 +199,14 @@ export const EmployeesTab: React.FC<Props> = ({ employees, chartOfAccounts, onAc
                         </span>
                       </td>
                       <td className="px-5 py-4">
-                        <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {ACTIONS.map(a => (
-                            <button key={a.type} onClick={() => onAction(emp.id, a.type)}
-                              className="px-2 py-1 bg-white/5 border border-white/10 text-slate-400 text-[10px] font-black rounded-lg hover:bg-red-600 hover:text-white hover:border-red-600 transition-all">
-                              {a.label}
-                            </button>
-                          ))}
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                          <EntityFinanceActions
+                            entityType="employee"
+                            entityId={parseInt(emp.id)}
+                            entityName={emp.name}
+                            currentBalance={bal}
+                            onActionSuccess={() => onAction(emp.id, 'SALARY')}
+                          />
                         </div>
                       </td>
                     </tr>
