@@ -1,40 +1,25 @@
-import axios from "axios";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
-
-// A new axios instance for finance operations that does not rely on localStorage
-// The token should be passed in from a secure context (e.g., React Context, Redux, or a prop)
-const financeApi = axios.create({
-  baseURL: API_URL,
-  headers: {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  },
-});
-
-// Add a request interceptor to include the Authorization header dynamically
-financeApi.interceptors.request.use(
-  (config) => {
-    // This assumes a mechanism to get the token without localStorage/sessionStorage
-    // For example, if a token is stored in a global state or passed via a context
-    // For now, we'll leave it as a placeholder. The actual implementation will depend
-    // on how the frontend manages authentication tokens without local storage.
-    // const token = getAuthTokenFromContextOrState(); // Placeholder
-    // if (token) {
-    //   config.headers.Authorization = `Bearer ${token}`;
-    // }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  },
-);
+import api from "../api/axios";
 
 export interface TransactionResponse {
   success: boolean;
   message: string;
   data: any;
   errors: any;
+}
+
+export interface EmployeeLoan {
+  id: number;
+  employee_id: number;
+  amount: number;
+  date_granted: string;
+  repayment_date: string | null;
+  amount_paid: number;
+  status: "pending" | "repaid" | "partially_repaid" | "cancelled";
+  notes: string | null;
+  transaction_id: number | null;
+  remaining_amount?: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface StatementEntry {
@@ -58,14 +43,30 @@ export const financeService = {
     employeeId: number,
     data: {
       amount: number;
-      cash_account_id: number;
-      date: string;
-      description?: string;
-      branch_id?: number;
+      cash_bank_account_id: number;
+      date_granted: string;
+      notes?: string;
     },
   ): Promise<TransactionResponse> => {
-    const response = await financeApi.post<TransactionResponse>(
+    const response = await api.post<TransactionResponse>(
       `/employees/${employeeId}/advance`,
+      data,
+    );
+    return response.data;
+  },
+
+  recordRepayment: async (
+    employeeId: number,
+    loanId: number,
+    data: {
+      amount: number;
+      cash_bank_account_id: number;
+      repayment_date: string;
+      notes?: string;
+    },
+  ): Promise<TransactionResponse> => {
+    const response = await api.post<TransactionResponse>(
+      `/employees/${employeeId}/repay-advance/${loanId}`,
       data,
     );
     return response.data;
@@ -74,15 +75,13 @@ export const financeService = {
   recordSalaryPayment: async (
     employeeId: number,
     data: {
-      gross_amount: number;
-      advance_deduction: number;
-      cash_account_id: number;
-      date: string;
-      description?: string;
-      branch_id?: number;
+      gross_salary: number;
+      cash_bank_account_id: number;
+      payment_date: string;
+      notes?: string;
     },
   ): Promise<TransactionResponse> => {
-    const response = await financeApi.post<TransactionResponse>(
+    const response = await api.post<TransactionResponse>(
       `/employees/${employeeId}/salary-payment`,
       data,
     );
@@ -91,12 +90,19 @@ export const financeService = {
 
   getEmployeeStatement: async (
     employeeId: number,
-    from: string,
-    to: string,
+    from_date?: string,
+    to_date?: string,
   ): Promise<TransactionResponse> => {
-    const response = await financeApi.get<TransactionResponse>(
+    const response = await api.get<TransactionResponse>(
       `/employees/${employeeId}/statement`,
-      { params: { from, to } },
+      { params: { from_date, to_date } },
+    );
+    return response.data;
+  },
+
+  getEmployeeLoans: async (employeeId: number): Promise<EmployeeLoan[]> => {
+    const response = await api.get<EmployeeLoan[]>(
+      `/employees/${employeeId}/loans`,
     );
     return response.data;
   },
@@ -112,7 +118,7 @@ export const financeService = {
       branch_id?: number;
     },
   ): Promise<TransactionResponse> => {
-    const response = await financeApi.post<TransactionResponse>(
+    const response = await api.post<TransactionResponse>(
       `/customers/${customerId}/invoice`,
       data,
     );
@@ -129,7 +135,7 @@ export const financeService = {
       branch_id?: number;
     },
   ): Promise<TransactionResponse> => {
-    const response = await financeApi.post<TransactionResponse>(
+    const response = await api.post<TransactionResponse>(
       `/customers/${customerId}/payment`,
       data,
     );
@@ -141,7 +147,7 @@ export const financeService = {
     from: string,
     to: string,
   ): Promise<TransactionResponse> => {
-    const response = await financeApi.get<TransactionResponse>(
+    const response = await api.get<TransactionResponse>(
       `/customers/${customerId}/statement`,
       { params: { from, to } },
     );
@@ -159,7 +165,7 @@ export const financeService = {
       branch_id?: number;
     },
   ): Promise<TransactionResponse> => {
-    const response = await financeApi.post<TransactionResponse>(
+    const response = await api.post<TransactionResponse>(
       `/suppliers/${supplierId}/bill`,
       data,
     );
@@ -176,7 +182,7 @@ export const financeService = {
       branch_id?: number;
     },
   ): Promise<TransactionResponse> => {
-    const response = await financeApi.post<TransactionResponse>(
+    const response = await api.post<TransactionResponse>(
       `/suppliers/${supplierId}/payment`,
       data,
     );
@@ -188,7 +194,7 @@ export const financeService = {
     from: string,
     to: string,
   ): Promise<TransactionResponse> => {
-    const response = await financeApi.get<TransactionResponse>(
+    const response = await api.get<TransactionResponse>(
       `/suppliers/${supplierId}/statement`,
       { params: { from, to } },
     );

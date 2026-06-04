@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { financeService } from "../../../services/financeService";
+import type { EmployeeLoan } from "../../../services/financeService";
 import type { TransactionResponse } from "../../../services/financeService";
+
 type EntityType = 'employee' | 'customer' | 'supplier';
 type FinanceAction =
     | 'advance'
@@ -31,8 +33,7 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
     onSuccess,
 }) => {
     const [amount, setAmount] = useState<number | string>('');
-    const [grossAmount, setGrossAmount] = useState<number | string>('');
-    const [advanceDeduction, setAdvanceDeduction] = useState<number | string>('');
+    const [grossSalary, setGrossSalary] = useState<number | string>('');
     const [cashAccountId, setCashAccountId] = useState<number | string>('');
     const [offsetAccountId, setOffsetAccountId] = useState<number | string>('');
     const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -40,20 +41,52 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
     const [description, setDescription] = useState<string>('');
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+    const [selectedLoanId, setSelectedLoanId] = useState<number | string>('');
+    const [loans, setLoans] = useState<EmployeeLoan[]>([]);
+    const [deductedLoansAmount, setDeductedLoansAmount] = useState<number>(0);
 
     useEffect(() => {
         if (isOpen) {
             setAmount('');
-            setGrossAmount('');
-            setAdvanceDeduction('');
+            setGrossSalary('');
             setCashAccountId('');
             setOffsetAccountId('');
             setDate(new Date().toISOString().split('T')[0]);
             setReference('');
             setDescription('');
+            setSelectedLoanId('');
             setMessage(null);
+            setDeductedLoansAmount(0);
+
+            // جلب السلف للموظف إذا كان الإجراء repayment
+            if (action === 'repayment' && entityId && entityType === 'employee') {
+                loadEmployeeLoans(entityId);
+            }
         }
-    }, [isOpen, action]);
+    }, [isOpen, action, entityId, entityType]);
+
+    const loadEmployeeLoans = async (employeeId: number) => {
+        try {
+            const loansList = await financeService.getEmployeeLoans(employeeId);
+            const pendingLoans = loansList.filter(l => l.status !== 'repaid' && l.status !== 'cancelled');
+            setLoans(pendingLoans);
+        } catch (err) {
+            console.error('Failed to load loans:', err);
+        }
+    };
+
+    // حساب مبلغ السلف المخصومة من الراتب
+    useEffect(() => {
+        if (action === 'salary_payment' && entityId && entityType === 'employee') {
+            loadEmployeeLoans(entityId).then(() => {
+                financeService.getEmployeeLoans(entityId).then(loansList => {
+                    const pendingLoans = loansList.filter(l => l.status !== 'repaid' && l.status !== 'cancelled');
+                    const totalDeducted = pendingLoans.reduce((sum, loan) => sum + (loan.remaining_amount || 0), 0);
+                    setDeductedLoansAmount(totalDeducted);
+                });
+            });
+        }
+    }, [action, entityId, entityType]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -64,44 +97,102 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
 
         try {
             let response: TransactionResponse | undefined;
-            const commonData = { date, description, branch_id: 1 }; // Assuming branch_id 1 for now
 
             switch (action) {
                 case 'advance':
-                    if (typeof amount !== 'number' || amount <= 0 || typeof cashAccountId !== 'number') throw new Error('Invalid input');
-                    response = await financeService.recordAdvance(entityId, { amount, cash_account_id: cashAccountId, ...commonData });
+                    if (typeof amount !== 'number' || amount <= 0 || typeof cashAccountId !== 'number') {
+                        throw new Error('Invalid input');
+                    }
+                    response = await financeService.recordAdvance(entityId, {
+                        amount,
+                        cash_bank_account_id: cashAccountId,
+                        date_granted: date,
+                        notes: description,
+                    });
                     break;
+
                 case 'repayment':
-                    if (typeof amount !== 'number' || amount <= 0 || typeof cashAccountId !== 'number') throw new Error('Invalid input');
-                    response = await financeService.recordAdvanceRepayment(entityId, { amount, cash_account_id: cashAccountId, ...commonData });
+                    if (typeof amount !== 'number' || amount <= 0 || typeof cashAccountId !== 'number' || !selectedLoanId) {
+                        throw new Error('Invalid input');
+                    }
+                    response = await financeService.recordRepayment(entityId, selectedLoanId as number, {
+                        amount,
+                        cash_bank_account_id: cashAccountId,
+                        repayment_date: date,
+                        notes: description,
+                    });
                     break;
+
                 case 'salary_payment':
-                    if (typeof grossAmount !== 'number' || grossAmount <= 0 || typeof advanceDeduction !== 'number' || typeof cashAccountId !== 'number') throw new Error('Invalid input');
-                    response = await financeService.recordSalaryPayment(entityId, { gross_amount: grossAmount, advance_deduction: advanceDeduction, cash_account_id: cashAccountId, ...commonData });
+                    if (typeof grossSalary !== 'number' || grossSalary <= 0 || typeof cashAccountId !== 'number') {
+                        throw new Error('Invalid input');
+                    }
+                    response = await financeService.recordSalaryPayment(entityId, {
+                        gross_salary: grossSalary,
+                        cash_bank_account_id: cashAccountId,
+                        payment_date: date,
+                        notes: description,
+                    });
                     break;
+
                 case 'customer_invoice':
-                    if (typeof amount !== 'number' || amount <= 0 || typeof offsetAccountId !== 'number') throw new Error('Invalid input');
-                    response = await financeService.recordCustomerInvoice(entityId, { amount, offset_account_id: offsetAccountId, reference, ...commonData });
+                    if (typeof amount !== 'number' || amount <= 0 || typeof offsetAccountId !== 'number') {
+                        throw new Error('Invalid input');
+                    }
+                    response = await financeService.recordCustomerInvoice(entityId, {
+                        amount,
+                        offset_account_id: offsetAccountId,
+                        date,
+                        reference,
+                    });
                     break;
+
                 case 'customer_payment':
-                    if (typeof amount !== 'number' || amount <= 0 || typeof cashAccountId !== 'number') throw new Error('Invalid input');
-                    response = await financeService.recordCustomerPayment(entityId, { amount, cash_account_id: cashAccountId, reference, ...commonData });
+                    if (typeof amount !== 'number' || amount <= 0 || typeof cashAccountId !== 'number') {
+                        throw new Error('Invalid input');
+                    }
+                    response = await financeService.recordCustomerPayment(entityId, {
+                        amount,
+                        cash_account_id: cashAccountId,
+                        date,
+                        reference,
+                    });
                     break;
+
                 case 'supplier_bill':
-                    if (typeof amount !== 'number' || amount <= 0 || typeof offsetAccountId !== 'number') throw new Error('Invalid input');
-                    response = await financeService.recordSupplierBill(entityId, { amount, offset_account_id: offsetAccountId, reference, ...commonData });
+                    if (typeof amount !== 'number' || amount <= 0 || typeof offsetAccountId !== 'number') {
+                        throw new Error('Invalid input');
+                    }
+                    response = await financeService.recordSupplierBill(entityId, {
+                        amount,
+                        offset_account_id: offsetAccountId,
+                        date,
+                        reference,
+                    });
                     break;
+
                 case 'supplier_payment':
-                    if (typeof amount !== 'number' || amount <= 0 || typeof cashAccountId !== 'number') throw new Error('Invalid input');
-                    response = await financeService.recordSupplierPayment(entityId, { amount, cash_account_id: cashAccountId, reference, ...commonData });
+                    if (typeof amount !== 'number' || amount <= 0 || typeof cashAccountId !== 'number') {
+                        throw new Error('Invalid input');
+                    }
+                    response = await financeService.recordSupplierPayment(entityId, {
+                        amount,
+                        cash_account_id: cashAccountId,
+                        date,
+                        reference,
+                    });
                     break;
+
                 default:
                     throw new Error('Unknown action');
             }
 
-            if (response?.success) {
-                setMessage({ type: 'success', text: response.message });
-                onSuccess();
+            if (response?.success || response?.message) {
+                setMessage({ type: 'success', text: response?.message || 'Operation completed successfully' });
+                setTimeout(() => {
+                    onSuccess();
+                    onClose();
+                }, 1500);
             } else {
                 setMessage({ type: 'error', text: response?.message || 'An unknown error occurred.' });
             }
@@ -114,14 +205,14 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
 
     const getTitle = () => {
         switch (action) {
-            case 'advance': return `Record Advance for ${entityName}`;
-            case 'repayment': return `Record Repayment for ${entityName}`;
-            case 'salary_payment': return `Record Salary Payment for ${entityName}`;
-            case 'customer_invoice': return `Record Invoice for ${entityName}`;
-            case 'customer_payment': return `Record Payment from ${entityName}`;
-            case 'supplier_bill': return `Record Bill for ${entityName}`;
-            case 'supplier_payment': return `Record Payment to ${entityName}`;
-            default: return 'Financial Action';
+            case 'advance': return `منح سلفة - ${entityName}`;
+            case 'repayment': return `سداد سلفة - ${entityName}`;
+            case 'salary_payment': return `دفع راتب - ${entityName}`;
+            case 'customer_invoice': return `فاتورة عميل - ${entityName}`;
+            case 'customer_payment': return `دفعة عميل - ${entityName}`;
+            case 'supplier_bill': return `فاتورة مورد - ${entityName}`;
+            case 'supplier_payment': return `دفعة مورد - ${entityName}`;
+            default: return 'إجراء مالي';
         }
     };
 
@@ -130,13 +221,13 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
     const isSupplierAction = entityType === 'supplier';
 
     const showAmount = !['salary_payment'].includes(action);
-    const showGrossAmount = action === 'salary_payment';
-    const showAdvanceDeduction = action === 'salary_payment';
+    const showGrossSalary = action === 'salary_payment';
     const showCashAccountId = ['advance', 'repayment', 'salary_payment', 'customer_payment', 'supplier_payment'].includes(action);
     const showOffsetAccountId = ['customer_invoice', 'supplier_bill'].includes(action);
     const showReference = ['customer_invoice', 'customer_payment', 'supplier_bill', 'supplier_payment'].includes(action);
+    const showLoanSelector = action === 'repayment' && isEmployeeAction;
 
-    const netPay = (typeof grossAmount === 'number' && typeof advanceDeduction === 'number') ? grossAmount - advanceDeduction : 0;
+    const netSalary = (typeof grossSalary === 'number' ? grossSalary : 0) - deductedLoansAmount;
 
     if (!isOpen) return null;
 
@@ -156,26 +247,46 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
                     )}
 
                     <div className="mb-4">
-                        <label htmlFor="date" className="block text-sm font-medium text-gray-700">Date</label>
+                        <label htmlFor="date" className="block text-sm font-medium text-gray-700">التاريخ</label>
                         <input
                             type="date"
                             id="date"
                             value={date}
                             onChange={(e) => setDate(e.target.value)}
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                            className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 px-3 py-2"
                             required
                         />
                     </div>
 
-                    {showGrossAmount && (
+                    {showLoanSelector && (
                         <div className="mb-4">
-                            <label htmlFor="grossAmount" className="block text-sm font-medium text-gray-700">Gross Amount</label>
+                            <label htmlFor="loanId" className="block text-sm font-medium text-gray-700">اختر السلفة</label>
+                            <select
+                                id="loanId"
+                                value={selectedLoanId}
+                                onChange={(e) => setSelectedLoanId(parseInt(e.target.value) || '')}
+                                className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 px-3 py-2"
+                                required
+                            >
+                                <option value="">-- اختر سلفة --</option>
+                                {loans.map(loan => (
+                                    <option key={loan.id} value={loan.id}>
+                                        السلفة #{loan.id} - المبلغ: {loan.remaining_amount} (الحالة: {loan.status})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    {showGrossSalary && (
+                        <div className="mb-4">
+                            <label htmlFor="grossSalary" className="block text-sm font-medium text-gray-700">الراتب الإجمالي</label>
                             <input
                                 type="number"
-                                id="grossAmount"
-                                value={grossAmount}
-                                onChange={(e) => setGrossAmount(parseFloat(e.target.value) || '')}
-                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                                id="grossSalary"
+                                value={grossSalary}
+                                onChange={(e) => setGrossSalary(parseFloat(e.target.value) || '')}
+                                className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 px-3 py-2"
                                 min="0.01"
                                 step="0.01"
                                 required
@@ -183,30 +294,28 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
                         </div>
                     )}
 
-                    {showAdvanceDeduction && (
+                    {showGrossSalary && (
                         <div className="mb-4">
-                            <label htmlFor="advanceDeduction" className="block text-sm font-medium text-gray-700">Advance Deduction</label>
+                            <label htmlFor="deductions" className="block text-sm font-medium text-gray-700">خصم السلف</label>
                             <input
                                 type="number"
-                                id="advanceDeduction"
-                                value={advanceDeduction}
-                                onChange={(e) => setAdvanceDeduction(parseFloat(e.target.value) || '')}
-                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                                min="0"
-                                step="0.01"
-                                required
+                                id="deductions"
+                                value={deductedLoansAmount.toFixed(2)}
+                                className="mt-1 block w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm px-3 py-2"
+                                readOnly
+                                disabled
                             />
                         </div>
                     )}
 
-                    {showGrossAmount && showAdvanceDeduction && (
+                    {showGrossSalary && (
                         <div className="mb-4">
-                            <label htmlFor="netPay" className="block text-sm font-medium text-gray-700">Net Pay</label>
+                            <label htmlFor="netPay" className="block text-sm font-medium text-gray-700">صافي الراتب</label>
                             <input
                                 type="number"
                                 id="netPay"
-                                value={netPay.toFixed(2)}
-                                className="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 shadow-sm"
+                                value={netSalary.toFixed(2)}
+                                className="mt-1 block w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm px-3 py-2"
                                 readOnly
                                 disabled
                             />
@@ -215,13 +324,13 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
 
                     {showAmount && (
                         <div className="mb-4">
-                            <label htmlFor="amount" className="block text-sm font-medium text-gray-700">Amount</label>
+                            <label htmlFor="amount" className="block text-sm font-medium text-gray-700">المبلغ</label>
                             <input
                                 type="number"
                                 id="amount"
                                 value={amount}
                                 onChange={(e) => setAmount(parseFloat(e.target.value) || '')}
-                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                                className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 px-3 py-2"
                                 min="0.01"
                                 step="0.01"
                                 required
@@ -231,7 +340,7 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
 
                     {showCashAccountId && (
                         <div className="mb-4">
-                            <label htmlFor="cashAccountId" className="block text-sm font-medium text-gray-700">Cash/Bank Account ID</label>
+                            <label htmlFor="cashAccountId" className="block text-sm font-medium text-gray-700">حساب النقدية/البنك</label>
                             <input
                                 type="number"
                                 id="cashAccountId"

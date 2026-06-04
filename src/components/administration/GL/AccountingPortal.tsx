@@ -15,9 +15,10 @@ import {
   AlertCircle, X, RefreshCw,
 } from "lucide-react";
 
+import { useApp } from "../../../../store";
 import { useAccounting } from "../../../hooks/useAccounting";
 import { accountService } from "../../../services/accountingService";
-import type { Account, Transaction, CostCenter, LedgerLineItem as ApiLedgerLine } from "../../../services/accountingService";
+import type { Account, Transaction, CostCenter } from "../../../services/accountingService";
 
 import { AccountingDashboard } from "./AccountingDashboard";
 import { EmployeesTab } from "./EmployeesTab";
@@ -27,7 +28,7 @@ import {
   AccountDetailPanel,
   AccountEmptyState,
 } from "./COAComponents";
-import type { LedgerFilter, LedgerLineItem } from "./COAComponents";
+import type { COAWithRollup, LedgerFilter, LedgerLine } from "./COAComponents";
 import { ARTab, APTab, CashBankTab } from "./ARAPCashTabs";
 import {
   AddCOAModal,
@@ -55,7 +56,7 @@ type ModalType =
 
 // ─── تحويل الأنواع ───────────────────────────────────────────────────────────
 
-function toCoaShape(acc: Account) {
+function toCoaShape(acc: Account): COAWithRollup {
   return {
     id: String(acc.id),
     code: acc.code,
@@ -115,6 +116,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
   initialTab = "DASHBOARD",
 }) => {
   const acc = useAccounting();
+  const app = useApp();
 
   // ── tabs ──────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
@@ -137,7 +139,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
   const [ledgerFilter, setLedgerFilter] = useState<LedgerFilter>({ type: "ALL" });
 
   // ✅ Ledger data من API مباشرة
-  const [ledgerLines, setLedgerLines] = useState<LedgerLineItem[]>([]);
+  const [ledgerLines, setLedgerLines] = useState<LedgerLine[]>([]);
   const [ledgerOpeningBalance, setLedgerOpeningBalance] = useState(0);
   const [loadingLedger, setLoadingLedger] = useState(false);
 
@@ -175,7 +177,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
   const [employeeActionAmount, setEmployeeActionAmount] = useState(0);
   const [employeeActionNote, setEmployeeActionNote] = useState("");
 
-  const handleEmployeeAction = (empId: string, type: any) => {
+  const handleEmployeeAction = (_empId: string, type: any) => {
     setEmployeeActionType(type);
     openModal("EMPLOYEE_ACTION");
   };
@@ -487,6 +489,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                       openingBalance={ledgerOpeningBalance}
                       ledgerFilter={ledgerFilter}
                       setLedgerFilter={setLedgerFilter}
+                      setGlSubTab={setGlSubTab}
                       setSelectedAccountId={setSelectedAccountId}
                       onEdit={() => {
                         setCoaForm({
@@ -502,8 +505,8 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                         }
                       }}
                       onAddChild={handleOpenAddChild}
-                      setJournalForm={setJournalForm}
-                      setModalType={setModalType}
+                      setJournalForm={(form: any) => setJournalForm(form)}
+                      setModalType={(type: string) => setModalType(type as ModalType)}
                       setIsModalOpen={setIsModalOpen}
                     />
                   ) : (
@@ -638,14 +641,14 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
             {activeTab === "GL" && renderGL()}
             {activeTab === "HR" && (
               <EmployeesTab
-                employees={[]}
+                employees={app.employees}
                 chartOfAccounts={flatAccounts}
                 onAction={handleEmployeeAction}
               />
             )}
-            {activeTab === "AR" && <ARTab customers={[]} />}
-            {activeTab === "AP" && <APTab suppliers={[]} />}
-            {activeTab === "CASH" && <CashBankTab bankAccounts={[]} />}
+            {activeTab === "AR" && <ARTab customers={app.customers} />}
+            {activeTab === "AP" && <APTab suppliers={app.suppliers} />}
+            {activeTab === "CASH" && <CashBankTab bankAccounts={app.bankAccounts} />}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -673,7 +676,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
             {modalType === "ADD_JOURNAL" && (
               <AddJournalModal
                 form={journalForm}
-                setForm={setJournalForm}
+                setForm={(form) => setJournalForm(form as any)}
                 chartOfAccounts={flatAccounts}
                 costCenters={costCentersView}
                 onSave={handleSaveJournal}

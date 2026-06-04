@@ -1,15 +1,33 @@
-import React, { useState } from 'react';
-import AccountStatementModal from './AccountStatementModal';
-import FinanceActionModal from './FinanceActionModal';
+// src/components/administration/GL/EntityFinanceActions.tsx
+//
+// إصلاحات:
+// 1. تصميم متوافق مع الـ dark theme
+// 2. إضافة salary_accrual (استحقاق راتب)
+// 3. تصحيح أنواع الـ actions لتتطابق مع FinanceActionModal
+// 4. تمرير entityType بشكل صحيح للـ modal
 
-type EntityType = 'employee' | 'customer' | 'supplier';
+import React, { useState } from "react";
+import AccountStatementModal from "./AccountStatementModal";
+import FinanceActionModal from "./FinanceActionModal";
+
+type EntityType = "employee" | "customer" | "supplier";
+
+type FinanceAction =
+    | "advance"
+    | "advance_repayment"
+    | "salary_accrual"
+    | "salary_payment"
+    | "customer_invoice"
+    | "customer_payment"
+    | "supplier_bill"
+    | "supplier_payment";
 
 interface EntityFinanceActionsProps {
     entityType: EntityType;
     entityId: number | null;
     entityName: string;
     currentBalance: number;
-    onActionSuccess?: () => void; // Callback to refetch data after a successful action
+    onActionSuccess?: () => void;
 }
 
 const EntityFinanceActions: React.FC<EntityFinanceActionsProps> = ({
@@ -19,123 +37,114 @@ const EntityFinanceActions: React.FC<EntityFinanceActionsProps> = ({
     currentBalance,
     onActionSuccess,
 }) => {
-    const [isStatementModalOpen, setIsStatementModalOpen] = useState(false);
-    const [isFinanceActionModalOpen, setIsFinanceActionModalOpen] = useState(false);
-    const [currentAction, setCurrentAction] = useState<any>(null); // Type will be FinanceAction
+    const [isStatementOpen, setIsStatementOpen] = useState(false);
+    const [currentAction, setCurrentAction] = useState<FinanceAction | null>(
+        null,
+    );
 
-    const openFinanceActionModal = (action: any) => {
-        setCurrentAction(action);
-        setIsFinanceActionModalOpen(true);
+    const openAction = (action: FinanceAction) => setCurrentAction(action);
+
+    const handleSuccess = () => {
+        setCurrentAction(null);
+        onActionSuccess?.();
     };
 
-    const handleFinanceActionSuccess = () => {
-        setIsFinanceActionModalOpen(false);
-        if (onActionSuccess) {
-            onActionSuccess();
-        }
-    };
-
-    const balanceColorClass = currentBalance < 0 ? 'text-red-600' : 'text-green-600';
+    const btnCls =
+        "px-3 py-1.5 text-[10px] font-black rounded-xl border transition-all";
 
     return (
-        <div className="bg-white p-4 rounded-lg shadow-md">
-            <div className="flex items-center justify-between mb-4">
-                <h4 className="text-lg font-semibold text-gray-800">Financial Actions</h4>
-                <span className={`text-xl font-bold ${balanceColorClass}`}>
-                    Balance: {currentBalance.toFixed(2)}
+        <div className="space-y-2">
+            <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-slate-500">
+                <span>الرصيد الحالي</span>
+                <span className={currentBalance > 0 ? "text-blue-400" : currentBalance < 0 ? "text-emerald-400" : "text-slate-500"}>
+                    ₪{Math.abs(currentBalance).toLocaleString()}
                 </span>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {entityType === 'employee' && (
+            <div className="flex flex-wrap gap-1.5">
+                {entityType === "employee" && (
                     <>
                         <button
-                            onClick={() => openFinanceActionModal('advance')}
-                            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                            onClick={() => openAction("advance")}
+                            className={`${btnCls} bg-amber-600/20 border-amber-500/30 text-amber-400 hover:bg-amber-600 hover:text-white`}
                         >
-                            سلفة جديدة
+                            سلفة
                         </button>
                         <button
-                            onClick={() => openFinanceActionModal('repayment')}
-                            className="px-4 py-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600"
+                            onClick={() => openAction("advance_repayment")}
+                            className={`${btnCls} bg-orange-600/20 border-orange-500/30 text-orange-400 hover:bg-orange-600 hover:text-white`}
                         >
                             سداد سلفة
                         </button>
                         <button
-                            onClick={() => openFinanceActionModal('salary_payment')}
-                            className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600"
+                            onClick={() => openAction("salary_accrual")}
+                            className={`${btnCls} bg-blue-600/20 border-blue-500/30 text-blue-400 hover:bg-blue-600 hover:text-white`}
                         >
-                            دفع راتب
+                            استحقاق راتب
                         </button>
                         <button
-                            onClick={() => setIsStatementModalOpen(true)}
-                            className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600"
+                            onClick={() => openAction("salary_payment")}
+                            className={`${btnCls} bg-emerald-600/20 border-emerald-500/30 text-emerald-400 hover:bg-emerald-600 hover:text-white`}
                         >
-                            كشف الحساب
+                            دفع راتب
                         </button>
                     </>
                 )}
 
-                {entityType === 'customer' && (
+                {entityType === "customer" && (
                     <>
                         <button
-                            onClick={() => openFinanceActionModal('customer_invoice')}
-                            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                            onClick={() => openAction("customer_invoice")}
+                            className={`${btnCls} bg-blue-600/20 border-blue-500/30 text-blue-400 hover:bg-blue-600 hover:text-white`}
                         >
                             فاتورة
                         </button>
                         <button
-                            onClick={() => openFinanceActionModal('customer_payment')}
-                            className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600"
+                            onClick={() => openAction("customer_payment")}
+                            className={`${btnCls} bg-emerald-600/20 border-emerald-500/30 text-emerald-400 hover:bg-emerald-600 hover:text-white`}
                         >
                             دفعة
-                        </button>
-                        <button
-                            onClick={() => setIsStatementModalOpen(true)}
-                            className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600"
-                        >
-                            كشف الحساب
                         </button>
                     </>
                 )}
 
-                {entityType === 'supplier' && (
+                {entityType === "supplier" && (
                     <>
                         <button
-                            onClick={() => openFinanceActionModal('supplier_bill')}
-                            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                            onClick={() => openAction("supplier_bill")}
+                            className={`${btnCls} bg-rose-600/20 border-rose-500/30 text-rose-400 hover:bg-rose-600 hover:text-white`}
                         >
                             فاتورة مورد
                         </button>
                         <button
-                            onClick={() => openFinanceActionModal('supplier_payment')}
-                            className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600"
+                            onClick={() => openAction("supplier_payment")}
+                            className={`${btnCls} bg-emerald-600/20 border-emerald-500/30 text-emerald-400 hover:bg-emerald-600 hover:text-white`}
                         >
                             دفعة للمورد
                         </button>
-                        <button
-                            onClick={() => setIsStatementModalOpen(true)}
-                            className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600"
-                        >
-                            كشف الحساب
-                        </button>
                     </>
                 )}
+
+                <button
+                    onClick={() => setIsStatementOpen(true)}
+                    className={`${btnCls} bg-white/5 border-white/10 text-slate-400 hover:bg-white/10 hover:text-white`}
+                >
+                    كشف الحساب
+                </button>
             </div>
 
             <AccountStatementModal
-                isOpen={isStatementModalOpen}
-                onClose={() => setIsStatementModalOpen(false)}
+                isOpen={isStatementOpen}
+                onClose={() => setIsStatementOpen(false)}
                 entityType={entityType}
                 entityId={entityId}
                 entityName={entityName}
             />
 
-            {isFinanceActionModalOpen && currentAction && (
+            {currentAction && (
                 <FinanceActionModal
-                    isOpen={isFinanceActionModalOpen}
-                    onClose={() => setIsFinanceActionModalOpen(false)}
-                    onSuccess={handleFinanceActionSuccess}
+                    isOpen={true}
+                    onClose={() => setCurrentAction(null)}
+                    onSuccess={handleSuccess}
                     action={currentAction}
                     entityType={entityType}
                     entityId={entityId}

@@ -4,9 +4,9 @@ import {
   Plus, Eye, ChevronRight, Layers, Activity,
   Zap, Target, Search, Download, Filter,
   CheckCircle2, Clock, AlertCircle, X,
-  ChevronLeft, ArrowUpRight, Settings, Building2,
+  ChevronLeft, Settings, Building2,
   TrendingUp, TrendingDown, BarChart3, Info,
-  CalendarDays, Tag, ToggleLeft, ToggleRight,
+  Tag, ToggleLeft, ToggleRight,
   List, LayoutGrid,
 } from "lucide-react";
 
@@ -1063,7 +1063,7 @@ export const CostCentersView: React.FC<CostCentersViewProps> = ({
       code: selectedCC.code,
       type: selectedCC.type,
       is_active: selectedCC.is_active,
-      notes: selectedCD?.notes,
+      notes: selectedCC.notes,
       parentId: selectedCC.parentId,
     });
     setModalType?.('EDIT_COST_CENTER');
