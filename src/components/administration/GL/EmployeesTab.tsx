@@ -1,79 +1,54 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Search, Filter, DollarSign, Users,
   TrendingUp, Download, Wallet,
 } from 'lucide-react';
 import EntityFinanceActions from './EntityFinanceActions';
-import { employeeService } from '../../../services/employeeService';
-import type { EmployeeFromApi } from '../../../services/employeeService';
-import { accountService } from '../../../services/accountingService';
+import { employeeService, EmployeeFromApi } from '../../../services/employeeService';
 
 interface COA { id: string; nameAr: string; name?: string; balance: number }
+interface Props {
+  chartOfAccounts: COA[];
+  onAction: (empId: string, type: 'ADVANCE' | 'SALARY' | 'DISCOUNT' | 'CUSTODY') => void;
+}
 
-export const EmployeesTab: React.FC = () => {
+export const EmployeesTab: React.FC<Props> = ({ chartOfAccounts, onAction }) => {
   const [employees, setEmployees] = useState<EmployeeFromApi[]>([]);
-  const [chartOfAccounts, setChartOfAccounts] = useState<COA[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [view, setView] = useState<'cards' | 'table'>('cards');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadData();
+    fetchEmployees();
   }, []);
 
-  const loadData = async () => {
+  const fetchEmployees = async () => {
     try {
-      setLoading(true);
-      setError(null);
-
-      // جلب الموظفين
-      const employeesList = await employeeService.getAll();
-      setEmployees(employeesList);
-
-      // جلب دليل الحسابات
-      const accounts = await accountService.getAll();
-      setChartOfAccounts(accounts.map(acc => ({
-        id: acc.id.toString(),
-        nameAr: acc.name,
-        name: acc.name,
-        balance: acc.balance || 0,
-      })));
-    } catch (err: any) {
-      setError(err.message || 'فشل تحميل البيانات');
-      console.error('Error loading data:', err);
+      setIsLoading(true);
+      const data = await employeeService.getAll();
+      setEmployees(data);
+    } catch (error) {
+      console.error('Failed to fetch employees:', error);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
+  };
+
+  const handleActionSuccess = () => {
+    fetchEmployees();
   };
 
   const filtered = employees.filter(e =>
     e.name.toLowerCase().includes(search.toLowerCase()) ||
-    e.role.toLowerCase().includes(search.toLowerCase()) ||
+    (e.role && e.role.toLowerCase().includes(search.toLowerCase())) ||
     (e.employeeId && e.employeeId.includes(search))
   );
 
   const totalPayroll = employees.reduce((s, e) => s + (e.salary || 0), 0);
   const totalAdvances = chartOfAccounts
-    .filter(a => employees.some(e => e.name === a.nameAr || e.name === a.name))
+    .filter(a => employees.some(e => e.name === a.nameAr))
     .reduce((s, a) => s + Math.max(a.balance, 0), 0);
-
-  if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-slate-400">جاري التحميل...</div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-red-400">{error}</div>
-      </div>
-    );
-  }
 
   return (
     <div className="h-full overflow-y-auto custom-scrollbar pb-10 space-y-6" dir="rtl">
@@ -132,13 +107,21 @@ export const EmployeesTab: React.FC = () => {
         </div>
       </div>
 
+      {/* Loading State */}
+      {isLoading && (
+        <div className="flex justify-center items-center h-32">
+          <div className="text-gray-600">جاري تحميل الموظفين...</div>
+        </div>
+      )}
+
       {/* Cards View */}
-      {view === 'cards' && (
+      {!isLoading && view === 'cards' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filtered.map((emp, i) => {
             const account = chartOfAccounts.find(a => a.nameAr === emp.name || a.name === emp.name);
             const bal = account?.balance ?? 0;
             const initials = emp.name.split(' ').map(n => n[0]).join('').slice(0, 2);
+
             const hueMap: Record<number, string> = { 0: 'from-blue-600 to-blue-800', 1: 'from-emerald-600 to-emerald-800', 2: 'from-purple-600 to-purple-800', 3: 'from-rose-600 to-rose-800', 4: 'from-amber-600 to-amber-800' };
             const grad = hueMap[i % 5];
 
@@ -158,7 +141,7 @@ export const EmployeesTab: React.FC = () => {
                     <h4 className="text-sm font-black text-white truncate">{emp.name}</h4>
                     <p className="text-[11px] text-slate-400 font-bold mt-0.5">{emp.role}</p>
                     <span className="inline-block mt-1 bg-slate-950 px-2 py-0.5 rounded-lg text-[10px] text-red-500 font-mono font-black border border-red-500/20">
-                      {emp.employeeId || emp.id}
+                      {emp.employeeId}
                     </span>
                   </div>
                 </div>
@@ -184,10 +167,10 @@ export const EmployeesTab: React.FC = () => {
                 <div className="p-4 border-t border-white/5">
                   <EntityFinanceActions
                     entityType="employee"
-                    entityId={emp.id}
+                    entityId={parseInt(emp.id)}
                     entityName={emp.name}
                     currentBalance={bal}
-                    onActionSuccess={() => loadData()}
+                    onActionSuccess={() => onAction(emp.id, 'SALARY')}
                   />
                 </div>
               </motion.div>
@@ -203,7 +186,7 @@ export const EmployeesTab: React.FC = () => {
       )}
 
       {/* Table View */}
-      {view === 'table' && (
+      {!isLoading && view === 'table' && (
         <div className="bg-slate-900/60 border border-white/5 rounded-3xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-right text-xs">
@@ -232,7 +215,7 @@ export const EmployeesTab: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-5 py-4 text-slate-400 font-bold">{emp.role}</td>
-                      <td className="px-5 py-4 font-mono text-slate-500 text-[11px]">{emp.employeeId || emp.id}</td>
+                      <td className="px-5 py-4 font-mono text-slate-500 text-[11px]">{emp.employeeId}</td>
                       <td className="px-5 py-4 text-center font-black font-mono text-white">₪{(emp.salary || 0).toLocaleString()}</td>
                       <td className="px-5 py-4 text-center">
                         <span className={`font-black font-mono ${bal > 0 ? 'text-rose-400' : bal < 0 ? 'text-emerald-400' : 'text-slate-600'}`}>
@@ -246,7 +229,7 @@ export const EmployeesTab: React.FC = () => {
                             entityId={emp.id}
                             entityName={emp.name}
                             currentBalance={bal}
-                            onActionSuccess={() => loadData()}
+                            onActionSuccess={handleActionSuccess}
                           />
                         </div>
                       </td>
@@ -261,4 +244,3 @@ export const EmployeesTab: React.FC = () => {
     </div>
   );
 };
-export default EntityFinanceActions;

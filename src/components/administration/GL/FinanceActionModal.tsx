@@ -1,17 +1,36 @@
-import { useState, useEffect } from 'react';
-import { financeService } from "../../../services/financeService";
-import type { EmployeeLoan } from "../../../services/financeService";
-import type { TransactionResponse } from "../../../services/financeService";
+// src/components/administration/GL/FinanceActionModal.tsx
+//
+// إصلاحات:
+// 1. تصميم متوافق مع الـ dark theme (slate-900, slate-950)
+// 2. إصلاح endpoints الـ API لتتطابق مع الباك
+// 3. إصلاح أنواع الـ actions لتتطابق مع EntityFinanceActions
+// 4. إصلاح منطق salary_payment (gross_amount بدل gross_salary)
+// 5. إصلاح salary_accrual المفقود
+// 6. إزالة ربط account_id بـ raw number input — استبدله بـ select
 
-type EntityType = 'employee' | 'customer' | 'supplier';
+import React, { useState, useEffect } from "react";
+import api from "../../../api/axios";
+
+type EntityType = "employee" | "customer" | "supplier";
+
 type FinanceAction =
-    | 'advance'
-    | 'repayment'
-    | 'salary_payment'
-    | 'customer_invoice'
-    | 'customer_payment'
-    | 'supplier_bill'
-    | 'supplier_payment';
+    | "advance"
+    | "advance_repayment"
+    | "salary_accrual"
+    | "salary_payment"
+    | "customer_invoice"
+    | "customer_payment"
+    | "supplier_bill"
+    | "supplier_payment";
+
+interface Account {
+    id: number;
+    name: string;
+    code: string;
+    type: string;
+    allow_posting: boolean;
+    is_active: boolean;
+}
 
 interface FinanceActionModalProps {
     action: FinanceAction;
@@ -23,6 +42,110 @@ interface FinanceActionModalProps {
     onSuccess: () => void;
 }
 
+// ── تعريفات الإجراءات ─────────────────────────────────────────────────────────
+
+const ACTION_META: Record<
+    FinanceAction,
+    {
+        title: string;
+        color: string;
+        bg: string;
+        border: string;
+        btnColor: string;
+        icon: string;
+        desc: string;
+    }
+> = {
+    advance: {
+        title: "منح سلفة",
+        color: "text-amber-400",
+        bg: "bg-amber-500/10",
+        border: "border-amber-500/20",
+        btnColor: "bg-amber-600 hover:bg-amber-700",
+        icon: "ti-wallet",
+        desc: "صرف سلفة من الصندوق للموظف",
+    },
+    advance_repayment: {
+        title: "سداد سلفة",
+        color: "text-orange-400",
+        bg: "bg-orange-500/10",
+        border: "border-orange-500/20",
+        btnColor: "bg-orange-600 hover:bg-orange-700",
+        icon: "ti-refresh",
+        desc: "استرداد سلفة من الموظف",
+    },
+    salary_accrual: {
+        title: "استحقاق راتب",
+        color: "text-blue-400",
+        bg: "bg-blue-500/10",
+        border: "border-blue-500/20",
+        btnColor: "bg-blue-600 hover:bg-blue-700",
+        icon: "ti-calendar-due",
+        desc: "تسجيل راتب مستحق في نهاية الشهر",
+    },
+    salary_payment: {
+        title: "دفع راتب",
+        color: "text-emerald-400",
+        bg: "bg-emerald-500/10",
+        border: "border-emerald-500/20",
+        btnColor: "bg-emerald-600 hover:bg-emerald-700",
+        icon: "ti-cash",
+        desc: "صرف راتب الموظف الشهري",
+    },
+    customer_invoice: {
+        title: "فاتورة عميل",
+        color: "text-blue-400",
+        bg: "bg-blue-500/10",
+        border: "border-blue-500/20",
+        btnColor: "bg-blue-600 hover:bg-blue-700",
+        icon: "ti-file-invoice",
+        desc: "تسجيل فاتورة مبيعات للعميل",
+    },
+    customer_payment: {
+        title: "دفعة عميل",
+        color: "text-emerald-400",
+        bg: "bg-emerald-500/10",
+        border: "border-emerald-500/20",
+        btnColor: "bg-emerald-600 hover:bg-emerald-700",
+        icon: "ti-receipt",
+        desc: "استلام دفعة من العميل",
+    },
+    supplier_bill: {
+        title: "فاتورة مورد",
+        color: "text-rose-400",
+        bg: "bg-rose-500/10",
+        border: "border-rose-500/20",
+        btnColor: "bg-rose-600 hover:bg-rose-700",
+        icon: "ti-file-invoice",
+        desc: "تسجيل فاتورة مشتريات من المورد",
+    },
+    supplier_payment: {
+        title: "دفعة للمورد",
+        color: "text-emerald-400",
+        bg: "bg-emerald-500/10",
+        border: "border-emerald-500/20",
+        btnColor: "bg-emerald-600 hover:bg-emerald-700",
+        icon: "ti-send",
+        desc: "صرف دفعة للمورد",
+    },
+};
+
+// ── مساعدات ───────────────────────────────────────────────────────────────────
+
+const inputCls =
+    "w-full bg-slate-950 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-white text-right outline-none focus:border-red-500/40 focus:ring-1 focus:ring-red-500/20 transition-all placeholder:text-slate-600";
+
+const selectCls = `${inputCls} cursor-pointer`;
+
+const labelCls =
+    "block text-[10px] font-black text-slate-500 uppercase tracking-[0.15em] mb-1.5";
+
+const FieldLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <label className={labelCls}>{children}</label>
+);
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
     action,
     entityType,
@@ -32,62 +155,88 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
     onClose,
     onSuccess,
 }) => {
-    const [amount, setAmount] = useState<number | string>('');
-    const [grossSalary, setGrossSalary] = useState<number | string>('');
-    const [cashAccountId, setCashAccountId] = useState<number | string>('');
-    const [offsetAccountId, setOffsetAccountId] = useState<number | string>('');
-    const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
-    const [reference, setReference] = useState<string>('');
-    const [description, setDescription] = useState<string>('');
-    const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-    const [selectedLoanId, setSelectedLoanId] = useState<number | string>('');
-    const [loans, setLoans] = useState<EmployeeLoan[]>([]);
-    const [deductedLoansAmount, setDeductedLoansAmount] = useState<number>(0);
+    const meta = ACTION_META[action];
 
+    // ── form state ────────────────────────────────────────────────────────────
+    const [amount, setAmount] = useState<string>("");
+    const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+    const [description, setDescription] = useState("");
+    const [reference, setReference] = useState("");
+
+    // حسابات النقدية/البنك
+    const [cashAccountId, setCashAccountId] = useState<string>("");
+    // حساب الإيرادات أو المصروفات
+    const [offsetAccountId, setOffsetAccountId] = useState<string>("");
+    // خصم السلف عند دفع الراتب
+    const [advanceDeduction, setAdvanceDeduction] = useState<string>("0");
+
+    // ── data ──────────────────────────────────────────────────────────────────
+    const [cashAccounts, setCashAccounts] = useState<Account[]>([]);
+    const [offsetAccounts, setOffsetAccounts] = useState<Account[]>([]);
+    const [loadingAccounts, setLoadingAccounts] = useState(false);
+
+    // ── status ────────────────────────────────────────────────────────────────
+    const [isLoading, setIsLoading] = useState(false);
+    const [message, setMessage] = useState<{
+        type: "success" | "error";
+        text: string;
+    } | null>(null);
+
+    // ── جلب الحسابات عند الفتح ────────────────────────────────────────────────
     useEffect(() => {
-        if (isOpen) {
-            setAmount('');
-            setGrossSalary('');
-            setCashAccountId('');
-            setOffsetAccountId('');
-            setDate(new Date().toISOString().split('T')[0]);
-            setReference('');
-            setDescription('');
-            setSelectedLoanId('');
-            setMessage(null);
-            setDeductedLoansAmount(0);
+        if (!isOpen) return;
 
-            // جلب السلف للموظف إذا كان الإجراء repayment
-            if (action === 'repayment' && entityId && entityType === 'employee') {
-                loadEmployeeLoans(entityId);
-            }
-        }
-    }, [isOpen, action, entityId, entityType]);
+        // إعادة ضبط الفورم
+        setAmount("");
+        setDate(new Date().toISOString().split("T")[0]);
+        setDescription("");
+        setReference("");
+        setCashAccountId("");
+        setOffsetAccountId("");
+        setAdvanceDeduction("0");
+        setMessage(null);
 
-    const loadEmployeeLoans = async (employeeId: number) => {
+        loadAccounts();
+    }, [isOpen, action]);
+
+    const loadAccounts = async () => {
+        setLoadingAccounts(true);
         try {
-            const loansList = await financeService.getEmployeeLoans(employeeId);
-            const pendingLoans = loansList.filter(l => l.status !== 'repaid' && l.status !== 'cancelled');
-            setLoans(pendingLoans);
-        } catch (err) {
-            console.error('Failed to load loans:', err);
+            const { data } = await api.get("/accounting/accounts", {
+                params: { is_active: true },
+            });
+            const accounts: Account[] = data.data ?? [];
+
+            // حسابات النقدية والبنوك (1110xxx)
+            const cash = accounts.filter(
+                (a) =>
+                    a.allow_posting &&
+                    a.is_active &&
+                    (a.code.startsWith("111") || a.type === "asset"),
+            );
+            setCashAccounts(cash);
+
+            // حسابات الإيرادات أو المصروفات حسب الإجراء
+            if (
+                action === "customer_invoice" ||
+                action === "supplier_bill"
+            ) {
+                const offset = accounts.filter(
+                    (a) =>
+                        a.allow_posting &&
+                        a.is_active &&
+                        (a.type === "revenue" || a.type === "expense"),
+                );
+                setOffsetAccounts(offset);
+            }
+        } catch (e) {
+            console.error("Failed to load accounts", e);
+        } finally {
+            setLoadingAccounts(false);
         }
     };
 
-    // حساب مبلغ السلف المخصومة من الراتب
-    useEffect(() => {
-        if (action === 'salary_payment' && entityId && entityType === 'employee') {
-            loadEmployeeLoans(entityId).then(() => {
-                financeService.getEmployeeLoans(entityId).then(loansList => {
-                    const pendingLoans = loansList.filter(l => l.status !== 'repaid' && l.status !== 'cancelled');
-                    const totalDeducted = pendingLoans.reduce((sum, loan) => sum + (loan.remaining_amount || 0), 0);
-                    setDeductedLoansAmount(totalDeducted);
-                });
-            });
-        }
-    }, [action, entityId, entityType]);
-
+    // ── إرسال الفورم ──────────────────────────────────────────────────────────
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!entityId) return;
@@ -96,316 +245,400 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
         setMessage(null);
 
         try {
-            let response: TransactionResponse | undefined;
+            let res;
 
             switch (action) {
-                case 'advance':
-                    if (typeof amount !== 'number' || amount <= 0 || typeof cashAccountId !== 'number') {
-                        throw new Error('Invalid input');
-                    }
-                    response = await financeService.recordAdvance(entityId, {
-                        amount,
-                        cash_bank_account_id: cashAccountId,
-                        date_granted: date,
-                        notes: description,
-                    });
-                    break;
-
-                case 'repayment':
-                    if (typeof amount !== 'number' || amount <= 0 || typeof cashAccountId !== 'number' || !selectedLoanId) {
-                        throw new Error('Invalid input');
-                    }
-                    response = await financeService.recordRepayment(entityId, selectedLoanId as number, {
-                        amount,
-                        cash_bank_account_id: cashAccountId,
-                        repayment_date: date,
-                        notes: description,
-                    });
-                    break;
-
-                case 'salary_payment':
-                    if (typeof grossSalary !== 'number' || grossSalary <= 0 || typeof cashAccountId !== 'number') {
-                        throw new Error('Invalid input');
-                    }
-                    response = await financeService.recordSalaryPayment(entityId, {
-                        gross_salary: grossSalary,
-                        cash_bank_account_id: cashAccountId,
-                        payment_date: date,
-                        notes: description,
-                    });
-                    break;
-
-                case 'customer_invoice':
-                    if (typeof amount !== 'number' || amount <= 0 || typeof offsetAccountId !== 'number') {
-                        throw new Error('Invalid input');
-                    }
-                    response = await financeService.recordCustomerInvoice(entityId, {
-                        amount,
-                        offset_account_id: offsetAccountId,
+                // ── الموظف ──────────────────────────────────────────────────
+                case "advance":
+                    // POST /api/employees/{id}/advance
+                    res = await api.post(`/employees/${entityId}/advance`, {
+                        amount: parseFloat(amount),
+                        cash_account_id: parseInt(cashAccountId),
                         date,
-                        reference,
+                        description: description || undefined,
                     });
                     break;
 
-                case 'customer_payment':
-                    if (typeof amount !== 'number' || amount <= 0 || typeof cashAccountId !== 'number') {
-                        throw new Error('Invalid input');
-                    }
-                    response = await financeService.recordCustomerPayment(entityId, {
-                        amount,
-                        cash_account_id: cashAccountId,
+                case "advance_repayment":
+                    // POST /api/employees/{id}/advance-repayment
+                    res = await api.post(
+                        `/employees/${entityId}/advance-repayment`,
+                        {
+                            amount: parseFloat(amount),
+                            cash_account_id: parseInt(cashAccountId),
+                            date,
+                            description: description || undefined,
+                        },
+                    );
+                    break;
+
+                case "salary_accrual":
+                    // POST /api/employees/{id}/salary-accrual
+                    res = await api.post(
+                        `/employees/${entityId}/salary-accrual`,
+                        {
+                            amount: parseFloat(amount),
+                            date,
+                            description: description || undefined,
+                        },
+                    );
+                    break;
+
+                case "salary_payment":
+                    // POST /api/employees/{id}/salary-payment
+                    res = await api.post(
+                        `/employees/${entityId}/salary-payment`,
+                        {
+                            gross_amount: parseFloat(amount),
+                            cash_account_id: parseInt(cashAccountId),
+                            date,
+                            advance_deduction: parseFloat(advanceDeduction) || 0,
+                            description: description || undefined,
+                        },
+                    );
+                    break;
+
+                // ── العميل ──────────────────────────────────────────────────
+                case "customer_invoice":
+                    // POST /api/customers/{id}/invoice
+                    res = await api.post(`/customers/${entityId}/invoice`, {
+                        amount: parseFloat(amount),
+                        offset_account_id: parseInt(offsetAccountId),
                         date,
-                        reference,
+                        reference: reference || undefined,
                     });
                     break;
 
-                case 'supplier_bill':
-                    if (typeof amount !== 'number' || amount <= 0 || typeof offsetAccountId !== 'number') {
-                        throw new Error('Invalid input');
-                    }
-                    response = await financeService.recordSupplierBill(entityId, {
-                        amount,
-                        offset_account_id: offsetAccountId,
+                case "customer_payment":
+                    // POST /api/customers/{id}/payment
+                    res = await api.post(`/customers/${entityId}/payment`, {
+                        amount: parseFloat(amount),
+                        cash_account_id: parseInt(cashAccountId),
                         date,
-                        reference,
+                        reference: reference || undefined,
                     });
                     break;
 
-                case 'supplier_payment':
-                    if (typeof amount !== 'number' || amount <= 0 || typeof cashAccountId !== 'number') {
-                        throw new Error('Invalid input');
-                    }
-                    response = await financeService.recordSupplierPayment(entityId, {
-                        amount,
-                        cash_account_id: cashAccountId,
+                // ── المورد ──────────────────────────────────────────────────
+                case "supplier_bill":
+                    // POST /api/suppliers/{id}/bill
+                    res = await api.post(`/suppliers/${entityId}/bill`, {
+                        amount: parseFloat(amount),
+                        offset_account_id: parseInt(offsetAccountId),
                         date,
-                        reference,
+                        reference: reference || undefined,
+                    });
+                    break;
+
+                case "supplier_payment":
+                    // POST /api/suppliers/{id}/payment
+                    res = await api.post(`/suppliers/${entityId}/payment`, {
+                        amount: parseFloat(amount),
+                        cash_account_id: parseInt(cashAccountId),
+                        date,
+                        reference: reference || undefined,
                     });
                     break;
 
                 default:
-                    throw new Error('Unknown action');
+                    throw new Error("Unknown action");
             }
 
-            if (response?.success || response?.message) {
-                setMessage({ type: 'success', text: response?.message || 'Operation completed successfully' });
-                setTimeout(() => {
-                    onSuccess();
-                    onClose();
-                }, 1500);
-            } else {
-                setMessage({ type: 'error', text: response?.message || 'An unknown error occurred.' });
-            }
+            setMessage({
+                type: "success",
+                text: res?.data?.message || "تمت العملية بنجاح",
+            });
+
+            setTimeout(() => {
+                onSuccess();
+                onClose();
+            }, 1200);
         } catch (err: any) {
-            setMessage({ type: 'error', text: err.response?.data?.message || err.message || 'An unexpected error occurred.' });
+            const msg =
+                err?.response?.data?.message ||
+                err?.response?.data?.errors?.[Object.keys(err?.response?.data?.errors ?? {})[0]]?.[0] ||
+                err?.message ||
+                "حدث خطأ غير متوقع";
+            setMessage({ type: "error", text: msg });
         } finally {
             setIsLoading(false);
         }
     };
 
-    const getTitle = () => {
-        switch (action) {
-            case 'advance': return `منح سلفة - ${entityName}`;
-            case 'repayment': return `سداد سلفة - ${entityName}`;
-            case 'salary_payment': return `دفع راتب - ${entityName}`;
-            case 'customer_invoice': return `فاتورة عميل - ${entityName}`;
-            case 'customer_payment': return `دفعة عميل - ${entityName}`;
-            case 'supplier_bill': return `فاتورة مورد - ${entityName}`;
-            case 'supplier_payment': return `دفعة مورد - ${entityName}`;
-            default: return 'إجراء مالي';
-        }
-    };
+    // ── حقول الإيرادات/المصروفات للعميل والمورد ───────────────────────────────
+    const needsCashAccount = [
+        "advance",
+        "advance_repayment",
+        "salary_payment",
+        "customer_payment",
+        "supplier_payment",
+    ].includes(action);
 
-    const isEmployeeAction = entityType === 'employee';
-    const isCustomerAction = entityType === 'customer';
-    const isSupplierAction = entityType === 'supplier';
+    const needsOffsetAccount = [
+        "customer_invoice",
+        "supplier_bill",
+    ].includes(action);
 
-    const showAmount = !['salary_payment'].includes(action);
-    const showGrossSalary = action === 'salary_payment';
-    const showCashAccountId = ['advance', 'repayment', 'salary_payment', 'customer_payment', 'supplier_payment'].includes(action);
-    const showOffsetAccountId = ['customer_invoice', 'supplier_bill'].includes(action);
-    const showReference = ['customer_invoice', 'customer_payment', 'supplier_bill', 'supplier_payment'].includes(action);
-    const showLoanSelector = action === 'repayment' && isEmployeeAction;
+    const needsReference = [
+        "customer_invoice",
+        "customer_payment",
+        "supplier_bill",
+        "supplier_payment",
+    ].includes(action);
 
-    const netSalary = (typeof grossSalary === 'number' ? grossSalary : 0) - deductedLoansAmount;
+    const needsAdvanceDeduction = action === "salary_payment";
+    const hideAmountForSalaryAccrual = false; // salary_accrual يحتاج amount
 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex justify-center items-center">
-            <div className="bg-white p-6 rounded-lg shadow-xl max-w-md w-full max-h-[90vh] flex flex-col">
-                <div className="flex justify-between items-center border-b pb-3 mb-4">
-                    <h3 className="text-xl font-semibold text-gray-800">{getTitle()}</h3>
-                    <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-2xl leading-none">&times;</button>
+        <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            dir="rtl"
+        >
+            {/* Backdrop */}
+            <div
+                className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"
+                onClick={onClose}
+            />
+
+            {/* Modal */}
+            <div className="relative w-full max-w-md bg-slate-900 border border-white/10 rounded-[2rem] shadow-2xl overflow-hidden text-right">
+
+                {/* Header */}
+                <div className="p-6 border-b border-white/5">
+                    <button
+                        onClick={onClose}
+                        className="absolute top-5 left-5 w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all"
+                        type="button"
+                    >
+                        <i className="ti ti-x" style={{ fontSize: 14 }} />
+                    </button>
+
+                    <div className="flex items-center gap-4">
+                        <div
+                            className={`w-12 h-12 rounded-2xl ${meta.bg} border ${meta.border} flex items-center justify-center ${meta.color} shrink-0`}
+                        >
+                            <i
+                                className={`ti ${meta.icon}`}
+                                style={{ fontSize: 22 }}
+                            />
+                        </div>
+                        <div>
+                            <h3 className={`text-lg font-black ${meta.color}`}>
+                                {meta.title}
+                            </h3>
+                            <p className="text-[11px] text-slate-500 mt-0.5 font-bold">
+                                {entityName} — {meta.desc}
+                            </p>
+                        </div>
+                    </div>
                 </div>
 
-                <form onSubmit={handleSubmit} className="flex-grow overflow-auto">
+                {/* Form */}
+                <form onSubmit={handleSubmit} className="p-6 space-y-4">
+
+                    {/* رسالة النتيجة */}
                     {message && (
-                        <div className={`p-3 mb-4 rounded-md text-sm ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                        <div
+                            className={`p-3 rounded-2xl border text-xs font-bold text-right ${message.type === "success"
+                                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                                : "bg-red-500/10 border-red-500/20 text-red-400"
+                                }`}
+                        >
+                            {message.type === "success" ? (
+                                <i className="ti ti-check ml-1" />
+                            ) : (
+                                <i className="ti ti-alert-circle ml-1" />
+                            )}
                             {message.text}
                         </div>
                     )}
 
-                    <div className="mb-4">
-                        <label htmlFor="date" className="block text-sm font-medium text-gray-700">التاريخ</label>
+                    {/* المبلغ */}
+                    {!hideAmountForSalaryAccrual && (
+                        <div>
+                            <FieldLabel>
+                                {action === "salary_payment"
+                                    ? "الراتب الإجمالي (₪)"
+                                    : "المبلغ (₪)"}
+                            </FieldLabel>
+                            <input
+                                type="number"
+                                min="0.001"
+                                step="0.001"
+                                value={amount}
+                                onChange={(e) => setAmount(e.target.value)}
+                                className={inputCls}
+                                placeholder="0.000"
+                                required
+                            />
+                        </div>
+                    )}
+
+                    {/* خصم السلف عند دفع الراتب */}
+                    {needsAdvanceDeduction && (
+                        <div>
+                            <FieldLabel>خصم السلف (₪)</FieldLabel>
+                            <input
+                                type="number"
+                                min="0"
+                                step="0.001"
+                                value={advanceDeduction}
+                                onChange={(e) =>
+                                    setAdvanceDeduction(e.target.value)
+                                }
+                                className={inputCls}
+                                placeholder="0.000"
+                            />
+                            {amount && advanceDeduction && (
+                                <p className="text-[10px] text-emerald-400 mt-1 font-bold">
+                                    صافي الراتب: ₪
+                                    {(
+                                        parseFloat(amount || "0") -
+                                        parseFloat(advanceDeduction || "0")
+                                    ).toFixed(3)}
+                                </p>
+                            )}
+                        </div>
+                    )}
+
+                    {/* حساب النقدية/البنك */}
+                    {needsCashAccount && (
+                        <div>
+                            <FieldLabel>حساب الصندوق / البنك</FieldLabel>
+                            {loadingAccounts ? (
+                                <div className="h-10 bg-slate-800/50 rounded-xl animate-pulse" />
+                            ) : (
+                                <select
+                                    value={cashAccountId}
+                                    onChange={(e) =>
+                                        setCashAccountId(e.target.value)
+                                    }
+                                    className={selectCls}
+                                    required
+                                >
+                                    <option value="">— اختر الحساب —</option>
+                                    {cashAccounts.map((acc) => (
+                                        <option
+                                            key={acc.id}
+                                            value={String(acc.id)}
+                                        >
+                                            {acc.code} — {acc.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
+                        </div>
+                    )}
+
+                    {/* حساب الإيرادات/المصروفات */}
+                    {needsOffsetAccount && (
+                        <div>
+                            <FieldLabel>
+                                {entityType === "customer"
+                                    ? "حساب الإيرادات"
+                                    : "حساب المصروفات"}
+                            </FieldLabel>
+                            {loadingAccounts ? (
+                                <div className="h-10 bg-slate-800/50 rounded-xl animate-pulse" />
+                            ) : (
+                                <select
+                                    value={offsetAccountId}
+                                    onChange={(e) =>
+                                        setOffsetAccountId(e.target.value)
+                                    }
+                                    className={selectCls}
+                                    required
+                                >
+                                    <option value="">— اختر الحساب —</option>
+                                    {offsetAccounts.map((acc) => (
+                                        <option
+                                            key={acc.id}
+                                            value={String(acc.id)}
+                                        >
+                                            {acc.code} — {acc.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
+                        </div>
+                    )}
+
+                    {/* التاريخ */}
+                    <div>
+                        <FieldLabel>التاريخ</FieldLabel>
                         <input
                             type="date"
-                            id="date"
                             value={date}
                             onChange={(e) => setDate(e.target.value)}
-                            className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 px-3 py-2"
+                            className={inputCls}
                             required
                         />
                     </div>
 
-                    {showLoanSelector && (
-                        <div className="mb-4">
-                            <label htmlFor="loanId" className="block text-sm font-medium text-gray-700">اختر السلفة</label>
-                            <select
-                                id="loanId"
-                                value={selectedLoanId}
-                                onChange={(e) => setSelectedLoanId(parseInt(e.target.value) || '')}
-                                className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 px-3 py-2"
-                                required
-                            >
-                                <option value="">-- اختر سلفة --</option>
-                                {loans.map(loan => (
-                                    <option key={loan.id} value={loan.id}>
-                                        السلفة #{loan.id} - المبلغ: {loan.remaining_amount} (الحالة: {loan.status})
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
-
-                    {showGrossSalary && (
-                        <div className="mb-4">
-                            <label htmlFor="grossSalary" className="block text-sm font-medium text-gray-700">الراتب الإجمالي</label>
-                            <input
-                                type="number"
-                                id="grossSalary"
-                                value={grossSalary}
-                                onChange={(e) => setGrossSalary(parseFloat(e.target.value) || '')}
-                                className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 px-3 py-2"
-                                min="0.01"
-                                step="0.01"
-                                required
-                            />
-                        </div>
-                    )}
-
-                    {showGrossSalary && (
-                        <div className="mb-4">
-                            <label htmlFor="deductions" className="block text-sm font-medium text-gray-700">خصم السلف</label>
-                            <input
-                                type="number"
-                                id="deductions"
-                                value={deductedLoansAmount.toFixed(2)}
-                                className="mt-1 block w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm px-3 py-2"
-                                readOnly
-                                disabled
-                            />
-                        </div>
-                    )}
-
-                    {showGrossSalary && (
-                        <div className="mb-4">
-                            <label htmlFor="netPay" className="block text-sm font-medium text-gray-700">صافي الراتب</label>
-                            <input
-                                type="number"
-                                id="netPay"
-                                value={netSalary.toFixed(2)}
-                                className="mt-1 block w-full rounded-md border border-gray-300 bg-gray-50 shadow-sm px-3 py-2"
-                                readOnly
-                                disabled
-                            />
-                        </div>
-                    )}
-
-                    {showAmount && (
-                        <div className="mb-4">
-                            <label htmlFor="amount" className="block text-sm font-medium text-gray-700">المبلغ</label>
-                            <input
-                                type="number"
-                                id="amount"
-                                value={amount}
-                                onChange={(e) => setAmount(parseFloat(e.target.value) || '')}
-                                className="mt-1 block w-full rounded-md border border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 px-3 py-2"
-                                min="0.01"
-                                step="0.01"
-                                required
-                            />
-                        </div>
-                    )}
-
-                    {showCashAccountId && (
-                        <div className="mb-4">
-                            <label htmlFor="cashAccountId" className="block text-sm font-medium text-gray-700">حساب النقدية/البنك</label>
-                            <input
-                                type="number"
-                                id="cashAccountId"
-                                value={cashAccountId}
-                                onChange={(e) => setCashAccountId(parseInt(e.target.value) || '')}
-                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                                required
-                            />
-                        </div>
-                    )}
-
-                    {showOffsetAccountId && (
-                        <div className="mb-4">
-                            <label htmlFor="offsetAccountId" className="block text-sm font-medium text-gray-700">
-                                {isCustomerAction ? 'Revenue Account ID' : 'Expense Account ID'}
-                            </label>
-                            <input
-                                type="number"
-                                id="offsetAccountId"
-                                value={offsetAccountId}
-                                onChange={(e) => setOffsetAccountId(parseInt(e.target.value) || '')}
-                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                                required
-                            />
-                        </div>
-                    )}
-
-                    {showReference && (
-                        <div className="mb-4">
-                            <label htmlFor="reference" className="block text-sm font-medium text-gray-700">Reference</label>
+                    {/* الرقم المرجعي */}
+                    {needsReference && (
+                        <div>
+                            <FieldLabel>الرقم المرجعي (اختياري)</FieldLabel>
                             <input
                                 type="text"
-                                id="reference"
                                 value={reference}
                                 onChange={(e) => setReference(e.target.value)}
-                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
+                                className={inputCls}
+                                placeholder="رقم الفاتورة أو المرجع..."
                             />
                         </div>
                     )}
 
-                    <div className="mb-4">
-                        <label htmlFor="description" className="block text-sm font-medium text-gray-700">Description</label>
+                    {/* البيان */}
+                    <div>
+                        <FieldLabel>البيان (اختياري)</FieldLabel>
                         <textarea
-                            id="description"
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
-                            rows={3}
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                        ></textarea>
+                            className={`${inputCls} resize-none h-16 py-2`}
+                            placeholder="وصف العملية..."
+                        />
                     </div>
 
-                    <div className="flex justify-end pt-4 border-t">
+                    {/* أزرار */}
+                    <div className="flex gap-3 pt-2">
                         <button
                             type="button"
                             onClick={onClose}
-                            className="mr-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+                            className="px-5 py-2.5 bg-white/5 border border-white/5 text-slate-400 hover:text-white rounded-2xl font-black text-sm transition-all"
+                            disabled={isLoading}
                         >
-                            Cancel
+                            إلغاء
                         </button>
                         <button
                             type="submit"
-                            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-                            disabled={isLoading}
+                            disabled={
+                                isLoading ||
+                                !amount ||
+                                (needsCashAccount && !cashAccountId) ||
+                                (needsOffsetAccount && !offsetAccountId)
+                            }
+                            className={`flex-1 py-2.5 text-white rounded-2xl font-black text-sm transition-all shadow-lg active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed ${meta.btnColor}`}
                         >
-                            {isLoading ? 'Processing...' : 'Submit'}
+                            {isLoading ? (
+                                <>
+                                    <i
+                                        className="ti ti-refresh animate-spin"
+                                        style={{ fontSize: 16 }}
+                                    />
+                                    جاري التنفيذ...
+                                </>
+                            ) : (
+                                <>
+                                    <i
+                                        className={`ti ${meta.icon}`}
+                                        style={{ fontSize: 16 }}
+                                    />
+                                    تأكيد {meta.title}
+                                </>
+                            )}
                         </button>
                     </div>
                 </form>
