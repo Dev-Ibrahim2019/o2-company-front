@@ -5,8 +5,8 @@ import {
   TrendingUp, Download, Wallet,
 } from 'lucide-react';
 import EntityFinanceActions from './EntityFinanceActions';
-import { employeeService, EmployeeFromApi } from '../../../services/employeeService';
-
+import { employeeService } from '../../../services/employeeService';
+import type { EmployeeFromApi } from '../../../services/employeeService';
 interface COA { id: string; nameAr: string; name?: string; balance: number }
 interface Props {
   chartOfAccounts: COA[];
