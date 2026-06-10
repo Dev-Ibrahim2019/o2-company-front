@@ -1,20 +1,60 @@
 // src/services/financeService.ts
 //
-// مُحدَّث ليتطابق مع EmployeeFinancialController في الباك:
-//   - advance:          { amount, cash_account_id, date, description }
-//   - advance-repayment:{ amount, cash_account_id, date, description }
-//   - salary-accrual:   { amount, date, description }
-//   - salary-payment:   { gross_amount, cash_account_id, date, advance_deduction, description }
-//   - account-statement: GET ?from=&to=&type=
+// ✅ تم التحديث ليتطابق مع EmployeeFinancialController في الباك
+// ✅ إضافة أنواع TypeScript صارمة للاستجابات
+// ✅ توحيد بنية StatementEntry لجميع الكيانات
+// ✅ تصحيح نوع الإرجاع لـ getEmployeeStatement (TransactionResponse بدلاً من StatementEntry[])
 
 import api from "../api/axios";
 
-export interface TransactionResponse {
+// ─── Shared Response Wrapper ───────────────────────────────────────────────
+
+export interface ApiResponse<T = any> {
   success: boolean;
   message: string;
-  data: any;
-  errors: any;
+  data: T;
+  errors?: Record<string, string[]>;
 }
+
+// ─── Statement Types ───────────────────────────────────────────────────────
+
+export interface StatementEntry {
+  date: string;
+  transaction_number: string;
+  reference: string | null;
+  description: string | null;
+  debit: number;
+  credit: number;
+  running_balance: number;
+  account_name: string;
+  transaction_source: string;
+}
+
+export interface AccountStatementBlock {
+  lines: StatementEntry[];
+  closing_balance: number;
+}
+
+// بنية استجابة كشف حساب الموظف من الباك:
+// { accounts: { advance: AccountStatementBlock, salary: AccountStatementBlock },
+//   outstanding_advance, accrued_salary, net_payable }
+export interface EmployeeStatementData {
+  accounts: {
+    advance?: AccountStatementBlock;
+    salary?: AccountStatementBlock;
+  };
+  outstanding_advance?: number;
+  accrued_salary?: number;
+  net_payable?: number;
+}
+
+// بنية استجابة كشف حساب العميل/المورد
+export interface EntityStatementData {
+  lines: StatementEntry[];
+  closing_balance: number;
+}
+
+// ─── Loan Types ────────────────────────────────────────────────────────────
 
 export interface EmployeeLoan {
   id: number;
@@ -31,29 +71,71 @@ export interface EmployeeLoan {
   updated_at: string;
 }
 
-export interface StatementEntry {
+// ─── Action Payload Types ──────────────────────────────────────────────────
+
+export interface AdvancePayload {
+  amount: number;
+  cash_account_id: number;
   date: string;
-  transaction_number: string;
-  reference?: string | null;
-  description: string | null;
-  debit: number;
-  credit: number;
-  balance: number;
+  description?: string;
 }
 
+export interface SalaryAccrualPayload {
+  amount: number;
+  date: string;
+  description?: string;
+}
+
+export interface SalaryPaymentPayload {
+  gross_amount: number;
+  cash_account_id: number;
+  date: string;
+  advance_deduction?: number;
+  description?: string;
+}
+
+export interface CustomerInvoicePayload {
+  amount: number;
+  offset_account_id: number;
+  date: string;
+  reference?: string;
+  branch_id?: number;
+}
+
+export interface CustomerPaymentPayload {
+  amount: number;
+  cash_account_id: number;
+  date: string;
+  reference?: string;
+  branch_id?: number;
+}
+
+export interface SupplierBillPayload {
+  amount: number;
+  offset_account_id: number;
+  date: string;
+  reference?: string;
+  branch_id?: number;
+}
+
+export interface SupplierPaymentPayload {
+  amount: number;
+  cash_account_id: number;
+  date: string;
+  reference?: string;
+  branch_id?: number;
+}
+
+// ─── Service ───────────────────────────────────────────────────────────────
+
 export const financeService = {
-  // ── Employee Finance ──────────────────────────────────────────────────────
+  // ── Employee Finance ────────────────────────────────────────────────────
 
   // POST /api/employees/{id}/advance
   recordAdvance: async (
     employeeId: number,
-    data: {
-      amount: number;
-      cash_account_id: number;
-      date: string;
-      description?: string;
-    },
-  ): Promise<TransactionResponse> => {
+    data: AdvancePayload,
+  ): Promise<ApiResponse> => {
     const res = await api.post(`/employees/${employeeId}/advance`, data);
     return res.data;
   },
@@ -61,13 +143,8 @@ export const financeService = {
   // POST /api/employees/{id}/advance-repayment
   recordAdvanceRepayment: async (
     employeeId: number,
-    data: {
-      amount: number;
-      cash_account_id: number;
-      date: string;
-      description?: string;
-    },
-  ): Promise<TransactionResponse> => {
+    data: AdvancePayload,
+  ): Promise<ApiResponse> => {
     const res = await api.post(
       `/employees/${employeeId}/advance-repayment`,
       data,
@@ -78,12 +155,8 @@ export const financeService = {
   // POST /api/employees/{id}/salary-accrual
   recordSalaryAccrual: async (
     employeeId: number,
-    data: {
-      amount: number;
-      date: string;
-      description?: string;
-    },
-  ): Promise<TransactionResponse> => {
+    data: SalaryAccrualPayload,
+  ): Promise<ApiResponse> => {
     const res = await api.post(`/employees/${employeeId}/salary-accrual`, data);
     return res.data;
   },
@@ -91,25 +164,20 @@ export const financeService = {
   // POST /api/employees/{id}/salary-payment
   recordSalaryPayment: async (
     employeeId: number,
-    data: {
-      gross_amount: number;
-      cash_account_id: number;
-      date: string;
-      advance_deduction?: number;
-      description?: string;
-    },
-  ): Promise<TransactionResponse> => {
+    data: SalaryPaymentPayload,
+  ): Promise<ApiResponse> => {
     const res = await api.post(`/employees/${employeeId}/salary-payment`, data);
     return res.data;
   },
 
   // GET /api/employees/{id}/account-statement
+  // ✅ الباك يرجع ApiResponse<EmployeeStatementData> — ليس StatementEntry[] مباشرة
   getEmployeeStatement: async (
     employeeId: number,
     from: string,
     to: string,
     type: "all" | "advance" | "salary" = "all",
-  ): Promise<TransactionResponse> => {
+  ): Promise<ApiResponse<EmployeeStatementData>> => {
     const res = await api.get(`/employees/${employeeId}/account-statement`, {
       params: { from, to, type },
     });
@@ -125,32 +193,20 @@ export const financeService = {
     return [];
   },
 
-  // ── Customer Finance ──────────────────────────────────────────────────────
+  // ── Customer Finance ────────────────────────────────────────────────────
 
   recordCustomerInvoice: async (
     customerId: number,
-    data: {
-      amount: number;
-      offset_account_id: number;
-      date: string;
-      reference?: string;
-      branch_id?: number;
-    },
-  ): Promise<TransactionResponse> => {
+    data: CustomerInvoicePayload,
+  ): Promise<ApiResponse> => {
     const res = await api.post(`/customers/${customerId}/invoice`, data);
     return res.data;
   },
 
   recordCustomerPayment: async (
     customerId: number,
-    data: {
-      amount: number;
-      cash_account_id: number;
-      date: string;
-      reference?: string;
-      branch_id?: number;
-    },
-  ): Promise<TransactionResponse> => {
+    data: CustomerPaymentPayload,
+  ): Promise<ApiResponse> => {
     const res = await api.post(`/customers/${customerId}/payment`, data);
     return res.data;
   },
@@ -159,39 +215,27 @@ export const financeService = {
     customerId: number,
     from: string,
     to: string,
-  ): Promise<TransactionResponse> => {
+  ): Promise<ApiResponse<EntityStatementData>> => {
     const res = await api.get(`/customers/${customerId}/statement`, {
       params: { from, to },
     });
     return res.data;
   },
 
-  // ── Supplier Finance ──────────────────────────────────────────────────────
+  // ── Supplier Finance ────────────────────────────────────────────────────
 
   recordSupplierBill: async (
     supplierId: number,
-    data: {
-      amount: number;
-      offset_account_id: number;
-      date: string;
-      reference?: string;
-      branch_id?: number;
-    },
-  ): Promise<TransactionResponse> => {
+    data: SupplierBillPayload,
+  ): Promise<ApiResponse> => {
     const res = await api.post(`/suppliers/${supplierId}/bill`, data);
     return res.data;
   },
 
   recordSupplierPayment: async (
     supplierId: number,
-    data: {
-      amount: number;
-      cash_account_id: number;
-      date: string;
-      reference?: string;
-      branch_id?: number;
-    },
-  ): Promise<TransactionResponse> => {
+    data: SupplierPaymentPayload,
+  ): Promise<ApiResponse> => {
     const res = await api.post(`/suppliers/${supplierId}/payment`, data);
     return res.data;
   },
@@ -200,7 +244,7 @@ export const financeService = {
     supplierId: number,
     from: string,
     to: string,
-  ): Promise<TransactionResponse> => {
+  ): Promise<ApiResponse<EntityStatementData>> => {
     const res = await api.get(`/suppliers/${supplierId}/statement`, {
       params: { from, to },
     });

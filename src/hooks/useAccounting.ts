@@ -17,7 +17,7 @@ import {
   type Transaction,
   type CostCenter,
   type LedgerData,
-} from "../services/accountingService";
+} from "../services/accounting";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

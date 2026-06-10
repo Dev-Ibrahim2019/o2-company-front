@@ -50,21 +50,10 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
     SETTINGS: canEditSettings ? <SettingsPage /> : <div className="p-20 text-center text-slate-500">ليس لديك صلاحية للوصول إلى الإعدادات</div>,
     ORGSTRUCTURE: <OrgStructure />,
   };
+
   return (
     <div className="h-full flex flex-col gap-6">
       {/* Header */}
-      {/* <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-black text-white tracking-tight">بوابة الإدارة المالية</h1>
-          <p className="text-slate-500 text-sm font-medium">إدارة العمليات، الموظفين، والتقارير المالية</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="bg-slate-900 border border-white/5 rounded-xl px-4 py-2 flex items-center gap-3">
-            <Calendar size={18} className="text-red-500" />
-            <span className="text-sm font-bold text-white">{new Date().toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
-          </div>
-        </div>
-      </div> */}
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">

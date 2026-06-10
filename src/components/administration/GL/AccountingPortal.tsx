@@ -1,11 +1,10 @@
 /**
- * AccountingPortal.tsx — النسخة الكاملة المُصلحة
+ * AccountingPortal.tsx — المرحلة 1 (Subledger Support)
  *
- * الإصلاحات:
- * 1. زر Maximize → داخلي في AccountDetailPanel (لا يغير glSubTab)
- * 2. جلب الـ Ledger من API عند تحديد حساب حركي
- * 3. توليد كود الحساب تلقائياً من الباك عند فتح modal الإضافة
- * 4. تمرير ledgerLines + loadingLedger + openingBalance لـ AccountDetailPanel
+ * التحديثات:
+ * 1. استخدام ViewJournalModal الجديد (يجلب entries بنفسه مع subledger)
+ * 2. toJournalShape يحفظ subledger_type/id/name
+ * 3. selectedTransactionId بدلاً من selectedJournalEntryId
  */
 
 import React, { useState, useMemo, useEffect, useCallback } from "react";
@@ -22,7 +21,8 @@ import type { Account, Transaction, CostCenter } from "../../../services/account
 
 import { AccountingDashboard } from "./AccountingDashboard";
 import { EmployeesTab } from "./EmployeesTab";
-import { JournalView, FiscalYearsView, CostCentersView } from "./GLSubViews";
+import { FiscalYearsView, CostCentersView } from "./GLSubViews";
+import { EnterpriseJournalView as JournalView } from "./EnterpriseJournalView";
 import {
   COATree,
   AccountDetailPanel,
@@ -34,27 +34,20 @@ import {
   AddCOAModal,
   EditCOAModal,
   AddJournalModal,
-  EmployeeActionModal,
-  ViewJournalModal,
   AddCostCenterModal,
   EditCostCenterModal,
 } from "./AccountingModals";
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ✅ ViewJournalModal الجديد — مستقل يجلب بياناته بنفسه
+import ViewJournalModal from "./ViewJournalModal";
 
 type ActiveTab = "DASHBOARD" | "GL" | "AR" | "AP" | "CASH" | "HR";
 type GLSubTab = "YEARS" | "COA" | "COST_CENTERS" | "JOURNAL" | "LEDGER";
 type ModalType =
-  | "ADD_COA"
-  | "ADD_JOURNAL"
-  | "EDIT_COA"
-  | "EMPLOYEE_ACTION"
-  | "VIEW_JOURNAL"
-  | "ADD_COST_CENTER"
-  | "EDIT_COST_CENTER"
-  | null;
+  | "ADD_COA" | "ADD_JOURNAL" | "EDIT_COA"
+  | "VIEW_JOURNAL" | "ADD_COST_CENTER" | "EDIT_COST_CENTER" | null;
 
-// ─── تحويل الأنواع ───────────────────────────────────────────────────────────
+// ─── تحويل Account API → COAWithRollup ───────────────────────────────────────
 
 function toCoaShape(acc: Account): COAWithRollup {
   return {
@@ -74,26 +67,28 @@ function toCoaShape(acc: Account): COAWithRollup {
   };
 }
 
+// ─── تحويل Transaction API → Journal shape (مع subledger) ────────────────────
+
 function toJournalShape(tx: Transaction) {
+  return toJournalShapeEnterprise(tx);
+
   return {
     id: String(tx.id),
     date: tx.date,
     description: tx.description ?? tx.type_label,
     status: tx.status === "posted" ? "POSTED" : "DRAFT",
     reference: tx.transaction_number,
-
     lines: (tx.entries ?? []).map((e) => ({
       accountId: String(e.account_id),
-
-      // نأخذ اسم الحساب مباشرة من الـ API
       accountName: e.account?.name ?? null,
-
-      // نأخذ كود الحساب مباشرة من الـ API
       accountCode: e.account?.code ?? null,
-
       debit: e.debit,
       credit: e.credit,
       description: e.description,
+      // ✅ Subledger — من راحت السلفة/الراتب
+      subledger_type: e.subledger_type ?? null,
+      subledger_id: e.subledger_id ?? null,
+      subledger_name: e.subledger?.name ?? null,
     })),
   };
 }
@@ -110,7 +105,7 @@ function toCostCenterShape(cc: CostCenter) {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Component ────────────────────────────────────────────────────────────────
 
 export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
   initialTab = "DASHBOARD",
@@ -118,36 +113,28 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
   const acc = useAccounting();
   const app = useApp();
 
-  // ── tabs ──────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
   const [glSubTab, setGlSubTab] = useState<GLSubTab>("COA");
-
   useEffect(() => { setActiveTab(initialTab); }, [initialTab]);
 
-  // ── selection ─────────────────────────────────────────────────────────────
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
-  const [selectedJournalEntryId, setSelectedJournalEntryId] = useState<string | null>(null);
+  // ✅ رقم الـ transaction المختار (بدلاً من string entry ID)
+  const [selectedTransactionId, setSelectedTransactionId] = useState<number | null>(null);
 
-  // ── modal ─────────────────────────────────────────────────────────────────
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState<ModalType>(null);
 
   const openModal = (type: ModalType) => { setModalType(type); setIsModalOpen(true); };
   const closeModal = () => { setIsModalOpen(false); setModalType(null); };
 
-  // ── ledger filter ─────────────────────────────────────────────────────────
   const [ledgerFilter, setLedgerFilter] = useState<LedgerFilter>({ type: "ALL" });
-
-  // ✅ Ledger data من API مباشرة
   const [ledgerLines, setLedgerLines] = useState<LedgerLine[]>([]);
   const [ledgerOpeningBalance, setLedgerOpeningBalance] = useState(0);
   const [loadingLedger, setLoadingLedger] = useState(false);
 
-  // ── COA tree state ────────────────────────────────────────────────────────
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [coaSearchQuery, setCoaSearchQuery] = useState("");
 
-  // ✅ إصلاح toggleNode — لا يمس selectedAccountId
   const toggleNode = useCallback((id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setExpandedNodes((prev) => {
@@ -157,32 +144,12 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
     });
   }, []);
 
-  // ── forms ─────────────────────────────────────────────────────────────────
   const [coaForm, setCoaForm] = useState<Partial<any>>({ type: "asset", isPosting: true });
-
-  const emptyJournalForm = {
-    date: new Date().toISOString().split("T")[0],
-    description: "",
-    type: "journal",
-    lines: [
-      { accountId: "", debit: 0, credit: 0, description: "" },
-      { accountId: "", debit: 0, credit: 0, description: "" },
-    ],
-  };
-  const [journalForm, setJournalForm] = useState(emptyJournalForm);
+  const [journalForm, setJournalForm] = useState(emptyJournalForm());
   const [costCenterForm, setCostCenterForm] = useState<Partial<any>>({ type: "operational", is_active: true });
 
-  // ── employee ──────────────────────────────────────────────────────────────
-  const [employeeActionType, setEmployeeActionType] = useState<any>(null);
-  const [employeeActionAmount, setEmployeeActionAmount] = useState(0);
-  const [employeeActionNote, setEmployeeActionNote] = useState("");
 
-  const handleEmployeeAction = (_empId: string, type: any) => {
-    setEmployeeActionType(type);
-    openModal("EMPLOYEE_ACTION");
-  };
-
-  // ── data transforms ───────────────────────────────────────────────────────
+  // ── transforms ──────────────────────────────────────────────────────────────
   const flatAccounts = useMemo(() => acc.accounts.map(toCoaShape), [acc.accounts]);
   const journalEntries = useMemo(() => acc.transactions.map(toJournalShape), [acc.transactions]);
   const costCentersView = useMemo(() => acc.costCenters.map(toCostCenterShape), [acc.costCenters]);
@@ -198,7 +165,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
 
   const selectedAccount = flatAccounts.find((a) => a.id === selectedAccountId) ?? null;
 
-  // ── stats ─────────────────────────────────────────────────────────────────
+  // ── stats ────────────────────────────────────────────────────────────────────
   const stats = useMemo(() => {
     const sum = (type: string) =>
       acc.accounts.filter((a) => a.type === type).reduce((s, a) => s + (a.balance ?? 0), 0);
@@ -214,15 +181,14 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
     };
   }, [acc.accounts]);
 
-  // ✅ جلب الـ Ledger عند تغيير الحساب المختار أو الفلتر
+  // ── Ledger fetch ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedAccountId) {
       setLedgerLines([]);
       setLedgerOpeningBalance(0);
       return;
     }
-
-    const account = flatAccounts.find(a => a.id === selectedAccountId);
+    const account = flatAccounts.find((a) => a.id === selectedAccountId);
     if (!account?.isPosting) {
       setLedgerLines([]);
       setLedgerOpeningBalance(0);
@@ -230,14 +196,11 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
     }
 
     let cancelled = false;
-
-    const fetchLedgerData = async () => {
+    const fetchLedger = async () => {
       setLoadingLedger(true);
       setLedgerLines([]);
       setLedgerOpeningBalance(0);
-
       try {
-        // حساب from/to بناءً على الـ filter
         let from: string | undefined;
         let to: string | undefined;
         const now = new Date();
@@ -273,40 +236,31 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
           case "AFTER":
             from = ledgerFilter.startDate;
             break;
-          case "ALL":
           default:
-            // جلب كافة الحركات منذ البداية
             from = "2020-01-01";
             to = now.toISOString().split("T")[0];
-            break;
         }
 
         const data = await accountService.getLedger(Number(selectedAccountId), { from, to });
-
         if (!cancelled) {
           setLedgerLines(data.lines ?? []);
           setLedgerOpeningBalance(data.opening_balance ?? 0);
         }
       } catch {
-        if (!cancelled) {
-          setLedgerLines([]);
-        }
+        if (!cancelled) setLedgerLines([]);
       } finally {
         if (!cancelled) setLoadingLedger(false);
       }
     };
 
-    fetchLedgerData();
+    fetchLedger();
     return () => { cancelled = true; };
   }, [selectedAccountId, ledgerFilter]);
 
-  // ─── HANDLERS ────────────────────────────────────────────────────────────
-
-  // ✅ توليد الكود التلقائي من الباك عند فتح modal الإضافة
+  // ── COA handlers ──────────────────────────────────────────────────────────────
   const handleOpenAddRoot = async () => {
     setCoaForm({ type: "asset", isPosting: true, code: "" });
     openModal("ADD_COA");
-
     try {
       const suggested = await accountService.suggestCode();
       setCoaForm((prev: any) => ({ ...prev, code: suggested }));
@@ -315,7 +269,6 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
 
   const handleOpenAddChild = async () => {
     if (!selectedAccount) return;
-
     setCoaForm({
       parentId: selectedAccount.id,
       type: selectedAccount.type,
@@ -324,7 +277,6 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
       level: (selectedAccount.level ?? 1) + 1,
     });
     openModal("ADD_COA");
-
     try {
       const suggested = await accountService.suggestCode(Number(selectedAccount.id));
       setCoaForm((prev: any) => ({ ...prev, code: suggested }));
@@ -359,8 +311,8 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
   };
 
   const handleSaveJournal = async () => {
-    const totalDebit = journalForm.lines.reduce((s, l) => s + (l.debit || 0), 0);
-    const totalCredit = journalForm.lines.reduce((s, l) => s + (l.credit || 0), 0);
+    const totalDebit = journalForm.lines.reduce((s: number, l: any) => s + (l.debit || 0), 0);
+    const totalCredit = journalForm.lines.reduce((s: number, l: any) => s + (l.credit || 0), 0);
     if (Math.abs(totalDebit - totalCredit) > 0.001) {
       alert("القيد غير متوازن!");
       return;
@@ -369,10 +321,10 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
       const tx = await acc.createTransaction({
         date: journalForm.date,
         description: journalForm.description,
-        type: "journal",
+        type: journalForm.type || "journal",
         entries: journalForm.lines
-          .filter((l) => l.accountId && (l.debit > 0 || l.credit > 0))
-          .map((l, i) => ({
+          .filter((l: any) => l.accountId && (l.debit > 0 || l.credit > 0))
+          .map((l: any, i: number) => ({
             account_id: Number(l.accountId),
             debit: l.debit || 0,
             credit: l.credit || 0,
@@ -382,12 +334,14 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
       });
       await acc.postTransaction(tx.id);
       closeModal();
-      setJournalForm(emptyJournalForm);
-      // أعد تحميل الـ ledger إذا القيد يخص الحساب المختار
-      if (selectedAccountId) {
-        setLedgerFilter(f => ({ ...f })); // trigger useEffect
-      }
+      setJournalForm(emptyJournalForm());
+      if (selectedAccountId) setLedgerFilter((f) => ({ ...f }));
     } catch { /* error handled in hook */ }
+  };
+
+  const handleOpenPaymentVoucher = () => {
+    setJournalForm(emptyJournalForm("payment"));
+    openModal("ADD_JOURNAL");
   };
 
   const handleSaveCostCenter = async () => {
@@ -419,7 +373,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
     } catch { /* error handled in hook */ }
   };
 
-  // ── page title ────────────────────────────────────────────────────────────
+  // ── page title ────────────────────────────────────────────────────────────────
   const pageTitle = (() => {
     if (activeTab === "DASHBOARD") return "لوحة التحكم المالية";
     if (activeTab === "GL") {
@@ -443,8 +397,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
     return map[activeTab];
   })();
 
-  // ─── GL RENDER ────────────────────────────────────────────────────────────
-
+  // ─── GL render ────────────────────────────────────────────────────────────────
   const renderGL = () => {
     if (glSubTab === "JOURNAL" && acc.transactions.length === 0 && !acc.loading.transactions) {
       acc.fetchTransactions({ per_page: 100, type: "journal" });
@@ -478,12 +431,10 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                     toggleNode={toggleNode}
                     onAddRoot={handleOpenAddRoot}
                   />
-
                   {selectedAccount ? (
                     <AccountDetailPanel
                       selectedAccount={selectedAccount}
                       allAccountsWithRollup={flatAccounts}
-                      // ✅ ledger من API مباشرة
                       ledgerLines={ledgerLines}
                       loadingLedger={loadingLedger}
                       openingBalance={ledgerOpeningBalance}
@@ -492,10 +443,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                       setGlSubTab={setGlSubTab}
                       setSelectedAccountId={setSelectedAccountId}
                       onEdit={() => {
-                        setCoaForm({
-                          ...selectedAccount,
-                          parentId: selectedAccount.parentId,
-                        });
+                        setCoaForm({ ...selectedAccount, parentId: selectedAccount.parentId });
                         openModal("EDIT_COA");
                       }}
                       onDelete={async () => {
@@ -521,8 +469,10 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
             <JournalView
               journalEntries={journalEntries}
               onAddJournal={() => openModal("ADD_JOURNAL")}
+              onAddPaymentVoucher={handleOpenPaymentVoucher}
+              onRefresh={() => acc.fetchTransactions({ per_page: 100, type: "journal" })}
               onViewEntry={(id) => {
-                setSelectedJournalEntryId(id);
+                setSelectedTransactionId(Number(id));
                 openModal("VIEW_JOURNAL");
               }}
             />
@@ -545,12 +495,11 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
     );
   };
 
-  // ─── RENDER ───────────────────────────────────────────────────────────────
-
+  // ─── RENDER ───────────────────────────────────────────────────────────────────
   return (
     <div className="flex-1 flex flex-col gap-6 p-1 h-full min-h-0 overflow-hidden text-right">
 
-      {/* Global error banner */}
+      {/* Error banner */}
       <AnimatePresence>
         {acc.error && (
           <motion.div
@@ -572,9 +521,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
       <AnimatePresence>
         {acc.loading.saving && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-[90] bg-slate-950/40 backdrop-blur-sm flex items-center justify-center"
           >
             <div className="bg-slate-900 border border-white/10 rounded-2xl px-8 py-5 flex items-center gap-3 shadow-2xl">
@@ -585,17 +532,13 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
         )}
       </AnimatePresence>
 
-      {/* Page Header */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex flex-col md:flex-row md:items-center gap-8">
           <div className="flex items-center gap-3 justify-end md:justify-start">
             <div className="text-right">
-              <h1 className="text-2xl font-black text-white tracking-tight uppercase">
-                {pageTitle}
-              </h1>
-              <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] leading-none mt-1">
-                Financial ERP Suite
-              </p>
+              <h1 className="text-2xl font-black text-white tracking-tight uppercase">{pageTitle}</h1>
+              <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] leading-none mt-1">Financial ERP Suite</p>
             </div>
             <div className="w-12 h-12 rounded-2xl bg-red-600 shadow-xl shadow-red-900/30 flex items-center justify-center text-white">
               <BookOpen size={24} />
@@ -613,9 +556,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                 <button
                   key={sub.id}
                   onClick={() => setGlSubTab(sub.id as GLSubTab)}
-                  className={`flex items-center gap-2 px-5 py-2 rounded-xl text-[10px] font-black transition-all ${glSubTab === sub.id
-                    ? "bg-red-600 text-white shadow-lg"
-                    : "text-slate-400 hover:bg-white/5"
+                  className={`flex items-center gap-2 px-5 py-2 rounded-xl text-[10px] font-black transition-all ${glSubTab === sub.id ? "bg-red-600 text-white shadow-lg" : "text-slate-400 hover:bg-white/5"
                     }`}
                 >
                   <sub.icon size={14} /> {sub.label}
@@ -640,11 +581,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
             {activeTab === "DASHBOARD" && <AccountingDashboard stats={stats} />}
             {activeTab === "GL" && renderGL()}
             {activeTab === "HR" && (
-              <EmployeesTab
-                employees={app.employees}
-                chartOfAccounts={flatAccounts}
-                onAction={handleEmployeeAction}
-              />
+              <EmployeesTab />
             )}
             {activeTab === "AR" && <ARTab customers={app.customers} />}
             {activeTab === "AP" && <APTab suppliers={app.suppliers} />}
@@ -653,25 +590,17 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
         </AnimatePresence>
       </div>
 
-      {/* Modals */}
+      {/* ── Modals ── */}
       <AnimatePresence>
         {isModalOpen && (
           <>
             {modalType === "ADD_COA" && (
-              <AddCOAModal
-                form={coaForm}
-                setForm={setCoaForm}
-                onSave={handleSaveCOA}
-                onClose={closeModal}
+              <AddCOAModal form={coaForm} setForm={setCoaForm} onSave={handleSaveCOA} onClose={closeModal}
+                parentName={coaForm.parentId ? flatAccounts.find(a => a.id === coaForm.parentId)?.nameAr : undefined}
               />
             )}
             {modalType === "EDIT_COA" && (
-              <EditCOAModal
-                form={coaForm}
-                setForm={setCoaForm}
-                onSave={handleEditCOA}
-                onClose={closeModal}
-              />
+              <EditCOAModal form={coaForm} setForm={setCoaForm} onSave={handleEditCOA} onClose={closeModal} />
             )}
             {modalType === "ADD_JOURNAL" && (
               <AddJournalModal
@@ -683,31 +612,27 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                 onClose={closeModal}
               />
             )}
-            {modalType === "EMPLOYEE_ACTION" && (
-              <EmployeeActionModal
-                amount={employeeActionAmount}
-                setAmount={setEmployeeActionAmount}
-                note={employeeActionNote}
-                setNote={setEmployeeActionNote}
-                actionType={employeeActionType ?? undefined}
-                onConfirm={() => {
+            {/* ✅ ViewJournalModal الجديد — يجلب subledger بنفسه */}
+            {modalType === "VIEW_JOURNAL" && selectedTransactionId && (
+              <ViewJournalModal
+                transactionId={selectedTransactionId}
+                isOpen={true}
+                onClose={() => {
                   closeModal();
-                  setEmployeeActionAmount(0);
-                  setEmployeeActionNote("");
+                  setSelectedTransactionId(null);
                 }}
-                onClose={closeModal}
+                initialData={(() => {
+                  const je = journalEntries.find((e) => e.id === String(selectedTransactionId));
+                  return je ? {
+                    transaction_number: je.reference,
+                    date: je.date,
+                    description: je.description,
+                    status: je.status,
+                  } : undefined;
+                })()}
               />
             )}
-            {modalType === "VIEW_JOURNAL" && (() => {
-              const je = journalEntries.find((e) => e.id === selectedJournalEntryId);
-              return je ? (
-                <ViewJournalModal
-                  entry={je}
-                  chartOfAccounts={flatAccounts}
-                  onClose={closeModal}
-                />
-              ) : null;
-            })()}
+
             {modalType === "ADD_COST_CENTER" && (
               <AddCostCenterModal
                 form={costCenterForm}
@@ -732,3 +657,61 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
     </div>
   );
 };
+
+// ── helper ────────────────────────────────────────────────────────────────────
+
+function emptyJournalForm(type: string = "journal") {
+  return {
+    date: new Date().toISOString().split("T")[0],
+    description: "",
+    type,
+    lines: [
+      { accountId: "", debit: 0, credit: 0, description: "" },
+      { accountId: "", debit: 0, credit: 0, description: "" },
+    ],
+  };
+}
+
+function toJournalShapeEnterprise(tx: Transaction) {
+  const status = tx.status === "posted"
+    ? "POSTED"
+    : tx.status === "cancelled"
+      ? "CANCELLED"
+      : "DRAFT";
+
+  return {
+    id: String(tx.id),
+    date: tx.date,
+    description: tx.description ?? tx.type_label,
+    status,
+    reference: tx.reference ?? tx.transaction_number,
+    transactionNumber: tx.transaction_number,
+    type: tx.type,
+    typeLabel: tx.type_label,
+    branchName: tx.branch?.name ?? undefined,
+    userName: tx.user?.name ?? undefined,
+    currency: (tx as any).currency ?? undefined,
+    totalDebit: tx.total_debit,
+    totalCredit: tx.total_credit,
+    entriesCount: tx.entries_count,
+    isBalanced: tx.is_balanced,
+    approvedBy: (tx as any).approved_by?.name ?? (tx as any).approved_by ?? undefined,
+    postedAt: tx.posted_at,
+    createdAt: tx.created_at,
+    notes: tx.notes,
+    isReversal: Boolean((tx as any).is_reversal),
+    lines: (tx.entries ?? []).map((e) => ({
+      id: e.id,
+      accountId: String(e.account_id),
+      accountName: e.account?.name ?? null,
+      accountCode: e.account?.code ?? null,
+      debit: e.debit,
+      credit: e.credit,
+      description: e.description,
+      costCenterName: e.cost_center?.name ?? null,
+      subledgerType: e.subledger_type ?? null,
+      subledger_id: e.subledger_id ?? null,
+      subledgerName: e.subledger?.name ?? null,
+    })),
+  };
+}

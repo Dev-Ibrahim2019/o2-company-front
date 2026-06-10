@@ -20,30 +20,61 @@ interface JournalEntry {
   description: string;
   status: string;
   lines: any[];
+  reference?: string;
+  transactionNumber?: string;
+  type?: string;
+  typeLabel?: string;
+  branchName?: string;
+  userName?: string;
+  currency?: string;
+  totalDebit?: number;
+  totalCredit?: number;
+  entriesCount?: number;
+  isBalanced?: boolean;
+  approvedBy?: string;
+  postedAt?: string;
+  createdAt?: string;
+  notes?: string;
+  isReversal?: boolean;
 }
 
 interface JournalViewProps {
   journalEntries: JournalEntry[];
   onAddJournal: () => void;
-  onViewEntry: (id: string) => void;
+  onAddPaymentVoucher?: () => void;
+  onRefresh?: () => void;
 }
 
 // ─── Filter Modal ────────────────────────────────────────────────────────────
 
 interface FilterState {
-  status: string;        // '' | 'POSTED' | 'DRAFT'
+  status: string;        // '' | 'POSTED' | 'DRAFT' | 'CANCELLED'
+  type: string;
+  branch: string;
+  user: string;
+  currency: string;
   dateFrom: string;
   dateTo: string;
   minAmount: string;
   maxAmount: string;
+  postedOnly: boolean;
+  unapprovedOnly: boolean;
+  reversedOnly: boolean;
 }
 
 const DEFAULT_FILTERS: FilterState = {
   status: '',
+  type: '',
+  branch: '',
+  user: '',
+  currency: '',
   dateFrom: '',
   dateTo: '',
   minAmount: '',
   maxAmount: '',
+  postedOnly: false,
+  unapprovedOnly: false,
+  reversedOnly: false,
 };
 
 const FilterModal: React.FC<{
@@ -238,8 +269,6 @@ const FilterModal: React.FC<{
 
 // ─── Today helper ─────────────────────────────────────────────────────────────
 
-const todayStr = () => new Date().toISOString().split('T')[0];
-
 const ITEMS_PER_PAGE = 10;
 
 // ─── JournalView ─────────────────────────────────────────────────────────────
@@ -247,14 +276,12 @@ const ITEMS_PER_PAGE = 10;
 export const JournalView: React.FC<JournalViewProps> = ({
   journalEntries,
   onAddJournal,
-  onViewEntry,
+  onAddPaymentVoucher,
 }) => {
   const [search, setSearch] = useState("");
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [filters, setFilters] = useState<FilterState>({ ...DEFAULT_FILTERS });
   const [page, setPage] = useState(1);
-
-  const today = todayStr();
 
   // ── active filter count ───────────────────────────────────────────────────
   const activeFilterCount = useMemo(() =>
@@ -300,6 +327,7 @@ export const JournalView: React.FC<JournalViewProps> = ({
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const safePage = Math.min(page, totalPages);
   const paginated = filtered.slice((safePage - 1) * ITEMS_PER_PAGE, safePage * ITEMS_PER_PAGE);
+  const visibleEntries = paginated;
 
   // reset to page 1 when filters/search change
   const handleSearch = (v: string) => { setSearch(v); setPage(1); };
@@ -405,6 +433,14 @@ export const JournalView: React.FC<JournalViewProps> = ({
             >
               <Plus size={14} /> قيد جديد
             </button>
+            {onAddPaymentVoucher && (
+              <button
+                onClick={onAddPaymentVoucher}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-700 text-white rounded-xl text-xs font-black hover:bg-emerald-800 transition-all shadow-lg shadow-emerald-900/20"
+              >
+                <Plus size={14} /> سند صرف
+              </button>
+            )}
           </div>
         </div>
 
@@ -433,96 +469,161 @@ export const JournalView: React.FC<JournalViewProps> = ({
           </div>
         )}
 
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-right text-xs">
-            <thead className="bg-slate-950/40 border-b border-white/5">
-              <tr className="text-slate-500 font-black uppercase tracking-wider">
-                <th className="px-5 py-3">رقم القيد</th>
-                <th className="px-5 py-3">التاريخ</th>
-                <th className="px-5 py-3">البيان</th>
-                <th className="px-5 py-3 text-center">عدد الأسطر</th>
-                <th className="px-5 py-3 text-center">إجمالي المدين</th>
-                <th className="px-5 py-3 text-center">الحالة</th>
-                <th className="px-5 py-3 text-center">عرض</th>
+        <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white">
+          <table className="min-w-full text-sm">
+            <thead className="bg-zinc-100">
+              <tr className="text-right">
+                <th className="px-4 py-3 font-semibold">#</th>
+
+                <th className="px-4 py-3 font-semibold">
+                  رقم القيد
+                </th>
+
+                <th className="px-4 py-3 font-semibold">
+                  التاريخ
+                </th>
+
+                <th className="px-4 py-3 font-semibold">
+                  الوصف
+                </th>
+
+                <th className="px-4 py-3 font-semibold">
+                  الحسابات
+                </th>
+
+                <th className="px-4 py-3 font-semibold">
+                  مدين
+                </th>
+
+                <th className="px-4 py-3 font-semibold">
+                  دائن
+                </th>
+
+                <th className="px-4 py-3 font-semibold">
+                  الحالة
+                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
-              {paginated.map((je, i) => {
-                const debit = je.lines.reduce((s: number, l: any) => s + (l.debit || 0), 0);
-                const isPosted = je.status === 'POSTED';
-                const isToday = je.date === today;
+
+            <tbody>
+              {visibleEntries.map((trx: any, index: number) => {
+                const transactionNumber = trx.transaction_number ?? trx.reference ?? trx.id;
+                const normalizedStatus = String(trx.status ?? "").toUpperCase();
+                const statusLabel = trx.status_label ?? (normalizedStatus === "POSTED" ? "ظ…ظڈط±ط­ظژظ‘ظ„ط©" : "ظ…ط³ظˆط¯ط©");
+                const lineTotals = (trx.lines ?? []).reduce(
+                  (totals: { debit: number; credit: number }, line: any) => ({
+                    debit: totals.debit + (line.debit || 0),
+                    credit: totals.credit + (line.credit || 0),
+                  }),
+                  { debit: 0, credit: 0 },
+                );
+                const totalDebit = trx.total_debit ?? lineTotals.debit;
+                const totalCredit = trx.total_credit ?? lineTotals.credit;
 
                 return (
-                  <motion.tr
-                    key={je.id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: i * 0.03 }}
-                    className="hover:bg-white/[0.02] transition-colors group"
-                  >
-                    <td className="px-5 py-4">
-                      <span className="font-mono text-slate-400 text-[11px] bg-slate-950 px-2 py-0.5 rounded-lg border border-white/5">
-                        #{je.id.split("_").pop() || je.id.slice(-6)}
-                      </span>
-                    </td>
+                <tr
+                  key={trx.id}
+                  className="border-t hover:bg-zinc-50"
+                >
+                  <td className="px-4 py-4">
+                    {index + 1}
+                  </td>
 
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-slate-400">{je.date}</span>
-                        {isToday && (
-                          <span className="px-1.5 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[9px] font-black rounded-md">
-                            اليوم
-                          </span>
-                        )}
+                  <td className="px-4 py-4 font-semibold">
+                    {transactionNumber}
+                  </td>
+
+                  <td className="px-4 py-4">
+                    {trx.date}
+                  </td>
+
+                  <td className="px-4 py-4">
+                    <div className="space-y-1">
+                      <div className="font-medium">
+                        {trx.description || "-"}
                       </div>
-                    </td>
 
-                    <td className="px-5 py-4 font-bold text-white max-w-[200px] truncate">
-                      {je.description}
-                    </td>
+                      {trx.reference && (
+                        <div className="text-xs text-zinc-500">
+                          Ref: {trx.reference}
+                        </div>
+                      )}
+                    </div>
+                  </td>
 
-                    {/* عدد الأسطر — يظهر فقط لقيود اليوم */}
-                    <td className="px-5 py-4 text-center">
-                      <span className="inline-flex items-center justify-center w-7 h-7 bg-slate-800/60 border border-white/10 rounded-lg text-slate-300 font-black text-xs">
-                        {je.lines.length}
-                      </span>
-                    </td>
+                  <td className="px-4 py-4">
+                    <div className="space-y-2">
+                      {(trx.lines ?? trx.entries ?? []).map((entry: any) => (
+                        <div
+                          key={entry.id}
+                          className="rounded-lg border border-zinc-200 p-2"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="font-medium">
+                                {entry.account?.code} -{" "}
+                                {entry.account?.name}
+                              </div>
 
-                    <td className="px-5 py-4 text-center font-black font-mono text-emerald-400">
-                      ₪{debit.toLocaleString()}
-                    </td>
+                              {entry.subledger && (
+                                <div className="mt-1 text-xs text-blue-600">
+                                  {entry.subledger.type} :
+                                  {" "}
+                                  {entry.subledger.name}
+                                </div>
+                              )}
 
-                    <td className="px-5 py-4 text-center">
-                      <span className={`px-2.5 py-1 rounded-lg border text-[10px] font-black ${isPosted
-                        ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
-                        : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
-                        }`}>
-                        {isPosted ? 'مُرحَّل' : 'مسودة'}
-                      </span>
-                    </td>
+                              {entry.cost_center && (
+                                <div className="text-xs text-zinc-500">
+                                  مركز تكلفة:
+                                  {" "}
+                                  {entry.cost_center.name}
+                                </div>
+                              )}
+                            </div>
 
-                    <td className="px-5 py-4 text-center">
-                      <button
-                        onClick={() => onViewEntry(je.id)}
-                        className="p-2 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl transition-colors opacity-0 group-hover:opacity-100"
-                      >
-                        <Eye size={13} className="text-slate-400" />
-                      </button>
-                    </td>
-                  </motion.tr>
-                );
-              })}
+                            <div className="text-left text-xs">
+                              {entry.debit > 0 && (
+                                <div className="text-emerald-600">
+                                  Dr: {entry.debit}
+                                </div>
+                              )}
 
-              {paginated.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="py-20 text-center text-slate-600 font-black italic">
-                    {activeFilterCount > 0 || search
-                      ? 'لا توجد قيود مطابقة للبحث أو الفلتر'
-                      : 'لا توجد قيود مسجلة'}
+                              {entry.credit > 0 && (
+                                <div className="text-red-600">
+                                  Cr: {entry.credit}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </td>
+
+                  <td className="px-4 py-4 font-semibold text-emerald-600">
+                    {totalDebit}
+                  </td>
+
+                  <td className="px-4 py-4 font-semibold text-red-600">
+                    {totalCredit}
+                  </td>
+
+                  <td className="px-4 py-4">
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-medium ${normalizedStatus === "POSTED"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : normalizedStatus === "DRAFT"
+                          ? "bg-yellow-100 text-yellow-700"
+                          : "bg-red-100 text-red-700"
+                        }`}
+                    >
+                      {statusLabel}
+                    </span>
                   </td>
                 </tr>
-              )}
+                );
+              })}
             </tbody>
           </table>
         </div>
