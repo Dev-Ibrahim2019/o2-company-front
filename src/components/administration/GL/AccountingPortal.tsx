@@ -17,12 +17,14 @@ import {
 import { useApp } from "../../../../store";
 import { useAccounting } from "../../../hooks/useAccounting";
 import { accountService } from "../../../services/accountingService";
+import { branchService } from "../../../services/branchService";
 import type { Account, Transaction, CostCenter } from "../../../services/accountingService";
 
 import { AccountingDashboard } from "./AccountingDashboard";
 import { EmployeesTab } from "./EmployeesTab";
 import { FiscalYearsView, CostCentersView } from "./GLSubViews";
 import { EnterpriseJournalView as JournalView } from "./EnterpriseJournalView";
+import { JournalEntriesWorkspace } from "./journal/JournalEntriesWorkspace";
 import {
   COATree,
   AccountDetailPanel,
@@ -71,26 +73,6 @@ function toCoaShape(acc: Account): COAWithRollup {
 
 function toJournalShape(tx: Transaction) {
   return toJournalShapeEnterprise(tx);
-
-  return {
-    id: String(tx.id),
-    date: tx.date,
-    description: tx.description ?? tx.type_label,
-    status: tx.status === "posted" ? "POSTED" : "DRAFT",
-    reference: tx.transaction_number,
-    lines: (tx.entries ?? []).map((e) => ({
-      accountId: String(e.account_id),
-      accountName: e.account?.name ?? null,
-      accountCode: e.account?.code ?? null,
-      debit: e.debit,
-      credit: e.credit,
-      description: e.description,
-      // ✅ Subledger — من راحت السلفة/الراتب
-      subledger_type: e.subledger_type ?? null,
-      subledger_id: e.subledger_id ?? null,
-      subledger_name: e.subledger?.name ?? null,
-    })),
-  };
 }
 
 function toCostCenterShape(cc: CostCenter) {
@@ -112,6 +94,41 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
 }) => {
   const acc = useAccounting();
   const app = useApp();
+
+  // ── جلب الأفرع من API ───────────────────────────────────────────
+  const [branchesFromApi, setBranchesFromApi] = useState<{ id: string; name: string; currency?: string }[]>([]);
+  useEffect(() => {
+    branchService.getAll()
+      .then(data => {
+        setBranchesFromApi(data.map(b => ({
+          id: String(b.id),
+          name: b.name,
+          currency: (b as any).currency ?? undefined,
+        })));
+      })
+      .catch(() => {
+        // استخدم الفروع من store إن فشل API
+        setBranchesFromApi(app.branches?.length
+          ? app.branches.map(branch => ({
+            id: String(branch.id),
+            name: branch.name,
+            currency: (branch as any).currency ?? undefined,
+          }))
+          : []);
+      });
+  }, []);
+
+  // دمج الأفرع: من API إن وجدت، وإلا من store
+  const allBranches = useMemo(() => {
+    if (branchesFromApi.length > 0) return branchesFromApi;
+    return app.branches?.length
+      ? app.branches.map(branch => ({
+        id: String(branch.id),
+        name: branch.name,
+        currency: (branch as any).currency ?? undefined,
+      }))
+      : [];
+  }, [branchesFromApi, app.branches]);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
   const [glSubTab, setGlSubTab] = useState<GLSubTab>("COA");
@@ -344,6 +361,11 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
     openModal("ADD_JOURNAL");
   };
 
+  // Used by EnterpriseJournalView (legacy) — keep reference to avoid unused-import TS error
+  void JournalView;
+  void handleSaveJournal;
+  void handleOpenPaymentVoucher;
+
   const handleSaveCostCenter = async () => {
     try {
       await acc.createCostCenter({
@@ -396,12 +418,14 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
     };
     return map[activeTab];
   })();
-
-  // ─── GL render ────────────────────────────────────────────────────────────────
-  const renderGL = () => {
+  useEffect(() => {
     if (glSubTab === "JOURNAL" && acc.transactions.length === 0 && !acc.loading.transactions) {
       acc.fetchTransactions({ per_page: 100, type: "journal" });
     }
+  }, [glSubTab]);
+  // ─── GL render ────────────────────────────────────────────────────────────────
+  const renderGL = () => {
+
 
     return (
       <div className="flex flex-col h-full">
@@ -466,15 +490,19 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
           )}
 
           {glSubTab === "JOURNAL" && (
-            <JournalView
-              journalEntries={journalEntries}
-              onAddJournal={() => openModal("ADD_JOURNAL")}
-              onAddPaymentVoucher={handleOpenPaymentVoucher}
-              onRefresh={() => acc.fetchTransactions({ per_page: 100, type: "journal" })}
-              onViewEntry={(id) => {
-                setSelectedTransactionId(Number(id));
-                openModal("VIEW_JOURNAL");
-              }}
+            <JournalEntriesWorkspace
+              accounting={acc}
+              branches={allBranches}
+              customers={app.customers?.map((customer: any) => ({
+                id: customer.id,
+                name: customer.name,
+                code: customer.phone,
+              })) ?? []}
+              suppliers={app.suppliers?.map((supplier: any) => ({
+                id: supplier.id,
+                name: supplier.name,
+                code: supplier.phone,
+              })) ?? []}
             />
           )}
 

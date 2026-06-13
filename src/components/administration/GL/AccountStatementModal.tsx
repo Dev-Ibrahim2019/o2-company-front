@@ -1,4 +1,6 @@
 import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { X, FileText, Wallet } from 'lucide-react';
 import EmployeeStatement from './EmployeeStatement';
 import EmployeeLoansList from './EmployeeLoansList';
 
@@ -22,74 +24,96 @@ const AccountStatementModal: React.FC<AccountStatementModalProps> = ({
     if (!isOpen || !entityId) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm overflow-y-auto h-full w-full z-50 flex justify-center items-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden" dir="rtl">
-                {/* Header */}
-                <div className="px-6 py-4 border-b flex justify-between items-center bg-gray-50">
-                    <div>
-                        <h3 className="text-xl font-bold text-gray-800">
-                            {entityType === 'employee' ? 'السجل المالي للموظف' : 'كشف الحساب'}
-                        </h3>
-                        <p className="text-sm text-gray-600 font-medium">{entityName}</p>
-                    </div>
-                    <button
-                        onClick={onClose}
-                        className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-200 text-gray-500 transition-colors text-2xl"
-                    >
-                        &times;
-                    </button>
-                </div>
+        <AnimatePresence>
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4" dir="rtl">
+                {/* Backdrop */}
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={onClose}
+                    className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"
+                />
 
-                {/* Tabs for Employees */}
-                {entityType === 'employee' && (
-                    <div className="px-6 border-b flex gap-6 bg-white">
+                {/* Modal */}
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.96, y: 12 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.96, y: 12 }}
+                    transition={{ type: 'spring', stiffness: 320, damping: 28 }}
+                    className="relative w-full max-w-5xl bg-slate-900 border border-white/10 rounded-3xl shadow-2xl flex flex-col overflow-hidden max-h-[90vh]"
+                >
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-7 py-5 border-b border-white/[0.07] bg-gradient-to-l from-red-950/25 to-transparent">
                         <button
-                            onClick={() => setActiveTab('statement')}
-                            className={`py-4 text-sm font-bold border-b-2 transition-colors ${activeTab === 'statement'
-                                ? 'border-blue-600 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700'
-                                }`}
+                            onClick={onClose}
+                            className="w-9 h-9 rounded-xl bg-white/[0.06] border border-white/10 flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-all"
+                            type="button"
                         >
-                            كشف الحساب العام
+                            <X size={15} />
                         </button>
-                        <button
-                            onClick={() => setActiveTab('loans')}
-                            className={`py-4 text-sm font-bold border-b-2 transition-colors ${activeTab === 'loans'
-                                ? 'border-blue-600 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700'
-                                }`}
-                        >
-                            سجل السلف والقروض
-                        </button>
+                        <div className="text-right">
+                            <h3 className="text-[17px] font-black text-white leading-tight">
+                                {entityType === 'employee' ? 'السجل المالي للموظف' : 'كشف الحساب'}
+                            </h3>
+                            <p className="text-[11px] text-slate-500 mt-0.5 font-medium">{entityName}</p>
+                        </div>
                     </div>
-                )}
 
-                {/* Content Area */}
-                <div className="flex-grow overflow-auto p-6 custom-scrollbar">
-                    {entityType === 'employee' ? (
-                        activeTab === 'statement' ? (
-                            <EmployeeStatement employeeId={entityId} employeeName={entityName} />
-                        ) : (
-                            <EmployeeLoansList employeeId={entityId} />
-                        )
-                    ) : (
-                        <div className="text-center py-20 text-gray-500">
-                            كشف حساب {entityType === 'customer' ? 'العميل' : 'المورد'} قيد التطوير...
+                    {/* Tabs for Employees — Dark Theme */}
+                    {entityType === 'employee' && (
+                        <div className="px-7 border-b border-white/[0.06] flex gap-1 bg-slate-950/30">
+                            <button
+                                onClick={() => setActiveTab('statement')}
+                                className={`flex items-center gap-2 px-5 py-3.5 text-[12px] font-black border-b-2 transition-all ${activeTab === 'statement'
+                                    ? 'border-red-500 text-white'
+                                    : 'border-transparent text-slate-500 hover:text-slate-300'
+                                    }`}
+                            >
+                                <FileText size={14} />
+                                كشف الحساب العام
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('loans')}
+                                className={`flex items-center gap-2 px-5 py-3.5 text-[12px] font-black border-b-2 transition-all ${activeTab === 'loans'
+                                    ? 'border-red-500 text-white'
+                                    : 'border-transparent text-slate-500 hover:text-slate-300'
+                                    }`}
+                            >
+                                <Wallet size={14} />
+                                سجل السلف والقروض
+                            </button>
                         </div>
                     )}
-                </div>
 
-                {/* Footer */}
-                <div className="px-6 py-4 border-t bg-gray-50 flex justify-end">
-                    <button
-                        onClick={onClose}
-                        className="px-6 py-2 bg-gray-200 text-gray-800 font-bold rounded-lg hover:bg-gray-300 transition-colors"
-                    >
-                        إغلاق
-                    </button>
-                </div>
+                    {/* Content Area */}
+                    <div className="flex-grow overflow-y-auto custom-scrollbar p-6">
+                        {entityType === 'employee' ? (
+                            activeTab === 'statement' ? (
+                                <EmployeeStatement employeeId={entityId} employeeName={entityName} />
+                            ) : (
+                                <EmployeeLoansList employeeId={entityId} />
+                            )
+                        ) : (
+                            <div className="text-center py-20 text-slate-600 font-bold">
+                                <FileText size={40} className="mx-auto mb-3 text-slate-700" />
+                                كشف حساب {entityType === 'customer' ? 'العميل' : 'المورد'} قيد التطوير...
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Footer */}
+                    <div className="px-7 py-4 border-t border-white/[0.07] bg-slate-950/50 flex justify-start">
+                        <button
+                            onClick={onClose}
+                            className="px-6 py-2.5 bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 rounded-xl font-black text-xs transition-all"
+                        >
+                            إغلاق
+                        </button>
+                    </div>
+                </motion.div>
             </div>
-        </div>
+        </AnimatePresence>
     );
 };
 

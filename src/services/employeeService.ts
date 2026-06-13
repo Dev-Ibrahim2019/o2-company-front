@@ -19,6 +19,23 @@ export interface EmployeeFromApi {
   managerId?: string;
   hireDate: string;
   salary?: number;
+  // === ✅ أنواع الرواتب الجديدة ===
+  salary_type?: "hourly" | "daily" | "monthly";
+  hourly_rate?: number;
+  daily_rate?: number;
+  working_hours?: number;
+  working_days?: number;
+  calculated_salary?: number; // المحسوب آلياً
+  salary_details?: {
+    type: string;
+    type_label: string;
+    rate: number;
+    total: number;
+    hours?: number;
+    days?: number;
+  };
+  monthly_hours_note?: string;
+  // =============================
   role: string;
   status: string;
   username?: string;
@@ -32,6 +49,10 @@ export interface EmployeeFromApi {
   };
   branch?: { id: number; name: string };
   department?: { id: number; name: string };
+  // الأرصدة المالية
+  outstanding_advance?: number;
+  accrued_salary?: number;
+  net_payable?: number;
 }
 
 export interface EmployeePayload {
@@ -49,6 +70,11 @@ export interface EmployeePayload {
   managerId?: string;
   hireDate: string;
   salary?: number;
+  salary_type?: "hourly" | "daily" | "monthly";
+  hourly_rate?: number;
+  daily_rate?: number;
+  working_hours?: number;
+  working_days?: number;
   role: string;
   status: string;
   employeeId?: string;
@@ -64,17 +90,15 @@ export interface EmployeeFilters {
   department_id?: number;
   status?: string;
   search?: string;
+  salary_type?: string;
 }
 
 export const employeeService = {
   getAll: async (filters?: EmployeeFilters): Promise<EmployeeFromApi[]> => {
     const { data } = await api.get("/employees", { params: filters });
-
-    // ✅ الباك ممكن يرجع paginated { data: { data: [], pagination: {} } }
-    // أو بسيط { data: [] }
     const payload = data.data;
-    if (Array.isArray(payload)) return payload; // الشكل البسيط
-    if (Array.isArray(payload?.data)) return payload.data; // الشكل paginated
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.data)) return payload.data;
     return [];
   },
 
