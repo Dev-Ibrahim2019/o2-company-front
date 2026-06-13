@@ -537,20 +537,25 @@ const EmployeeStatement: React.FC<EmployeeStatementProps> = ({
 
     const fetchStatement = useCallback(async () => {
         if (!fromDate || !toDate) return;
+
         try {
             setIsLoading(true);
             setError(null);
+
             const response = await financeService.getEmployeeStatement(
                 employeeId,
                 fromDate,
                 toDate,
                 statementType,
             );
+
             if (!response.success) {
                 setError(response.message || "فشل جلب كشف الحساب");
                 return;
             }
+
             const data = response.data as EmployeeStatementData;
+
             const extracted = extractLines(data, statementType);
 
             if (statementType === "all") {
@@ -558,18 +563,35 @@ const EmployeeStatement: React.FC<EmployeeStatementProps> = ({
                     extracted.lines,
                     extracted.closingBalance,
                 );
+
                 setLines(rebuilt.entries);
                 setClosingBalance(extracted.closingBalance);
-            } catch (err: any) {
-                setError(
-                    err?.response?.data?.message ||
-                    err?.message ||
-                    "حدث خطأ غير متوقع",
-                );
-            } finally {
-                setIsLoading(false);
+                setOpeningBalance(rebuilt.openingBalance);
+            } else {
+                setLines(extracted.lines);
+                setClosingBalance(extracted.closingBalance);
+
+                const opening =
+                    extracted.lines.length > 0
+                        ? extracted.lines[0].running_balance -
+                        (extracted.lines[0].debit -
+                            extracted.lines[0].credit)
+                        : 0;
+
+                setOpeningBalance(opening);
             }
-        }, [employeeId, fromDate, toDate, statementType]);
+
+            setSummaryData(data.summary ?? {});
+        } catch (err: any) {
+            setError(
+                err?.response?.data?.message ||
+                err?.message ||
+                "حدث خطأ غير متوقع",
+            );
+        } finally {
+            setIsLoading(false);
+        }
+    }, [employeeId, fromDate, toDate, statementType]);
 
     useEffect(() => {
         fetchStatement();
@@ -577,10 +599,7 @@ const EmployeeStatement: React.FC<EmployeeStatementProps> = ({
 
     const totalDebit = lines.reduce((s, e) => s + e.debit, 0);
     const totalCredit = lines.reduce((s, e) => s + e.credit, 0);
-    const openingBalance =
-        lines.length > 0
-            ? lines[0].running_balance - (lines[0].debit - lines[0].credit)
-            : 0;
+
 
     const typeOptions: { value: StatementType; label: string; icon: React.ElementType }[] =
         [
@@ -654,10 +673,10 @@ const EmployeeStatement: React.FC<EmployeeStatementProps> = ({
                                 <button
                                     key={opt.value}
                                     onClick={() => setStatementType(opt.value)}
-                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${statementType === opt.value
+                                    className={`flex items - center gap - 1.5 px - 3 py - 1.5 rounded - lg text - [10px] font - black transition - all ${statementType === opt.value
                                         ? "bg-blue-600 text-white shadow-lg"
                                         : "text-slate-400 hover:text-white"
-                                        }`}
+                                        } `}
                                 >
                                     <opt.icon size={12} />
                                     {opt.label}
@@ -790,7 +809,8 @@ const EmployeeStatement: React.FC<EmployeeStatementProps> = ({
                                     </p>
                                     <p className="text-[10px] text-slate-600 font-bold mt-1">
                                         {summaryData.outstanding_advance && summaryData.outstanding_advance > 0
-                                            ? `بعد خصم السلف (₪${money(summaryData.outstanding_advance)})`
+                                            ? `بعد خصم السلف(₪${money(summaryData.outstanding_advance)
+                                            })`
                                             : "صافي الراتب المستحق"}
                                     </p>
                                 </div>
