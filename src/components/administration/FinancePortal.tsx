@@ -12,6 +12,7 @@ import SettingsPage from '../administration/SettingsPage';
 import MenuPage from '../administration/Items/MenuPage';
 import renderModal from '../administration/renderModal';
 import BranchesPage from '../administration/BranchesPage/BranchesPage';
+import SupplierPortal from './suppliers/SupplierPortal';
 
 import { CustomerType } from '../../../types';
 import { OrgStructure } from './OrgStructure/OrgStructure';
@@ -30,7 +31,8 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
 
   const renderCustomers = () => <CustomerManagement initialType={CustomerType.REGULAR} />;
 
-  const renderSuppliers = () => <CustomerManagement initialType={CustomerType.SUPPLIER} />;
+  const renderSuppliers = () => <SupplierPortal />;
+
   const view = initialView;
   const viewContent: Record<NonNullable<FinancePortalProps['initialView']>, React.ReactNode> = {
     DASHBOARD: <DashboardPage />,

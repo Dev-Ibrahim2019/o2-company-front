@@ -4,6 +4,7 @@
 // ✅ إضافة أنواع TypeScript صارمة للاستجابات
 // ✅ توحيد بنية StatementEntry لجميع الكيانات
 // ✅ تصحيح نوع الإرجاع لـ getEmployeeStatement (TransactionResponse بدلاً من StatementEntry[])
+// ✅ إضافة loan API methods
 
 import api from "../api/axios";
 
@@ -36,14 +37,16 @@ export interface AccountStatementBlock {
 }
 
 // بنية استجابة كشف حساب الموظف من الباك:
-// { accounts: { advance: AccountStatementBlock, salary: AccountStatementBlock },
-//   outstanding_advance, accrued_salary, net_payable }
+// { accounts: { advance: AccountStatementBlock, salary: AccountStatementBlock, loan: AccountStatementBlock },
+//   outstanding_advance, outstanding_loan, accrued_salary, net_payable }
 export interface EmployeeStatementData {
   accounts: {
     advance?: AccountStatementBlock;
     salary?: AccountStatementBlock;
+    loan?: AccountStatementBlock;
   };
   outstanding_advance?: number;
+  outstanding_loan?: number;
   accrued_salary?: number;
   net_payable?: number;
 }
@@ -91,6 +94,13 @@ export interface SalaryPaymentPayload {
   cash_account_id: number;
   date: string;
   advance_deduction?: number;
+  description?: string;
+}
+
+export interface LoanPayload {
+  amount: number;
+  cash_account_id: number;
+  date: string;
   description?: string;
 }
 
@@ -170,13 +180,31 @@ export const financeService = {
     return res.data;
   },
 
+  // POST /api/employees/{id}/loan
+  recordLoan: async (
+    employeeId: number,
+    data: LoanPayload,
+  ): Promise<ApiResponse> => {
+    const res = await api.post(`/employees/${employeeId}/loan`, data);
+    return res.data;
+  },
+
+  // POST /api/employees/{id}/loan-repayment
+  recordLoanRepayment: async (
+    employeeId: number,
+    data: LoanPayload,
+  ): Promise<ApiResponse> => {
+    const res = await api.post(`/employees/${employeeId}/loan-repayment`, data);
+    return res.data;
+  },
+
   // GET /api/employees/{id}/account-statement
   // ✅ الباك يرجع ApiResponse<EmployeeStatementData> — ليس StatementEntry[] مباشرة
   getEmployeeStatement: async (
     employeeId: number,
     from: string,
     to: string,
-    type: "all" | "advance" | "salary" = "all",
+    type: "all" | "advance" | "salary" | "loan" = "all",
   ): Promise<ApiResponse<EmployeeStatementData>> => {
     const res = await api.get(`/employees/${employeeId}/account-statement`, {
       params: { from, to, type },

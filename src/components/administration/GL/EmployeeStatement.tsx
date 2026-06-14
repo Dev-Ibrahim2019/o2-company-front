@@ -38,7 +38,7 @@ import type {
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-type StatementType = "all" | "advance" | "salary";
+type StatementType = "all" | "advance" | "salary" | "loan";
 
 interface EmployeeStatementProps {
     employeeId: number;
@@ -67,16 +67,25 @@ function extractLines(
         };
     }
 
+    if (type === "loan" && accounts.loan) {
+        return {
+            lines: accounts.loan.lines ?? [],
+            closingBalance: accounts.loan.closing_balance ?? 0,
+        };
+    }
+
     const advanceLines: StatementEntry[] = accounts.advance?.lines ?? [];
     const salaryLines: StatementEntry[] = accounts.salary?.lines ?? [];
+    const loanLines: StatementEntry[] = accounts.loan?.lines ?? [];
 
-    const combined = [...advanceLines, ...salaryLines].sort(
+    const combined = [...advanceLines, ...salaryLines, ...loanLines].sort(
         (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
     );
 
     const closingBalance =
         (accounts.advance?.closing_balance ?? 0) +
-        (accounts.salary?.closing_balance ?? 0);
+        (accounts.salary?.closing_balance ?? 0) +
+        (accounts.loan?.closing_balance ?? 0);
 
     return { lines: combined, closingBalance };
 }
@@ -211,7 +220,10 @@ const TypeBadge: React.FC<{ description: string | null }> = ({
     let cls = "bg-slate-800 border-white/10 text-slate-400";
     let icon = <FileText size={10} />;
 
-    if (desc.includes("سلف") || desc.includes("advance")) {
+    if (desc.includes("قرض") || desc.includes("loan")) {
+        cls = "bg-violet-500/15 border-violet-500/25 text-violet-400";
+        icon = <BanknoteIcon size={10} />;
+    } else if (desc.includes("سلف") || desc.includes("advance")) {
         cls = "bg-amber-500/15 border-amber-500/25 text-amber-400";
         icon = <ArrowUpRight size={10} />;
     } else if (desc.includes("راتب") || desc.includes("salary")) {
@@ -528,6 +540,7 @@ const EmployeeStatement: React.FC<EmployeeStatementProps> = ({
     const [openingBalance, setOpeningBalance] = useState(0);
     const [summaryData, setSummaryData] = useState<{
         outstanding_advance?: number;
+        outstanding_loan?: number;
         accrued_salary?: number;
         net_payable?: number;
     }>({});
@@ -581,7 +594,12 @@ const EmployeeStatement: React.FC<EmployeeStatementProps> = ({
                 setOpeningBalance(opening);
             }
 
-            setSummaryData(data.summary ?? {});
+            setSummaryData({
+                outstanding_advance: data.outstanding_advance,
+                outstanding_loan: data.outstanding_loan,
+                accrued_salary: data.accrued_salary,
+                net_payable: data.net_payable,
+            });
         } catch (err: any) {
             setError(
                 err?.response?.data?.message ||
@@ -606,6 +624,7 @@ const EmployeeStatement: React.FC<EmployeeStatementProps> = ({
             { value: "all", label: "الكل", icon: PieChart },
             { value: "advance", label: "السلف", icon: ArrowUpRight },
             { value: "salary", label: "الرواتب", icon: DollarSign },
+            { value: "loan", label: "القروض", icon: BanknoteIcon },
         ];
 
     return (

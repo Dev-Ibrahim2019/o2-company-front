@@ -31,7 +31,8 @@ import {
   AccountEmptyState,
 } from "./COAComponents";
 import type { COAWithRollup, LedgerFilter, LedgerLine } from "./COAComponents";
-import { ARTab, APTab, CashBankTab } from "./ARAPCashTabs";
+import { ARTab, CashBankTab } from "./ARAPCashTabs";
+import SupplierPortal from "../suppliers/SupplierPortal";
 import {
   AddCOAModal,
   EditCOAModal,
@@ -612,7 +613,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
               <EmployeesTab />
             )}
             {activeTab === "AR" && <ARTab customers={app.customers} />}
-            {activeTab === "AP" && <APTab suppliers={app.suppliers} />}
+            {activeTab === "AP" && <SupplierPortal />}
             {activeTab === "CASH" && <CashBankTab bankAccounts={app.bankAccounts} />}
           </motion.div>
         </AnimatePresence>
