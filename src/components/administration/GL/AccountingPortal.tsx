@@ -119,6 +119,30 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
       });
   }, []);
 
+  // ── جلب الموردين من API بدلاً من store ───────────────────────────
+  const [suppliersFromApi, setSuppliersFromApi] = useState<{ id: number; name: string; code?: string }[]>([]);
+  useEffect(() => {
+    import("../../../services/supplierService").then(({ supplierService }) => {
+      supplierService.list({ per_page: 200, status: "active" })
+        .then(data => {
+          const items = Array.isArray(data.data) ? data.data : data.data?.data || [];
+          setSuppliersFromApi(items.map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            code: s.code,
+          })));
+        })
+        .catch(() => {
+          // Fallback to store if API fails
+          setSuppliersFromApi(app.suppliers?.map((supplier: any) => ({
+            id: supplier.id,
+            name: supplier.name,
+            code: supplier.phone,
+          })) ?? []);
+        });
+    });
+  }, []);
+
   // دمج الأفرع: من API إن وجدت، وإلا من store
   const allBranches = useMemo(() => {
     if (branchesFromApi.length > 0) return branchesFromApi;
@@ -499,11 +523,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                 name: customer.name,
                 code: customer.phone,
               })) ?? []}
-              suppliers={app.suppliers?.map((supplier: any) => ({
-                id: supplier.id,
-                name: supplier.name,
-                code: supplier.phone,
-              })) ?? []}
+              suppliers={suppliersFromApi}
             />
           )}
 

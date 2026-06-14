@@ -50,8 +50,8 @@ const SupplierPortal: React.FC<SupplierPortalProps> = ({ onNavigate }) => {
                         key={tab.key}
                         onClick={() => { setActiveView(tab.key); setSelectedSupplierId(null); }}
                         className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all whitespace-nowrap ${activeView === tab.key
-                                ? 'bg-red-600 text-white shadow-lg shadow-red-900/30'
-                                : 'text-slate-400 hover:text-white hover:bg-white/5'
+                            ? 'bg-red-600 text-white shadow-lg shadow-red-900/30'
+                            : 'text-slate-400 hover:text-white hover:bg-white/5'
                             }`}
                     >
                         <tab.icon size={14} />
@@ -87,6 +87,7 @@ const SupplierDashboard: React.FC = () => {
     const [stats, setStats] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [suppliers, setSuppliers] = useState<any[]>([]);
+    const [monthlyPayments, setMonthlyPayments] = useState<number>(0);
 
     React.useEffect(() => {
         import('../../../services/supplierService').then(async ({ supplierService }) => {
@@ -99,12 +100,30 @@ const SupplierDashboard: React.FC = () => {
                 setSuppliers(items);
 
                 let totalPayables = 0;
-                let overdueCount = 0;
                 items.forEach((s: any) => {
                     if (s.balance > 0) {
                         totalPayables += s.balance;
                     }
                 });
+
+                // جلب المدفوعات الشهرية — نجلبها من كل مورد
+                let totalMonthlyPayments = 0;
+                const today = new Date();
+                const from = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+                const to = today.toISOString().split('T')[0];
+
+                await Promise.all(
+                    items.slice(0, 10).map(async (s: any) => {
+                        try {
+                            const res = await supplierService.getStatement(s.id, from, to);
+                            // المدفوعات = مجموع الدائن (credit) في كشف الحساب
+                            const lines = res.data?.statement?.lines || [];
+                            const payments = lines.reduce((sum: number, l: any) => sum + (l.credit || 0), 0);
+                            totalMonthlyPayments += payments;
+                        } catch { /* skip */ }
+                    })
+                );
+                setMonthlyPayments(totalMonthlyPayments);
 
                 setStats({
                     total_suppliers: items.length,
@@ -129,7 +148,7 @@ const SupplierDashboard: React.FC = () => {
     return (
         <div className="space-y-5">
             {/* KPI Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                 <div className="bg-gradient-to-br from-blue-600/20 to-blue-900/20 border border-blue-500/20 rounded-3xl p-5">
                     <p className="text-[10px] text-blue-300 font-black mb-1">إجمالي الموردين</p>
                     <p className="text-2xl font-black text-white">{stats?.total_suppliers || 0}</p>
@@ -145,6 +164,10 @@ const SupplierDashboard: React.FC = () => {
                 <div className="bg-gradient-to-br from-emerald-600/20 to-emerald-900/20 border border-emerald-500/20 rounded-3xl p-5">
                     <p className="text-[10px] text-emerald-300 font-black mb-1">الموردين النشطين</p>
                     <p className="text-2xl font-black text-emerald-400">{suppliers.length}</p>
+                </div>
+                <div className="bg-gradient-to-br from-violet-600/20 to-violet-900/20 border border-violet-500/20 rounded-3xl p-5">
+                    <p className="text-[10px] text-violet-300 font-black mb-1">المدفوعات هذا الشهر</p>
+                    <p className="text-2xl font-black text-violet-400">₪{money(monthlyPayments)}</p>
                 </div>
             </div>
 
