@@ -148,6 +148,10 @@ export const JournalEntriesWorkspace: React.FC<JournalEntriesWorkspaceProps> = (
   const [employees, setEmployees] = useState<EmployeeFromApi[]>([]);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [actionBusyId, setActionBusyId] = useState<number | null>(null);
+  // Internal state for customers/suppliers in case props are empty
+  const [internalCustomers, setInternalCustomers] = useState<EntityOption[]>([]);
+  const [internalSuppliers, setInternalSuppliers] = useState<EntityOption[]>([]);
+
   useEffect(() => {
     let cancelled = false;
     setLoadingEmployees(true);
@@ -167,6 +171,48 @@ export const JournalEntriesWorkspace: React.FC<JournalEntriesWorkspaceProps> = (
     };
   }, []);
 
+  // Fetch customers directly if not provided via props
+  useEffect(() => {
+    if (customers && customers.length > 0) return; // already have from props
+    let cancelled = false;
+    import("../../../../services/customerService").then(({ customerService }) => {
+      customerService.list({ per_page: 500 })
+        .then(data => {
+          if (!cancelled) {
+            const items = Array.isArray(data.data) ? data.data : data.data?.data || [];
+            setInternalCustomers(items.map((c: any) => ({
+              id: c.id,
+              name: c.name,
+              code: c.code,
+            })));
+          }
+        })
+        .catch(() => { if (!cancelled) setInternalCustomers([]); });
+    });
+    return () => { cancelled = true; };
+  }, [customers]);
+
+  // Fetch suppliers directly if not provided via props
+  useEffect(() => {
+    if (suppliers && suppliers.length > 0) return; // already have from props
+    let cancelled = false;
+    import("../../../../services/supplierService").then(({ supplierService }) => {
+      supplierService.list({ per_page: 500 })
+        .then(data => {
+          if (!cancelled) {
+            const items = Array.isArray(data.data) ? data.data : data.data?.data || [];
+            setInternalSuppliers(items.map((s: any) => ({
+              id: s.id,
+              name: s.name,
+              code: s.code,
+            })));
+          }
+        })
+        .catch(() => { if (!cancelled) setInternalSuppliers([]); });
+    });
+    return () => { cancelled = true; };
+  }, [suppliers]);
+
   const subledgerOptions = useMemo<JournalSubledgerOption[]>(() => {
     const employeeOptions = employees.map((employee) => ({
       id: employee.id,
@@ -174,13 +220,15 @@ export const JournalEntriesWorkspace: React.FC<JournalEntriesWorkspaceProps> = (
       name: employee.name,
       code: employee.employeeId,
     }));
-    const customerOptions = customers.map((customer) => ({
+    const activeCustomers = (customers?.length > 0 ? customers : internalCustomers);
+    const activeSuppliers = (suppliers?.length > 0 ? suppliers : internalSuppliers);
+    const customerOptions = activeCustomers.map((customer) => ({
       id: customer.id,
       type: "customer" as const,
       name: customer.name,
       code: customer.code,
     }));
-    const supplierOptions = suppliers.map((supplier) => ({
+    const supplierOptions = activeSuppliers.map((supplier) => ({
       id: supplier.id,
       type: "supplier" as const,
       name: supplier.name,
@@ -188,7 +236,7 @@ export const JournalEntriesWorkspace: React.FC<JournalEntriesWorkspaceProps> = (
     }));
 
     return [...employeeOptions, ...customerOptions, ...supplierOptions];
-  }, [employees, customers, suppliers]);
+  }, [employees, customers, suppliers, internalCustomers, internalSuppliers]);
 
   const journalEntries = accountMapping(accounting.transactions);
   const selectedEntry = useMemo(
@@ -455,8 +503,8 @@ export const JournalEntriesWorkspace: React.FC<JournalEntriesWorkspaceProps> = (
             </div>
           )}
 
-        <div className="overflow-x-auto rounded-2xl border border-white/5 bg-slate-950/60">
-          <table className="min-w-full text-sm">
+        <div className="overflow-x-auto overflow-y-auto rounded-2xl border border-white/5 ">
+          <table className="min-w-max text-sm">
             <thead className="sticky top-0 z-10 bg-slate-900/95 backdrop-blur border-b border-white/5">
               <tr className="text-right text-[10px] uppercase tracking-[0.18em] text-slate-500 font-black">
                 <th className="px-4 py-3">#</th>

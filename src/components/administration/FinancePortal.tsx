@@ -3,7 +3,7 @@ import { useApp } from '../../../store';
 import DashboardPage from '../administration/DashboardPage';
 import DepartmentsPage from './Departments/DepartmentsPage';
 import OrdersPage from '../administration/OrdersPage';
-import CustomerManagement from '../administration/CustomerManagement';
+import CustomerPortal from './customers/CustomerPortal';
 import EmployeeManagement from "../administration/EmployeeManagement/EmployeeManagement";
 import ReportsPage from '../administration/ReportsPage';
 import AuditLogPage from '../administration/AuditLogPage';
@@ -14,7 +14,6 @@ import renderModal from '../administration/renderModal';
 import BranchesPage from '../administration/BranchesPage/BranchesPage';
 import SupplierPortal from './suppliers/SupplierPortal';
 
-import { CustomerType } from '../../../types';
 import { OrgStructure } from './OrgStructure/OrgStructure';
 import { AccountingPortal } from './GL/AccountingPortal';
 
@@ -29,7 +28,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
   const canManageFinance = currentUser?.role === 'ADMIN' || currentUser?.role === 'FINANCE' || currentUser?.role === 'BRANCH_MANAGER';
   const canEditSettings = currentUser?.role === 'ADMIN';
 
-  const renderCustomers = () => <CustomerManagement initialType={CustomerType.REGULAR} />;
+  const renderCustomers = () => <CustomerPortal />;
 
   const renderSuppliers = () => <SupplierPortal />;
 
@@ -54,11 +53,11 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
   };
 
   return (
-    <div className="h-full flex flex-col gap-6">
+    <div className="h-full flex flex-col min-h-0">
       {/* Header */}
 
       {/* Main Content */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
+      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 min-h-0">
         {viewContent[view]}
       </div>
 

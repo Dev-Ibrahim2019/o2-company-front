@@ -173,42 +173,44 @@ const StatementTab: React.FC<{ supplierId: number }> = ({ supplierId }) => {
                     <p className="text-slate-500 text-sm">لا توجد معاملات</p>
                 </div>
             ) : (
-                <div className="bg-slate-900 border border-white/5 rounded-2xl overflow-hidden">
-                    <table className="w-full text-right text-xs">
-                        <thead className="bg-slate-950/40 border-b border-white/5">
-                            <tr className="text-slate-500 font-black text-[10px]">
-                                <th className="px-4 py-3">التاريخ</th>
-                                <th className="px-4 py-3">رقم القيد</th>
-                                <th className="px-4 py-3">البيان</th>
-                                <th className="px-4 py-3 text-center">مدين</th>
-                                <th className="px-4 py-3 text-center">دائن</th>
-                                <th className="px-4 py-3 text-center">الرصيد</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                            {statement.lines.map((line, idx) => (
-                                <tr key={idx} className="hover:bg-white/[0.02]">
-                                    <td className="px-4 py-3 text-slate-300">{dateFmt(line.date)}</td>
-                                    <td className="px-4 py-3 font-mono text-slate-500">{line.transaction_number}</td>
-                                    <td className="px-4 py-3 text-slate-400">{line.description || "—"}</td>
-                                    <td className="px-4 py-3 text-center font-mono">
-                                        {line.debit > 0 ? <span className="text-emerald-400">₪{money(line.debit)}</span> : "—"}
-                                    </td>
-                                    <td className="px-4 py-3 text-center font-mono">
-                                        {line.credit > 0 ? <span className="text-rose-400">₪{money(line.credit)}</span> : "—"}
-                                    </td>
-                                    <td className="px-4 py-3 text-center font-mono">
-                                        <span className={line.balance >= 0 ? "text-blue-400" : "text-rose-400"}>
-                                            ₪{money(Math.abs(line.balance))}
-                                        </span>
-                                    </td>
+                <div className="bg-slate-900 border border-white/5 rounded-2xl overflow-x-auto">
+                    <div className="min-w-[900px]">
+                        <table className="w-full text-right text-xs">
+                            <thead className="bg-slate-950/40 border-b border-white/5">
+                                <tr className="text-slate-500 font-black text-[10px]">
+                                    <th className="px-4 py-3">التاريخ</th>
+                                    <th className="px-4 py-3">رقم القيد</th>
+                                    <th className="px-4 py-3">البيان</th>
+                                    <th className="px-4 py-3 text-center">مدين</th>
+                                    <th className="px-4 py-3 text-center">دائن</th>
+                                    <th className="px-4 py-3 text-center">الرصيد</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                    <div className="px-4 py-3 border-t border-white/5 bg-slate-950/20 flex items-center justify-between text-xs">
-                        <span className="text-slate-500">الرصيد الختامي: <strong className="text-white">₪{money(statement.closing_balance)}</strong></span>
-                        <span className="text-slate-500">{statement.lines.length} معاملة</span>
+                            </thead>
+                            <tbody className="divide-y divide-white/5">
+                                {statement.lines.map((line, idx) => (
+                                    <tr key={idx} className="hover:bg-white/[0.02]">
+                                        <td className="px-4 py-3 text-slate-300">{dateFmt(line.date)}</td>
+                                        <td className="px-4 py-3 font-mono text-slate-500">{line.transaction_number}</td>
+                                        <td className="px-4 py-3 text-slate-400">{line.description || "—"}</td>
+                                        <td className="px-4 py-3 text-center font-mono">
+                                            {line.debit > 0 ? <span className="text-emerald-400">₪{money(line.debit)}</span> : "—"}
+                                        </td>
+                                        <td className="px-4 py-3 text-center font-mono">
+                                            {line.credit > 0 ? <span className="text-rose-400">₪{money(line.credit)}</span> : "—"}
+                                        </td>
+                                        <td className="px-4 py-3 text-center font-mono">
+                                            <span className={line.balance >= 0 ? "text-blue-400" : "text-rose-400"}>
+                                                ₪{money(Math.abs(line.balance))}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        <div className="px-4 py-3 border-t border-white/5 bg-slate-950/20 flex items-center justify-between text-xs">
+                            <span className="text-slate-500">الرصيد الختامي: <strong className="text-white">₪{money(statement.closing_balance)}</strong></span>
+                            <span className="text-slate-500">{statement.lines.length} معاملة</span>
+                        </div>
                     </div>
                 </div>
             )}

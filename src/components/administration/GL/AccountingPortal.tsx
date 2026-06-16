@@ -11,7 +11,7 @@ import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   BookOpen, FileText, Calendar, Layers,
-  AlertCircle, X, RefreshCw,
+  AlertCircle, X, RefreshCw, Plus, UserPlus, Truck,
 } from "lucide-react";
 
 import { useApp } from "../../../../store";
@@ -21,7 +21,7 @@ import { branchService } from "../../../services/branchService";
 import type { Account, Transaction, CostCenter } from "../../../services/accountingService";
 
 import { AccountingDashboard } from "./AccountingDashboard";
-import { EmployeesTab } from "./EmployeesTab";
+import EmployeePortal from "../employees/EmployeePortal";
 import { FiscalYearsView, CostCentersView } from "./GLSubViews";
 import { EnterpriseJournalView as JournalView } from "./EnterpriseJournalView";
 import { JournalEntriesWorkspace } from "./journal/JournalEntriesWorkspace";
@@ -31,7 +31,8 @@ import {
   AccountEmptyState,
 } from "./COAComponents";
 import type { COAWithRollup, LedgerFilter, LedgerLine } from "./COAComponents";
-import { ARTab, CashBankTab } from "./ARAPCashTabs";
+import { CashBankTab } from "./ARAPCashTabs";
+import CustomerPortal from "../customers/CustomerPortal";
 import SupplierPortal from "../suppliers/SupplierPortal";
 import {
   AddCOAModal,
@@ -133,11 +134,33 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
           })));
         })
         .catch(() => {
-          // Fallback to store if API fails
           setSuppliersFromApi(app.suppliers?.map((supplier: any) => ({
             id: supplier.id,
             name: supplier.name,
             code: supplier.phone,
+          })) ?? []);
+        });
+    });
+  }, []);
+
+  // ── جلب العملاء من API بدلاً من store ────────────────────────────
+  const [customersFromApi, setCustomersFromApi] = useState<{ id: number; name: string; code?: string }[]>([]);
+  useEffect(() => {
+    import("../../../services/customerService").then(({ customerService }) => {
+      customerService.list({ per_page: 200, status: "active" })
+        .then(data => {
+          const items = Array.isArray(data.data) ? data.data : data.data?.data || [];
+          setCustomersFromApi(items.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            code: c.code,
+          })));
+        })
+        .catch(() => {
+          setCustomersFromApi(app.customers?.map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            code: c.phone,
           })) ?? []);
         });
     });
@@ -166,6 +189,108 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState<ModalType>(null);
 
+  // ── Create Customer Modal State ─────────────────────────────────────────────
+  const [showCreateCustomer, setShowCreateCustomer] = useState(false);
+  const [showCreateSupplier, setShowCreateSupplier] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [customerForm, setCustomerForm] = useState({
+    name: "", name_en: "", status: "active", category: "regular",
+    phone: "", mobile: "", email: "", address: "", city: "",
+    currency: "ILS", payment_terms: "due_on_receipt",
+    credit_limit: 0, opening_balance: 0, notes: "", gps_link: "",
+  });
+  const updateCustomerField = useCallback((field: string, value: any) => {
+    setCustomerForm(prev => ({ ...prev, [field]: value }));
+  }, []);
+  const handleCreateCustomer = useCallback(async () => {
+    if (!customerForm.name.trim()) return;
+    setCreating(true);
+    try {
+      const { customerService } = await import("../../../services/customerService");
+      await customerService.create({
+        name: customerForm.name,
+        name_en: customerForm.name_en || undefined,
+        status: customerForm.status,
+        category: customerForm.category,
+        phone: customerForm.phone || undefined,
+        mobile: customerForm.mobile || undefined,
+        email: customerForm.email || undefined,
+        address: customerForm.address || undefined,
+        city: customerForm.city || undefined,
+        currency: customerForm.currency,
+        payment_terms: customerForm.payment_terms,
+        credit_limit: customerForm.credit_limit,
+        opening_balance: customerForm.opening_balance,
+        notes: customerForm.notes || undefined,
+        gps_link: customerForm.gps_link || undefined,
+      });
+      setShowCreateCustomer(false);
+      setCustomerForm({
+        name: "", name_en: "", status: "active", category: "regular",
+        phone: "", mobile: "", email: "", address: "", city: "",
+        currency: "ILS", payment_terms: "due_on_receipt",
+        credit_limit: 0, opening_balance: 0, notes: "", gps_link: "",
+      });
+      // Refresh customers list
+      const { customerService: cs } = await import("../../../services/customerService");
+      cs.list({ per_page: 200, status: "active" }).then(data => {
+        const items = Array.isArray(data.data) ? data.data : data.data?.data || [];
+        setCustomersFromApi(items.map((c: any) => ({ id: c.id, name: c.name, code: c.code })));
+      }).catch(() => { });
+    } catch (err) {
+      console.error("Failed to create customer:", err);
+    } finally {
+      setCreating(false);
+    }
+  }, [customerForm]);
+  // ── Create Supplier Modal State ─────────────────────────────────────────────
+  const [supplierForm, setSupplierForm] = useState({
+    name: "", name_en: "", status: "active", category: "regular",
+    phone: "", mobile: "", email: "", address: "", city: "",
+    currency: "ILS", payment_terms: "due_on_receipt",
+    credit_limit: 0, opening_balance: 0, notes: "", gps_link: "",
+  });
+  const updateSupplierField = useCallback((field: string, value: any) => {
+    setSupplierForm(prev => ({ ...prev, [field]: value }));
+  }, []);
+
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+
+  const handleCreateSupplier = useCallback(async () => {
+    if (!supplierForm.name.trim()) return;
+    setCreating(true);
+    try {
+      const { supplierService } = await import("../../../services/supplierService");
+      await supplierService.create({
+        name: supplierForm.name,
+        name_en: supplierForm.name_en || undefined,
+        status: supplierForm.status,
+        category: supplierForm.category,
+        phone: supplierForm.phone || undefined,
+        mobile: supplierForm.mobile || undefined,
+        email: supplierForm.email || undefined,
+        address: supplierForm.address || undefined,
+        city: supplierForm.city || undefined,
+        currency: supplierForm.currency,
+        payment_terms: supplierForm.payment_terms,
+        credit_limit: supplierForm.credit_limit,
+        opening_balance: supplierForm.opening_balance,
+        notes: supplierForm.notes || undefined,
+        gps_link: supplierForm.gps_link || undefined,
+      });
+      setShowCreateSupplier(false);
+      setSupplierForm({
+        name: "", name_en: "", status: "active", category: "regular",
+        phone: "", mobile: "", email: "", address: "", city: "",
+        currency: "ILS", payment_terms: "due_on_receipt",
+        credit_limit: 0, opening_balance: 0, notes: "", gps_link: "",
+      });
+    } catch (err) {
+      console.error("Failed to create supplier:", err);
+    } finally {
+      setCreating(false);
+    }
+  }, [supplierForm]);
   const openModal = (type: ModalType) => { setModalType(type); setIsModalOpen(true); };
   const closeModal = () => { setIsModalOpen(false); setModalType(null); };
 
@@ -518,11 +643,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
             <JournalEntriesWorkspace
               accounting={acc}
               branches={allBranches}
-              customers={app.customers?.map((customer: any) => ({
-                id: customer.id,
-                name: customer.name,
-                code: customer.phone,
-              })) ?? []}
+              customers={customersFromApi}
               suppliers={suppliersFromApi}
             />
           )}
@@ -546,7 +667,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
 
   // ─── RENDER ───────────────────────────────────────────────────────────────────
   return (
-    <div className="flex-1 flex flex-col gap-6 p-1 h-full min-h-0 overflow-hidden text-right">
+    <div className="flex-1 flex flex-col gap-6 p-1 h-full min-h-0 overflow-auto text-right">
 
       {/* Error banner */}
       <AnimatePresence>
@@ -562,6 +683,292 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
             <button onClick={acc.clearError} className="mr-2 text-rose-300 hover:text-white">
               <X size={14} />
             </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Quick action buttons for AR/AP */}
+      {(activeTab === "AR" || activeTab === "AP") && (
+        <div className="flex items-center gap-2">
+          {activeTab === "AR" && (
+            <button onClick={() => setShowCreateCustomer(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600/20 border border-blue-500/30 text-blue-400 hover:bg-blue-600/30 transition-all text-xs font-bold">
+              <UserPlus size={14} /> إضافة عميل جديد
+            </button>
+          )}
+          {activeTab === "AP" && (
+            <button onClick={() => setShowCreateSupplier(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-600/20 border border-rose-500/30 text-rose-400 hover:bg-rose-600/30 transition-all text-xs font-bold">
+              <Truck size={14} /> إضافة مورد جديد
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Create Customer Modal — Full ERP Form */}
+      <AnimatePresence>
+        {showCreateCustomer && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+            onClick={(e) => { if (e.target === e.currentTarget) setShowCreateCustomer(false); }}>
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+              className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto custom-scrollbar">
+              <div className="flex items-center justify-between p-5 border-b border-white/5 sticky top-0 bg-slate-900 z-10">
+                <h3 className="text-sm font-black text-white">إضافة عميل جديد</h3>
+                <button onClick={() => setShowCreateCustomer(false)} className="p-1.5 hover:bg-white/5 rounded-lg text-slate-500 hover:text-white"><X size={16} /></button>
+              </div>
+              <div className="p-5 space-y-4">
+                {/* Basic Information */}
+                <h4 className="text-xs font-bold text-cyan-400 border-b border-cyan-500/20 pb-2">معلومات أساسية</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">اسم العميل *</label>
+                    <input value={customerForm.name} onChange={(e) => updateCustomerField("name", e.target.value)}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" placeholder="أدخل اسم العميل" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">الاسم بالإنجليزية</label>
+                    <input value={customerForm.name_en} onChange={(e) => updateCustomerField("name_en", e.target.value)}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" placeholder="English name" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">الحالة</label>
+                    <select value={customerForm.status} onChange={(e) => updateCustomerField("status", e.target.value)}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none">
+                      <option value="active">نشط</option><option value="inactive">غير نشط</option><option value="blocked">محظور</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">الفئة</label>
+                    <select value={customerForm.category} onChange={(e) => updateCustomerField("category", e.target.value)}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none">
+                      <option value="retail">تجزئة</option><option value="wholesale">جملة</option><option value="corporate">شركة</option><option value="government">حكومي</option><option value="service">خدمي</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">الهاتف</label>
+                    <input value={customerForm.phone} onChange={(e) => updateCustomerField("phone", e.target.value)}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" placeholder="رقم الهاتف" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">الجوال</label>
+                    <input value={customerForm.mobile} onChange={(e) => updateCustomerField("mobile", e.target.value)}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" placeholder="رقم الجوال" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-500 font-bold block mb-1">البريد الإلكتروني</label>
+                  <input value={customerForm.email} onChange={(e) => updateCustomerField("email", e.target.value)}
+                    className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" placeholder="email@example.com" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">العنوان</label>
+                    <input value={customerForm.address} onChange={(e) => updateCustomerField("address", e.target.value)}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" placeholder="العنوان" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">المدينة</label>
+                    <input value={customerForm.city} onChange={(e) => updateCustomerField("city", e.target.value)}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" placeholder="المدينة" />
+                  </div>
+                </div>
+
+                {/* Financial Information */}
+                <h4 className="text-xs font-bold text-emerald-400 border-b border-emerald-500/20 pb-2 pt-2">معلومات مالية</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">العملة</label>
+                    <select value={customerForm.currency} onChange={(e) => updateCustomerField("currency", e.target.value)}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none">
+                      <option value="ILS">شيكل (ILS)</option><option value="JOD">دينار (JOD)</option><option value="USD">دولار (USD)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">شروط الدفع</label>
+                    <select value={customerForm.payment_terms} onChange={(e) => updateCustomerField("payment_terms", e.target.value)}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none">
+                      <option value="immediate">فوري</option><option value="net15">15 يوم</option><option value="net30">30 يوم</option><option value="net60">60 يوم</option><option value="net90">90 يوم</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">الحد الائتماني</label>
+                    <input type="number" value={customerForm.credit_limit} onChange={(e) => updateCustomerField("credit_limit", Number(e.target.value))}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">الرصيد الافتتاحي</label>
+                    <input type="number" value={customerForm.opening_balance} onChange={(e) => updateCustomerField("opening_balance", Number(e.target.value))}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" placeholder="0" />
+                  </div>
+                </div>
+
+                {/* Advanced Section */}
+                <button onClick={() => setAdvancedOpen(!advancedOpen)}
+                  className="flex items-center gap-2 text-xs text-slate-500 hover:text-white font-bold">
+                  {advancedOpen ? "▲" : "▼"} إعدادات متقدمة
+                </button>
+                {advancedOpen && (
+                  <div className="space-y-3 pr-2 border-r border-white/5">
+                    <div>
+                      <label className="text-[10px] text-slate-500 font-bold block mb-1">ملاحظات</label>
+                      <textarea value={customerForm.notes} onChange={(e) => updateCustomerField("notes", e.target.value)}
+                        className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" rows={2} placeholder="ملاحظات..." />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-500 font-bold block mb-1">رابط Google Maps</label>
+                      <input value={customerForm.gps_link} onChange={(e) => updateCustomerField("gps_link", e.target.value)}
+                        className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" placeholder="https://maps.google.com/..." />
+                    </div>
+                  </div>
+                )}
+
+                <button onClick={handleCreateCustomer} disabled={creating || !customerForm.name.trim()}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all">
+                  {creating ? <><RefreshCw size={14} className="animate-spin inline ml-1" /> جاري الإضافة...</> : "إضافة العميل"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Create Supplier Modal — Full ERP Form */}
+      <AnimatePresence>
+        {showCreateSupplier && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+            onClick={(e) => { if (e.target === e.currentTarget) setShowCreateSupplier(false); }}>
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+              className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto custom-scrollbar">
+              <div className="flex items-center justify-between p-5 border-b border-white/5 sticky top-0 bg-slate-900 z-10">
+                <h3 className="text-sm font-black text-white">إضافة مورد جديد</h3>
+                <button onClick={() => setShowCreateSupplier(false)} className="p-1.5 hover:bg-white/5 rounded-lg text-slate-500 hover:text-white"><X size={16} /></button>
+              </div>
+              <div className="p-5 space-y-4">
+                {/* Basic Information */}
+                <h4 className="text-xs font-bold text-rose-400 border-b border-rose-500/20 pb-2">معلومات أساسية</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">اسم المورد *</label>
+                    <input value={supplierForm.name} onChange={(e) => updateSupplierField("name", e.target.value)}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" placeholder="أدخل اسم المورد" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">الاسم بالإنجليزية</label>
+                    <input value={supplierForm.name_en} onChange={(e) => updateSupplierField("name_en", e.target.value)}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" placeholder="English name" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">الحالة</label>
+                    <select value={supplierForm.status} onChange={(e) => updateSupplierField("status", e.target.value)}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none">
+                      <option value="active">نشط</option><option value="inactive">غير نشط</option><option value="blocked">محظور</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">الفئة</label>
+                    <select value={supplierForm.category} onChange={(e) => updateSupplierField("category", e.target.value)}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none">
+                      <option value="local">محلي</option><option value="international">دولي</option><option value="service">خدمي</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">الهاتف</label>
+                    <input value={supplierForm.phone} onChange={(e) => updateSupplierField("phone", e.target.value)}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" placeholder="رقم الهاتف" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">الجوال</label>
+                    <input value={supplierForm.mobile} onChange={(e) => updateSupplierField("mobile", e.target.value)}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" placeholder="رقم الجوال" />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] text-slate-500 font-bold block mb-1">البريد الإلكتروني</label>
+                  <input value={supplierForm.email} onChange={(e) => updateSupplierField("email", e.target.value)}
+                    className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" placeholder="email@example.com" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">العنوان</label>
+                    <input value={supplierForm.address} onChange={(e) => updateSupplierField("address", e.target.value)}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" placeholder="العنوان" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">المدينة</label>
+                    <input value={supplierForm.city} onChange={(e) => updateSupplierField("city", e.target.value)}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" placeholder="المدينة" />
+                  </div>
+                </div>
+
+                {/* Financial Information */}
+                <h4 className="text-xs font-bold text-emerald-400 border-b border-emerald-500/20 pb-2 pt-2">معلومات مالية</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">العملة</label>
+                    <select value={supplierForm.currency} onChange={(e) => updateSupplierField("currency", e.target.value)}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none">
+                      <option value="ILS">شيكل (ILS)</option><option value="JOD">دينار (JOD)</option><option value="USD">دولار (USD)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">شروط الدفع</label>
+                    <select value={supplierForm.payment_terms} onChange={(e) => updateSupplierField("payment_terms", e.target.value)}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none">
+                      <option value="immediate">فوري</option><option value="net15">15 يوم</option><option value="net30">30 يوم</option><option value="net60">60 يوم</option><option value="net90">90 يوم</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">الحد الائتماني</label>
+                    <input type="number" value={supplierForm.credit_limit} onChange={(e) => updateSupplierField("credit_limit", Number(e.target.value))}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" placeholder="0" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-500 font-bold block mb-1">الرصيد الافتتاحي</label>
+                    <input type="number" value={supplierForm.opening_balance} onChange={(e) => updateSupplierField("opening_balance", Number(e.target.value))}
+                      className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" placeholder="0" />
+                  </div>
+                </div>
+
+                {/* Advanced Section */}
+                <button onClick={() => setAdvancedOpen(!advancedOpen)}
+                  className="flex items-center gap-2 text-xs text-slate-500 hover:text-white font-bold">
+                  {advancedOpen ? "▲" : "▼"} إعدادات متقدمة
+                </button>
+                {advancedOpen && (
+                  <div className="space-y-3 pr-2 border-r border-white/5">
+                    <div>
+                      <label className="text-[10px] text-slate-500 font-bold block mb-1">ملاحظات</label>
+                      <textarea value={supplierForm.notes} onChange={(e) => updateSupplierField("notes", e.target.value)}
+                        className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" rows={2} placeholder="ملاحظات..." />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-500 font-bold block mb-1">رابط Google Maps</label>
+                      <input value={supplierForm.gps_link} onChange={(e) => updateSupplierField("gps_link", e.target.value)}
+                        className="w-full bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none" placeholder="https://maps.google.com/..." />
+                    </div>
+                  </div>
+                )}
+
+                <button onClick={handleCreateSupplier} disabled={creating || !supplierForm.name.trim()}
+                  className="w-full py-3 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition-all">
+                  {creating ? <><RefreshCw size={14} className="animate-spin inline ml-1" /> جاري الإضافة...</> : "إضافة المورد"}
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -617,7 +1024,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-hidden pr-1">
+      <div className="flex-1 overflow-auto pr-1 min-h-0">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -630,9 +1037,9 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
             {activeTab === "DASHBOARD" && <AccountingDashboard stats={stats} />}
             {activeTab === "GL" && renderGL()}
             {activeTab === "HR" && (
-              <EmployeesTab />
+              <EmployeePortal />
             )}
-            {activeTab === "AR" && <ARTab customers={app.customers} />}
+            {activeTab === "AR" && <CustomerPortal />}
             {activeTab === "AP" && <SupplierPortal />}
             {activeTab === "CASH" && <CashBankTab bankAccounts={app.bankAccounts} />}
           </motion.div>

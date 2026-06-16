@@ -52,8 +52,8 @@ const SidebarItem: React.FC<SidebarItemProps> = ({ icon: Icon, label, active, co
     onClick={onClick}
     title={collapsed ? label : undefined}
     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${active
-        ? 'bg-red-600 text-white shadow-lg shadow-red-900/30'
-        : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+      ? 'bg-red-600 text-white shadow-lg shadow-red-900/30'
+      : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
       } ${collapsed ? 'justify-center px-0' : ''}`}
   >
     <Icon size={20} />
@@ -102,8 +102,8 @@ export const AppLayout: React.FC<{
       </AnimatePresence>
 
       <aside className={`fixed top-0 right-0 h-full bg-slate-900 border-l border-white/5 flex flex-col p-4 shadow-2xl transition-all duration-300 z-50 ${isSidebarOpen
-          ? 'w-64 translate-x-0'
-          : 'w-64 translate-x-full lg:w-20 lg:translate-x-0'
+        ? 'w-64 translate-x-0'
+        : 'w-64 translate-x-full lg:w-20 lg:translate-x-0'
         }`}>
         <div className={`mb-8 flex items-center gap-3 ${!isSidebarOpen ? 'justify-center' : 'px-4'}`}>
           <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-red-900/20 shrink-0">R</div>
@@ -352,7 +352,7 @@ export const AppLayout: React.FC<{
         </div>
       </aside>
 
-      <main className={`flex-1 h-full overflow-hidden transition-all duration-300 ${isSidebarOpen ? 'lg:mr-64' : 'lg:mr-20'}`}>
+      <main className={`flex-1 h-full overflow-auto transition-all duration-300 ${isSidebarOpen ? 'lg:mr-64' : 'lg:mr-20'}`}>
         <div className="h-full flex flex-col">
           <header className="lg:hidden p-4 flex items-center justify-between border-b border-white/5 bg-slate-900/50">
             <button
