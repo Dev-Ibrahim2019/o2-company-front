@@ -17,7 +17,7 @@ import {
   type Transaction,
   type CostCenter,
   type LedgerData,
-} from "../services/accountingService";
+} from "../services/accounting";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -144,9 +144,13 @@ export const useAccounting = (): UseAccountingReturn => {
     try {
       setL("accounts", true);
       setError(null);
-      const data = await accountService.getAll({ tree: true, with_balance: true });
+      // طلب الشجرة مع الأرصدة
+      const data = await accountService.getAll({
+        tree: true,
+        with_balance: true,
+      });
       setAccountTree(data);
-      // القائمة المسطحة أيضاً مفيدة للـ selects
+      // القائمة المسطحة أيضاً مع الأرصدة لضمان عرضها في كل مكان
       const flat = await accountService.getAll({ with_balance: true });
       setAccounts(flat);
     } catch (e) {
@@ -244,6 +248,8 @@ export const useAccounting = (): UseAccountingReturn => {
       setError(null);
       const tx = await transactionService.create(payload);
       setTransactions((prev) => [tx, ...prev]);
+      // تحديث الأرصدة فوراً بعد إنشاء القيد
+      await fetchAccountTree();
       return tx;
     } catch (e: any) {
       return handleError(e, "فشل إنشاء القيد");
@@ -288,6 +294,8 @@ export const useAccounting = (): UseAccountingReturn => {
       setError(null);
       const updated = await transactionService.post(id);
       setTransactions((prev) => prev.map((t) => (t.id === id ? updated : t)));
+      // تحديث الأرصدة فوراً بعد ترحيل القيد
+      await fetchAccountTree();
       return updated;
     } catch (e: any) {
       return handleError(e, "فشل ترحيل القيد");

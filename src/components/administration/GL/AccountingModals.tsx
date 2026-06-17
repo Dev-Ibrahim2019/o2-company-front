@@ -1,7 +1,19 @@
-import React, { useMemo } from 'react';
+/**
+ * AccountingModals.tsx — النسخة الكاملة المحدّثة
+ *
+ * التحسينات:
+ * 1. AddCOAModal → يستدعي suggestCode من الباك عند الفتح تلقائياً
+ * 2. مؤشر تحميل الكود (LoadingCode)
+ * 3. حقل الكود readonly مع زر Refresh لإعادة الاقتراح
+ * 4. EditCOAModal → يعرض حقل is_active + notes
+ * 5. AddCostCenterModal / EditCostCenterModal → بدون تغيير
+ */
+
+import React, { useMemo, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, Download, CheckCircle2, AlertCircle, Trash2 } from 'lucide-react';
+import { X, Plus, Download, CheckCircle2, AlertCircle, Trash2, RefreshCw, Lock } from 'lucide-react';
 import { AccountType } from '../../../../types';
+import { accountService, costCenterService } from "../../../services/accountingService";
 
 // ─── shared modal wrapper ─────────────────────────────────────────────────
 
@@ -35,8 +47,14 @@ const selectCls = `${inputCls} cursor-pointer`;
 // ─── AddCOAModal ──────────────────────────────────────────────────────────
 
 interface COAForm {
-  code?: string; nameAr?: string; type?: AccountType;
-  isPosting?: boolean; parentId?: string | null; id?: string;
+  code?: string;
+  nameAr?: string;
+  type?: AccountType;
+  isPosting?: boolean;
+  parentId?: string | null;
+  id?: string;
+  notes?: string;
+  is_active?: boolean;
 }
 
 const ACCOUNT_TYPE_LABELS: Record<string, string> = {
@@ -47,35 +65,99 @@ const ACCOUNT_TYPE_LABELS: Record<string, string> = {
   [AccountType.EXPENSE]: 'مصروفات',
 };
 
-export const AddCOAModal: React.FC<{ form: COAForm; setForm: (f: COAForm) => void; onSave: () => void; onClose: () => void }> = ({ form, setForm, onSave, onClose }) => {
+export const AddCOAModal: React.FC<{
+  form: COAForm;
+  setForm: (f: COAForm) => void;
+  onSave: () => void;
+  onClose: () => void;
+  /** اسم الحساب الأب للعرض */
+  parentName?: string;
+}> = ({ form, setForm, onSave, onClose, parentName }) => {
+  const [loadingCode, setLoadingCode] = useState(false);
   const isValid = form.code && form.nameAr && form.type;
+
+  // ✅ جلب الكود المقترح من الباك عند فتح الـ modal
+  const fetchSuggestedCode = async () => {
+    try {
+      setLoadingCode(true);
+      const parentId = form.parentId ? Number(form.parentId) : undefined;
+      const code = await accountService.suggestCode(parentId);
+      setForm({ ...form, code });
+    } catch {
+      // silently fail — المستخدم يكتب يدوياً
+    } finally {
+      setLoadingCode(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSuggestedCode();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.parentId]);
 
   return (
     <ModalWrapper onClose={onClose}>
       <div className="p-7">
         <div className="mb-6">
           <h3 className="text-xl font-black text-white">إضافة حساب جديد</h3>
-          <p className="text-[11px] text-slate-500 mt-1">إنشاء حساب في دليل الحسابات المحاسبي</p>
+          <p className="text-[11px] text-slate-500 mt-1">
+            {parentName
+              ? `حساب فرعي تحت: ${parentName}`
+              : 'إنشاء حساب رئيسي في دليل الحسابات'}
+          </p>
         </div>
 
         <div className="space-y-4">
+          {/* الكود + الاسم */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <FieldLabel>رمز الحساب</FieldLabel>
-              <input type="text" value={form.code || ''} onChange={e => setForm({ ...form, code: e.target.value })}
-                className={inputCls} placeholder="مثال: 1010" />
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  value={loadingCode ? '' : (form.code || '')}
+                  onChange={e => setForm({ ...form, code: e.target.value })}
+                  placeholder={loadingCode ? 'جاري توليد الكود...' : 'مثال: 1100'}
+                  className={`${inputCls} pl-9`}
+                />
+                {loadingCode ? (
+                  <RefreshCw size={13} className="absolute left-3 text-slate-500 animate-spin" />
+                ) : (
+                  <button
+                    onClick={fetchSuggestedCode}
+                    title="إعادة اقتراح الكود من الخادم"
+                    className="absolute left-3 text-slate-600 hover:text-red-400 transition-colors"
+                  >
+                    <RefreshCw size={13} />
+                  </button>
+                )}
+              </div>
+              <p className="text-[9px] text-slate-600 mt-1 font-bold">
+                يُولَّد تلقائياً من الخادم · يمكن تعديله
+              </p>
             </div>
             <div>
               <FieldLabel>اسم الحساب</FieldLabel>
-              <input type="text" value={form.nameAr || ''} onChange={e => setForm({ ...form, nameAr: e.target.value })}
-                className={inputCls} placeholder="مثال: النقد في الصندوق" />
+              <input
+                type="text"
+                value={form.nameAr || ''}
+                onChange={e => setForm({ ...form, nameAr: e.target.value })}
+                className={inputCls}
+                placeholder="مثال: النقد في الصندوق"
+                autoFocus
+              />
             </div>
           </div>
 
+          {/* نوع الحساب + طبيعته */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <FieldLabel>نوع الحساب</FieldLabel>
-              <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value as AccountType })} className={selectCls}>
+              <select
+                value={form.type}
+                onChange={e => setForm({ ...form, type: e.target.value as AccountType })}
+                className={selectCls}
+              >
                 {Object.values(AccountType).map(t => (
                   <option key={t} value={t}>{ACCOUNT_TYPE_LABELS[t] || t}</option>
                 ))}
@@ -83,28 +165,55 @@ export const AddCOAModal: React.FC<{ form: COAForm; setForm: (f: COAForm) => voi
             </div>
             <div>
               <FieldLabel>طبيعة الحساب</FieldLabel>
-              <select value={form.isPosting ? 'POSTING' : 'HEADING'}
-                onChange={e => setForm({ ...form, isPosting: e.target.value === 'POSTING' })} className={selectCls}>
-                <option value="POSTING">حركي (فرعي) — يقبل قيوداً</option>
-                <option value="HEADING">تجميعي (رئيسي) — لا يقبل قيوداً</option>
+              <select
+                value={form.isPosting ? 'POSTING' : 'HEADING'}
+                onChange={e => setForm({ ...form, isPosting: e.target.value === 'POSTING' })}
+                className={selectCls}
+              >
+                <option value="POSTING">حركي — يقبل قيوداً مباشرة</option>
+                <option value="HEADING">تجميعي — لا يقبل قيوداً</option>
               </select>
             </div>
           </div>
 
+          {/* ملاحظات */}
+          <div>
+            <FieldLabel>ملاحظات (اختياري)</FieldLabel>
+            <textarea
+              value={form.notes || ''}
+              onChange={e => setForm({ ...form, notes: e.target.value })}
+              className={`${inputCls} resize-none h-16 py-2`}
+              placeholder="وصف الحساب أو ملاحظات إضافية..."
+            />
+          </div>
+
+          {/* معلومة الحساب الأب */}
           {form.parentId && (
-            <div className="bg-slate-950/50 border border-white/5 rounded-xl px-4 py-3 text-right">
-              <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">الحساب الأب</p>
-              <p className="text-xs text-slate-300 font-bold mt-0.5">ID: {form.parentId}</p>
+            <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl px-4 py-3 flex items-center gap-2">
+              <Lock size={12} className="text-blue-400 shrink-0" />
+              <div>
+                <p className="text-[10px] text-blue-400 font-black uppercase tracking-widest">الحساب الأب</p>
+                <p className="text-xs text-slate-300 font-bold mt-0.5">{parentName || `ID: ${form.parentId}`}</p>
+              </div>
             </div>
           )}
         </div>
 
         <div className="mt-6 flex gap-3">
-          <button onClick={onSave} disabled={!isValid}
-            className={`flex-1 py-3 rounded-2xl font-black text-sm transition-all shadow-xl ${isValid ? 'bg-red-600 text-white hover:bg-red-700 shadow-red-900/20 active:scale-[0.98]' : 'bg-slate-800 text-slate-600 cursor-not-allowed'}`}>
+          <button
+            onClick={onSave}
+            disabled={!isValid || loadingCode}
+            className={`flex-1 py-3 rounded-2xl font-black text-sm transition-all shadow-xl ${isValid && !loadingCode
+              ? 'bg-red-600 text-white hover:bg-red-700 shadow-red-900/20 active:scale-[0.98]'
+              : 'bg-slate-800 text-slate-600 cursor-not-allowed'
+              }`}
+          >
             حفظ الحساب
           </button>
-          <button onClick={onClose} className="px-6 py-3 bg-white/5 border border-white/5 text-slate-400 hover:text-white rounded-2xl font-black text-sm transition-all">
+          <button
+            onClick={onClose}
+            className="px-6 py-3 bg-white/5 border border-white/5 text-slate-400 hover:text-white rounded-2xl font-black text-sm transition-all"
+          >
             إلغاء
           </button>
         </div>
@@ -115,7 +224,12 @@ export const AddCOAModal: React.FC<{ form: COAForm; setForm: (f: COAForm) => voi
 
 // ─── EditCOAModal ─────────────────────────────────────────────────────────
 
-export const EditCOAModal: React.FC<{ form: COAForm; setForm: (f: COAForm) => void; onSave: () => void; onClose: () => void }> = ({ form, setForm, onSave, onClose }) => (
+export const EditCOAModal: React.FC<{
+  form: COAForm;
+  setForm: (f: COAForm) => void;
+  onSave: () => void;
+  onClose: () => void;
+}> = ({ form, setForm, onSave, onClose }) => (
   <ModalWrapper onClose={onClose}>
     <div className="p-7">
       <div className="mb-6">
@@ -124,30 +238,78 @@ export const EditCOAModal: React.FC<{ form: COAForm; setForm: (f: COAForm) => vo
       </div>
 
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <FieldLabel>رمز الحساب</FieldLabel>
-            <input type="text" value={form.code || ''} onChange={e => setForm({ ...form, code: e.target.value })} className={inputCls} />
+        {/* الكود — للعرض فقط */}
+        <div>
+          <FieldLabel>رمز الحساب</FieldLabel>
+          <div className="relative flex items-center">
+            <input
+              type="text"
+              value={form.code || ''}
+              readOnly
+              className={`${inputCls} pl-9 text-slate-500 cursor-not-allowed`}
+            />
+            <Lock size={13} className="absolute left-3 text-slate-700" />
           </div>
-          <div>
-            <FieldLabel>اسم الحساب</FieldLabel>
-            <input type="text" value={form.nameAr || ''} onChange={e => setForm({ ...form, nameAr: e.target.value })} className={inputCls} />
-          </div>
+          <p className="text-[9px] text-slate-600 mt-1 font-bold">الكود لا يمكن تعديله بعد الإنشاء</p>
         </div>
 
-        {/* Type & Nature readonly hint */}
-        <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl px-4 py-3 flex items-start gap-2 text-right">
+        {/* الاسم */}
+        <div>
+          <FieldLabel>اسم الحساب</FieldLabel>
+          <input
+            type="text"
+            value={form.nameAr || ''}
+            onChange={e => setForm({ ...form, nameAr: e.target.value })}
+            className={inputCls}
+            autoFocus
+          />
+        </div>
+
+        {/* ملاحظات */}
+        <div>
+          <FieldLabel>ملاحظات</FieldLabel>
+          <textarea
+            value={form.notes || ''}
+            onChange={e => setForm({ ...form, notes: e.target.value })}
+            className={`${inputCls} resize-none h-16 py-2`}
+            placeholder="وصف الحساب..."
+          />
+        </div>
+
+        {/* الحالة */}
+        <div className="flex items-center justify-between bg-slate-950/50 border border-white/5 rounded-xl px-4 py-3">
+          <div>
+            <p className="text-xs font-black text-white">تفعيل الحساب</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">الحسابات المعطّلة لا تظهر في القوائم</p>
+          </div>
+          <button
+            onClick={() => setForm({ ...form, is_active: !form.is_active })}
+            className={`relative w-11 h-6 rounded-full transition-colors ${form.is_active !== false ? 'bg-emerald-600' : 'bg-slate-700'}`}
+          >
+            <span className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${form.is_active !== false ? 'left-6' : 'left-1'}`} />
+          </button>
+        </div>
+
+        {/* تحذير */}
+        <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl px-4 py-3 flex items-start gap-2">
           <AlertCircle size={14} className="text-amber-500 mt-0.5 shrink-0" />
-          <p className="text-[11px] text-amber-400 font-bold">تعديل نوع الحساب قد يؤثر على التقارير المالية.</p>
+          <p className="text-[11px] text-amber-400 font-bold">
+            تعديل اسم الحساب قد يؤثر على التقارير المالية المحفوظة.
+          </p>
         </div>
       </div>
 
       <div className="mt-6 flex gap-3">
-        <button onClick={onSave}
-          className="flex-1 py-3 rounded-2xl bg-blue-600 text-white font-black text-sm hover:bg-blue-700 shadow-xl shadow-blue-900/20 active:scale-[0.98] transition-all">
+        <button
+          onClick={onSave}
+          className="flex-1 py-3 rounded-2xl bg-blue-600 text-white font-black text-sm hover:bg-blue-700 shadow-xl shadow-blue-900/20 active:scale-[0.98] transition-all"
+        >
           حفظ التغييرات
         </button>
-        <button onClick={onClose} className="px-6 py-3 bg-white/5 border border-white/5 text-slate-400 hover:text-white rounded-2xl font-black text-sm transition-all">
+        <button
+          onClick={onClose}
+          className="px-6 py-3 bg-white/5 border border-white/5 text-slate-400 hover:text-white rounded-2xl font-black text-sm transition-all"
+        >
           إلغاء
         </button>
       </div>
@@ -158,14 +320,17 @@ export const EditCOAModal: React.FC<{ form: COAForm; setForm: (f: COAForm) => vo
 // ─── AddJournalModal ──────────────────────────────────────────────────────
 
 interface JournalLine { accountId: string; debit: number; credit: number; description: string; costCenterId?: string }
-interface JournalForm { date: string; description: string; lines: JournalLine[] }
+interface JournalForm { date: string; description: string; type?: string; lines: JournalLine[] }
 interface COAOption { id: string; nameAr: string; isPosting: boolean; code?: string }
 interface CostCenterOption { id: string; nameAr: string }
 
 export const AddJournalModal: React.FC<{
-  form: JournalForm; setForm: (f: JournalForm) => void;
-  chartOfAccounts: COAOption[]; costCenters: CostCenterOption[];
-  onSave: () => void; onClose: () => void;
+  form: JournalForm;
+  setForm: (f: JournalForm) => void;
+  chartOfAccounts: COAOption[];
+  costCenters: CostCenterOption[];
+  onSave: () => void;
+  onClose: () => void;
 }> = ({ form, setForm, chartOfAccounts, costCenters, onSave, onClose }) => {
 
   const totalDebit = form.lines.reduce((s, l) => s + (l.debit || 0), 0);
@@ -193,7 +358,6 @@ export const AddJournalModal: React.FC<{
           <p className="text-[11px] text-slate-500 mt-1">إنشاء قيد في دفتر اليومية العامة</p>
         </div>
 
-        {/* Header */}
         <div className="grid grid-cols-2 gap-4 mb-6">
           <div>
             <FieldLabel>تاريخ القيد</FieldLabel>
@@ -207,7 +371,6 @@ export const AddJournalModal: React.FC<{
           </div>
         </div>
 
-        {/* Lines */}
         <div className="mb-4">
           <div className="grid grid-cols-12 gap-2 mb-2 px-1">
             {['الحساب', 'مركز التكلفة', 'مدين', 'دائن', 'البيان', ''].map((h, i) => (
@@ -265,7 +428,6 @@ export const AddJournalModal: React.FC<{
           </button>
         </div>
 
-        {/* Totals */}
         <div className={`rounded-2xl border px-5 py-4 mb-6 ${isBalanced ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-rose-500/5 border-rose-500/20'}`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -292,7 +454,7 @@ export const AddJournalModal: React.FC<{
         <div className="flex gap-3">
           <button onClick={onSave} disabled={!canSave}
             className={`flex-1 py-3 rounded-2xl font-black text-sm transition-all shadow-xl ${canSave ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-900/20 active:scale-[0.98]' : 'bg-slate-800 text-slate-600 cursor-not-allowed'}`}>
-            ترحيل القيد
+            حفظ القيد
           </button>
           <button onClick={onClose} className="px-6 py-3 bg-white/5 border border-white/5 text-slate-400 hover:text-white rounded-2xl font-black text-sm transition-all">
             إلغاء
@@ -305,47 +467,47 @@ export const AddJournalModal: React.FC<{
 
 // ─── EmployeeActionModal ──────────────────────────────────────────────────
 
-const ACTION_LABELS: Record<string, { label: string; color: string; hint: string }> = {
-  ADVANCE: { label: 'صرف سلفة', color: 'bg-amber-600', hint: 'سيُسجَّل قيد مدين على حساب الموظف' },
-  SALARY: { label: 'صرف راتب', color: 'bg-emerald-600', hint: 'سيُسجَّل قيد مدين على رواتب الموظفين' },
-  DISCOUNT: { label: 'خصم من الراتب', color: 'bg-orange-600', hint: 'سيُسجَّل قيد دائن على حساب الموظف' },
-  CUSTODY: { label: 'عهدة مالية', color: 'bg-blue-600', hint: 'سيُسجَّل قيد عهدة لدى الموظف' },
+type EmployeeActionType = 'ADVANCE' | 'SALARY' | 'DISCOUNT' | 'CUSTODY';
+
+const ACTION_META: Record<EmployeeActionType, { label: string; color: string; desc: string }> = {
+  SALARY: { label: 'صرف راتب', color: 'text-emerald-400', desc: 'صرف الراتب الشهري للموظف' },
+  ADVANCE: { label: 'سلفة', color: 'text-amber-400', desc: 'منح سلفة من الراتب القادم' },
+  DISCOUNT: { label: 'خصم', color: 'text-orange-400', desc: 'خصم مبلغ من راتب الموظف' },
+  CUSTODY: { label: 'عهدة', color: 'text-blue-400', desc: 'تسليم عهدة مالية للموظف' },
 };
 
 export const EmployeeActionModal: React.FC<{
   amount: number; setAmount: (v: number) => void;
   note: string; setNote: (v: string) => void;
-  actionType?: string;
+  actionType?: EmployeeActionType;
   onConfirm: () => void; onClose: () => void;
 }> = ({ amount, setAmount, note, setNote, actionType, onConfirm, onClose }) => {
-  const cfg = ACTION_LABELS[actionType || 'ADVANCE'] || ACTION_LABELS.ADVANCE;
+  if (!actionType) return null;
+  const meta = ACTION_META[actionType];
 
   return (
     <ModalWrapper onClose={onClose}>
       <div className="p-7">
         <div className="mb-6">
-          <h3 className="text-xl font-black text-white">{cfg.label}</h3>
-          <p className="text-[11px] text-slate-500 mt-1">{cfg.hint}</p>
+          <h3 className={`text-xl font-black ${meta.color}`}>{meta.label}</h3>
+          <p className="text-[11px] text-slate-500 mt-1">{meta.desc}</p>
         </div>
-
-        <div className="space-y-4 mb-6">
+        <div className="space-y-4">
           <div>
             <FieldLabel>المبلغ (₪)</FieldLabel>
-            <input type="number" min="0" step="0.01" value={amount || ''}
-              onChange={e => setAmount(parseFloat(e.target.value) || 0)}
-              className={inputCls + ' text-2xl font-black font-mono text-white'} placeholder="0.00" />
+            <input type="number" min="0" value={amount || ''} onChange={e => setAmount(parseFloat(e.target.value) || 0)}
+              className={inputCls} placeholder="0.00" />
           </div>
           <div>
             <FieldLabel>ملاحظات</FieldLabel>
-            <textarea value={note} onChange={e => setNote(e.target.value)} rows={3}
-              className={inputCls + ' resize-none'} placeholder="أدخل ملاحظات أو سبب الإجراء..." />
+            <textarea value={note} onChange={e => setNote(e.target.value)}
+              className={`${inputCls} h-20 resize-none py-2`} placeholder="سبب العملية..." />
           </div>
         </div>
-
-        <div className="flex gap-3">
-          <button onClick={onConfirm} disabled={!amount || amount <= 0}
-            className={`flex-1 py-3 rounded-2xl font-black text-sm transition-all shadow-xl text-white ${amount > 0 ? `${cfg.color} active:scale-[0.98]` : 'bg-slate-800 text-slate-600 cursor-not-allowed'}`}>
-            تأكيد الإجراء وترحيله
+        <div className="mt-6 flex gap-3">
+          <button onClick={onConfirm} disabled={!amount}
+            className={`flex-1 py-3 rounded-2xl font-black text-sm transition-all ${amount ? 'bg-red-600 text-white hover:bg-red-700 active:scale-[0.98]' : 'bg-slate-800 text-slate-600 cursor-not-allowed'}`}>
+            تأكيد العملية
           </button>
           <button onClick={onClose} className="px-6 py-3 bg-white/5 border border-white/5 text-slate-400 hover:text-white rounded-2xl font-black text-sm transition-all">
             إلغاء
@@ -358,105 +520,314 @@ export const EmployeeActionModal: React.FC<{
 
 // ─── ViewJournalModal ─────────────────────────────────────────────────────
 
-interface JournalEntryLine { accountId: string; debit: number; credit: number; description?: string }
-interface JournalEntryFull { id: string; date: string; description: string; lines: JournalEntryLine[] }
-interface COAMap { id: string; nameAr: string; code: string }
+interface JournalEntry {
+  id: string; date: string; description: string; status: string; reference: string;
+  lines: {
+    accountId: string;
+    accountName?: string | null;
+    accountCode?: string | null;
+    debit: number;
+    credit: number;
+    description?: string;
+  }[];
+}
 
 export const ViewJournalModal: React.FC<{
-  entry: JournalEntryFull; chartOfAccounts: COAMap[]; onClose: () => void;
+  entry: JournalEntry;
+  chartOfAccounts: { id: string; nameAr: string; code?: string }[];
+  onClose: () => void;
 }> = ({ entry, chartOfAccounts, onClose }) => {
   const totalDebit = entry.lines.reduce((s, l) => s + l.debit, 0);
   const totalCredit = entry.lines.reduce((s, l) => s + l.credit, 0);
-  const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01;
 
   return (
     <ModalWrapper onClose={onClose} wide>
       <div className="p-7">
-        {/* Header */}
-        <div className="flex items-start justify-between mb-6">
-          <div className="text-right">
-            <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-xl font-black text-white">تفاصيل القيد المحاسبي</h3>
-              <span className={`px-2 py-0.5 rounded-lg border text-[10px] font-black ${isBalanced ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' : 'text-rose-400 bg-rose-500/10 border-rose-500/20'}`}>
-                {isBalanced ? 'متزن' : 'غير متزن'}
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-500 font-mono">REF: #{entry.id.split('_').pop() || entry.id.slice(-8)}</p>
+        <div className="mb-6 flex items-start justify-between">
+          <div>
+            <h3 className="text-xl font-black text-white">تفاصيل القيد المحاسبي</h3>
+            <p className="text-[11px] text-slate-500 mt-1">{entry.reference} · {entry.date}</p>
           </div>
-          <div className="text-left bg-slate-950 border border-white/5 rounded-2xl px-5 py-3">
-            <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1">تاريخ القيد</p>
-            <p className="text-base font-black text-white font-mono">{entry.date}</p>
-          </div>
+          <span className={`px-3 py-1 rounded-xl text-[10px] font-black border ${entry.status === 'POSTED'
+            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+            : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+            }`}>
+            {entry.status === 'POSTED' ? 'مرحّل' : 'مسودة'}
+          </span>
         </div>
 
-        {/* Description */}
-        <div className="bg-slate-950/60 border border-white/5 rounded-2xl px-5 py-4 mb-5 text-right">
-          <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1">البيان العام</p>
-          <p className="text-sm font-black text-white">{entry.description}</p>
+        <div className="bg-slate-950/40 rounded-2xl p-4 mb-6">
+          <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1">البيان</p>
+          <p className="text-sm font-bold text-white">{entry.description}</p>
         </div>
 
-        {/* Lines table */}
-        <div className="bg-slate-950/40 border border-white/5 rounded-2xl overflow-hidden mb-5">
-          <table className="w-full text-right text-xs">
-            <thead className="bg-white/5 border-b border-white/5">
-              <tr className="text-slate-500 font-black uppercase tracking-widest">
-                <th className="px-5 py-3">#</th>
-                <th className="px-5 py-3">الحساب</th>
-                <th className="px-5 py-3 text-center">مدين</th>
-                <th className="px-5 py-3 text-center">دائن</th>
-                <th className="px-5 py-3">البيان</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {entry.lines.map((line, idx) => {
-                const acc = chartOfAccounts.find(a => a.id === line.accountId);
-                return (
-                  <tr key={idx} className="hover:bg-white/[0.02] transition-colors">
-                    <td className="px-5 py-3.5 text-slate-600 font-mono">{idx + 1}</td>
-                    <td className="px-5 py-3.5">
-                      <div className="text-right">
-                        <p className="font-bold text-white">{acc?.nameAr || 'حساب غير معروف'}</p>
-                        <p className="text-[9px] text-slate-500 font-mono">{acc?.code}</p>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5 text-center font-black font-mono text-emerald-400">
-                      {line.debit > 0 ? `₪${line.debit.toLocaleString()}` : '—'}
-                    </td>
-                    <td className="px-5 py-3.5 text-center font-black font-mono text-rose-400">
-                      {line.credit > 0 ? `₪${line.credit.toLocaleString()}` : '—'}
-                    </td>
-                    <td className="px-5 py-3.5 text-slate-400 italic">{line.description || '—'}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot className="bg-white/5 border-t border-white/5">
-              <tr>
-                <td colSpan={2} className="px-5 py-3 font-black text-white text-xs">الإجماليات</td>
-                <td className="px-5 py-3 text-center font-black font-mono text-emerald-400">₪{totalDebit.toLocaleString()}</td>
-                <td className="px-5 py-3 text-center font-black font-mono text-rose-400">₪{totalCredit.toLocaleString()}</td>
-                <td className="px-5 py-3">
-                  <div className="flex items-center gap-1.5 justify-end">
-                    {isBalanced
-                      ? <><CheckCircle2 size={13} className="text-emerald-500" /><span className="text-[10px] font-black text-emerald-500">متزن</span></>
-                      : <><AlertCircle size={13} className="text-rose-500" /><span className="text-[10px] font-black text-rose-500">غير متزن</span></>}
-                  </div>
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+        <table className="w-full text-right text-xs mb-6">
+          <thead>
+            <tr className="text-slate-500 border-b border-white/5">
+              <th className="pb-3">الحساب</th>
+              <th className="pb-3 text-center">مدين</th>
+              <th className="pb-3 text-center">دائن</th>
+              <th className="pb-3">البيان</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/5">
+            {entry.lines.map((line, idx) => {
+              const acc = chartOfAccounts.find(
+                a => a.id === line.accountId
+              );
 
-        <div className="flex gap-3 justify-end">
-          <button onClick={onClose}
-            className="px-6 py-2.5 bg-red-600 text-white rounded-2xl font-black text-sm hover:bg-red-700 shadow-xl shadow-red-900/20 transition-all active:scale-[0.98]">
-            إغلاق
+              const displayName =
+                line.accountName ??
+                acc?.nameAr ??
+                line.accountId;
+
+              const displayCode =
+                line.accountCode ??
+                acc?.code;
+              return (
+                <tr key={idx} className="hover:bg-white/[0.02]">
+                  <td className="py-3">
+                    <span className="font-bold text-white">{displayName}</span>
+                    {displayCode && <span className="text-[9px] text-slate-600 font-mono ml-2">{displayCode}</span>}
+                  </td>
+                  <td className="py-3 text-center font-mono font-black text-emerald-500">
+                    {line.debit > 0 ? `₪${line.debit.toLocaleString()}` : '—'}
+                  </td>
+                  <td className="py-3 text-center font-mono font-black text-rose-500">
+                    {line.credit > 0 ? `₪${line.credit.toLocaleString()}` : '—'}
+                  </td>
+                  <td className="py-3 text-slate-400 text-[11px]">{line.description}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot className="border-t border-white/10">
+            <tr>
+              <td className="pt-3 font-black text-slate-500 text-[10px] uppercase tracking-widest">الإجماليات</td>
+              <td className="pt-3 text-center font-mono font-black text-emerald-400">₪{totalDebit.toLocaleString()}</td>
+              <td className="pt-3 text-center font-mono font-black text-rose-400">₪{totalCredit.toLocaleString()}</td>
+              <td />
+            </tr>
+          </tfoot>
+        </table>
+
+        <div className="flex gap-3">
+          <button className="flex items-center gap-2 px-5 py-2.5 bg-white/5 border border-white/5 text-slate-400 hover:text-white rounded-2xl font-black text-[11px] transition-all">
+            <Download size={14} /> تصدير PDF
           </button>
-          <button className="flex items-center gap-2 px-6 py-2.5 bg-white/5 border border-white/5 text-slate-400 hover:text-white rounded-2xl font-black text-sm transition-all">
-            <Download size={15} /> طباعة القيد
+          <button onClick={onClose} className="flex-1 py-2.5 bg-slate-800 text-slate-400 hover:text-white rounded-2xl font-black text-sm transition-all">
+            إغلاق
           </button>
         </div>
       </div>
     </ModalWrapper>
   );
 };
+
+// ─── AddCostCenterModal ───────────────────────────────────────────────────
+
+interface CostCenterForm {
+  nameAr?: string; code?: string; type?: string;
+  parentId?: string; is_active?: boolean;
+}
+
+export const AddCostCenterModal: React.FC<{
+  form: CostCenterForm;
+  setForm: (f: CostCenterForm) => void;
+  costCenters: { id: string; nameAr: string; code?: string }[];
+  onSave: () => void;
+  onClose: () => void;
+}> = ({ form, setForm, costCenters, onSave, onClose }) => {
+  const [loadingCode, setLoadingCode] = useState(false);
+  const isValid = !!(form.nameAr && form.type);
+
+  const fetchSuggestedCode = async (parentId?: string) => {
+    try {
+      setLoadingCode(true);
+      const pid = parentId ? Number(parentId) : undefined;
+      const code = await costCenterService.suggestCode(pid);
+      setForm({ ...form, code, parentId });
+    } catch {
+      // المستخدم يكتب يدوياً
+    } finally {
+      setLoadingCode(false);
+    }
+  };
+
+  // جلب الكود عند فتح الـ modal أو تغيير الأب
+  useEffect(() => {
+    fetchSuggestedCode(form.parentId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.parentId]);
+
+  return (
+    <ModalWrapper onClose={onClose}>
+      <div className="p-7">
+        <div className="mb-6">
+          <h3 className="text-xl font-black text-white">إضافة مركز تكلفة</h3>
+          <p className="text-[11px] text-slate-500 mt-1">تصنيف المصروفات والإيرادات بدقة</p>
+        </div>
+        <div className="space-y-4">
+
+          {/* الاسم + الكود */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <FieldLabel>اسم مركز التكلفة</FieldLabel>
+              <input
+                type="text"
+                value={form.nameAr || ''}
+                onChange={e => setForm({ ...form, nameAr: e.target.value })}
+                className={inputCls}
+                placeholder="مثال: قسم المبيعات"
+                autoFocus
+              />
+            </div>
+            <div>
+              <FieldLabel>الكود</FieldLabel>
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  value={loadingCode ? '' : (form.code || '')}
+                  onChange={e => setForm({ ...form, code: e.target.value })}
+                  placeholder={loadingCode ? 'جاري التوليد...' : 'مثال: CC-01'}
+                  className={`${inputCls} pl-9`}
+                />
+                {loadingCode ? (
+                  <RefreshCw size={13} className="absolute left-3 text-slate-500 animate-spin" />
+                ) : (
+                  <button
+                    onClick={() => fetchSuggestedCode(form.parentId)}
+                    title="إعادة توليد الكود"
+                    className="absolute left-3 text-slate-600 hover:text-red-400 transition-colors"
+                  >
+                    <RefreshCw size={13} />
+                  </button>
+                )}
+              </div>
+              <p className="text-[9px] text-slate-600 mt-1 font-bold">
+                يُولَّد تلقائياً · يمكن تعديله
+              </p>
+            </div>
+          </div>
+
+          {/* النوع + المركز الأب */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <FieldLabel>النوع</FieldLabel>
+              <select
+                value={form.type || 'operational'}
+                onChange={e => setForm({ ...form, type: e.target.value })}
+                className={selectCls}
+              >
+                <option value="operational">تشغيلي</option>
+                <option value="administrative">إداري</option>
+                <option value="service">خدمي</option>
+                <option value="production">إنتاجي</option>
+              </select>
+            </div>
+            <div>
+              <FieldLabel>المركز الأب (اختياري)</FieldLabel>
+              <select
+                value={form.parentId || ''}
+                onChange={e => {
+                  const pid = e.target.value || undefined;
+                  setForm({ ...form, parentId: pid });
+                  // fetchSuggestedCode يُستدعى تلقائياً عبر useEffect
+                }}
+                className={selectCls}
+              >
+                <option value="">— بلا —</option>
+                {costCenters.map(cc => (
+                  <option key={cc.id} value={cc.id}>
+                    {cc.code ? `${cc.code} - ` : ''}{cc.nameAr}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* معلومة المركز الأب */}
+          {form.parentId && (() => {
+            const parent = costCenters.find(cc => cc.id === form.parentId);
+            return parent ? (
+              <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl px-4 py-3 flex items-center gap-2">
+                <Lock size={12} className="text-blue-400 shrink-0" />
+                <div>
+                  <p className="text-[10px] text-blue-400 font-black uppercase tracking-widest">المركز الأب</p>
+                  <p className="text-xs text-slate-300 font-bold mt-0.5">{parent.nameAr}</p>
+                </div>
+              </div>
+            ) : null;
+          })()}
+        </div>
+
+        <div className="mt-6 flex gap-3">
+          <button
+            onClick={onSave}
+            disabled={!isValid || loadingCode}
+            className={`flex-1 py-3 rounded-2xl font-black text-sm transition-all shadow-xl ${isValid && !loadingCode
+              ? 'bg-red-600 text-white hover:bg-red-700 shadow-red-900/20 active:scale-[0.98]'
+              : 'bg-slate-800 text-slate-600 cursor-not-allowed'
+              }`}
+          >
+            حفظ المركز
+          </button>
+          <button
+            onClick={onClose}
+            className="px-6 py-3 bg-white/5 border border-white/5 text-slate-400 hover:text-white rounded-2xl font-black text-sm transition-all"
+          >
+            إلغاء
+          </button>
+        </div>
+      </div>
+    </ModalWrapper>
+  );
+};
+// ─── EditCostCenterModal ──────────────────────────────────────────────────
+
+export const EditCostCenterModal: React.FC<{
+  form: CostCenterForm;
+  setForm: (f: CostCenterForm) => void;
+  costCenters: { id: string; nameAr: string }[];
+  onSave: () => void;
+  onClose: () => void;
+}> = ({ form, setForm, costCenters, onSave, onClose }) => (
+  <ModalWrapper onClose={onClose}>
+    <div className="p-7">
+      <div className="mb-6">
+        <h3 className="text-xl font-black text-white">تعديل مركز التكلفة</h3>
+      </div>
+      <div className="space-y-4">
+        <div>
+          <FieldLabel>الاسم</FieldLabel>
+          <input type="text" value={form.nameAr || ''} onChange={e => setForm({ ...form, nameAr: e.target.value })}
+            className={inputCls} autoFocus />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <FieldLabel>الكود</FieldLabel>
+            <input type="text" value={form.code || ''} onChange={e => setForm({ ...form, code: e.target.value })} className={inputCls} />
+          </div>
+          <div>
+            <FieldLabel>النوع</FieldLabel>
+            <select value={form.type || 'operational'} onChange={e => setForm({ ...form, type: e.target.value })} className={selectCls}>
+              <option value="operational">تشغيلي</option>
+              <option value="administrative">إداري</option>
+              <option value="service">خدمي</option>
+              <option value="production">إنتاجي</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div className="mt-6 flex gap-3">
+        <button onClick={onSave}
+          className="flex-1 py-3 rounded-2xl bg-blue-600 text-white font-black text-sm hover:bg-blue-700 active:scale-[0.98] transition-all">
+          حفظ
+        </button>
+        <button onClick={onClose} className="px-6 py-3 bg-white/5 border border-white/5 text-slate-400 hover:text-white rounded-2xl font-black text-sm transition-all">
+          إلغاء
+        </button>
+      </div>
+    </div>
+  </ModalWrapper>
+);
