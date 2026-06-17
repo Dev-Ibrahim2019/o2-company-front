@@ -12,8 +12,8 @@ import SettingsPage from '../administration/SettingsPage';
 import MenuPage from '../administration/Items/MenuPage';
 import renderModal from '../administration/renderModal';
 import BranchesPage from '../administration/BranchesPage/BranchesPage';
-import SupplierPortal from './suppliers/SupplierPortal';
 import SalesInvoicesPage from '../administration/SalesInvoicesPage';
+import SupplierPortal from './suppliers/SupplierPortal';
 
 import { OrgStructure } from './OrgStructure/OrgStructure';
 import { AccountingPortal } from './GL/AccountingPortal';

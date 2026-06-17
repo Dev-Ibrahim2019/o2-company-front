@@ -52,70 +52,6 @@ export interface COAWithRollup {
   children?: COAWithRollup[];
 }
 
-// ─── helper: filter ledger lines ─────────────────────────────────────────
-
-export const filterLedgerLines = (
-  journalEntries: any[],
-  accountId: string,
-  filter: LedgerFilter,
-) => {
-  const now = new Date();
-  return journalEntries
-    .flatMap((je) =>
-      je.lines
-        .filter((l: any) => l.accountId === accountId)
-        .map((l: any) => ({
-          ...l,
-          date: je.date,
-          description: l.description || je.description,
-          entryId: je.id,
-          reference: je.reference,
-          sourceType: je.sourceType,
-          sourceId: je.sourceId,
-        })),
-    )
-    .filter((line) => {
-      const d = new Date(line.date);
-      switch (filter.type) {
-        case "LAST_WEEK": {
-          const t = new Date();
-          t.setDate(now.getDate() - 7);
-          return d >= t;
-        }
-        case "LAST_MONTH": {
-          const t = new Date();
-          t.setMonth(now.getMonth() - 1);
-          return d >= t;
-        }
-        case "MONTH_TO_DATE":
-          return d >= new Date(now.getFullYear(), now.getMonth(), 1);
-        case "LAST_YEAR": {
-          const t = new Date();
-          t.setFullYear(now.getFullYear() - 1);
-          return d >= t;
-        }
-        case "YEAR_TO_DATE":
-          return d >= new Date(now.getFullYear(), 0, 1);
-        case "RANGE":
-          return filter.startDate && filter.endDate
-            ? d >= new Date(filter.startDate) && d <= new Date(filter.endDate)
-            : true;
-        case "SPECIFIC":
-          return filter.startDate ? line.date === filter.startDate : true;
-        case "BEFORE":
-          return filter.startDate ? d <= new Date(filter.startDate) : true;
-        case "AFTER":
-          return filter.startDate ? d >= new Date(filter.startDate) : true;
-        default:
-          return true;
-      }
-    })
-    .sort(
-      (a: any, b: any) =>
-        new Date(a.date).getTime() - new Date(b.date).getTime(),
-    );
-};
-
 // ─── LedgerFilterBar ─────────────────────────────────────────────────────
 
 interface LedgerFilterBarProps {
@@ -621,11 +557,9 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
                           <p className="font-bold text-white">
                             {line.description || line.transaction_number}
                           </p>
-                          {(line.reference || line.sourceType) && (
-                            <p className="mt-1 text-[9px] font-mono font-black text-slate-600">
-                              {line.sourceType ? `${line.sourceType} ` : ""}
-                              {line.sourceId ? `#${line.sourceId} ` : ""}
-                              {line.reference ? `REF: ${line.reference}` : ""}
+                          {line.reference && (
+                            <p className="text-[9px] text-slate-600 font-mono mt-0.5">
+                              {line.reference}
                             </p>
                           )}
                           <p className="text-[9px] text-slate-600 font-mono">

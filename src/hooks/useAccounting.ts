@@ -144,7 +144,11 @@ export const useAccounting = (): UseAccountingReturn => {
     try {
       setL("accounts", true);
       setError(null);
-      const data = await accountService.getAll({ tree: true, with_balance: true });
+      // طلب الشجرة مع الأرصدة
+      const data = await accountService.getAll({
+        tree: true,
+        with_balance: true,
+      });
       setAccountTree(data);
       // القائمة المسطحة أيضاً مع الأرصدة لضمان عرضها في كل مكان
       const flat = await accountService.getAll({ with_balance: true });
