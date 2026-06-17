@@ -1,6 +1,7 @@
-// src/services/orderService.ts — مُحدَّث بإضافة pay و verifyReference
+// src/services/orderService.ts — مُحدَّث بإضافة pay و verifyReference و createJournalEntryFromInvoice
 
 import api from "../api/axios";
+import type { Transaction as AccountingTransaction } from "./accountingService";
 
 // ── أنواع ─────────────────────────────────────────────────────────────────────
 export type OrderType = "dine_in" | "takeaway";
@@ -12,8 +13,86 @@ export type OrderStatus =
   | "served"
   | "paid"
   | "cancelled";
-export type PaymentMethod = "cash" | "credit_card" | "wallet";
+export type PaymentMethod = "cash" | "credit_card" | "wallet" | "bank_transfer";
 export type DiscountType = "amount" | "percent";
+
+const normalizeMoney = (value: number) =>
+  Math.round((Number(value) || 0) * 100) / 100;
+
+const normalizeTableNumber = (value: string | number | null | undefined) =>
+  String(value ?? "").trim();
+
+const CLOSED_ORDER_STATUSES = new Set<OrderStatus>(["paid", "cancelled"]);
+
+type ApiErrorLike = {
+  response?: {
+    data?: {
+      message?: string;
+    };
+  };
+  message?: string;
+};
+
+const getApiErrorMessage = (error: unknown) => {
+  const apiError = error as ApiErrorLike;
+  return String(apiError.response?.data?.message ?? apiError.message ?? "");
+};
+
+const isExistingInvoiceError = (error: unknown) => {
+  const message = getApiErrorMessage(error).toLowerCase();
+  return (
+    (message.includes("invoice") &&
+      (message.includes("already") || message.includes("exists"))) ||
+    (message.includes("فاتورة") &&
+      (message.includes("مسبق") ||
+        message.includes("موجود") ||
+        message.includes("سابقة")))
+  );
+};
+
+const getInvoiceFromError = (error: unknown): InvoiceFromApi | null => {
+  const apiError = error as {
+    response?: { data?: { data?: unknown; invoice?: unknown } };
+  };
+  const payload = apiError.response?.data;
+  const invoice = payload?.invoice ?? payload?.data;
+
+  return invoice && typeof invoice === "object" && "id" in invoice
+    ? (invoice as InvoiceFromApi)
+    : null;
+};
+
+const normalizePaymentMethod = (
+  value: PaymentMethod | string | null | undefined,
+): PaymentMethod | undefined => {
+  const method = String(value ?? "").trim().toLowerCase();
+  if (!method) return undefined;
+
+  if (method === "cash") return "cash";
+  if (["credit_card", "card", "credit", "visa", "mastercard"].includes(method)) {
+    return "credit_card";
+  }
+  if (method === "wallet") return "wallet";
+  if (["bank_transfer", "bank", "transfer", "qr", "online"].includes(method)) {
+    return "bank_transfer";
+  }
+
+  return undefined;
+};
+
+export interface OrderQueryFilters {
+  branch_id?: number;
+  status?: OrderStatus;
+  date?: string;
+  table_number?: string;
+}
+
+const unwrapOrderList = (payload: unknown): OrderFromApi[] => {
+  if (Array.isArray(payload)) return payload as OrderFromApi[];
+
+  const nested = (payload as { data?: unknown } | null)?.data;
+  return Array.isArray(nested) ? (nested as OrderFromApi[]) : [];
+};
 
 export interface OrderItemPayload {
   item_id: number;
@@ -39,9 +118,71 @@ export interface CreateOrderPayload {
 // ── طلب الدفع ────────────────────────────────────────────────────────────────
 export interface PayOrderPayload {
   payment_method: PaymentMethod;
-  reference_number?: string; // مطلوب عند wallet
+  method?: PaymentMethod;
+  amount: number;
+  reference_number?: string;
   customer_name?: string;
   customer_phone?: string;
+  note?: string;
+}
+
+export interface InvoicePayload {
+  customer_name?: string;
+  customer_phone?: string;
+  note?: string;
+}
+
+export interface InvoiceFromApi {
+  id: number;
+  invoice_number: string;
+  order_id: number;
+  branch_id?: number;
+  subtotal?: number;
+  discount_amount?: number;
+  total: number;
+  status: string;
+  paid_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  payments?: InvoicePaymentResponse[];
+  order?: {
+    id: number;
+    order_number: string;
+    branch_id?: number;
+    customer_name?: string | null;
+    customer_phone?: string | null;
+    table_number?: string | null;
+    note?: string | null;
+    status?: OrderStatus;
+    order_type?: OrderType;
+    payment_method?: PaymentMethod | null;
+    discount_type?: DiscountType;
+    discount_value?: number;
+    discount_amount?: number;
+    items?: OrderItemFromApi[];
+    paid_at?: string | null;
+  };
+}
+
+export interface InvoicePaymentPayload {
+  payment_method?: PaymentMethod | string;
+  method?: PaymentMethod | string;
+  amount: number;
+  reference_number?: string;
+}
+
+export interface CloseOrderWithPaymentsPayload extends InvoicePayload {
+  payments: InvoicePaymentPayload[];
+}
+
+export interface InvoicePaymentResponse {
+  id: number;
+  invoice_id: number;
+  amount: number;
+  payment_method: string;
+  method?: string;
+  reference_number?: string;
+  created_at: string;
 }
 
 // ── نتيجة التحقق من الرقم المرجعي ───────────────────────────────────────────
@@ -121,6 +262,7 @@ export interface OrderFromApi {
   paid_at: string | null; // ✅
   items: OrderItemFromApi[];
   tickets: ProductionTicketFromApi[];
+  payments?: InvoicePaymentResponse[];
   cashier?: { id: number; name: string };
   created_at: string;
   updated_at: string;
@@ -129,18 +271,41 @@ export interface OrderFromApi {
 // ── الخدمة الرئيسية ───────────────────────────────────────────────────────────
 
 export const orderService = {
-  getAll: async (filters?: {
-    branch_id?: number;
-    status?: OrderStatus;
-    date?: string;
-  }): Promise<OrderFromApi[]> => {
+  getAll: async (filters?: OrderQueryFilters): Promise<OrderFromApi[]> => {
     const { data } = await api.get("/orders", { params: filters });
-    return data.data as OrderFromApi[];
+    return unwrapOrderList(data.data);
   },
 
   getOne: async (id: number): Promise<OrderFromApi> => {
     const { data } = await api.get(`/orders/${id}`);
     return data.data as OrderFromApi;
+  },
+
+  getActiveByTableNumber: async (
+    tableNumber: string | number,
+    filters?: Omit<OrderQueryFilters, "table_number" | "status">,
+  ): Promise<OrderFromApi | null> => {
+    const normalizedTable = normalizeTableNumber(tableNumber);
+    if (!normalizedTable) return null;
+
+    const orders = await orderService.getAll({
+      ...filters,
+      table_number: normalizedTable,
+    });
+
+    return (
+      orders
+        .filter(
+          (order) =>
+            normalizeTableNumber(order.table_number) === normalizedTable &&
+            !CLOSED_ORDER_STATUSES.has(order.status),
+        )
+        .sort((a, b) => {
+          const aTime = Date.parse(a.updated_at || a.created_at);
+          const bTime = Date.parse(b.updated_at || b.created_at);
+          return bTime - aTime || b.id - a.id;
+        })[0] ?? null
+    );
   },
 
   create: async (payload: CreateOrderPayload): Promise<OrderFromApi> => {
@@ -162,13 +327,240 @@ export const orderService = {
     return data.data as OrderFromApi;
   },
 
+  /** إنشاء فاتورة رسمية من الطلب */
+  createInvoiceFromOrder: async (
+    orderId: number,
+    payload?: InvoicePayload,
+  ): Promise<InvoiceFromApi> => {
+    const { data } = await api.post(
+      `/orders/${orderId}/invoice`,
+      payload ?? {},
+    );
+    return data.data as InvoiceFromApi;
+  },
+
+  getInvoices: async (params?: {
+    branch_id?: number;
+    order_id?: number;
+    status?: string;
+    from?: string;
+    to?: string;
+    search?: string;
+  }): Promise<InvoiceFromApi[]> => {
+    const { data } = await api.get("/invoices", { params });
+    const payload = data.data;
+    return (Array.isArray(payload) ? payload : payload?.data ?? []) as InvoiceFromApi[];
+  },
+
+  /** إضافة دفعة إلى فاتورة موجودة */
+  addPaymentToInvoice: async (
+    invoiceId: number,
+    payload: InvoicePaymentPayload,
+  ): Promise<InvoicePaymentResponse> => {
+    const method = normalizePaymentMethod(payload.method ?? payload.payment_method);
+    if (!method) {
+      throw new Error("طريقة الدفع مطلوبة");
+    }
+    const { data } = await api.post(`/invoices/${invoiceId}/payments`, {
+      ...payload,
+      method,
+      payment_method: method,
+      amount: normalizeMoney(payload.amount),
+      reference_number: payload.reference_number?.trim() || undefined,
+    });
+
+    return data.data as InvoicePaymentResponse;
+  },
+
+  getInvoiceForOrder: async (orderId: number): Promise<InvoiceFromApi | null> => {
+    const invoices = await orderService.getInvoices({ order_id: orderId });
+    return (
+      invoices.find((invoice) => Number(invoice.order_id) === Number(orderId)) ??
+      invoices[0] ??
+      null
+    );
+  },
+
+  closeOrderWithPayments: async (
+    orderId: number,
+    payload: CloseOrderWithPaymentsPayload,
+  ): Promise<OrderFromApi> => {
+    let invoice: InvoiceFromApi;
+    try {
+      invoice = await orderService.createInvoiceFromOrder(orderId, {
+        customer_name: payload.customer_name,
+        customer_phone: payload.customer_phone,
+        note: payload.note,
+      });
+    } catch (error) {
+      if (!isExistingInvoiceError(error)) {
+        throw error;
+      }
+
+      const existingInvoice =
+        getInvoiceFromError(error) ?? (await orderService.getInvoiceForOrder(orderId));
+      if (!existingInvoice) {
+        throw error;
+      }
+      invoice = existingInvoice;
+    }
+
+    const normalizedPayments = payload.payments
+      .map((payment) => ({
+        ...payment,
+        method: normalizePaymentMethod(payment.method ?? payment.payment_method),
+        amount: normalizeMoney(payment.amount),
+        reference_number: payment.reference_number?.trim() || undefined,
+      }))
+      .filter((payment) => payment.method && payment.amount > 0);
+
+    if (payload.payments.length > 0 && normalizedPayments.length === 0) {
+      throw new Error("طريقة الدفع المحددة غير مدعومة");
+    }
+
+    const invoiceTotal = normalizeMoney(Number(invoice.total || 0));
+    const existingPaid = normalizeMoney(
+      (invoice.payments ?? []).reduce(
+        (sum, payment) => sum + Number(payment.amount || 0),
+        0,
+      ),
+    );
+    let remainingAmount =
+      invoiceTotal > 0 ? Math.max(0, normalizeMoney(invoiceTotal - existingPaid)) : 0;
+
+    for (const payment of normalizedPayments) {
+      if (invoiceTotal > 0 && remainingAmount <= 0) break;
+
+      const amount =
+        invoiceTotal > 0 && existingPaid > 0
+          ? Math.min(payment.amount, remainingAmount)
+          : payment.amount;
+
+      if (amount <= 0) continue;
+
+      await orderService.addPaymentToInvoice(invoice.id, {
+        ...payment,
+        amount,
+      });
+      remainingAmount = normalizeMoney(remainingAmount - amount);
+    }
+
+    const primaryPaymentMethod = normalizedPayments[0]?.method;
+
+    let refreshedOrder = await orderService.getOne(orderId);
+
+    if (primaryPaymentMethod) {
+      try {
+        const { data } = await api.put(`/orders/${orderId}`, {
+          payment_method: primaryPaymentMethod,
+          status: "paid",
+        });
+        refreshedOrder = data.data as OrderFromApi;
+      } catch {
+        try {
+          await api.put(`/orders/${orderId}`, {
+            payment_method: primaryPaymentMethod,
+          });
+          refreshedOrder = await orderService.getOne(orderId);
+        } catch {
+          // Some APIs mark the order paid from the invoice payment endpoint and
+          // reject direct edits after confirmation.
+        }
+      }
+    }
+
+    return refreshedOrder;
+  },
+
+  /** قسم الفاتورة للطباعة */
+  getPrintSections: async (orderId: number): Promise<unknown> => {
+    const { data } = await api.get(`/orders/${orderId}/print-sections`);
+    return data.data;
+  },
+
+  /** إضافة صنف جديد لطلب موجود */
+  addOrderItem: async (
+    orderId: number,
+    payload: OrderItemPayload,
+  ): Promise<OrderItemFromApi> => {
+    const { data } = await api.post(`/orders/${orderId}/items`, payload);
+    return data.data as OrderItemFromApi;
+  },
+
+  /** إزالة صنف من طلب */
+  removeOrderItem: async (
+    orderId: number,
+    orderItemId: number,
+  ): Promise<void> => {
+    await api.delete(`/orders/${orderId}/items/${orderItemId}`);
+  },
+
   /**
-   * إغلاق الطلب ماليًا
+   * إغلاق الطلب ماليًا عبر إنشاء فاتورة ثم إرسال دفعة
    * إذا payment_method === 'wallet' → reference_number مطلوب
+   * يتبع التدفق الكامل: invoice → payment → journal entry → order status=paid
    */
   pay: async (id: number, payload: PayOrderPayload): Promise<OrderFromApi> => {
-    const { data } = await api.post(`/orders/${id}/pay`, payload);
+    // Phase 4a: إنشاء فاتورة
+    const invoice = await api.post(`/orders/${id}/invoice`, {
+      customer_name: payload.customer_name,
+      customer_phone: payload.customer_phone,
+      note: payload.note,
+    });
+    const invoiceData = invoice.data.data as InvoiceFromApi;
+
+    // Phase 4b: تسجيل الدفعة
+    const paymentMethod = normalizePaymentMethod(
+      payload.method ?? payload.payment_method,
+    );
+    if (!paymentMethod) {
+      throw new Error("طريقة الدفع مطلوبة");
+    }
+    await api.post(`/invoices/${invoiceData.id}/payments`, {
+      method: paymentMethod,
+      payment_method: paymentMethod,
+      amount: normalizeMoney(payload.amount),
+      reference_number: payload.reference_number?.trim() || undefined,
+    });
+
+    await api.put(`/orders/${id}`, { payment_method: paymentMethod });
+
+    // جلب الطلب المحدث
+    const { data } = await api.get(`/orders/${id}`);
     return data.data as OrderFromApi;
+  },
+
+  transferClosedOrderToSales: async (
+    order: OrderFromApi,
+  ): Promise<AccountingTransaction> => {
+    const paymentMethod = order.payment_method ?? "cash";
+    const cashAccountMap: Record<PaymentMethod, number> = {
+      cash: 1001,
+      credit_card: 1002,
+      wallet: 1003,
+      bank_transfer: 1004,
+    };
+
+    const { data } = await api.post("/accounting/transactions", {
+      type: "sale",
+      description: `ترحيل مبيعات طلب #${order.order_number}`,
+      source_type: "order",
+      source_id: order.id,
+      reference: order.order_number,
+      entries: [
+        {
+          account_id: cashAccountMap[paymentMethod] ?? 1001,
+          debit: order.total,
+          description: "قبض مبيعات",
+        },
+        {
+          account_id: 4001,
+          credit: order.total,
+          description: "إيرادات مبيعات",
+        },
+      ],
+    });
+    return data.data as AccountingTransaction;
   },
 
   /** التحقق من الرقم المرجعي قبل الإرسال (لمنع التكرار) */
@@ -181,6 +573,46 @@ export const orderService = {
       order_id: currentOrderId,
     });
     return data.data as ReferenceVerifyResult;
+  },
+
+  /** إنشاء قيد محاسبي تلقائي عند دفع الفاتورة */
+  createJournalEntryFromInvoice: async (
+    invoiceId: number,
+    orderId: number,
+    amount: number,
+    paymentMethod: PaymentMethod,
+    description?: string,
+  ): Promise<AccountingTransaction> => {
+    const cashAccountMap: Record<PaymentMethod, number> = {
+      cash: 1001,
+      credit_card: 1002,
+      wallet: 1003,
+      bank_transfer: 1004,
+    };
+
+    const revenueAccountId = 4001;
+    const cashAccountId = cashAccountMap[paymentMethod] ?? 1001;
+
+    const { data } = await api.post("/accounting/transactions", {
+      type: "sale",
+      description:
+        description ?? `فاتورة #${invoiceId} - طلب #${orderId}`,
+      source_type: "invoice",
+      source_id: invoiceId,
+      entries: [
+        {
+          account_id: cashAccountId,
+          debit: amount,
+          description: "قبض نقد/بطاقة",
+        },
+        {
+          account_id: revenueAccountId,
+          credit: amount,
+          description: "إيرادات مبيعات",
+        },
+      ],
+    });
+    return data.data as AccountingTransaction;
   },
 
   cancel: async (id: number): Promise<OrderFromApi> => {

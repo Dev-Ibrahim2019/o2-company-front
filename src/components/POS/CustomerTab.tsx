@@ -7,6 +7,9 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { PaymentMethod } from '../../../types';
 import type { Customer, Employee, Supplier } from '../../../types';
 
+const roundMoney = (value: number) =>
+  Math.round((Number(value) || 0) * 100) / 100;
+
 export interface PaymentEntry {
   method: PaymentMethod;
   amount: number;
@@ -43,8 +46,10 @@ export const CustomerTab: React.FC<CustomerTabProps> = ({
   updatePaymentAmount, updatePaymentReference,
 }) => {
   const [showAccountSuggestions, setShowAccountSuggestions] = React.useState(false);
-  const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
-  const remainingAmount = Math.max(0, total - totalPaid);
+  const totalPaid = roundMoney(
+    payments.reduce((sum, payment) => sum + payment.amount, 0),
+  );
+  const remainingAmount = Math.max(0, roundMoney(total - totalPaid));
   const progress = total > 0 ? Math.min(100, (totalPaid / total) * 100) : 0;
 
   const accountSuggestions = React.useMemo(() => {

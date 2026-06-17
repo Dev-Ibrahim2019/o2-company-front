@@ -16,6 +16,9 @@ import {
   Wallet,
   Save,
   X,
+  ArrowUpRight,
+  ArrowDownRight,
+  Download,
 } from "lucide-react";
 import { useApp } from "../../../../store";
 import type { BankAccount, Customer, Supplier } from "../../../../types";
@@ -25,7 +28,7 @@ type ViewMode = "cards" | "table";
 
 const SummaryCard: React.FC<{
   label: string;
-  value: string;
+  value: string | number;
   sub?: string;
   color: string;
   bg: string;
@@ -1005,11 +1008,9 @@ export const APTab: React.FC<{ suppliers?: Supplier[] }> = ({ suppliers }) => {
                   </div>
                   <div className="p-4">
                     <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-1">
-                      الحالة
+                      العمر
                     </p>
-                    <p className="text-sm font-black text-white">
-                      {supplier.balance > 0 ? "مستحق" : "مسوى"}
-                    </p>
+                    <AgingBadge days={0} />
                   </div>
                 </div>
 
@@ -1018,7 +1019,7 @@ export const APTab: React.FC<{ suppliers?: Supplier[] }> = ({ suppliers }) => {
                     onClick={() => handleSettle(supplier)}
                     className="px-3 py-1.5 bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 text-[10px] font-black rounded-lg hover:bg-emerald-600 hover:text-white transition-all"
                   >
-                    سداد
+                    تسوية
                   </button>
                   <div className="flex items-center gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                     <button
@@ -1027,17 +1028,16 @@ export const APTab: React.FC<{ suppliers?: Supplier[] }> = ({ suppliers }) => {
                         setShowModal(true);
                       }}
                       className="p-2 rounded-lg bg-white/5 border border-white/10 text-slate-400 hover:text-white transition-all"
-                      >
-                        <Edit3 size={14} />
-                      </button>
+                    >
+                      <Edit3 size={14} />
+                    </button>
                   </div>
                 </div>
               </motion.div>
             ))}
-
             {filtered.length === 0 && (
               <div className="col-span-full py-20 text-center text-slate-600 font-black italic">
-                لا يوجد موردون
+                لا يوجد موردون مطابقون للبحث
               </div>
             )}
           </div>
@@ -1048,8 +1048,7 @@ export const APTab: React.FC<{ suppliers?: Supplier[] }> = ({ suppliers }) => {
                 <tr className="text-slate-500 font-black uppercase tracking-wider">
                   <th className="px-5 py-3">المورد</th>
                   <th className="px-5 py-3">الهاتف</th>
-                  <th className="px-5 py-3 text-center">المستحق</th>
-                  <th className="px-5 py-3 text-center">الحالة</th>
+                  <th className="px-5 py-3 text-center">الرصيد</th>
                   <th className="px-5 py-3 text-center">الإجراءات</th>
                 </tr>
               </thead>
@@ -1071,15 +1070,12 @@ export const APTab: React.FC<{ suppliers?: Supplier[] }> = ({ suppliers }) => {
                       </span>
                     </td>
                     <td className="px-5 py-4 text-center">
-                      <AgingBadge days={supplier.balance > 0 ? 45 : 0} />
-                    </td>
-                    <td className="px-5 py-4 text-center">
                       <div className="flex items-center justify-center gap-2">
-                      <button
+                        <button
                           onClick={() => handleSettle(supplier)}
                           className="px-3 py-1.5 bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 text-[10px] font-black rounded-lg hover:bg-emerald-600 hover:text-white transition-all"
                         >
-                          سداد
+                          تسوية
                         </button>
                         <button
                           onClick={() => {
@@ -1096,7 +1092,7 @@ export const APTab: React.FC<{ suppliers?: Supplier[] }> = ({ suppliers }) => {
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-16 text-center text-slate-600 font-black italic">
+                    <td colSpan={4} className="py-16 text-center text-slate-600 font-black italic">
                       لا توجد نتائج
                     </td>
                   </tr>
@@ -1120,24 +1116,71 @@ export const APTab: React.FC<{ suppliers?: Supplier[] }> = ({ suppliers }) => {
   );
 };
 
-export const CashBankTab: React.FC<{ bankAccounts?: BankAccount[] }> = ({
-  bankAccounts,
-}) => {
-  const app = useApp();
-  const records = bankAccounts ?? app.bankAccounts;
-  const [showModal, setShowModal] = useState(false);
-  const [editingBankAccount, setEditingBankAccount] = useState<BankAccount | null>(null);
-  const [search, setSearch] = useState("");
+interface BankAccountLocal { id: string; name: string; bankName: string; balance: number }
+interface AccountLike { id: number; name: string; code: string; type: string; balance?: number }
+interface TransactionLike {
+  id: number;
+  date: string;
+  transaction_number: string;
+  description?: string;
+  entries?: {
+    account_id: number;
+    debit: number;
+    credit: number;
+    description?: string;
+  }[];
+}
 
-  const filtered = useArSearch(records, search);
-  const totalBank = useMemo(
-    () => records.reduce((sum, bank) => sum + bank.balance, 0),
-    [records],
+export const CashBankTab: React.FC<{
+  bankAccounts: BankAccountLocal[];
+  accounts?: AccountLike[];
+  transactions?: TransactionLike[];
+}> = ({ bankAccounts, accounts = [], transactions = [] }) => {
+  const app = useApp();
+  const cashAssetAccounts = accounts.filter((account) => {
+    const label = `${account.name} ${account.code}`;
+    return account.type === "asset" && /(cash|bank|صندوق|نقد|بنك)/i.test(label);
+  });
+  const bankAssetAccounts = cashAssetAccounts.filter((account) =>
+    /(bank|بنك)/i.test(`${account.name} ${account.code}`),
   );
-  const cashOnHand = useMemo(
-    () => app.cashBoxes.reduce((sum, cashBox) => sum + cashBox.balance, 0),
-    [app.cashBoxes],
+  const drawerAccounts = cashAssetAccounts.filter(
+    (account) => !bankAssetAccounts.some((bank) => bank.id === account.id),
   );
+  const accountBankTotal = bankAssetAccounts.reduce((s, b) => s + Number(b.balance || 0), 0);
+  const totalBank = bankAccounts.length > 0
+    ? bankAccounts.reduce((s, b) => s + b.balance, 0)
+    : accountBankTotal;
+  const cashOnHand = drawerAccounts.reduce((s, account) => s + Number(account.balance || 0), 0);
+  const displayedBankAccounts =
+    bankAccounts.length > 0
+      ? bankAccounts
+      : bankAssetAccounts.map((account) => ({
+          id: String(account.id),
+          name: account.name,
+          bankName: account.code,
+          balance: Number(account.balance || 0),
+        }));
+  const cashAccountIds = new Set(cashAssetAccounts.map((account) => account.id));
+  const recentTx = transactions
+    .flatMap((tx) =>
+      (tx.entries ?? [])
+        .filter((entry) => cashAccountIds.has(entry.account_id))
+        .map((entry) => ({
+          date: tx.date,
+          desc: entry.description || tx.description || tx.transaction_number,
+          type: entry.debit > 0 ? "credit" : "debit",
+          amount: entry.debit > 0 ? entry.debit : entry.credit,
+        })),
+    )
+    .slice(0, 8);
+  const monthlyOutflows = recentTx
+    .filter((tx) => tx.type === "debit")
+    .reduce((sum, tx) => sum + tx.amount, 0);
+
+  const [search, setSearch] = useState("");
+  const [showModal, setShowModal] = useState(false);
+  const [editingBankAccount, setEditingBankAccount] = useState<BankAccountLocal | null>(null);
 
   const openCreate = () => {
     setEditingBankAccount(null);
@@ -1167,7 +1210,7 @@ export const CashBankTab: React.FC<{ bankAccounts?: BankAccount[] }> = ({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <SummaryCard
           label="إجمالي أرصدة البنوك"
-          value={`₪${totalBank.toLocaleString()}`}
+          value={totalBank}
           color="text-blue-400"
           bg="bg-blue-500/10"
           border="border-blue-500/20"
@@ -1175,7 +1218,7 @@ export const CashBankTab: React.FC<{ bankAccounts?: BankAccount[] }> = ({
         />
         <SummaryCard
           label="النقد في الصندوق"
-          value={`₪${cashOnHand.toLocaleString()}`}
+          value={cashOnHand}
           color="text-emerald-400"
           bg="bg-emerald-500/10"
           border="border-emerald-500/20"
@@ -1183,21 +1226,21 @@ export const CashBankTab: React.FC<{ bankAccounts?: BankAccount[] }> = ({
         />
         <SummaryCard
           label="إجمالي السيولة"
-          value={`₪${(totalBank + cashOnHand).toLocaleString()}`}
-          sub="بنوك + صناديق"
+          value={totalBank + cashOnHand}
+          sub="بنوك + صندوق"
           color="text-amber-400"
           bg="bg-amber-500/10"
           border="border-amber-500/20"
           icon={Wallet}
         />
         <SummaryCard
-          label="عدد الحسابات"
-          value={`${records.length}`}
-          sub="حساب بنكي"
+          label="مدفوعات الفترة"
+          value={monthlyOutflows}
+          sub="من القيود"
           color="text-rose-400"
           bg="bg-rose-500/10"
           border="border-rose-500/20"
-          icon={CreditCard}
+          icon={ArrowDownRight}
         />
       </div>
 
@@ -1225,62 +1268,112 @@ export const CashBankTab: React.FC<{ bankAccounts?: BankAccount[] }> = ({
         }
       >
         <div className="p-5 space-y-3">
-          {filtered.map((bank, index) => (
-            <motion.div
-              key={bank.id}
+          {displayedBankAccounts.map((bank, i) => (
+            <motion.div key={bank.id}
               initial={{ opacity: 0, x: 10 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.05 }}
+              transition={{ delay: i * 0.08 }}
               className="bg-slate-950/60 border border-white/5 rounded-2xl p-4 hover:border-blue-500/30 transition-all group"
             >
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
                     <CreditCard size={18} />
                   </div>
                   <div>
                     <p className="text-xs font-black text-white">{bank.name}</p>
-                    <p className="text-[10px] text-slate-500 font-bold">{bank.bankName}</p>
+                    <p className="text-[10px] text-slate-500 font-bold capitalize">{bank.bankName}</p>
                   </div>
                 </div>
                 <div className="text-left">
-                  <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-0.5">
-                    الرصيد
-                  </p>
-                  <p className="text-base font-black font-mono text-white">
-                    ₪{bank.balance.toLocaleString()}
-                  </p>
+                  <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-0.5">الرصيد</p>
+                  <p className="text-base font-black font-mono text-white">₪{bank.balance.toLocaleString()}</p>
                 </div>
               </div>
-
-              <div className="mt-4 flex items-center justify-between">
-                <p className="text-[9px] text-slate-600 font-black">
-                  {bank.accountNumber}
-                </p>
-                <button
-                  onClick={() => {
-                    setEditingBankAccount(bank);
-                    setShowModal(true);
-                  }}
-                  className="px-3 py-1.5 bg-white/5 border border-white/10 text-slate-400 text-[10px] font-black rounded-lg hover:bg-white/10 transition-all"
-                >
-                  تعديل
-                </button>
+              {/* mini progress */}
+              <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+                <div className="h-full bg-blue-500/60 rounded-full"
+                  style={{ width: `${Math.min((bank.balance / (totalBank || 1)) * 100, 100)}%` }} />
               </div>
+              <p className="text-[9px] text-slate-600 font-black mt-1.5 text-left">
+                {totalBank > 0 ? ((bank.balance / totalBank) * 100).toFixed(1) : 0}% من الإجمالي
+              </p>
             </motion.div>
           ))}
 
-          {filtered.length === 0 && (
-            <div className="py-16 text-center text-slate-600 font-black italic">
-              لا توجد حسابات بنكية
+          {/* Cash Box */}
+          <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                  <CreditCard size={18} />
+                </div>
+                <div>
+                  <p className="text-xs font-black text-white">
+                    {drawerAccounts.length > 0 ? drawerAccounts.map(a => a.name).join(', ') : 'الصندوق النقدي'}
+                  </p>
+                  <p className="text-[10px] text-slate-500 font-bold">صندوق</p>
+                </div>
+              </div>
+              <div className="text-left">
+                <p className="text-[9px] text-slate-600 font-black uppercase tracking-widest mb-0.5">
+                  الرصيد
+                </p>
+                <p className="text-base font-black font-mono text-white">
+                  ₪{cashOnHand.toLocaleString()}
+                </p>
+              </div>
             </div>
-          )}
+          </div>
+        </div>
+
+        {/* Recent Transactions */}
+        <div className="bg-slate-900/60 border border-white/5 rounded-3xl overflow-hidden">
+          <div className="p-5 border-b border-white/5 flex items-center justify-between">
+            <h3 className="text-sm font-black text-white">آخر الحركات النقدية</h3>
+            <button className="text-[11px] text-slate-400 hover:text-white font-black transition-colors flex items-center gap-1">
+              <Download size={13} /> تصدير
+            </button>
+          </div>
+          <div className="divide-y divide-white/5">
+            {recentTx.map((tx, i) => (
+              <motion.div key={i}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: i * 0.06 }}
+                className="flex items-center justify-between px-5 py-4 hover:bg-white/[0.02] transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${tx.type === 'credit' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'}`}>
+                    {tx.type === 'credit' ? <ArrowDownRight size={14} /> : <ArrowUpRight size={14} />}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-bold text-white">{tx.desc}</p>
+                    <p className="text-[10px] font-mono text-slate-500">{tx.date}</p>
+                  </div>
+                </div>
+                <span className={`text-sm font-black font-mono ${tx.type === 'credit' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {tx.type === 'credit' ? '+' : '-'}₪{tx.amount.toLocaleString()}
+                </span>
+              </motion.div>
+            ))}
+            {recentTx.length === 0 && (
+              <div className="px-5 py-12 text-center text-slate-600 text-xs font-black">
+                لا توجد حركات نقدية مرتبطة بحسابات الصندوق أو البنك
+              </div>
+            )}
+          </div>
+          <div className="p-4 border-t border-white/5 text-center">
+            <button className="text-[11px] text-slate-500 hover:text-white font-black transition-colors">
+              عرض كافة الحركات ←
+            </button>
+          </div>
         </div>
       </CardShell>
 
       <BankAccountModal
         isOpen={showModal}
-        bankAccount={editingBankAccount}
+        bankAccount={editingBankAccount as unknown as BankAccount}
         onClose={() => {
           setShowModal(false);
           setEditingBankAccount(null);

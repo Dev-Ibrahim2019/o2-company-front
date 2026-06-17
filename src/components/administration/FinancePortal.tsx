@@ -13,13 +13,14 @@ import MenuPage from '../administration/Items/MenuPage';
 import renderModal from '../administration/renderModal';
 import BranchesPage from '../administration/BranchesPage/BranchesPage';
 import SupplierPortal from './suppliers/SupplierPortal';
+import SalesInvoicesPage from '../administration/SalesInvoicesPage';
 
 import { OrgStructure } from './OrgStructure/OrgStructure';
 import { AccountingPortal } from './GL/AccountingPortal';
 
 
 interface FinancePortalProps {
-  initialView?: 'DASHBOARD' | 'BRANCHES' | 'DEPARTMENTS' | 'ITEM_TREE' | 'ITEMS_INDEX' | 'MENU' | 'ORDERS' | 'CUSTOMERS' | 'SUPPLIERS' | 'EMPLOYEES' | 'ACCOUNTING' | 'REPORTS' | 'SETTINGS' | 'AUDIT_LOG' | 'ARCHIVE' | 'ORGSTRUCTURE';
+  initialView?: 'DASHBOARD' | 'BRANCHES' | 'DEPARTMENTS' | 'ITEM_TREE' | 'ITEMS_INDEX' | 'MENU' | 'ORDERS' | 'SALES' | 'CUSTOMERS' | 'SUPPLIERS' | 'EMPLOYEES' | 'ACCOUNTING' | 'REPORTS' | 'SETTINGS' | 'AUDIT_LOG' | 'ARCHIVE' | 'ORGSTRUCTURE';
 }
 
 export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DASHBOARD' }) => {
@@ -41,6 +42,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
     ITEMS_INDEX: <MenuPage initialMode="list" />,
     MENU: <MenuPage initialMode="tree" />,
     ORDERS: <OrdersPage />,
+    SALES: <SalesInvoicesPage />,
     CUSTOMERS: renderCustomers(),
     SUPPLIERS: renderSuppliers(),
     EMPLOYEES: <EmployeeManagement />,

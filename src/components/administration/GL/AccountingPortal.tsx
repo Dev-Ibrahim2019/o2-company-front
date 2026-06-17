@@ -19,9 +19,9 @@ import { useAccounting } from "../../../hooks/useAccounting";
 import { accountService } from "../../../services/accountingService";
 import { branchService } from "../../../services/branchService";
 import type { Account, Transaction, CostCenter } from "../../../services/accountingService";
+import { AccountType } from "../../../../types";
 
 import { AccountingDashboard } from "./AccountingDashboard";
-import EmployeePortal from "../employees/EmployeePortal";
 import { FiscalYearsView, CostCentersView } from "./GLSubViews";
 import { EnterpriseJournalView as JournalView } from "./EnterpriseJournalView";
 import { JournalEntriesWorkspace } from "./journal/JournalEntriesWorkspace";
@@ -31,9 +31,8 @@ import {
   AccountEmptyState,
 } from "./COAComponents";
 import type { COAWithRollup, LedgerFilter, LedgerLine } from "./COAComponents";
-import { CashBankTab } from "./ARAPCashTabs";
-import CustomerPortal from "../customers/CustomerPortal";
-import SupplierPortal from "../suppliers/SupplierPortal";
+import { CashBankTab, ARTab, APTab } from "./ARAPCashTabs";
+import { EmployeesTab } from "./EmployeesTab";
 import {
   AddCOAModal,
   EditCOAModal,
@@ -71,7 +70,63 @@ function toCoaShape(acc: Account): COAWithRollup {
   };
 }
 
-// ─── تحويل Transaction API → Journal shape (مع subledger) ────────────────────
+// ─── Helper functions ────────────────────────────────────────────────────────
+
+function emptyJournalForm(type: string = "journal") {
+  return {
+    date: new Date().toISOString().split("T")[0],
+    description: "",
+    type,
+    lines: [
+      { accountId: "", debit: 0, credit: 0, description: "" },
+      { accountId: "", debit: 0, credit: 0, description: "" },
+    ],
+  };
+}
+
+function toJournalShapeEnterprise(tx: Transaction) {
+  const status = tx.status === "posted"
+    ? "POSTED"
+    : tx.status === "cancelled"
+      ? "CANCELLED"
+      : "DRAFT";
+
+  return {
+    id: String(tx.id),
+    date: tx.date,
+    description: tx.description ?? tx.type_label,
+    status,
+    reference: tx.reference ?? tx.transaction_number,
+    transactionNumber: tx.transaction_number,
+    type: tx.type,
+    typeLabel: tx.type_label,
+    branchName: tx.branch?.name ?? undefined,
+    userName: tx.user?.name ?? undefined,
+    currency: (tx as any).currency ?? undefined,
+    totalDebit: tx.total_debit,
+    totalCredit: tx.total_credit,
+    entriesCount: tx.entries_count,
+    isBalanced: tx.is_balanced,
+    approvedBy: (tx as any).approved_by?.name ?? (tx as any).approved_by ?? undefined,
+    postedAt: tx.posted_at,
+    createdAt: tx.created_at,
+    notes: tx.notes,
+    isReversal: Boolean((tx as any).is_reversal),
+    lines: (tx.entries ?? []).map((e) => ({
+      id: e.id,
+      accountId: String(e.account_id),
+      accountName: e.account?.name ?? null,
+      accountCode: e.account?.code ?? null,
+      debit: e.debit,
+      credit: e.credit,
+      description: e.description,
+      costCenterName: e.cost_center?.name ?? null,
+      subledgerType: e.subledger_type ?? null,
+      subledger_id: e.subledger_id ?? null,
+      subledgerName: e.subledger?.name ?? null,
+    })),
+  };
+}
 
 function toJournalShape(tx: Transaction) {
   return toJournalShapeEnterprise(tx);
@@ -314,7 +369,6 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
   const [coaForm, setCoaForm] = useState<Partial<any>>({ type: "asset", isPosting: true });
   const [journalForm, setJournalForm] = useState(emptyJournalForm());
   const [costCenterForm, setCostCenterForm] = useState<Partial<any>>({ type: "operational", is_active: true });
-
 
   // ── transforms ──────────────────────────────────────────────────────────────
   const flatAccounts = useMemo(() => acc.accounts.map(toCoaShape), [acc.accounts]);
@@ -575,8 +629,6 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
   }, [glSubTab]);
   // ─── GL render ────────────────────────────────────────────────────────────────
   const renderGL = () => {
-
-
     return (
       <div className="flex flex-col h-full">
         <AnimatePresence mode="wait">
@@ -1036,11 +1088,9 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
           >
             {activeTab === "DASHBOARD" && <AccountingDashboard stats={stats} />}
             {activeTab === "GL" && renderGL()}
-            {activeTab === "HR" && (
-              <EmployeePortal />
-            )}
-            {activeTab === "AR" && <CustomerPortal />}
-            {activeTab === "AP" && <SupplierPortal />}
+            {activeTab === "HR" && <EmployeesTab />}
+            {activeTab === "AR" && <ARTab customers={app.customers} />}
+            {activeTab === "AP" && <APTab suppliers={app.suppliers} />}
             {activeTab === "CASH" && <CashBankTab bankAccounts={app.bankAccounts} />}
           </motion.div>
         </AnimatePresence>
@@ -1114,60 +1164,3 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
   );
 };
 
-// ── helper ────────────────────────────────────────────────────────────────────
-
-function emptyJournalForm(type: string = "journal") {
-  return {
-    date: new Date().toISOString().split("T")[0],
-    description: "",
-    type,
-    lines: [
-      { accountId: "", debit: 0, credit: 0, description: "" },
-      { accountId: "", debit: 0, credit: 0, description: "" },
-    ],
-  };
-}
-
-function toJournalShapeEnterprise(tx: Transaction) {
-  const status = tx.status === "posted"
-    ? "POSTED"
-    : tx.status === "cancelled"
-      ? "CANCELLED"
-      : "DRAFT";
-
-  return {
-    id: String(tx.id),
-    date: tx.date,
-    description: tx.description ?? tx.type_label,
-    status,
-    reference: tx.reference ?? tx.transaction_number,
-    transactionNumber: tx.transaction_number,
-    type: tx.type,
-    typeLabel: tx.type_label,
-    branchName: tx.branch?.name ?? undefined,
-    userName: tx.user?.name ?? undefined,
-    currency: (tx as any).currency ?? undefined,
-    totalDebit: tx.total_debit,
-    totalCredit: tx.total_credit,
-    entriesCount: tx.entries_count,
-    isBalanced: tx.is_balanced,
-    approvedBy: (tx as any).approved_by?.name ?? (tx as any).approved_by ?? undefined,
-    postedAt: tx.posted_at,
-    createdAt: tx.created_at,
-    notes: tx.notes,
-    isReversal: Boolean((tx as any).is_reversal),
-    lines: (tx.entries ?? []).map((e) => ({
-      id: e.id,
-      accountId: String(e.account_id),
-      accountName: e.account?.name ?? null,
-      accountCode: e.account?.code ?? null,
-      debit: e.debit,
-      credit: e.credit,
-      description: e.description,
-      costCenterName: e.cost_center?.name ?? null,
-      subledgerType: e.subledger_type ?? null,
-      subledger_id: e.subledger_id ?? null,
-      subledgerName: e.subledger?.name ?? null,
-    })),
-  };
-}

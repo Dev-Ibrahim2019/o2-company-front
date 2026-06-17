@@ -52,6 +52,70 @@ export interface COAWithRollup {
   children?: COAWithRollup[];
 }
 
+// ─── helper: filter ledger lines ─────────────────────────────────────────
+
+export const filterLedgerLines = (
+  journalEntries: any[],
+  accountId: string,
+  filter: LedgerFilter,
+) => {
+  const now = new Date();
+  return journalEntries
+    .flatMap((je) =>
+      je.lines
+        .filter((l: any) => l.accountId === accountId)
+        .map((l: any) => ({
+          ...l,
+          date: je.date,
+          description: l.description || je.description,
+          entryId: je.id,
+          reference: je.reference,
+          sourceType: je.sourceType,
+          sourceId: je.sourceId,
+        })),
+    )
+    .filter((line) => {
+      const d = new Date(line.date);
+      switch (filter.type) {
+        case "LAST_WEEK": {
+          const t = new Date();
+          t.setDate(now.getDate() - 7);
+          return d >= t;
+        }
+        case "LAST_MONTH": {
+          const t = new Date();
+          t.setMonth(now.getMonth() - 1);
+          return d >= t;
+        }
+        case "MONTH_TO_DATE":
+          return d >= new Date(now.getFullYear(), now.getMonth(), 1);
+        case "LAST_YEAR": {
+          const t = new Date();
+          t.setFullYear(now.getFullYear() - 1);
+          return d >= t;
+        }
+        case "YEAR_TO_DATE":
+          return d >= new Date(now.getFullYear(), 0, 1);
+        case "RANGE":
+          return filter.startDate && filter.endDate
+            ? d >= new Date(filter.startDate) && d <= new Date(filter.endDate)
+            : true;
+        case "SPECIFIC":
+          return filter.startDate ? line.date === filter.startDate : true;
+        case "BEFORE":
+          return filter.startDate ? d <= new Date(filter.startDate) : true;
+        case "AFTER":
+          return filter.startDate ? d >= new Date(filter.startDate) : true;
+        default:
+          return true;
+      }
+    })
+    .sort(
+      (a: any, b: any) =>
+        new Date(a.date).getTime() - new Date(b.date).getTime(),
+    );
+};
+
 // ─── LedgerFilterBar ─────────────────────────────────────────────────────
 
 interface LedgerFilterBarProps {
@@ -160,9 +224,7 @@ export const COATree: React.FC<COATreeProps> = ({
             <div
               onClick={(e) => {
                 e.stopPropagation();
-                // ✅ FIX 1: اختر الحساب أولاً دائماً
                 setSelectedAccountId(account.id);
-                // ثم toggle الـ expand إذا فيه أولاد
                 if (hasChildren) toggleNode(account.id, e);
               }}
               className={`group flex items-center justify-between p-2.5 sm:p-3 rounded-2xl border transition-all cursor-pointer mb-2 relative ${selectedAccountId === account.id
@@ -283,7 +345,6 @@ export const COATree: React.FC<COATreeProps> = ({
 interface AccountDetailPanelProps {
   selectedAccount: COAWithRollup;
   allAccountsWithRollup: COAWithRollup[];
-  // ✅ FIX 2: ledgerLines مباشرة من الـ API
   ledgerLines: LedgerLine[];
   openingBalance: number;
   loadingLedger: boolean;
@@ -340,6 +401,15 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
     }
   };
 
+  const isCashResource =
+    selectedAccount.type === AccountType.ASSET &&
+    /(cash|bank|صندوق|نقد|بنك)/i.test(
+      `${selectedAccount.nameAr} ${selectedAccount.code}`,
+    );
+  const invoiceMovements = ledgerLines.filter((entry: any) =>
+    ["invoice", "order"].includes(String(entry.sourceType ?? "")),
+  );
+
   const panelContent = (
     <div className={`${isExpanded ? "fixed inset-0 z-50 bg-slate-950" : "flex-1 bg-slate-900/50 border border-white/5 rounded-[2.5rem]"} overflow-hidden flex flex-col`}>
       {/* Header */}
@@ -354,7 +424,6 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
                 <h2 className="text-2xl font-black text-white">
                   {selectedAccount.nameAr}
                 </h2>
-                {/* ✅ FIX 1: زر التكبير يعمل داخل المكوّن بدون تغيير الـ tab */}
                 <button
                   onClick={() => setIsExpanded(!isExpanded)}
                   className="p-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-slate-500 hover:text-white transition-all ml-2"
@@ -412,10 +481,36 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
                 <LedgerFilterBar filter={ledgerFilter} onChange={setLedgerFilter} />
               </div>
             )}
+
+            {selectedAccount.isPosting && isCashResource && (
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">
+                      مورد مرتبط
+                    </p>
+                    <p className="mt-1 text-sm font-black text-white">
+                      {selectedAccount.nameAr.includes("صندوق")
+                        ? "صندوق مبيعات / نقدية"
+                        : "حساب نقدية أو بنك"}
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-left">
+                    <div>
+                      <p className="text-[9px] font-black text-slate-500 uppercase">حركات الحساب</p>
+                      <p className="text-lg font-black text-white">{ledgerLines.length}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black text-slate-500 uppercase">فواتير مرتبطة</p>
+                      <p className="text-lg font-black text-emerald-400">{invoiceMovements.length}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex items-end gap-6">
-            {/* ✅ FIX: عرض الرصيد الحقيقي */}
             <div className="text-left space-y-2">
               <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">
                 الرصيد الحالي
@@ -473,7 +568,6 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
       <div className="flex-1 overflow-hidden flex flex-col">
         {selectedAccount.isPosting ? (
           <div className="flex-1 overflow-y-auto px-4 py-6 custom-scrollbar">
-            {/* ✅ FIX 2: Loading state */}
             {loadingLedger ? (
               <div className="flex items-center justify-center py-20 text-slate-500 gap-3">
                 <RefreshCw size={18} className="animate-spin" />
@@ -491,7 +585,6 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {/* ✅ FIX 2: سطر الرصيد الافتتاحي */}
                   {openingBalance !== 0 && (
                     <tr className="bg-slate-950/30">
                       <td className="py-3 pr-4 font-mono text-[10px] text-slate-600">—</td>
@@ -528,9 +621,11 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
                           <p className="font-bold text-white">
                             {line.description || line.transaction_number}
                           </p>
-                          {line.reference && (
-                            <p className="text-[9px] text-slate-600 font-mono mt-0.5">
-                              {line.reference}
+                          {(line.reference || line.sourceType) && (
+                            <p className="mt-1 text-[9px] font-mono font-black text-slate-600">
+                              {line.sourceType ? `${line.sourceType} ` : ""}
+                              {line.sourceId ? `#${line.sourceId} ` : ""}
+                              {line.reference ? `REF: ${line.reference}` : ""}
                             </p>
                           )}
                           <p className="text-[9px] text-slate-600 font-mono">
@@ -623,7 +718,6 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
     </div>
   );
 
-  // ✅ FIX 1: عند التكبير نعرض overlay فوق كل شيء
   return (
     <>
       {!isExpanded && panelContent}

@@ -17,25 +17,20 @@ import { AdminLayout } from "./components/administration/Layout";
 const Main: React.FC = () => {
   const { currentUser, currentShift, userRole, editingOrderId } = useApp();
   const [activeView, setActiveView] = useState('finance_dashboard');
-  // useEffect(() => {
-  //   if (userRole === 'ADMIN' || userRole === 'FINANCE') {
-  //     setActiveView('finance_dashboard');
-  //   } else if (userRole === 'BRANCH_MANAGER') {
-  //     setActiveView('branch_dashboard');
-  //   } else if (userRole === 'HOSPITALITY') {
-  //     setActiveView('hospitality_tables');
-  //   } else if (userRole === 'DEPARTMENT_STAFF') {
-  //     setActiveView('dept_dashboard');
-  //   } else if (userRole === 'ORDER_AGGREGATOR') {
-  //     setActiveView('aggregator_dashboard');
-  //   } else if (userRole === 'EMPLOYEE') {
-  //     setActiveView('employee_dashboard');
-  //   } else if (userRole === 'CUSTOMER') {
-  //     setActiveView('customer_home');
-  //   } else if (editingOrderId) {
-  //     setActiveView('pos');
-  //   }
-  // }, [userRole, editingOrderId]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    if (userRole === 'HOSPITALITY') {
+      setActiveView('tables');
+      return;
+    }
+
+    if (editingOrderId) {
+      setActiveView('pos');
+      return;
+    }
+  }, [currentUser?.id, userRole, editingOrderId]);
 
   if (!currentUser) return <Login />;
   const showContent = () => {
@@ -109,6 +104,7 @@ const Main: React.FC = () => {
       case 'finance_item_tree': return <FinancePortal key="f_item_tree" initialView="ITEM_TREE" />;
       case 'finance_items_index': return <FinancePortal key="f_items_index" initialView="ITEMS_INDEX" />;
       case 'finance_orders': return <FinancePortal key="f_orders" initialView="ORDERS" />;
+      case 'finance_sales': return <FinancePortal key="f_sales" initialView="SALES" />;
       case 'finance_customers': return <FinancePortal key="f_cust" initialView="CUSTOMERS" />;
       case 'finance_suppliers': return <FinancePortal key="f_supp" initialView="SUPPLIERS" />;
       case 'finance_employees': return <FinancePortal key="f_emp" initialView="EMPLOYEES" />;
