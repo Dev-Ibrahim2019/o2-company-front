@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { Package } from 'lucide-react';
 import type { MenuCategory } from "../../hooks/useMenu";
 import { CATEGORIES } from '../../../constants';
-import { resolvePublicAssetUrl } from '../../services/itemService';
+import { getItemImageUrl, resolvePublicAssetUrl } from '../../services/itemService';
 
 interface MenuItem {
   id: string;
@@ -126,9 +126,9 @@ export const MenuGrid: React.FC<MenuGridProps> = ({
             >
               {/* Image */}
               <div className="aspect-square relative rounded-2xl overflow-hidden bg-slate-900 border border-white/5 group-hover:border-red-600/50 transition-all duration-300 shadow-lg">
-                {item.image ? (
+                {getItemImageUrl(item) ? (
                   <img
-                    src={item.image}
+                    src={getItemImageUrl(item)}
                     alt={item.name_ar}
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-in-out"
                   />

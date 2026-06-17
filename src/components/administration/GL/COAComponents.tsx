@@ -63,6 +63,9 @@ export const filterLedgerLines = (
           date: je.date,
           description: l.description || je.description,
           entryId: je.id,
+          reference: je.reference,
+          sourceType: je.sourceType,
+          sourceId: je.sourceId,
         })),
     )
     .filter((line) => {
@@ -364,6 +367,14 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
     ledgerFilter,
   );
   let runningBalance = 0;
+  const isCashResource =
+    selectedAccount.type === AccountType.ASSET &&
+    /(cash|bank|صندوق|نقد|بنك)/i.test(
+      `${selectedAccount.nameAr} ${selectedAccount.code}`,
+    );
+  const invoiceMovements = entries.filter((entry: any) =>
+    ["invoice", "order"].includes(String(entry.sourceType ?? "")),
+  );
 
   return (
     <div className="flex-1 bg-slate-900/50 border border-white/5 rounded-[2.5rem] overflow-hidden flex flex-col">
@@ -449,6 +460,33 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
                   filter={ledgerFilter}
                   onChange={setLedgerFilter}
                 />
+              </div>
+            )}
+
+            {selectedAccount.isPosting && isCashResource && (
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">
+                      مورد مرتبط
+                    </p>
+                    <p className="mt-1 text-sm font-black text-white">
+                      {selectedAccount.nameAr.includes("صندوق")
+                        ? "صندوق مبيعات / نقدية"
+                        : "حساب نقدية أو بنك"}
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-left">
+                    <div>
+                      <p className="text-[9px] font-black text-slate-500 uppercase">حركات الحساب</p>
+                      <p className="text-lg font-black text-white">{entries.length}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black text-slate-500 uppercase">فواتير مرتبطة</p>
+                      <p className="text-lg font-black text-emerald-400">{invoiceMovements.length}</p>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -539,6 +577,13 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
                         </td>
                         <td className="py-4 font-bold text-white">
                           {line.description}
+                          {(line.reference || line.sourceType) && (
+                            <p className="mt-1 text-[9px] font-mono font-black text-slate-600">
+                              {line.sourceType ? `${line.sourceType} ` : ""}
+                              {line.sourceId ? `#${line.sourceId} ` : ""}
+                              {line.reference ? `REF: ${line.reference}` : ""}
+                            </p>
+                          )}
                         </td>
                         <td className="py-4 text-center font-black text-red-500">
                           {line.debit > 0 ? line.debit.toLocaleString() : "-"}

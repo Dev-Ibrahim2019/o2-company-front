@@ -144,10 +144,10 @@ export const useAccounting = (): UseAccountingReturn => {
     try {
       setL("accounts", true);
       setError(null);
-      const data = await accountService.getAll({ tree: true });
+      const data = await accountService.getAll({ tree: true, with_balance: true });
       setAccountTree(data);
       // القائمة المسطحة أيضاً مفيدة للـ selects
-      const flat = await accountService.getAll();
+      const flat = await accountService.getAll({ with_balance: true });
       setAccounts(flat);
     } catch (e) {
       setError("فشل تحميل شجرة الحسابات");

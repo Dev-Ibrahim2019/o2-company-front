@@ -13,6 +13,7 @@ import SettingsPage from '../administration/SettingsPage';
 import MenuPage from '../administration/Items/MenuPage';
 import renderModal from '../administration/renderModal';
 import BranchesPage from '../administration/BranchesPage/BranchesPage';
+import SalesInvoicesPage from '../administration/SalesInvoicesPage';
 
 import { Calendar } from 'lucide-react';
 import { CustomerType } from '../../../types';
@@ -21,7 +22,7 @@ import { AccountingPortal } from './GL/AccountingPortal';
 
 
 interface FinancePortalProps {
-  initialView?: 'DASHBOARD' | 'BRANCHES' | 'DEPARTMENTS' | 'ITEM_TREE' | 'ITEMS_INDEX' | 'MENU' | 'ORDERS' | 'CUSTOMERS' | 'SUPPLIERS' | 'EMPLOYEES' | 'ACCOUNTING' | 'REPORTS' | 'SETTINGS' | 'AUDIT_LOG' | 'ARCHIVE' | 'ORGSTRUCTURE';
+  initialView?: 'DASHBOARD' | 'BRANCHES' | 'DEPARTMENTS' | 'ITEM_TREE' | 'ITEMS_INDEX' | 'MENU' | 'ORDERS' | 'SALES' | 'CUSTOMERS' | 'SUPPLIERS' | 'EMPLOYEES' | 'ACCOUNTING' | 'REPORTS' | 'SETTINGS' | 'AUDIT_LOG' | 'ARCHIVE' | 'ORGSTRUCTURE';
 }
 
 export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DASHBOARD' }) => {
@@ -60,6 +61,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
         {(view === 'MENU' || view === 'ITEM_TREE') && <MenuPage initialMode="tree" />}
         {view === 'ITEMS_INDEX' && <MenuPage initialMode="list" />}
         {view === 'ORDERS' && <OrdersPage />}
+        {view === 'SALES' && <SalesInvoicesPage />}
         {view === 'CUSTOMERS' && renderCustomers()}
         {view === 'SUPPLIERS' && renderSuppliers()}
         {view === 'EMPLOYEES' && <EmployeeManagement />}

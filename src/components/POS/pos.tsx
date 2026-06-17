@@ -6,42 +6,150 @@
 // 3. submitOrder يرسل للـ API فعلياً
 // 4. getItemCurrentPrice تقرأ item.price مباشرة (جاي من pivot الفرع)
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { useApp } from '../../../store';
-import { OrderType, OrderStatus, PaymentMethod, CustomerType } from '../../../types';
-import { AlertCircle, ShoppingCart, Loader2 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState, useEffect, useMemo } from "react";
+import { useApp } from "../../../store";
+import {
+  OrderType,
+  OrderStatus,
+  PaymentMethod,
+  CustomerType,
+  TableStatus,
+} from "../../../types";
+import { AlertCircle, ShoppingCart, Loader2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
-import { POSHeader } from './POSHeader';
-import { MenuGrid } from './MenuGrid';
-import { InvoiceInfoTab } from './InvoiceInfoTab';
-import { CustomerTab, type PaymentEntry } from './CustomerTab';
-import { CartPanel } from './CartPanel';
+import { POSHeader } from "./POSHeader";
+import { MenuGrid } from "./MenuGrid";
+import { InvoiceInfoTab } from "./InvoiceInfoTab";
+import { CustomerTab, type PaymentEntry } from "./CustomerTab";
+import { CartPanel } from "./CartPanel";
 import {
   CustomerSearchModal,
   QuickAddCustomerModal,
   CloseInvoiceModal,
-} from './POSModals';
+} from "./POSModals";
 
-import { useMenu } from '../../hooks/useMenu';
-import { useCart } from '../../hooks/useCart';
-import type { MenuItem } from '../../hooks/useMenu';
+import { useMenu } from "../../hooks/useMenu";
+import { useCart, type CartItem } from "../../hooks/useCart";
+import type { MenuItem } from "../../hooks/useMenu";
+import {
+  orderService,
+  type OrderFromApi,
+  type PaymentMethod as ApiPaymentMethod,
+} from "../../services/orderService";
+  import { TablesView } from "./Tables";
+import type { Order, Table } from "../../../types";
 
-export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) => {
+const MONEY_EPSILON = 0.01;
+
+const roundMoney = (value: number) =>
+  Math.round((Number(value) || 0) * 100) / 100;
+
+const requiresPaymentReference = (method: PaymentMethod) =>
+  method === PaymentMethod.WALLET ||
+  method === PaymentMethod.QR ||
+  method === PaymentMethod.ONLINE;
+
+const toPosOrderType = (type: OrderFromApi["order_type"]) =>
+  type === "dine_in" ? OrderType.DINE_IN : OrderType.TAKEAWAY;
+
+const toPosPaymentMethod = (
+  method?: ApiPaymentMethod | null,
+): PaymentMethod => {
+  switch (method) {
+    case "credit_card":
+      return PaymentMethod.CREDIT_CARD;
+    case "wallet":
+      return PaymentMethod.WALLET;
+    case "bank_transfer":
+      return PaymentMethod.QR;
+    case "cash":
+    default:
+      return PaymentMethod.CASH;
+  }
+};
+
+const apiOrderToCartItems = (order: OrderFromApi): CartItem[] =>
+  order.items.map((item) => ({
+    uniqueId: `api-${item.id}`,
+    itemId: String(item.item_id),
+    id: item.item_id,
+    name: item.item_name_ar || item.item_name,
+    name_ar: item.item_name_ar || item.item_name,
+    price: Number(item.unit_price || 0),
+    quantity: Number(item.quantity || 0),
+    notes: item.notes ?? undefined,
+    department_id: item.department_id,
+  }));
+
+const localOrderToCartItems = (order: Order): CartItem[] =>
+  order.items.map((item) => ({
+    uniqueId: item.uniqueId,
+    itemId: item.itemId,
+    id: Number(item.itemId) || 0,
+    name: item.name,
+    name_ar: item.name,
+    price: Number(item.price || 0),
+    quantity: Number(item.quantity || 0),
+    notes: item.note,
+    department_id: Number(item.departmentId) || 0,
+  }));
+
+type TableCartDraft = {
+  items: CartItem[];
+  orderType: OrderType;
+  invoiceNote: string;
+  discountValue: number;
+  discountType: "AMOUNT" | "PERCENT";
+  payments: PaymentEntry[];
+  paymentMethod: PaymentMethod;
+  customerName: string;
+  customerPhone: string;
+  editingApiOrderId: number | null;
+};
+
+const cloneCartItems = (items: CartItem[]) =>
+  items.map((item) => ({ ...item }));
+
+const clonePayments = (items: PaymentEntry[]) =>
+  items.map((payment) => ({ ...payment }));
+
+const normalizeTableNumber = (value: string | number | null | undefined) =>
+  String(value ?? "").trim();
+
+export const POS: React.FC<{
+  onViewTables: () => void;
+  initialMode?: "tables" | "menu" | "info" | "customer";
+}> = ({ onViewTables, initialMode = "tables" }) => {
   // ── Store (للحالات القديمة غير المنقولة بعد) ──────────────────────────────
   const {
-    selectedTable, setSelectedTable, tables,
-    currentUser, userRole, customers, addCustomer, employees, suppliers,
+    selectedTable,
+    setSelectedTable,
+    tables,
+    currentUser,
+    userRole,
+    customers,
+    addCustomer,
+    employees,
+    suppliers,
+    activeOrders,
+    updateTableStatus,
   } = useApp();
 
-  const isHospitality = userRole === 'HOSPITALITY';
+  const isHospitality = userRole === "HOSPITALITY";
 
   // ── Branch ID ─────────────────────────────────────────────────────────────
   // نأخذه من currentUser إذا موجود، وإلا نستخدم 1 كـ fallback مؤقت
-  const branchId: number = (currentUser as any)?.branch_id ?? (currentUser as any)?.branchId ?? 1;
+  const branchId: number =
+    (currentUser as any)?.branch_id ?? (currentUser as any)?.branchId ?? 1;
 
   // ── Menu from API ─────────────────────────────────────────────────────────
-  const { categories, loading: menuLoading, findByCode } = useMenu(branchId);
+  const {
+    categories,
+    allItems,
+    loading: menuLoading,
+    findByCode,
+  } = useMenu(branchId);
 
   // ── Cart ──────────────────────────────────────────────────────────────────
   const {
@@ -50,6 +158,7 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
     addToCart: addToCartRaw,
     updateCartItem,
     removeFromCart,
+    loadCart,
     clearCart,
     submitOrder: submitOrderApi,
     submitting,
@@ -57,55 +166,83 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
   } = useCart();
 
   // ── UI State ──────────────────────────────────────────────────────────────
-  const [activePOSMode, setActivePOSMode] = useState<'menu' | 'info' | 'customer'>('menu');
+  const [activePOSMode, setActivePOSMode] = useState<
+    "tables" | "menu" | "info" | "customer"
+  >(initialMode);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [posError, setPosError] = useState<string | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [manualTable, setManualTable] = useState('');
-  const [editingOrderId] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [manualTable, setManualTable] = useState("");
 
   // ── Customer State ────────────────────────────────────────────────────────
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
-  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const [customerSearchQuery, setCustomerSearchQuery] = useState("");
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [showQuickAddCustomer, setShowQuickAddCustomer] = useState(false);
-  const [quickCustomerName, setQuickCustomerName] = useState('');
-  const [quickCustomerPhone, setQuickCustomerPhone] = useState('');
-  const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
+  const [quickCustomerName, setQuickCustomerName] = useState("");
+  const [quickCustomerPhone, setQuickCustomerPhone] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
   const [showCustomerModal, setShowCustomerModal] = useState(false);
 
   // ── Invoice State ─────────────────────────────────────────────────────────
-  const [invoiceNote, setInvoiceNote] = useState('');
+  const [invoiceNote, setInvoiceNote] = useState("");
   const [discountValue, setDiscountValue] = useState<number>(0);
-  const [discountType, setDiscountType] = useState<'AMOUNT' | 'PERCENT'>('AMOUNT');
-  const [editingDiscount, setEditingDiscount] = useState<string>('0');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.CASH);
+  const [discountType, setDiscountType] = useState<"AMOUNT" | "PERCENT">(
+    "AMOUNT",
+  );
+  const [editingDiscount, setEditingDiscount] = useState<string>("0");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
+    PaymentMethod.CASH,
+  );
   const [payments, setPayments] = useState<PaymentEntry[]>([]);
-  const [cartOrderType, setCartOrderType] = useState<OrderType>(OrderType.DINE_IN);
-  const [accountType, setAccountType] = useState<'ACCOUNT' | 'SUPPLIER' | 'EMPLOYEE'>('ACCOUNT');
-  const [accountNumber, setAccountNumber] = useState('');
+  const [cartOrderType, setCartOrderType] = useState<OrderType>(
+    OrderType.DINE_IN,
+  );
+  const [accountType, setAccountType] = useState<
+    "ACCOUNT" | "SUPPLIER" | "EMPLOYEE"
+  >("ACCOUNT");
+  const [accountNumber, setAccountNumber] = useState("");
 
   // ── Quick Add State ───────────────────────────────────────────────────────
-  const [quickId, setQuickId] = useState('');
-  const [quickQty, setQuickQty] = useState('');
-  const [quickTotal, setQuickTotal] = useState('');
+  const [quickId, setQuickId] = useState("");
+  const [quickQty, setQuickQty] = useState("");
+  const [quickTotal, setQuickTotal] = useState("");
 
   // ── Cart Editing State ────────────────────────────────────────────────────
   const [editingQty, setEditingQty] = useState<{ [id: string]: string }>({});
-  const [editingNames, setEditingNames] = useState<{ [id: string]: string }>({});
+  const [editingNames, setEditingNames] = useState<{ [id: string]: string }>(
+    {},
+  );
+  const [editingApiOrderId, setEditingApiOrderId] = useState<number | null>(
+    null,
+  );
+  const [tableCartDrafts, setTableCartDrafts] = useState<
+    Record<string, TableCartDraft>
+  >({});
+  const currentEditingOrderId = editingApiOrderId
+    ? String(editingApiOrderId)
+    : null;
 
   // ── Effects ───────────────────────────────────────────────────────────────
-  useEffect(() => { setEditingDiscount(discountValue.toString()); }, [discountValue]);
+  useEffect(() => {
+    setEditingDiscount(discountValue.toString());
+  }, [discountValue]);
 
   useEffect(() => {
-    if (selectedTable) setManualTable((selectedTable as any).number?.toString() ?? '');
-    else setManualTable('');
+    if (selectedTable) {
+      setManualTable((selectedTable as any).number?.toString() ?? "");
+    } else {
+      setManualTable("");
+    }
   }, [selectedTable]);
 
   useEffect(() => {
-    if (isHospitality) { setCartOrderType(OrderType.DINE_IN); setActivePOSMode('menu'); }
+    if (isHospitality) {
+      setCartOrderType(OrderType.DINE_IN);
+      setActivePOSMode("menu");
+    }
   }, [isHospitality]);
 
   useEffect(() => {
@@ -119,19 +256,22 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
 
   useEffect(() => {
     if (paymentMethod === PaymentMethod.CASH) {
-      setCustomerName('صندوق مبيعات'); setAccountNumber('1001');
+      setCustomerName("صندوق مبيعات");
+      setAccountNumber("1001");
     } else if (paymentMethod === PaymentMethod.WALLET) {
-      setAccountNumber('2002');
-      if (customerName === 'صندوق مبيعات') setCustomerName('');
+      setAccountNumber("2002");
+      if (customerName === "صندوق مبيعات") setCustomerName("");
     } else if (paymentMethod === PaymentMethod.CREDIT_CARD) {
-      setAccountNumber('3003');
-      if (customerName === 'صندوق مبيعات') setCustomerName('');
+      setAccountNumber("3003");
+      if (customerName === "صندوق مبيعات") setCustomerName("");
     }
   }, [paymentMethod]);
 
   useEffect(() => {
-    if (accountType === 'EMPLOYEE' && accountNumber) {
-      const emp = employees?.find((e: any) => e.id === accountNumber || e.phone === accountNumber);
+    if (accountType === "EMPLOYEE" && accountNumber) {
+      const emp = employees?.find(
+        (e: any) => e.id === accountNumber || e.phone === accountNumber,
+      );
       if (emp) setCustomerName((emp as any).name);
     }
   }, [accountNumber, accountType, employees]);
@@ -139,18 +279,22 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
   // ── Derived ───────────────────────────────────────────────────────────────
   const filteredCustomers = useMemo(() => {
     if (!customerSearchQuery) return [];
-    return (customers ?? []).filter((c: any) =>
-      c.name.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
-      c.phone.includes(customerSearchQuery)
+    return (customers ?? []).filter(
+      (c: any) =>
+        c.name.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
+        c.phone.includes(customerSearchQuery),
     );
   }, [customers, customerSearchQuery]);
 
-  const calculatedDiscount = discountType === 'PERCENT'
-    ? (subtotal * discountValue) / 100
-    : discountValue;
-  const total = Math.max(0, subtotal - calculatedDiscount);
-  const totalPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
-  const remainingAmount = Math.max(0, total - totalPaid);
+  const calculatedDiscount =
+    discountType === "PERCENT"
+      ? (subtotal * discountValue) / 100
+      : discountValue;
+  const total = roundMoney(Math.max(0, subtotal - calculatedDiscount));
+  const totalPaid = roundMoney(
+    payments.reduce((sum, payment) => sum + payment.amount, 0),
+  );
+  const remainingAmount = Math.max(0, roundMoney(total - totalPaid));
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -159,18 +303,24 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
 
   const setOrderType = (type: OrderType) => setCartOrderType(type);
 
-  const addToCart = (item: MenuItem | any, opts?: { quantity?: number; price?: number }) => {
+  const addToCart = (
+    item: MenuItem | any,
+    opts?: { quantity?: number; price?: number },
+  ) => {
     addToCartRaw(item, opts);
   };
 
   const addPayment = (method: PaymentMethod) => {
-    if (remainingAmount <= 0) return;
+    if (remainingAmount <= MONEY_EPSILON) return;
     setPaymentMethod(method);
-    setPayments(prev => [...prev, { method, amount: remainingAmount }]);
+    setPayments((prev) => [
+      ...prev,
+      { method, amount: roundMoney(remainingAmount) },
+    ]);
   };
 
   const removePayment = (index: number) => {
-    setPayments(prev => {
+    setPayments((prev) => {
       const next = prev.filter((_, i) => i !== index);
       setPaymentMethod(next[0]?.method ?? PaymentMethod.CASH);
       return next;
@@ -179,17 +329,322 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
 
   const updatePaymentAmount = (index: number, val: string) => {
     const amount = parseFloat(val) || 0;
-    setPayments(prev => prev.map((payment, i) => i === index ? { ...payment, amount } : payment));
+    setPayments((prev) =>
+      prev.map((payment, i) =>
+        i === index ? { ...payment, amount } : payment,
+      ),
+    );
   };
 
   const updatePaymentReference = (index: number, val: string) => {
-    setPayments(prev => prev.map((payment, i) => i === index ? { ...payment, reference: val } : payment));
+    setPayments((prev) =>
+      prev.map((payment, i) =>
+        i === index ? { ...payment, reference: val } : payment,
+      ),
+    );
   };
+
+  const buildCurrentTableDraft = (): TableCartDraft => ({
+    items: cloneCartItems(currentCart),
+    orderType: cartOrderType,
+    invoiceNote,
+    discountValue,
+    discountType,
+    payments: clonePayments(payments),
+    paymentMethod,
+    customerName,
+    customerPhone,
+    editingApiOrderId,
+  });
+
+  const forgetTableDraft = (tableId: string) => {
+    setTableCartDrafts((prev) => {
+      if (!prev[tableId]) return prev;
+      const next = { ...prev };
+      delete next[tableId];
+      return next;
+    });
+  };
+
+  const cacheCurrentTableDraft = () => {
+    if (!selectedTable) return;
+
+    setTableCartDrafts((prev) => {
+      if (currentCart.length === 0) {
+        if (!prev[selectedTable.id]) return prev;
+        const next = { ...prev };
+        delete next[selectedTable.id];
+        return next;
+      }
+
+      return {
+        ...prev,
+        [selectedTable.id]: buildCurrentTableDraft(),
+      };
+    });
+  };
+
+  const applyTableDraft = (table: Table, draft: TableCartDraft) => {
+    loadCart(cloneCartItems(draft.items));
+    setEditingApiOrderId(draft.editingApiOrderId);
+    setCartOrderType(draft.orderType);
+    setManualTable(table.number.toString());
+    setInvoiceNote(draft.invoiceNote);
+    setDiscountValue(draft.discountValue);
+    setDiscountType(draft.discountType);
+    setPayments(clonePayments(draft.payments));
+    setPaymentMethod(draft.paymentMethod);
+    setCustomerName(draft.customerName);
+    setCustomerPhone(draft.customerPhone);
+    setIsCartOpen(draft.items.length > 0);
+  };
+
+  const applyApiOrderToCart = (order: OrderFromApi, table?: Table) => {
+    loadCart(apiOrderToCartItems(order));
+    setEditingApiOrderId(order.id);
+    setCartOrderType(toPosOrderType(order.order_type));
+    setManualTable(order.table_number || table?.number.toString() || "");
+    setInvoiceNote(order.note ?? "");
+    setDiscountValue(Number(order.discount_value || 0));
+    setDiscountType(order.discount_type === "percent" ? "PERCENT" : "AMOUNT");
+    setCustomerName(order.customer_name ?? "");
+    setCustomerPhone(order.customer_phone ?? "");
+
+    const apiPayments = order.payments ?? [];
+    setPayments(
+      apiPayments.map((payment) => ({
+        method: toPosPaymentMethod(payment.payment_method as ApiPaymentMethod),
+        amount: Number(payment.amount || 0),
+        reference: payment.reference_number,
+      })),
+    );
+
+    const primaryMethod = apiPayments[0]?.payment_method ?? order.payment_method;
+    if (primaryMethod) {
+      setPaymentMethod(toPosPaymentMethod(primaryMethod as ApiPaymentMethod));
+    }
+  };
+
+  const clearLoadedApiOrder = () => {
+    setEditingApiOrderId(null);
+    clearCart();
+    setInvoiceNote("");
+    setDiscountValue(0);
+    setDiscountType("AMOUNT");
+    setPayments([]);
+    setPaymentMethod(PaymentMethod.CASH);
+    setCustomerName("");
+    setCustomerPhone("");
+  };
+
+  const clearActiveCart = () => {
+    if (selectedTable) {
+      forgetTableDraft(selectedTable.id);
+    }
+    clearLoadedApiOrder();
+  };
+
+  const resolveActiveDineInTable = () => {
+    if (cartOrderType !== OrderType.DINE_IN) return null;
+
+    const tableNumber = normalizeTableNumber(manualTable);
+    if (!tableNumber) {
+      setPosError("يرجى اختيار الطاولة قبل حفظ الطلب");
+      return null;
+    }
+
+    const table = tables.find((t) => t.number.toString() === tableNumber);
+    if (!table) {
+      setPosError("الطاولة المحددة غير موجودة");
+      return null;
+    }
+
+    if (selectedTable && selectedTable.id !== table.id) {
+      setPosError("السلة الحالية لا تتبع الطاولة النشطة");
+      return null;
+    }
+
+    return table;
+  };
+
+  const loadApiOrderForTable = async (table: Table, clearWhenMissing = true) => {
+    const order = await orderService.getActiveByTableNumber(table.number, {
+      branch_id: branchId,
+    });
+
+    if (order) {
+      applyApiOrderToCart(order, table);
+      updateTableStatus(table.id, TableStatus.OCCUPIED, {
+        currentOrderId: String(order.id),
+      });
+      return order;
+    }
+
+    if (clearWhenMissing) {
+      clearLoadedApiOrder();
+    }
+
+    return null;
+  };
+
+  useEffect(() => {
+    if (!selectedTable) return;
+
+    const isActiveTable =
+      selectedTable.status === TableStatus.OCCUPIED ||
+      selectedTable.status === TableStatus.PAYMENT_PENDING;
+
+    if (!isActiveTable || editingApiOrderId || currentCart.length > 0) return;
+
+    void loadApiOrderForTable(selectedTable, false)
+      .then((order) => {
+        if (!order) return;
+        setIsCartOpen(true);
+      })
+      .catch((err) => {
+        console.error("Failed to load selected table order:", err);
+        setPosError("فشل تحميل طلب الطاولة");
+      });
+  }, [
+    selectedTable?.id,
+    selectedTable?.number,
+    selectedTable?.status,
+    editingApiOrderId,
+    currentCart.length,
+  ]);
 
   const handleTableInput = (val: string) => {
     setManualTable(val);
-    const table = tables?.find((t: any) => t.number?.toString() === val);
-    setSelectedTable(table ?? null);
+
+    const table = tables?.find(
+      (t: any) => t.number?.toString() === normalizeTableNumber(val),
+    );
+
+    if (!table) {
+      if (selectedTable) {
+        cacheCurrentTableDraft();
+        clearLoadedApiOrder();
+      }
+      setSelectedTable(null);
+      return;
+    }
+
+    if (selectedTable?.id === table.id) return;
+
+    cacheCurrentTableDraft();
+    clearLoadedApiOrder();
+    setSelectedTable(table);
+
+    const draft = tableCartDrafts[table.id];
+    if (draft) {
+      applyTableDraft(table, draft);
+    }
+  };
+
+  const handleTableClick = async (table: Table) => {
+    const isSwitchingTables = selectedTable && selectedTable.id !== table.id;
+
+    if (isSwitchingTables) {
+      cacheCurrentTableDraft();
+      clearLoadedApiOrder();
+      setIsCartOpen(false);
+    }
+
+    setSelectedTable(table);
+    setManualTable(table.number.toString());
+
+    setCartOrderType(OrderType.DINE_IN);
+
+    if (!isSwitchingTables && selectedTable?.id === table.id) {
+      setIsCartOpen(currentCart.length > 0);
+      return;
+    }
+
+    const draft = tableCartDrafts[table.id];
+    if (draft) {
+      applyTableDraft(table, draft);
+      return;
+    }
+
+    const isActiveTable =
+      table.status === TableStatus.OCCUPIED ||
+      table.status === TableStatus.PAYMENT_PENDING;
+
+    if (isActiveTable) {
+      try {
+        const apiOrder = await loadApiOrderForTable(table, false);
+        if (apiOrder) {
+          setIsCartOpen(true);
+          return;
+        }
+      } catch (err) {
+        console.error("Failed to load table order:", err);
+        setPosError("فشل تحميل طلب الطاولة");
+      }
+    }
+
+    const order = activeOrders.find(
+      (o) => o.tableId === table.id || o.id === table.currentOrderId,
+    );
+    if (order) {
+      loadCart(localOrderToCartItems(order));
+      setEditingApiOrderId(null);
+      setCartOrderType(order.type);
+      setIsCartOpen(true);
+      return;
+    }
+
+    if (isActiveTable || editingApiOrderId) {
+      clearLoadedApiOrder();
+    }
+  };
+
+  const handlePrintInvoice = async () => {
+    if (currentCart.length === 0) {
+      setPosError("السلة فارغة");
+      return;
+    }
+    if (cartOrderType === OrderType.DINE_IN && !manualTable) {
+      setPosError("يرجى إدخال رقم الطاولة أولاً");
+      return;
+    }
+
+    const activeTable =
+      cartOrderType === OrderType.DINE_IN ? resolveActiveDineInTable() : null;
+    if (cartOrderType === OrderType.DINE_IN && !activeTable) return;
+
+    // Submit the order as PENDING so it is saved to the backend
+    const orderType =
+      cartOrderType === OrderType.DINE_IN ? "dine_in" : "takeaway";
+    const result = await submitOrderApi(
+      {
+        branch_id: branchId,
+        cashier_id: currentUser?.id ? Number(currentUser.id) : undefined,
+        order_type: orderType,
+        table_number: activeTable?.number.toString(),
+        customer_name: customerName || undefined,
+        customer_phone: customerPhone || undefined,
+        note: invoiceNote || undefined,
+        discount_value: discountValue || undefined,
+        discount_type: discountType === "PERCENT" ? "percent" : "amount",
+      },
+      true, // confirm order
+      [],
+      false, // do not close/create invoice yet
+      editingApiOrderId,
+    );
+
+    if (result) {
+      if (activeTable) {
+        updateTableStatus(activeTable.id, TableStatus.OCCUPIED, {
+          currentOrderId: String(result.id),
+        });
+        setSelectedTable(activeTable);
+        forgetTableDraft(activeTable.id);
+      }
+      setEditingApiOrderId(null);
+      alert(`تم إرسال الفاتورة للطباعة للطاولة #${manualTable}`);
+    }
   };
 
   const handleSelectCustomer = (customer: any) => {
@@ -197,68 +652,98 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
     setCustomerName(customer.name);
     setCustomerPhone(customer.phone);
     setShowSearchModal(false);
-    setCustomerSearchQuery('');
+    setCustomerSearchQuery("");
   };
 
   const handleQuickAddCustomer = () => {
     if (!quickCustomerName || !quickCustomerPhone) return;
-    addCustomer?.({ name: quickCustomerName, phone: quickCustomerPhone, type: CustomerType.REGULAR, allowCredit: false, notes: '' });
+    addCustomer?.({
+      name: quickCustomerName,
+      phone: quickCustomerPhone,
+      type: CustomerType.REGULAR,
+      allowCredit: false,
+      notes: "",
+    });
     setShowQuickAddCustomer(false);
-    setQuickCustomerName('');
-    setQuickCustomerPhone('');
+    setQuickCustomerName("");
+    setQuickCustomerPhone("");
   };
 
   // ── Quick Add ─────────────────────────────────────────────────────────────
   const handleQuickIdChange = (id: string) => {
     setQuickId(id);
     const item = findByCode(id);
-    if (item) { setQuickQty('1'); setQuickTotal(item.price.toFixed(2)); }
-    else { setQuickQty(''); setQuickTotal(''); }
+    if (item) {
+      setQuickQty("1");
+      setQuickTotal(item.price.toFixed(2));
+    } else {
+      setQuickQty("");
+      setQuickTotal("");
+    }
   };
 
   const handleQuickQtyChange = (qtyStr: string) => {
     setQuickQty(qtyStr);
     const item = findByCode(quickId);
-    if (item && qtyStr) setQuickTotal(((parseFloat(qtyStr) || 0) * item.price).toFixed(2));
+    if (item && qtyStr)
+      setQuickTotal(((parseFloat(qtyStr) || 0) * item.price).toFixed(2));
   };
 
   const handleQuickTotalChange = (totalStr: string) => {
     setQuickTotal(totalStr);
     const item = findByCode(quickId);
-    if (item && totalStr) setQuickQty(((parseFloat(totalStr) || 0) / item.price).toFixed(2));
+    if (item && totalStr)
+      setQuickQty(((parseFloat(totalStr) || 0) / item.price).toFixed(2));
   };
 
   const handleQuickAdd = () => {
     const item = findByCode(quickId);
-    if (!item) { setPosError('الصنف غير موجود في منيو هذا الفرع'); return; }
+    if (!item) {
+      setPosError("الصنف غير موجود في منيو هذا الفرع");
+      return;
+    }
     addToCart(item, { quantity: parseFloat(quickQty) || 1, price: item.price });
-    setQuickId(''); setQuickQty(''); setQuickTotal('');
+    setQuickId("");
+    setQuickQty("");
+    setQuickTotal("");
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === 'Enter') handleQuickAdd(); };
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") handleQuickAdd();
+  };
 
   // ── Cart Handlers ─────────────────────────────────────────────────────────
   const handleNameChange = (uniqueId: string, newName: string) => {
-    setEditingNames(prev => ({ ...prev, [uniqueId]: newName }));
+    setEditingNames((prev) => ({ ...prev, [uniqueId]: newName }));
     updateCartItem(uniqueId, { name: newName } as any);
   };
 
   const handleQuantityChange = (uniqueId: string, val: string) => {
-    setEditingQty(prev => ({ ...prev, [uniqueId]: val }));
-    if (val === '' || val === '.' || val.endsWith('.')) return;
+    setEditingQty((prev) => ({ ...prev, [uniqueId]: val }));
+    if (val === "" || val === "." || val.endsWith(".")) return;
     const qty = parseFloat(val);
     if (!isNaN(qty)) updateCartItem(uniqueId, { quantity: qty } as any);
   };
 
   const handleQuantityBlur = (uniqueId: string, val: string) => {
     updateCartItem(uniqueId, { quantity: parseFloat(val) || 0 } as any);
-    setEditingQty(prev => { const n = { ...prev }; delete n[uniqueId]; return n; });
+    setEditingQty((prev) => {
+      const n = { ...prev };
+      delete n[uniqueId];
+      return n;
+    });
   };
 
   const handleTotalChange = (uniqueId: string, val: string, price: number) => {
-    if (val === '') { updateCartItem(uniqueId, { quantity: 0 } as any); return; }
+    if (val === "") {
+      updateCartItem(uniqueId, { quantity: 0 } as any);
+      return;
+    }
     const newTotal = parseFloat(val);
-    if (!isNaN(newTotal)) updateCartItem(uniqueId, { quantity: price > 0 ? newTotal / price : 0 } as any);
+    if (!isNaN(newTotal))
+      updateCartItem(uniqueId, {
+        quantity: price > 0 ? newTotal / price : 0,
+      } as any);
   };
 
   // ── submitOrder ───────────────────────────────────────────────────────────
@@ -267,68 +752,161 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
     status: OrderStatus,
     method: PaymentMethod,
     _discount: number,
-    meta: { name: string; phone: string; note: string }
+    meta: { name: string; phone: string; note: string },
+    paymentsArg?: PaymentEntry[],
   ) => {
-    if (currentCart.length === 0) { setPosError('السلة فارغة'); return; }
+    if (currentCart.length === 0) {
+      setPosError("السلة فارغة");
+      return;
+    }
 
-    const orderType = cartOrderType === OrderType.DINE_IN ? 'dine_in' : 'takeaway';
+    const orderType =
+      cartOrderType === OrderType.DINE_IN ? "dine_in" : "takeaway";
 
-    const shouldConfirm =
-      status === OrderStatus.CONFIRMED ||
-      isHospitality;   // الضيافة تأكد مباشرة
+    const shouldConfirm = status === OrderStatus.CONFIRMED || isHospitality; // الضيافة تأكد مباشرة
+    const isClosingOrder = status === OrderStatus.DELIVERED;
+    const selectedPayments = (paymentsArg ?? payments)
+      .map((payment) => ({
+        ...payment,
+        amount: roundMoney(payment.amount),
+        reference: payment.reference?.trim() || undefined,
+      }))
+      .filter((payment) => payment.amount > 0);
+    const closingPayments: PaymentEntry[] =
+      isClosingOrder && selectedPayments.length === 0 && total > MONEY_EPSILON
+        ? [{ method, amount: roundMoney(total) }]
+        : selectedPayments;
 
-    const selectedPaymentMethod = payments[0]?.method ?? method;
-    const paymentMap: Record<PaymentMethod, 'cash' | 'credit_card' | 'wallet'> = {
-      [PaymentMethod.CASH]: 'cash',
-      [PaymentMethod.CREDIT_CARD]: 'credit_card',
-      [PaymentMethod.WALLET]: 'wallet',
-      [PaymentMethod.QR]: 'credit_card',
-      [PaymentMethod.ONLINE]: 'credit_card',
+    if (isClosingOrder) {
+      const paidTotal = roundMoney(
+        closingPayments.reduce((sum, payment) => sum + payment.amount, 0),
+      );
+      const paymentDiff = roundMoney(total - paidTotal);
+
+      if (total > MONEY_EPSILON && closingPayments.length === 0) {
+        setPosError("يرجى تحديد طريقة الدفع قبل الإغلاق");
+        return;
+      }
+
+      if (total > MONEY_EPSILON && Math.abs(paymentDiff) > MONEY_EPSILON) {
+        setPosError(
+          paymentDiff > 0
+            ? `المبلغ المدفوع ناقص ${paymentDiff.toFixed(2)} ₪`
+            : `المبلغ المدفوع زائد ${Math.abs(paymentDiff).toFixed(2)} ₪`,
+        );
+        return;
+      }
+
+      if (
+        closingPayments.some(
+          (payment) =>
+            requiresPaymentReference(payment.method) && !payment.reference,
+        )
+      ) {
+        setPosError("يرجى إدخال الرقم المرجعي للمحفظة أو التحويل");
+        return;
+      }
+    }
+
+    const selectedPaymentMethod = closingPayments[0]?.method ?? method;
+    const paymentMap: Record<
+      PaymentMethod,
+      "cash" | "credit_card" | "wallet" | "bank_transfer"
+    > = {
+      [PaymentMethod.CASH]: "cash",
+      [PaymentMethod.CREDIT_CARD]: "credit_card",
+      [PaymentMethod.WALLET]: "wallet",
+      [PaymentMethod.QR]: "bank_transfer",
+      [PaymentMethod.ONLINE]: "bank_transfer",
     };
+    const apiClosingPayments = closingPayments.map((payment) => ({
+      method: paymentMap[payment.method],
+      amount: payment.amount,
+      reference: payment.reference,
+    }));
+
+    const activeTable =
+      cartOrderType === OrderType.DINE_IN ? resolveActiveDineInTable() : null;
+    if (cartOrderType === OrderType.DINE_IN && !activeTable) return;
 
     const result = await submitOrderApi(
       {
         branch_id: branchId,
         cashier_id: currentUser?.id ? Number(currentUser.id) : undefined,
         order_type: orderType,
-        table_number: manualTable || undefined,
+        table_number: activeTable?.number.toString(),
         customer_name: meta.name || undefined,
         customer_phone: meta.phone || undefined,
         note: meta.note || undefined,
         discount_value: discountValue || undefined,
-        discount_type: discountType === 'PERCENT' ? 'percent' : 'amount',
-        payment_method: paymentMap[selectedPaymentMethod],
+        discount_type: discountType === "PERCENT" ? "percent" : "amount",
+        payment_method: isClosingOrder
+          ? paymentMap[selectedPaymentMethod]
+          : undefined,
       },
-      shouldConfirm
+      shouldConfirm,
+      isClosingOrder ? apiClosingPayments : [],
+      isClosingOrder,
+      editingApiOrderId,
     );
 
     if (result) {
+      if (activeTable) {
+        if (isClosingOrder) {
+          updateTableStatus(activeTable.id, TableStatus.AVAILABLE, {
+            currentOrderId: undefined,
+            seatedAt: undefined,
+            guestCount: undefined,
+          });
+          forgetTableDraft(activeTable.id);
+          setSelectedTable(null);
+        } else {
+          updateTableStatus(activeTable.id, TableStatus.OCCUPIED, {
+            currentOrderId: String(result.id),
+          });
+          forgetTableDraft(activeTable.id);
+          setSelectedTable(activeTable);
+        }
+      }
       // تنظيف بعد النجاح
-      setInvoiceNote('');
+      setInvoiceNote("");
       setDiscountValue(0);
-      setManualTable('');
-      setCustomerName('');
-      setCustomerPhone('');
+      setManualTable("");
+      setCustomerName("");
+      setCustomerPhone("");
       setPayments([]);
       setPaymentMethod(PaymentMethod.CASH);
+      setEditingApiOrderId(null);
       setShowCustomerModal(false);
     }
   };
 
   // ── commonCartProps ───────────────────────────────────────────────────────
   const commonCartProps = {
-    isCartOpen, setIsCartOpen,
+    isCartOpen,
+    setIsCartOpen,
     isHospitality,
     cartOrderType,
     setOrderType,
     currentCart,
-    manualTable, handleTableInput, onViewTables,
-    subtotal, calculatedDiscount, discountType, discountValue, total,
-    invoiceNote, setInvoiceNote,
-    editingDiscount, setEditingDiscount, setDiscountValue, setDiscountType,
+    manualTable,
+    handleTableInput,
+    onViewTables,
+    subtotal,
+    calculatedDiscount,
+    discountType,
+    discountValue,
+    total,
+    invoiceNote,
+    setInvoiceNote,
+    editingDiscount,
+    setEditingDiscount,
+    setDiscountValue,
+    setDiscountType,
     paymentMethod,
-    editingOrderId,
-    editingQty, editingNames,
+    editingOrderId: currentEditingOrderId,
+    editingQty,
+    editingNames,
     handleNameChange,
     handleQuantityChange,
     handleQuantityBlur,
@@ -338,19 +916,24 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
     getItemCurrentPrice,
     setPosError,
     submitOrder,
-    customerName, customerPhone,
+    customerName,
+    customerPhone,
     setShowCustomerModal,
+    handlePrintInvoice,
+    allItems,
+    addToCart,
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col lg:flex-row gap-4 h-full bg-slate-950 overflow-y-auto lg:overflow-hidden p-2 sm:p-4 lg:p-0 custom-scrollbar relative">
-
       {/* Error Toast */}
       <AnimatePresence>
         {posError && (
           <motion.div
-            initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
             className="absolute top-10 left-1/2 -translate-x-1/2 z-[200] bg-red-600 text-white px-8 py-4 rounded-2xl font-black shadow-2xl flex items-center gap-3 border border-red-500/50"
           >
             <AlertCircle size={20} />
@@ -363,37 +946,47 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
       <AnimatePresence>
         {submitting && (
           <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             className="absolute inset-0 z-[150] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center"
           >
             <div className="bg-slate-900 border border-white/10 rounded-2xl px-8 py-6 flex items-center gap-4 shadow-2xl">
               <Loader2 size={24} className="text-red-500 animate-spin" />
-              <span className="text-white font-black text-sm">جاري إرسال الطلب...</span>
+              <span className="text-white font-black text-sm">
+                جاري إرسال الطلب...
+              </span>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* Left Panel: Menu Area */}
-      <div className={`flex-1 flex flex-col min-w-0 h-full ${isCartOpen ? 'hidden lg:flex' : 'flex'}`}>
+      <div
+        className={`flex-1 flex flex-col min-w-0 h-full ${isCartOpen ? "hidden lg:flex" : "flex"}`}
+      >
         <POSHeader
-          editingOrderId={editingOrderId}
+          editingOrderId={currentEditingOrderId}
           isHospitality={isHospitality}
           activePOSMode={activePOSMode}
           setActivePOSMode={setActivePOSMode}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
-          quickId={quickId} quickQty={quickQty} quickTotal={quickTotal}
+          quickId={quickId}
+          quickQty={quickQty}
+          quickTotal={quickTotal}
           handleQuickIdChange={handleQuickIdChange}
           handleQuickQtyChange={handleQuickQtyChange}
           handleQuickTotalChange={handleQuickTotalChange}
           handleQuickAdd={handleQuickAdd}
           handleKeyDown={handleKeyDown}
-          clearCart={clearCart}
+          clearCart={clearActiveCart}
         />
 
         <div className="flex-1 flex flex-col min-h-0">
-          {activePOSMode === 'menu' ? (
+          {activePOSMode === "tables" ? (
+            <TablesView mode="pos" onSelect={handleTableClick} />
+          ) : activePOSMode === "menu" ? (
             <MenuGrid
               categories={categories}
               selectedCategory={selectedCategory}
@@ -402,15 +995,22 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
               addToCart={addToCart}
               loading={menuLoading}
             />
-          ) : activePOSMode === 'info' ? (
-            <InvoiceInfoTab editingOrderId={editingOrderId} currentUser={currentUser} />
+          ) : activePOSMode === "info" ? (
+            <InvoiceInfoTab
+              editingOrderId={currentEditingOrderId}
+              currentUser={currentUser}
+            />
           ) : (
             <CustomerTab
-              customerName={customerName} setCustomerName={setCustomerName}
-              customerPhone={customerPhone} setCustomerPhone={setCustomerPhone}
+              customerName={customerName}
+              setCustomerName={setCustomerName}
+              customerPhone={customerPhone}
+              setCustomerPhone={setCustomerPhone}
               selectedCustomer={selectedCustomer}
-              accountType={accountType} setAccountType={setAccountType}
-              accountNumber={accountNumber} setAccountNumber={setAccountNumber}
+              accountType={accountType}
+              setAccountType={setAccountType}
+              accountNumber={accountNumber}
+              setAccountNumber={setAccountNumber}
               setShowSearchModal={setShowSearchModal}
               customers={customers ?? []}
               suppliers={suppliers ?? []}
@@ -449,7 +1049,10 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
         setCustomerSearchQuery={setCustomerSearchQuery}
         filteredCustomers={filteredCustomers}
         handleSelectCustomer={handleSelectCustomer}
-        onAddNew={(name) => { setQuickCustomerName(name); setShowQuickAddCustomer(true); }}
+        onAddNew={(name) => {
+          setQuickCustomerName(name);
+          setShowQuickAddCustomer(true);
+        }}
       />
 
       <QuickAddCustomerModal
@@ -468,12 +1071,14 @@ export const POS: React.FC<{ onViewTables: () => void }> = ({ onViewTables }) =>
         customerName={customerName}
         setCustomerName={setCustomerName}
         setPosError={setPosError}
-        onConfirm={() => submitOrder(
-          OrderStatus.DELIVERED,
-          paymentMethod,
-          calculatedDiscount,
-          { name: customerName, phone: customerPhone, note: invoiceNote }
-        )}
+        onConfirm={() =>
+          submitOrder(
+            OrderStatus.DELIVERED,
+            paymentMethod,
+            calculatedDiscount,
+            { name: customerName, phone: customerPhone, note: invoiceNote },
+          )
+        }
       />
     </div>
   );

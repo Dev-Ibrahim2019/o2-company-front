@@ -9,6 +9,7 @@ import { BookOpen, FileText, Calendar, Layers, AlertCircle, X } from "lucide-rea
 
 import { useAccounting } from "../../../hooks/useAccounting";
 import type { LedgerFilter } from "./COAComponents";
+import { AccountType } from "../../../../types";
 
 import { AccountingDashboard } from "./AccountingDashboard";
 import { EmployeesTab } from "./EmployeesTab";
@@ -58,6 +59,15 @@ const ErrorBanner: React.FC<{ message: string; onClose: () => void }> = ({ messa
     </button>
   </motion.div>
 );
+
+const toUiAccountType = (type: string) => {
+  if (type === "asset") return AccountType.ASSET;
+  if (type === "liability") return AccountType.LIABILITY;
+  if (type === "equity") return AccountType.EQUITY;
+  if (type === "revenue") return AccountType.REVENUE;
+  if (type === "expense") return AccountType.EXPENSE;
+  return type as AccountType;
+};
 
 // ── Portal ─────────────────────────────────────────────────────────────────
 
@@ -137,7 +147,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
         id: String(a.id),
         code: a.code,
         nameAr: a.name,
-        type: a.type,
+        type: toUiAccountType(a.type),
         parentId: a.parent?.id ? String(a.parent.id) : null,
         isPosting: a.allow_posting,
         balance: a.balance ?? 0,
@@ -163,6 +173,9 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
       date: tx.date,
       description: tx.description ?? tx.type_label ?? "",
       status: tx.status === "posted" ? "POSTED" : tx.status === "draft" ? "DRAFT" : "CANCELLED",
+      sourceType: tx.source_type,
+      sourceId: tx.source_id,
+      reference: tx.reference,
       _txId: tx.id,
       _status: tx.status,
       _editable: tx.is_editable,
@@ -250,19 +263,23 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
   // ── Render GL ──────────────────────────────────────────────────────────────
   const renderGL = () => {
     if (glSubTab === "LEDGER" && selectedAccount) {
-      const ledgerLines = ledger?.lines.map(line => ({
+      const ledgerEntries = ledger?.lines.map((line, index) => ({
+        id: line.transaction_number ?? `ledger-${index}`,
         date: line.date,
         description: line.description ?? "",
-        debit: line.debit,
-        credit: line.credit,
-        balanceAfter: line.balance,
-        entryId: line.transaction_number,
+        reference: line.reference,
+        lines: [{
+          accountId: selectedAccount.id,
+          debit: line.debit,
+          credit: line.credit,
+          description: line.description ?? "",
+        }],
       })) ?? [];
 
       return (
         <ExpandedLedger
           account={{ ...selectedAccount, displayBalance: ledger?.closing_balance ?? selectedAccount.displayBalance }}
-          journalEntries={[]}
+          journalEntries={ledgerEntries}
           ledgerFilter={ledgerFilter}
           setLedgerFilter={setLedgerFilter}
           onBack={() => setGlSubTab("COA")}
@@ -481,7 +498,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
             {activeTab === "HR" && <EmployeesTab employees={[]} chartOfAccounts={[]} onAction={handleEmployeeAction} />}
             {activeTab === "AR" && <ARTab customers={[]} />}
             {activeTab === "AP" && <APTab suppliers={[]} />}
-            {activeTab === "CASH" && <CashBankTab bankAccounts={[]} />}
+            {activeTab === "CASH" && <CashBankTab bankAccounts={[]} accounts={accounts} transactions={transactions} />}
           </motion.div>
         </AnimatePresence>
       </div>

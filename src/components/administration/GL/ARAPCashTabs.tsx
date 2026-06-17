@@ -268,18 +268,65 @@ export const APTab: React.FC<{ suppliers: Supplier[] }> = ({ suppliers }) => {
 // ─── CashBankTab ──────────────────────────────────────────────────────────
 
 interface BankAccount { id: string; name: string; bankName: string; balance: number }
+interface AccountLike { id: number; name: string; code: string; type: string; balance?: number }
+interface TransactionLike {
+  id: number;
+  date: string;
+  transaction_number: string;
+  description?: string;
+  entries?: {
+    account_id: number;
+    debit: number;
+    credit: number;
+    description?: string;
+  }[];
+}
 
-export const CashBankTab: React.FC<{ bankAccounts: BankAccount[] }> = ({ bankAccounts }) => {
-  const totalBank = bankAccounts.reduce((s, b) => s + b.balance, 0);
-  const cashOnHand = 8500; // مثال
-
-  const recentTx = [
-    { date: '2025-01-10', desc: 'إيداع مبيعات نقدية', type: 'credit', amount: 12500 },
-    { date: '2025-01-09', desc: 'سداد مورد — شركة الغذاء', type: 'debit', amount: 4800 },
-    { date: '2025-01-08', desc: 'رواتب شهر يناير', type: 'debit', amount: 32000 },
-    { date: '2025-01-07', desc: 'إيداع وصل قبض #0091', type: 'credit', amount: 7200 },
-    { date: '2025-01-06', desc: 'فاتورة مرافق', type: 'debit', amount: 1100 },
-  ];
+export const CashBankTab: React.FC<{
+  bankAccounts: BankAccount[];
+  accounts?: AccountLike[];
+  transactions?: TransactionLike[];
+}> = ({ bankAccounts, accounts = [], transactions = [] }) => {
+  const cashAssetAccounts = accounts.filter((account) => {
+    const label = `${account.name} ${account.code}`;
+    return account.type === "asset" && /(cash|bank|صندوق|نقد|بنك)/i.test(label);
+  });
+  const bankAssetAccounts = cashAssetAccounts.filter((account) =>
+    /(bank|بنك)/i.test(`${account.name} ${account.code}`),
+  );
+  const drawerAccounts = cashAssetAccounts.filter(
+    (account) => !bankAssetAccounts.some((bank) => bank.id === account.id),
+  );
+  const accountBankTotal = bankAssetAccounts.reduce((s, b) => s + Number(b.balance || 0), 0);
+  const totalBank = bankAccounts.length > 0
+    ? bankAccounts.reduce((s, b) => s + b.balance, 0)
+    : accountBankTotal;
+  const cashOnHand = drawerAccounts.reduce((s, account) => s + Number(account.balance || 0), 0);
+  const displayedBankAccounts =
+    bankAccounts.length > 0
+      ? bankAccounts
+      : bankAssetAccounts.map((account) => ({
+          id: String(account.id),
+          name: account.name,
+          bankName: account.code,
+          balance: Number(account.balance || 0),
+        }));
+  const cashAccountIds = new Set(cashAssetAccounts.map((account) => account.id));
+  const recentTx = transactions
+    .flatMap((tx) =>
+      (tx.entries ?? [])
+        .filter((entry) => cashAccountIds.has(entry.account_id))
+        .map((entry) => ({
+          date: tx.date,
+          desc: entry.description || tx.description || tx.transaction_number,
+          type: entry.debit > 0 ? "credit" : "debit",
+          amount: entry.debit > 0 ? entry.debit : entry.credit,
+        })),
+    )
+    .slice(0, 8);
+  const monthlyOutflows = recentTx
+    .filter((tx) => tx.type === "debit")
+    .reduce((sum, tx) => sum + tx.amount, 0);
 
   return (
     <div className="h-full overflow-y-auto custom-scrollbar pb-10 space-y-6" dir="rtl">
@@ -293,8 +340,8 @@ export const CashBankTab: React.FC<{ bankAccounts: BankAccount[] }> = ({ bankAcc
         <SummaryCard label="إجمالي السيولة" value={totalBank + cashOnHand}
           sub="بنوك + صندوق"
           color="text-amber-400" bg="bg-amber-500/10" border="border-amber-500/20" icon={ArrowUpRight} />
-        <SummaryCard label="مدفوعات الشهر" value={38900}
-          sub="يناير 2025"
+        <SummaryCard label="مدفوعات الفترة" value={monthlyOutflows}
+          sub="من القيود"
           color="text-rose-400" bg="bg-rose-500/10" border="border-rose-500/20" icon={ArrowDownRight} />
       </div>
 
@@ -311,7 +358,7 @@ export const CashBankTab: React.FC<{ bankAccounts: BankAccount[] }> = ({ bankAcc
             </button>
           </div>
           <div className="space-y-3">
-            {bankAccounts.map((bank, i) => (
+            {displayedBankAccounts.map((bank, i) => (
               <motion.div key={bank.id}
                 initial={{ opacity: 0, x: 10 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -395,6 +442,11 @@ export const CashBankTab: React.FC<{ bankAccounts: BankAccount[] }> = ({ bankAcc
                 </span>
               </motion.div>
             ))}
+            {recentTx.length === 0 && (
+              <div className="px-5 py-12 text-center text-slate-600 text-xs font-black">
+                لا توجد حركات نقدية مرتبطة بحسابات الصندوق أو البنك
+              </div>
+            )}
           </div>
           <div className="p-4 border-t border-white/5 text-center">
             <button className="text-[11px] text-slate-500 hover:text-white font-black transition-colors">

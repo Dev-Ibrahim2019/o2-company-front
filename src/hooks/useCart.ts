@@ -2,10 +2,15 @@
 //
 // يدير حالة السلة:
 // - addToCart: يزيد الكمية إذا الصنف موجود بدل صف جديد
-// - submitOrder: يرسل الطلب للـ API
+// - submitOrder: يرسل الطلب للـ API ويتبع التدفق الكامل من إنشاء الطلب إلى القيد المحاسبي
 
 import { useState, useCallback } from "react";
 import api from "../api/axios";
+import {
+  orderService,
+  type OrderFromApi,
+  type PaymentMethod,
+} from "../services/orderService";
 import type { MenuItem } from "./useMenu";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -22,6 +27,12 @@ export interface CartItem {
   department_id: number;
 }
 
+export interface PaymentEntry {
+  method: PaymentMethod;
+  amount: number;
+  reference?: string;
+}
+
 export interface SubmitOrderPayload {
   branch_id: number;
   cashier_id?: number;
@@ -32,10 +43,59 @@ export interface SubmitOrderPayload {
   note?: string;
   discount_value?: number;
   discount_type?: "amount" | "percent";
-  payment_method?: "cash" | "credit_card" | "wallet";
+  payment_method?: PaymentMethod;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
+
+const MONEY_EPSILON = 0.01;
+
+const roundMoney = (value: number) =>
+  Math.round((Number(value) || 0) * 100) / 100;
+
+const normalizePaymentEntries = (entries: PaymentEntry[]): PaymentEntry[] =>
+  entries
+    .map((payment) => ({
+      ...payment,
+      amount: roundMoney(payment.amount),
+      reference: payment.reference?.trim() || undefined,
+    }))
+    .filter((payment) => payment.amount > 0);
+
+const normalizeTableNumber = (value: string | number | null | undefined) =>
+  String(value ?? "").trim();
+
+type ApiErrorLike = {
+  response?: {
+    status?: number;
+    data?: {
+      message?: string;
+    };
+  };
+  message?: string;
+};
+
+const getApiError = (error: unknown) => error as ApiErrorLike;
+
+const getApiErrorMessage = (error: unknown, fallback = "") => {
+  const apiError = getApiError(error);
+  return String(apiError.response?.data?.message ?? apiError.message ?? fallback);
+};
+
+const isCloseUpdateStateError = (error: unknown) => {
+  const apiError = getApiError(error);
+  const status = apiError.response?.status;
+  const message = getApiErrorMessage(error).toLowerCase();
+
+  return (
+    status === 409 ||
+    message.includes("already") ||
+    message.includes("confirmed") ||
+    message.includes("confirmation") ||
+    message.includes("تأكيد") ||
+    message.includes("مؤكد")
+  );
+};
 
 export const useCart = () => {
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -95,15 +155,27 @@ export const useCart = () => {
     setCart((prev) => prev.filter((c) => c.uniqueId !== uniqueId));
   }, []);
 
+  const loadCart = useCallback((items: CartItem[]) => {
+    setCart(items);
+  }, []);
+
   // ── clearCart ─────────────────────────────────────────────────────────────
   const clearCart = useCallback(() => setCart([]), []);
 
   // ── submitOrder ───────────────────────────────────────────────────────────
-  // يرسل الطلب للـ API — حفظ pending أو تأكيد confirmed
+  // يرسل الطلب للـ API — يتبع التدفق الكامل من إنشاء الطلب إلى القيد المحاسبي
+  // Phase 1: إنشاء الطلب (pending)
+  // Phase 2: إرسال للمطبخ (confirm → production tickets)
+  // Phase 3: الأقسام تحضّر (preparing → ready)
+  // Phase 4: التسليم والدفع (serve → create invoice → pay)
+  // ترحيل المبيعات يتم لاحقا من شاشة الطلبات المغلقة
   const submitOrder = useCallback(
     async (
       payload: SubmitOrderPayload,
       shouldConfirm = false, // true = أرسل للمطبخ فوراً بعد الحفظ
+      paymentEntries: PaymentEntry[] = [],
+      createInvoice = false,
+      existingOrderId?: number | null,
     ) => {
       if (cart.length === 0) return null;
 
@@ -111,29 +183,143 @@ export const useCart = () => {
       setSubmitError(null);
 
       try {
-        // 1. أنشئ الطلب
-        const { data: createRes } = await api.post("/orders", {
+        const requestedTableNumber = normalizeTableNumber(payload.table_number);
+        if (payload.order_type === "dine_in" && !requestedTableNumber) {
+          throw new Error("رقم الطاولة مطلوب لحفظ طلب محلي");
+        }
+
+        if (existingOrderId && requestedTableNumber) {
+          const existingOrder = await orderService.getOne(existingOrderId);
+          const existingTableNumber = normalizeTableNumber(
+            existingOrder.table_number,
+          );
+
+          if (
+            existingTableNumber &&
+            existingTableNumber !== requestedTableNumber
+          ) {
+            throw new Error(
+              "لا يمكن تعديل طلب طاولة مختلفة من السلة الحالية",
+            );
+          }
+        }
+        // ═══════════════════════════════════════════════════
+        // PHASE 1: إنشاء الطلب
+        // ═══════════════════════════════════════════════════
+        const orderPayload = {
           ...payload,
           items: cart.map((c) => ({
             item_id: c.id,
             quantity: c.quantity,
             unit_price: c.price,
-            notes: c.notes ?? null,
+            notes: c.notes ?? undefined,
           })),
-        });
+        };
 
-        const order = createRes.data;
+        let order: OrderFromApi;
+        if (existingOrderId) {
+          if (createInvoice) {
+            order = await orderService.getOne(existingOrderId);
+          } else {
+            try {
+              order = await orderService.update(existingOrderId, orderPayload);
+            } catch (error) {
+              if (!isCloseUpdateStateError(error)) {
+                throw error;
+              }
+              order = await orderService.getOne(existingOrderId);
+            }
+          }
+        } else {
+          order = (await api.post("/orders", orderPayload)).data
+            .data as OrderFromApi;
+        }
+
+        const savedTableNumber = normalizeTableNumber(order.table_number);
+        if (
+          payload.order_type === "dine_in" &&
+          savedTableNumber !== requestedTableNumber
+        ) {
+          throw new Error("استجابة الطلب لا تطابق الطاولة النشطة");
+        }
+
         setLastOrderId(order.id);
 
-        // 2. إذا مطلوب تأكيد → أرسل للمطبخ
-        if (shouldConfirm) {
-          await api.post(`/orders/${order.id}/confirm`);
+        // ═══════════════════════════════════════════════════
+        // PHASE 2: إرسال للمطبخ (اختياري)
+        // ═══════════════════════════════════════════════════
+        if (shouldConfirm && order.status === "pending") {
+          try {
+            order = await orderService.confirm(order.id);
+          } catch (error) {
+            if (!createInvoice || !isCloseUpdateStateError(error)) {
+              throw error;
+            }
+            order = await orderService.getOne(order.id);
+          }
+        }
+
+        // ═══════════════════════════════════════════════════
+        // PHASE 3: الأقسام تحضّر (handled b  y backend/KDS)
+        // ═══════════════════════════════════════════════════
+        // Kitchen updates production tickets: preparing → ready
+        // When all items ready → order status = ready
+
+        // ═══════════════════════════════════════════════════
+        // PHASE 4: التسليم والدفع
+        // ═══════════════════════════════════════════════════
+        const orderTotal = roundMoney(Number(order.total ?? 0));
+        const normalizedPayments = normalizePaymentEntries(paymentEntries);
+        const paymentsToRecord: PaymentEntry[] =
+          normalizedPayments.length > 0
+            ? normalizedPayments
+            : createInvoice && orderTotal > 0 && payload.payment_method
+              ? [{ method: payload.payment_method, amount: orderTotal }]
+              : [];
+
+        if (createInvoice || paymentsToRecord.length > 0) {
+          const paidTotal = roundMoney(
+            paymentsToRecord.reduce((sum, payment) => sum + payment.amount, 0),
+          );
+          const paymentDiff = roundMoney(orderTotal - paidTotal);
+
+          if (orderTotal > 0 && paymentsToRecord.length === 0) {
+            throw new Error("يرجى تحديد طريقة الدفع قبل إغلاق الفاتورة");
+          }
+
+          if (orderTotal > 0 && Math.abs(paymentDiff) > MONEY_EPSILON) {
+            throw new Error(
+              paymentDiff > 0
+                ? `المبلغ المدفوع ناقص ${paymentDiff.toFixed(2)} ₪`
+                : `المبلغ المدفوع زائد ${Math.abs(paymentDiff).toFixed(2)} ₪`,
+            );
+          }
+
+          order = await orderService.closeOrderWithPayments(order.id, {
+            customer_name: payload.customer_name,
+            customer_phone: payload.customer_phone,
+            note: payload.note,
+            payments: paymentsToRecord.map((payment) => ({
+              method: payment.method,
+              payment_method: payment.method,
+              amount: payment.amount,
+              reference_number: payment.reference,
+            })),
+          });
+        }
+
+        let finalOrder = order;
+        try {
+          const { data: refreshedOrder } = await api.get(`/orders/${order.id}`);
+          finalOrder = refreshedOrder.data ?? order;
+        } catch {
+          finalOrder = order;
         }
 
         clearCart();
-        return order;
-      } catch (e: any) {
-        const msg = e?.response?.data?.message ?? "فشل إرسال الطلب";
+        return finalOrder;
+      } catch (e) {
+        const msg = getApiErrorMessage(e, "فشل إرسال الطلب");
         setSubmitError(msg);
         return null;
       } finally {
@@ -152,6 +338,7 @@ export const useCart = () => {
     addToCart,
     updateCartItem,
     removeFromCart,
+    loadCart,
     clearCart,
     submitOrder,
     submitting,

@@ -151,7 +151,8 @@ export const AdminLayout: React.FC<{
     if (window.innerWidth <= 1024) setIsSidebarOpen(false);
   };
 
-  const isAccountingActive = activeView.startsWith("accounting_");
+  const isAccountingActive =
+    activeView.startsWith("accounting_") || activeView === "finance_sales";
   const isItemsActive =
     activeView === "finance_menu" ||
     activeView === "finance_item_tree" ||
@@ -285,6 +286,14 @@ export const AdminLayout: React.FC<{
               collapsed={!isSidebarOpen}
               indent
               onClick={() => nav("accounting_gl")}
+            />
+            <SidebarItem
+              icon={Receipt}
+              label="فواتير المبيعات"
+              active={activeView === "finance_sales"}
+              collapsed={!isSidebarOpen}
+              indent
+              onClick={() => nav("finance_sales")}
             />
             <SidebarItem
               icon={Receipt}
