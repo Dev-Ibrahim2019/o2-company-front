@@ -4,8 +4,8 @@ import { Search } from 'lucide-react';
 interface POSHeaderProps {
   editingOrderId: string | null;
   isHospitality: boolean;
-  activePOSMode: 'menu' | 'info' | 'customer';
-  setActivePOSMode: (mode: 'menu' | 'info' | 'customer') => void;
+  activePOSMode: 'tables' | 'menu' | 'info' | 'customer';
+  setActivePOSMode: (mode: 'tables' | 'menu' | 'info' | 'customer') => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   quickId: string;
@@ -81,13 +81,13 @@ export const POSHeader: React.FC<POSHeaderProps> = ({
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
         {!isHospitality && (
           <div className="flex flex-wrap bg-slate-800 p-1 rounded-xl shrink-0 border border-white/5 shadow-inner">
-            {(['menu', 'info', 'customer'] as const).map((mode) => (
+            {(['tables', 'menu', 'info', 'customer'] as const).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setActivePOSMode(mode)}
                 className={`px-3 sm:px-5 py-2 rounded-lg text-[8px] sm:text-[10px] font-black transition-all whitespace-nowrap ${activePOSMode === mode ? 'bg-red-600 text-white shadow-lg shadow-red-900/20' : 'text-slate-500 hover:text-slate-300'}`}
               >
-                {mode === 'menu' ? 'المنيو' : mode === 'info' ? 'بيانات الفاتورة' : 'بيانات الزبون والحساب'}
+                {mode === 'tables' ? 'الطاولات' : mode === 'menu' ? 'المنيو' : mode === 'info' ? 'بيانات الفاتورة' : 'بيانات الزبون والحساب'}
               </button>
             ))}
           </div>

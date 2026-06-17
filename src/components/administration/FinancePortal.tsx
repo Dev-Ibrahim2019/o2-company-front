@@ -12,6 +12,7 @@ import SettingsPage from '../administration/SettingsPage';
 import MenuPage from '../administration/Items/MenuPage';
 import renderModal from '../administration/renderModal';
 import BranchesPage from '../administration/BranchesPage/BranchesPage';
+import SalesInvoicesPage from '../administration/SalesInvoicesPage';
 import SupplierPortal from './suppliers/SupplierPortal';
 
 import { OrgStructure } from './OrgStructure/OrgStructure';
@@ -19,7 +20,7 @@ import { AccountingPortal } from './GL/AccountingPortal';
 
 
 interface FinancePortalProps {
-  initialView?: 'DASHBOARD' | 'BRANCHES' | 'DEPARTMENTS' | 'ITEM_TREE' | 'ITEMS_INDEX' | 'MENU' | 'ORDERS' | 'CUSTOMERS' | 'SUPPLIERS' | 'EMPLOYEES' | 'ACCOUNTING' | 'REPORTS' | 'SETTINGS' | 'AUDIT_LOG' | 'ARCHIVE' | 'ORGSTRUCTURE';
+  initialView?: 'DASHBOARD' | 'BRANCHES' | 'DEPARTMENTS' | 'ITEM_TREE' | 'ITEMS_INDEX' | 'MENU' | 'ORDERS' | 'SALES' | 'CUSTOMERS' | 'SUPPLIERS' | 'EMPLOYEES' | 'ACCOUNTING' | 'REPORTS' | 'SETTINGS' | 'AUDIT_LOG' | 'ARCHIVE' | 'ORGSTRUCTURE';
 }
 
 export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DASHBOARD' }) => {

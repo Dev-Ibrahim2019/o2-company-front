@@ -412,6 +412,33 @@ export const AccountDetailPanel: React.FC<AccountDetailPanelProps> = ({
                 <LedgerFilterBar filter={ledgerFilter} onChange={setLedgerFilter} />
               </div>
             )}
+
+            {selectedAccount.isPosting && isCashResource && (
+              <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">
+                      مورد مرتبط
+                    </p>
+                    <p className="mt-1 text-sm font-black text-white">
+                      {selectedAccount.nameAr.includes("صندوق")
+                        ? "صندوق مبيعات / نقدية"
+                        : "حساب نقدية أو بنك"}
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-left">
+                    <div>
+                      <p className="text-[9px] font-black text-slate-500 uppercase">حركات الحساب</p>
+                      <p className="text-lg font-black text-white">{entries.length}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black text-slate-500 uppercase">فواتير مرتبطة</p>
+                      <p className="text-lg font-black text-emerald-400">{invoiceMovements.length}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex items-end gap-6">

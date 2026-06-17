@@ -162,7 +162,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         { itemId: '1', uniqueId: 'ui-1', name: 'برجر كلاسيك', quantity: 2, price: 25, basePrice: 25 },
         { itemId: '3', uniqueId: 'ui-2', name: 'عصير برتقال', quantity: 2, price: 12, basePrice: 12 }
       ],
-      tableId: 't-1',
+      tableId: undefined, // Start with no table assignment - user must seat at table first
       createdAt: new Date(Date.now() - 30 * 60000),
       subtotal: 74,
       tax: 0,
@@ -178,7 +178,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       items: [
         { itemId: '7', uniqueId: 'ui-3', name: 'مشاوي مشكلة', quantity: 1, price: 85, basePrice: 85 }
       ],
-      tableId: 't-2',
+      tableId: undefined, // Start with no table assignment - user must seat at table first
       createdAt: new Date(Date.now() - 45 * 60000),
       subtotal: 85,
       tax: 0,
@@ -962,12 +962,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const seatTable = (tableId: string, guestCount: number) => {
-    setTables(prev => prev.map(t => t.id === tableId ? {
-      ...t,
-      status: TableStatus.OCCUPIED,
-      seatedAt: new Date(),
-      guestCount
-    } : t));
+    setTables(prev => {
+      // Find the table and its merged group
+      const table = prev.find(t => t.id === tableId);
+      if (!table) return prev;
+
+      // Determine the master table ID (the one that's not merged with another, or itself if it's the master)
+      const masterId = table.mergedWithId || tableId;
+
+      // Get all tables in the merged group
+      const mergedTableIds = prev
+        .filter(t => t.id === masterId || t.mergedWithId === masterId)
+        .map(t => t.id);
+
+      return prev.map(t => {
+        if (mergedTableIds.includes(t.id)) {
+          // For the master table, set the guest count
+          // For other tables in the group, set guest count to 0 (they share the master's count)
+          return {
+            ...t,
+            status: TableStatus.OCCUPIED,
+            seatedAt: new Date(),
+            guestCount: t.id === masterId ? guestCount : 0,
+            currentOrderId: undefined // Clear any existing order when seating
+          };
+        }
+        return t;
+      });
+    });
   };
 
   const depositToWallet = (amount: number, bonus: number = 0) => {
@@ -1012,11 +1034,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const tableToUpdate = prev.find(t => t.id === tableId);
       if (!tableToUpdate) return prev;
 
-      // If clearing a table (setting to AVAILABLE or CLEANING), clear all merged tables too
-      if (status === TableStatus.AVAILABLE || status === TableStatus.CLEANING || status === TableStatus.PAID || status === TableStatus.PAYMENT_PENDING) {
-        const masterId = tableToUpdate.mergedWithId || tableToUpdate.id;
+      // Handle merged table groups for all status changes
+      const masterId = tableToUpdate.mergedWithId || tableToUpdate.id;
+      const isInMergedGroup = !!tableToUpdate.mergedWithId;
+      const masterTable = prev.find(t => t.id === masterId);
+
+      // Get all tables in the merged group
+      const mergedTableIds = prev
+        .filter(t => t.id === masterId || t.mergedWithId === masterId)
+        .map(t => t.id);
+
+      // Special handling for when we're setting a table to OCCUPIED
+      if (status === TableStatus.OCCUPIED) {
+        // When occupying a table, we need to occupy the entire merged group
         return prev.map(t => {
-          if (t.id === masterId || t.mergedWithId === masterId) {
+          if (mergedTableIds.includes(t.id)) {
+            // Only the master table gets the order ID and extra properties
+            const isMaster = t.id === masterId;
+            return {
+              ...t,
+              status: TableStatus.OCCUPIED,
+              ...(isMaster && extra), // Only master gets extra properties
+              currentOrderId: isMaster ? (extra?.currentOrderId ?? tableToUpdate.currentOrderId) : undefined,
+              guestCount: isMaster ? (extra?.guestCount ?? tableToUpdate.guestCount) : 0,
+              seatedAt: isMaster ? (extra?.seatedAt ?? tableToUpdate.seatedAt) : undefined
+            };
+          }
+          return t;
+        });
+      }
+
+      // Handle clearing operations (AVAILABLE, CLEANING, PAID, PAYMENT_PENDING)
+      if (status === TableStatus.AVAILABLE || status === TableStatus.CLEANING || status === TableStatus.PAID || status === TableStatus.PAYMENT_PENDING) {
+        return prev.map(t => {
+          if (mergedTableIds.includes(t.id)) {
             const isClearing = status === TableStatus.AVAILABLE || status === TableStatus.CLEANING;
             return {
               ...t,
@@ -1027,34 +1078,93 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               mergedWithId: isClearing ? undefined : t.mergedWithId,
               reservationName: isClearing ? undefined : t.reservationName,
               reservationTime: isClearing ? undefined : t.reservationTime,
-              ...extra
+              ...(isClearing ? {} : extra) // Only preserve extra for non-clearing operations
             };
           }
           return t;
         });
       }
 
-      // Otherwise just update the single table
-      return prev.map(t => t.id === tableId ? { ...t, status, ...extra } : t);
+      // For other status changes (RESERVED, etc.), apply to the whole group
+      return prev.map(t => {
+        if (mergedTableIds.includes(t.id)) {
+          return {
+            ...t,
+            status,
+            ...extra
+          };
+        }
+        return t;
+      });
     });
   };
 
   const transferTable = (fromId: string, toId: string) => {
     const fromTable = tables.find(t => t.id === fromId);
     const toTable = tables.find(t => t.id === toId);
-    if (!fromTable || !toTable || fromTable.status !== TableStatus.OCCUPIED) return;
+    if (!fromTable || !toTable) return;
 
-    const orderId = fromTable.currentOrderId;
-
-    // Move order to new table if exists
-    if (orderId) {
-      setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, tableId: toId } : o));
+    // For transfer, we only transfer from tables that are occupied (have an order)
+    // We don't transfer from tables that are just seated but don't have an order yet
+    const fromOrderId = fromTable.currentOrderId;
+    if (!fromOrderId) {
+      // No order to transfer, just clear the from table
+      setTables(prev => prev.map(t => {
+        // Handle merged tables when clearing
+        if (t.id === fromId || (t.mergedWithId && t.mergedWithId === fromId) ||
+            (fromTable.mergedWithId && (t.id === fromTable.mergedWithId || t.mergedWithId === fromTable.mergedWithId))) {
+          return {
+            ...t,
+            status: TableStatus.AVAILABLE,
+            currentOrderId: undefined,
+            seatedAt: undefined,
+            guestCount: undefined
+          };
+        }
+        return t;
+      }));
+      return;
     }
 
-    // Update tables
+    // Move order to new table
+    setActiveOrders(prev => prev.map(o => o.id === fromOrderId ? { ...o, tableId: toId } : o));
+
+    // Update tables - handle merged table groups
     setTables(prev => prev.map(t => {
-      if (t.id === fromId) return { ...t, status: TableStatus.CLEANING, currentOrderId: undefined, seatedAt: undefined, guestCount: undefined };
-      if (t.id === toId) return { ...t, status: TableStatus.OCCUPIED, currentOrderId: orderId, seatedAt: fromTable.seatedAt, guestCount: fromTable.guestCount };
+      // Check if this table is in the "from" merged group
+      const fromMasterId = fromTable.mergedWithId || fromId;
+      const isFromGroup = t.id === fromMasterId || t.mergedWithId === fromMasterId ||
+                         (fromTable.mergedWithId && (t.id === fromTable.mergedWithId || t.mergedWithId === fromTable.mergedWithId));
+
+      // Check if this table is in the "to" merged group
+      const toMasterId = toTable.mergedWithId || toId;
+      const isToGroup = t.id === toMasterId || t.mergedWithId === toMasterId ||
+                       (toTable.mergedWithId && (t.id === toTable.mergedWithId || t.mergedWithId === toTable.mergedWithId));
+
+      if (isFromGroup) {
+        // Clear all tables in the from group
+        return {
+          ...t,
+          status: TableStatus.AVAILABLE,
+          currentOrderId: undefined,
+          seatedAt: undefined,
+          guestCount: undefined
+        };
+      }
+
+      if (isToGroup) {
+        // Occupy all tables in the to group
+        // Only the master table gets the order ID and guest count
+        const isToMaster = t.id === toMasterId;
+        return {
+          ...t,
+          status: TableStatus.OCCUPIED,
+          currentOrderId: isToMaster ? fromOrderId : undefined,
+          seatedAt: fromTable.seatedAt,
+          guestCount: isToMaster ? fromTable.guestCount : 0
+        };
+      }
+
       return t;
     }));
   };
@@ -1401,11 +1511,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Update table status if it's a dine-in order
     if (selectedTable) {
-      const tableStatus = finalStatus === OrderStatus.DELIVERED ? TableStatus.PAID : TableStatus.OCCUPIED;
-      updateTableStatus(selectedTable.id, tableStatus, {
-        currentOrderId: orderId,
-        seatedAt: selectedTable.status === TableStatus.PAID ? new Date() : (selectedTable.seatedAt || new Date())
-      });
+      if (finalStatus === OrderStatus.DELIVERED) {
+        updateTableStatus(selectedTable.id, TableStatus.AVAILABLE, {
+          currentOrderId: undefined,
+          seatedAt: undefined,
+          guestCount: undefined,
+        });
+      } else {
+        updateTableStatus(selectedTable.id, TableStatus.OCCUPIED, {
+          currentOrderId: orderId,
+          seatedAt: selectedTable.seatedAt || new Date()
+        });
+      }
     }
 
     setCurrentCart([]); setEditingOrderId(null); setSelectedTable(null);
@@ -1414,9 +1531,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const completeOrder = (orderId: string, payment: { method: string | PaymentMethod }) => {
     setActiveOrders(prev => prev.map(o => {
       if (o.id === orderId) {
-        // If it was a dine-in order, set table to PAID
+        // If it was a dine-in order, free the table for the next seating.
         if (o.tableId) {
-          updateTableStatus(o.tableId, TableStatus.PAID);
+          updateTableStatus(o.tableId, TableStatus.AVAILABLE, {
+            currentOrderId: undefined,
+            seatedAt: undefined,
+            guestCount: undefined,
+          });
         }
         return { ...o, status: OrderStatus.DELIVERED, paymentMethod: payment.method as PaymentMethod };
       }
