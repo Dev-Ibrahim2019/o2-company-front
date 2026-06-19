@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../store';
+import { Can, IsRole } from '../auth';
+import { PERMISSIONS, ROLES } from '../auth/permissions';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShoppingCart,
@@ -124,54 +126,78 @@ export const AppLayout: React.FC<{
                 icon={LayoutDashboard} label="لوحة المعلومات"
                 active={activeView === 'finance_dashboard'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_dashboard'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
               />
-              <SidebarItem
-                icon={Layers} label="إدارة الأقسام"
-                active={activeView === 'finance_departments'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_departments'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
-              />
-              <SidebarItem
-                icon={Package} label="إدارة الأصناف"
-                active={activeView === 'finance_menu'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_menu'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
-              />
-              <SidebarItem
-                icon={ClipboardList} label="إدارة الطلبات"
-                active={activeView === 'finance_orders'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_orders'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
-              />
-              <SidebarItem
-                icon={Users2} label="إدارة الموظفين"
-                active={activeView === 'finance_employees'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_employees'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
-              />
-              <SidebarItem
-                icon={Users} label="إدارة العملاء"
-                active={activeView === 'finance_customers'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_customers'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
-              />
-              <SidebarItem
-                icon={Truck} label="إدارة الموردين"
-                active={activeView === 'finance_suppliers'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_suppliers'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
-              />
-              <SidebarItem
-                icon={Wallet} label="المحاسبة والمالية"
-                active={activeView === 'finance_accounting'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_accounting'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
-              />
-              <SidebarItem
-                icon={FileText} label="مركز التقارير"
-                active={activeView === 'finance_reports'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_reports'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
-              />
-              <SidebarItem
-                icon={Activity} label="سجل التدقيق"
-                active={activeView === 'finance_audit'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_audit'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
-              />
-              <SidebarItem
-                icon={Archive} label="أرشيف العمليات"
-                active={activeView === 'finance_archive'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_archive'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
-              />
-              <SidebarItem
-                icon={Settings} label="الإعدادات العامة"
-                active={activeView === 'finance_settings'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_settings'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
-              />
-              <SidebarItem
-                icon={Building2} label="الهيكل التنظيمي"
-                active={activeView === 'finance_orgstructure'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_orgstructure'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
-              />
+              <Can permission={PERMISSIONS.MANAGE_DEPARTMENTS}>
+                <SidebarItem
+                  icon={Layers} label="إدارة الأقسام"
+                  active={activeView === 'finance_departments'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_departments'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
+                />
+              </Can>
+              <Can permission={PERMISSIONS.MANAGE_ITEMS}>
+                <SidebarItem
+                  icon={Package} label="إدارة الأصناف"
+                  active={activeView === 'finance_menu'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_menu'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
+                />
+              </Can>
+              <Can permission={PERMISSIONS.MANAGE_ORDERS}>
+                <SidebarItem
+                  icon={ClipboardList} label="إدارة الطلبات"
+                  active={activeView === 'finance_orders'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_orders'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
+                />
+              </Can>
+              <Can permission={PERMISSIONS.MANAGE_EMPLOYEES}>
+                <SidebarItem
+                  icon={Users2} label="إدارة الموظفين"
+                  active={activeView === 'finance_employees'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_employees'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
+                />
+              </Can>
+              <Can permission={PERMISSIONS.MANAGE_CUSTOMERS}>
+                <SidebarItem
+                  icon={Users} label="إدارة العملاء"
+                  active={activeView === 'finance_customers'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_customers'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
+                />
+              </Can>
+              <Can permission={PERMISSIONS.MANAGE_SUPPLIERS}>
+                <SidebarItem
+                  icon={Truck} label="إدارة الموردين"
+                  active={activeView === 'finance_suppliers'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_suppliers'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
+                />
+              </Can>
+              <Can permission={PERMISSIONS.VIEW_ACCOUNTING}>
+                <SidebarItem
+                  icon={Wallet} label="المحاسبة والمالية"
+                  active={activeView === 'finance_accounting'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_accounting'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
+                />
+              </Can>
+              <Can permission={PERMISSIONS.VIEW_REPORTS}>
+                <SidebarItem
+                  icon={FileText} label="مركز التقارير"
+                  active={activeView === 'finance_reports'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_reports'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
+                />
+              </Can>
+              <Can permission={PERMISSIONS.VIEW_AUDIT_LOG}>
+                <SidebarItem
+                  icon={Activity} label="سجل التدقيق"
+                  active={activeView === 'finance_audit'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_audit'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
+                />
+              </Can>
+              <Can permission={PERMISSIONS.VIEW_ARCHIVE}>
+                <SidebarItem
+                  icon={Archive} label="أرشيف العمليات"
+                  active={activeView === 'finance_archive'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_archive'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
+                />
+              </Can>
+              <Can permission={PERMISSIONS.MANAGE_SETTINGS}>
+                <SidebarItem
+                  icon={Settings} label="الإعدادات العامة"
+                  active={activeView === 'finance_settings'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_settings'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
+                />
+              </Can>
+              <Can permission={PERMISSIONS.MANAGE_EMPLOYEES}>
+                <SidebarItem
+                  icon={Building2} label="الهيكل التنظيمي"
+                  active={activeView === 'finance_orgstructure'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_orgstructure'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
+                />
+              </Can>
             </>
           ) : isBranchManager ? (
             <>
@@ -198,14 +224,18 @@ export const AppLayout: React.FC<{
                 icon={Plus} label="إنشاء طلب"
                 active={activeView === 'hospitality_pos'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('hospitality_pos'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
               />
-              <SidebarItem
-                icon={Activity} label="طلبات جديدة"
-                active={activeView === 'hospitality_new_orders'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('hospitality_new_orders'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
-              />
-              <SidebarItem
-                icon={Utensils} label="تتبع الطلبات"
-                active={activeView === 'hospitality_tracking'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('hospitality_tracking'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
-              />
+              <Can permission={PERMISSIONS.VIEW_ORDERS}>
+                <SidebarItem
+                  icon={Activity} label="طلبات جديدة"
+                  active={activeView === 'hospitality_new_orders'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('hospitality_new_orders'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
+                />
+              </Can>
+              <Can permission={PERMISSIONS.VIEW_ORDERS}>
+                <SidebarItem
+                  icon={Utensils} label="تتبع الطلبات"
+                  active={activeView === 'hospitality_tracking'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('hospitality_tracking'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
+                />
+              </Can>
               <SidebarItem
                 icon={MessageSquare} label="الشكاوي والملاحظات"
                 active={activeView === 'hospitality_feedback'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('hospitality_feedback'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
@@ -225,10 +255,12 @@ export const AppLayout: React.FC<{
                 icon={LayoutDashboard} label="لوحة التحكم"
                 active={activeView === 'dept_dashboard'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('dept_dashboard'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
               />
-              <SidebarItem
-                icon={PlayCircle} label="الطلبات النشطة"
-                active={activeView === 'dept_orders'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('dept_orders'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
-              />
+              <Can permission={PERMISSIONS.VIEW_ORDERS}>
+                <SidebarItem
+                  icon={PlayCircle} label="الطلبات النشطة"
+                  active={activeView === 'dept_orders'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('dept_orders'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
+                />
+              </Can>
             </>
           ) : isAggregator ? (
             <>
