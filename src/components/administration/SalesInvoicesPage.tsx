@@ -71,6 +71,10 @@ type SalesInvoiceRow = {
   paidAt?: string | null;
   payments: InvoicePaymentResponse[];
   primaryPaymentMethod?: PaymentMethod;
+  primaryEntityType?: "customer" | "employee" | "supplier" | null;
+  primaryEntityId?: number | null;
+  primarySubledgerType?: "customer" | "employee" | "supplier" | null;
+  primarySubledgerId?: number | null;
   source: SalesInvoiceSource;
 };
 
@@ -130,6 +134,16 @@ const normalizePaymentMethod = (
   return "other";
 };
 
+const normalizeEntityType = (
+  value?: string | null,
+): "customer" | "employee" | "supplier" | null => {
+  const method = String(value ?? "").trim().toLowerCase();
+  if (method === "customer" || method === "employee" || method === "supplier") {
+    return method;
+  }
+  return null;
+};
+
 const isPaidLikeStatus = (status?: string | null) => {
   const normalized = String(status ?? "").toLowerCase();
   return ["paid", "closed", "settled", "completed"].some((item) =>
@@ -163,11 +177,18 @@ const normalizePayments = (
     const method = normalizePaymentMethod(
       payment.payment_method ?? payment.method,
     );
+    const inferredEntityType =
+      payment.entity_type ??
+      payment.subledger_type ??
+      normalizeEntityType(payment.payment_method) ??
+      normalizeEntityType(payment.method);
     return {
       ...payment,
       payment_method:
         method && method !== "other" ? method : payment.payment_method,
       method: method && method !== "other" ? method : payment.method,
+      entity_type: inferredEntityType,
+      subledger_type: inferredEntityType,
     };
   });
 
@@ -226,6 +247,8 @@ const summarizePayments = (
     fallbackMethod ??
     undefined;
 
+  const primaryPayment = effectivePayments[0];
+
   return {
     payments: effectivePayments,
     paidCash: totals.cash,
@@ -236,6 +259,10 @@ const summarizePayments = (
     paidTotal: totals.total,
     remaining: Math.max(0, Number((total - totals.total).toFixed(2))),
     primaryPaymentMethod,
+    primaryEntityType: primaryPayment?.entity_type ?? null,
+    primaryEntityId: primaryPayment?.entity_id ?? null,
+    primarySubledgerType: primaryPayment?.subledger_type ?? null,
+    primarySubledgerId: primaryPayment?.subledger_id ?? null,
   };
 };
 
@@ -700,8 +727,54 @@ export default function SalesInvoicesPage() {
     setSavingAction(true);
     setError(null);
     try {
-      if (paymentPayloads.length === 0) {
-        throw new Error("No payments to process");
+      const amount = Number(payload.amount || 0);
+      const method = normalizePaymentMethod(
+        payload.method ?? payload.payment_method,
+      );
+      if (!method || method === "other")
+        throw new Error("طريقة الدفع غير مدعومة");
+
+      console.debug("SalesInvoicesPage.handleProcessPayment", {
+        received_entity_type: payload.entity_type ?? row.primaryEntityType ?? null,
+        received_entity_id: payload.entity_id ?? row.primaryEntityId ?? null,
+        received_subledger_type:
+          payload.subledger_type ?? row.primarySubledgerType ?? null,
+        received_subledger_id: payload.subledger_id ?? row.primarySubledgerId ?? null,
+      });
+
+      if (row.remaining > 0 && amount >= row.remaining - 0.01) {
+        await orderService.closeOrderWithPayments(row.orderId, {
+          customer_name:
+            row.customerName === "عميل نقدي" ? undefined : row.customerName,
+          customer_phone:
+            row.customerPhone === "---" ? undefined : row.customerPhone,
+          payments: [
+            {
+              ...payload,
+              method,
+              payment_method: method,
+              amount,
+              entity_type: payload.entity_type ?? row.primaryEntityType ?? undefined,
+              entity_id: payload.entity_id ?? row.primaryEntityId ?? undefined,
+              subledger_type:
+                payload.subledger_type ?? row.primarySubledgerType ?? undefined,
+              subledger_id: payload.subledger_id ?? row.primarySubledgerId ?? undefined,
+            },
+          ],
+        });
+      } else {
+        const invoiceId = await ensureInvoiceForRow(row);
+        await orderService.addPaymentToInvoice(invoiceId, {
+          ...payload,
+          method,
+          payment_method: method,
+          amount,
+          entity_type: payload.entity_type ?? row.primaryEntityType ?? undefined,
+          entity_id: payload.entity_id ?? row.primaryEntityId ?? undefined,
+          subledger_type:
+            payload.subledger_type ?? row.primarySubledgerType ?? undefined,
+          subledger_id: payload.subledger_id ?? row.primarySubledgerId ?? undefined,
+        });
       }
 
       const invoiceId = await ensureInvoiceForRow(row);
@@ -730,20 +803,24 @@ export default function SalesInvoicesPage() {
     setError(null);
     try {
       const invoiceId = await ensureInvoiceForRow(row);
-      const groupedPayments = row.payments.reduce<Record<PaymentMethod, number>>(
-        (acc, payment) => {
-          const method = normalizePaymentMethod(
-            payment.payment_method ?? payment.method,
-          );
-          if (!method || method === "other") return acc;
-          acc[method] += Number(payment.amount || 0);
-          return acc;
-        },
+      const method = row.primaryPaymentMethod ?? "cash";
+      console.debug("SalesInvoicesPage.handlePostJournal", {
+        received_entity_type: row.primaryEntityType ?? null,
+        received_entity_id: row.primaryEntityId ?? null,
+        received_subledger_type: row.primarySubledgerType ?? null,
+        received_subledger_id: row.primarySubledgerId ?? null,
+      });
+      await orderService.createJournalEntryFromInvoice(
+        invoiceId,
+        row.orderId,
+        row.paidTotal,
+        method,
+        `ترحيل مبيعات فاتورة ${row.invoiceNumber}`,
         {
-          cash: 0,
-          credit_card: 0,
-          wallet: 0,
-          bank_transfer: 0,
+          entity_type: row.primaryEntityType ?? undefined,
+          entity_id: row.primaryEntityId ?? undefined,
+          subledger_type: row.primarySubledgerType ?? undefined,
+          subledger_id: row.primarySubledgerId ?? undefined,
         },
       );
       const journalPayments = Object.entries(groupedPayments)

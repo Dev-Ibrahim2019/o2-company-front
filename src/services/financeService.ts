@@ -136,6 +136,16 @@ export interface SupplierPaymentPayload {
   branch_id?: number;
 }
 
+const logAccountingPayload = (label: string, payload: Record<string, unknown>) => {
+  console.debug(label, {
+    received_entity_type: payload.entity_type ?? null,
+    received_entity_id: payload.entity_id ?? null,
+    received_subledger_type: payload.subledger_type ?? null,
+    received_subledger_id: payload.subledger_id ?? null,
+    payload,
+  });
+};
+
 // ─── Service ───────────────────────────────────────────────────────────────
 
 export const financeService = {
@@ -146,6 +156,7 @@ export const financeService = {
     employeeId: number,
     data: AdvancePayload,
   ): Promise<ApiResponse> => {
+    logAccountingPayload("financeService.recordAdvance", data as Record<string, unknown>);
     const res = await api.post(`/employees/${employeeId}/advance`, data);
     return res.data;
   },
@@ -155,6 +166,7 @@ export const financeService = {
     employeeId: number,
     data: AdvancePayload,
   ): Promise<ApiResponse> => {
+    logAccountingPayload("financeService.recordAdvanceRepayment", data as Record<string, unknown>);
     const res = await api.post(
       `/employees/${employeeId}/advance-repayment`,
       data,
@@ -167,6 +179,7 @@ export const financeService = {
     employeeId: number,
     data: SalaryAccrualPayload,
   ): Promise<ApiResponse> => {
+    logAccountingPayload("financeService.recordSalaryAccrual", data as Record<string, unknown>);
     const res = await api.post(`/employees/${employeeId}/salary-accrual`, data);
     return res.data;
   },
@@ -176,6 +189,7 @@ export const financeService = {
     employeeId: number,
     data: SalaryPaymentPayload,
   ): Promise<ApiResponse> => {
+    logAccountingPayload("financeService.recordSalaryPayment", data as Record<string, unknown>);
     const res = await api.post(`/employees/${employeeId}/salary-payment`, data);
     return res.data;
   },
@@ -227,6 +241,7 @@ export const financeService = {
     customerId: number,
     data: CustomerInvoicePayload,
   ): Promise<ApiResponse> => {
+    logAccountingPayload("financeService.recordCustomerInvoice", data as Record<string, unknown>);
     const res = await api.post(`/customers/${customerId}/invoice`, data);
     return res.data;
   },
@@ -235,6 +250,7 @@ export const financeService = {
     customerId: number,
     data: CustomerPaymentPayload,
   ): Promise<ApiResponse> => {
+    logAccountingPayload("financeService.recordCustomerPayment", data as Record<string, unknown>);
     const res = await api.post(`/customers/${customerId}/payment`, data);
     return res.data;
   },
@@ -256,6 +272,7 @@ export const financeService = {
     supplierId: number,
     data: SupplierBillPayload,
   ): Promise<ApiResponse> => {
+    logAccountingPayload("financeService.recordSupplierBill", data as Record<string, unknown>);
     const res = await api.post(`/suppliers/${supplierId}/bill`, data);
     return res.data;
   },
@@ -264,6 +281,7 @@ export const financeService = {
     supplierId: number,
     data: SupplierPaymentPayload,
   ): Promise<ApiResponse> => {
+    logAccountingPayload("financeService.recordSupplierPayment", data as Record<string, unknown>);
     const res = await api.post(`/suppliers/${supplierId}/payment`, data);
     return res.data;
   },

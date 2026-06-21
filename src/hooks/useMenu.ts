@@ -46,8 +46,28 @@ export const useMenu = (branchId: number | null) => {
       const { data } = await api.get("/menu", {
         params: { branch_id: branchId },
       });
-      setCategories(data.data?.categories ?? []);
-    } catch {
+      const categories = data.data?.categories ?? [];
+      const totalItems = data.data?.total_items ?? 0;
+
+      // ✅ DEBUG: سجل البيانات القادمة من API
+      console.log("🧾 [useMenu] API Response:", data);
+      console.log("📦 [useMenu] Categories count:", categories.length);
+      console.log("📦 [useMenu] Total items:", totalItems);
+
+      categories.forEach((cat: any) => {
+        console.log(
+          `📁 [useMenu] Category "${cat.name_ar}": ${cat.items?.length || 0} items`,
+          cat.items?.map((i: any) => ({
+            id: i.id,
+            name: i.name_ar,
+            price: i.price,
+          })),
+        );
+      });
+
+      setCategories(categories);
+    } catch (err) {
+      console.error("❌ [useMenu] Fetch error:", err);
       setError("فشل تحميل المنيو");
     } finally {
       setLoading(false);

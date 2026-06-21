@@ -12,6 +12,7 @@ import React, { useState, useEffect } from "react";
 import api from "../../../api/axios";
 
 type EntityType = "employee" | "customer" | "supplier";
+type SubledgerType = EntityType;
 
 type FinanceAction =
     | "advance"
@@ -182,6 +183,15 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
         text: string;
     } | null>(null);
 
+    const entitySubledger = entityId
+        ? {
+              subledger_type: entityType as SubledgerType,
+              subledger_id: entityId,
+              entity_type: entityType,
+              entity_id: entityId,
+          }
+        : {};
+
     // ── جلب الحسابات عند الفتح ────────────────────────────────────────────────
     useEffect(() => {
         if (!isOpen) return;
@@ -244,6 +254,14 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
         setIsLoading(true);
         setMessage(null);
 
+        console.debug("FinanceActionModal.handleSubmit", {
+            action,
+            received_entity_type: entityType,
+            received_entity_id: entityId,
+            received_subledger_type: entitySubledger?.subledger_type ?? null,
+            received_subledger_id: entitySubledger?.subledger_id ?? null,
+        });
+
         try {
             let res;
 
@@ -256,6 +274,7 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
                         cash_account_id: parseInt(cashAccountId),
                         date,
                         description: description || undefined,
+                        ...entitySubledger,
                     });
                     break;
 
@@ -268,6 +287,7 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
                             cash_account_id: parseInt(cashAccountId),
                             date,
                             description: description || undefined,
+                            ...entitySubledger,
                         },
                     );
                     break;
@@ -280,6 +300,7 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
                             amount: parseFloat(amount),
                             date,
                             description: description || undefined,
+                            ...entitySubledger,
                         },
                     );
                     break;
@@ -294,6 +315,7 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
                             date,
                             advance_deduction: parseFloat(advanceDeduction) || 0,
                             description: description || undefined,
+                            ...entitySubledger,
                         },
                     );
                     break;
@@ -306,6 +328,7 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
                         offset_account_id: parseInt(offsetAccountId),
                         date,
                         reference: reference || undefined,
+                        ...entitySubledger,
                     });
                     break;
 
@@ -316,6 +339,7 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
                         cash_account_id: parseInt(cashAccountId),
                         date,
                         reference: reference || undefined,
+                        ...entitySubledger,
                     });
                     break;
 
@@ -327,6 +351,7 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
                         offset_account_id: parseInt(offsetAccountId),
                         date,
                         reference: reference || undefined,
+                        ...entitySubledger,
                     });
                     break;
 
@@ -337,6 +362,7 @@ const FinanceActionModal: React.FC<FinanceActionModalProps> = ({
                         cash_account_id: parseInt(cashAccountId),
                         date,
                         reference: reference || undefined,
+                        ...entitySubledger,
                     });
                     break;
 

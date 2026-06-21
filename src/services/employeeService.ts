@@ -167,6 +167,16 @@ export interface ApiResponse<T = any> {
   data: T;
 }
 
+const logEmployeePayload = (label: string, payload: Record<string, unknown>) => {
+  console.debug(label, {
+    received_entity_type: payload.entity_type ?? null,
+    received_entity_id: payload.entity_id ?? null,
+    received_subledger_type: payload.subledger_type ?? null,
+    received_subledger_id: payload.subledger_id ?? null,
+    payload,
+  });
+};
+
 export const employeeService = {
   // ── CRUD ──────────────────────────────────────────────────
   getAll: async (filters?: EmployeeFilters): Promise<EmployeeFromApi[]> => {
@@ -252,8 +262,13 @@ export const employeeService = {
       date: string;
       description?: string;
       branch_id?: number;
+      entity_type?: "employee";
+      entity_id?: number;
+      subledger_type?: "employee";
+      subledger_id?: number;
     },
   ): Promise<ApiResponse<any>> => {
+    logEmployeePayload("employeeService.recordAdvance", payload as Record<string, unknown>);
     const { data } = await api.post(
       `/employees/${employeeId}/advance`,
       payload,
@@ -269,8 +284,13 @@ export const employeeService = {
       date: string;
       description?: string;
       branch_id?: number;
+      entity_type?: "employee";
+      entity_id?: number;
+      subledger_type?: "employee";
+      subledger_id?: number;
     },
   ): Promise<ApiResponse<any>> => {
+    logEmployeePayload("employeeService.recordAdvanceRepayment", payload as Record<string, unknown>);
     const { data } = await api.post(
       `/employees/${employeeId}/advance-repayment`,
       payload,
@@ -283,6 +303,7 @@ export const employeeService = {
     employeeId: number,
     payload: any,
   ): Promise<ApiResponse<any>> => {
+    logEmployeePayload("employeeService.accrualSalary", payload as Record<string, unknown>);
     const { data } = await api.post(
       `/employees/${employeeId}/salary-accrual`,
       payload,
@@ -303,8 +324,13 @@ export const employeeService = {
       advance_deduction?: number;
       description?: string;
       branch_id?: number;
+      entity_type?: "employee";
+      entity_id?: number;
+      subledger_type?: "employee";
+      subledger_id?: number;
     },
   ): Promise<ApiResponse<any>> => {
+    logEmployeePayload("employeeService.paySalary", payload as Record<string, unknown>);
     const { data } = await api.post(
       `/employees/${employeeId}/salary-payment`,
       payload,
@@ -322,8 +348,13 @@ export const employeeService = {
       description?: string;
       branch_id?: number;
       type: "debit" | "credit";
+      entity_type?: "employee";
+      entity_id?: number;
+      subledger_type?: "employee";
+      subledger_id?: number;
     },
   ): Promise<ApiResponse<any>> => {
+    logEmployeePayload("employeeService.recordSettlement", payload as Record<string, unknown>);
     const { data } = await api.post(
       `/employees/${employeeId}/settlement`,
       payload,
