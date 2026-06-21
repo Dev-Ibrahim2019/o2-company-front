@@ -659,6 +659,8 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
             credit: l.credit || 0,
             description: l.description,
             sort_order: i,
+            subledger_type: l.subledgerType && l.subledgerType !== "none" ? l.subledgerType : null,
+            subledger_id: l.subledgerId ? Number(l.subledgerId) : null,
           })),
       });
       await acc.postTransaction(tx.id);
@@ -1681,8 +1683,8 @@ function emptyJournalForm(type: string = "journal") {
     description: "",
     type,
     lines: [
-      { accountId: "", debit: 0, credit: 0, description: "" },
-      { accountId: "", debit: 0, credit: 0, description: "" },
+      { accountId: "", debit: 0, credit: 0, description: "", subledgerType: null, subledgerId: null },
+      { accountId: "", debit: 0, credit: 0, description: "", subledgerType: null, subledgerId: null },
     ],
   };
 }

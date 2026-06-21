@@ -34,10 +34,11 @@ import { useCart, type CartItem } from "../../hooks/useCart";
 import type { MenuItem } from "../../hooks/useMenu";
 import {
   orderService,
+  normalizePaymentMethod as normalizeApiPaymentMethod,
   type OrderFromApi,
   type PaymentMethod as ApiPaymentMethod,
 } from "../../services/orderService";
-  import { TablesView } from "./Tables";
+import { TablesView } from "./Tables";
 import type { Order, Table } from "../../../types";
 
 const MONEY_EPSILON = 0.01;
@@ -54,19 +55,13 @@ const toPosOrderType = (type: OrderFromApi["order_type"]) =>
   type === "dine_in" ? OrderType.DINE_IN : OrderType.TAKEAWAY;
 
 const toPosPaymentMethod = (
-  method?: ApiPaymentMethod | null,
+  method?: ApiPaymentMethod | string | null,
 ): PaymentMethod => {
-  switch (method) {
-    case "credit_card":
-      return PaymentMethod.CREDIT_CARD;
-    case "wallet":
-      return PaymentMethod.WALLET;
-    case "bank_transfer":
-      return PaymentMethod.QR;
-    case "cash":
-    default:
-      return PaymentMethod.CASH;
-  }
+  const normalized = normalizeApiPaymentMethod(method);
+  if (normalized === "card") return PaymentMethod.CREDIT_CARD;
+  if (normalized === "wallet") return PaymentMethod.WALLET;
+  if (normalized === "bank") return PaymentMethod.QR;
+  return PaymentMethod.CASH;
 };
 
 const apiOrderToCartItems = (order: OrderFromApi): CartItem[] =>
@@ -254,28 +249,8 @@ export const POS: React.FC<{
     }
   }, [posError, submitError]);
 
-  useEffect(() => {
-    if (paymentMethod === PaymentMethod.CASH) {
-      setCustomerName("صندوق مبيعات");
-      setAccountNumber("1001");
-    } else if (paymentMethod === PaymentMethod.WALLET) {
-      setAccountNumber("2002");
-      if (customerName === "صندوق مبيعات") setCustomerName("");
-    } else if (paymentMethod === PaymentMethod.CREDIT_CARD) {
-      setAccountNumber("3003");
-      if (customerName === "صندوق مبيعات") setCustomerName("");
-    }
-  }, [paymentMethod]);
-
-  useEffect(() => {
-    if (accountType === "EMPLOYEE" && accountNumber) {
-      const emp = employees?.find(
-        (e: any) => e.id === accountNumber || e.phone === accountNumber,
-      );
-      if (emp) setCustomerName((emp as any).name);
-    }
-  }, [accountNumber, accountType, employees]);
-
+  // ── Account data comes from real API via CustomerTab/SettlementPanel ──
+  // No hardcoded mock account numbers.
   // ── Derived ───────────────────────────────────────────────────────────────
   const filteredCustomers = useMemo(() => {
     if (!customerSearchQuery) return [];
@@ -310,12 +285,33 @@ export const POS: React.FC<{
     addToCartRaw(item, opts);
   };
 
+  // معرفة entityType من accountType الحالي
+  const getEntityType = (): string | undefined => {
+    if (accountType === 'EMPLOYEE') return 'employee';
+    if (accountType === 'SUPPLIER') return 'supplier';
+    if (accountType === 'ACCOUNT') return 'customer';
+    return undefined;
+  };
+
   const addPayment = (method: PaymentMethod) => {
     if (remainingAmount <= MONEY_EPSILON) return;
     setPaymentMethod(method);
+    // إذا كان هناك كيان محدد (موظف/عميل/مورد)، نرسل بياناته مع الدفعة
+    const entityMethod = getEntityType();
+    const entityId = accountNumber ? parseInt(accountNumber, 10) : undefined;
+    // سجل الـ payload للتأكد
+    const paymentPayload = {
+      method,
+      amount: roundMoney(remainingAmount),
+      entity_type: entityMethod,
+      entity_id: entityId,
+      subledger_type: entityMethod,
+      subledger_id: entityId,
+    };
+    console.log('[POS] addPayment payload:', paymentPayload);
     setPayments((prev) => [
       ...prev,
-      { method, amount: roundMoney(remainingAmount) },
+      paymentPayload,
     ]);
   };
 
@@ -747,13 +743,13 @@ export const POS: React.FC<{
   };
 
   // ── submitOrder ───────────────────────────────────────────────────────────
-  // يرسل الطلب للـ API الحقيقي
+  // يرسل الطلب للـ API الحقيقي — محسّن لإرسال entity data للمدفوعات على حساب الكيانات
   const submitOrder = async (
     status: OrderStatus,
     method: PaymentMethod,
     _discount: number,
     meta: { name: string; phone: string; note: string },
-    paymentsArg?: PaymentEntry[],
+    paymentsArg?: any[],
   ) => {
     if (currentCart.length === 0) {
       setPosError("السلة فارغة");
@@ -809,21 +805,27 @@ export const POS: React.FC<{
     }
 
     const selectedPaymentMethod = closingPayments[0]?.method ?? method;
-    const paymentMap: Record<
-      PaymentMethod,
-      "cash" | "credit_card" | "wallet" | "bank_transfer"
-    > = {
-      [PaymentMethod.CASH]: "cash",
-      [PaymentMethod.CREDIT_CARD]: "credit_card",
-      [PaymentMethod.WALLET]: "wallet",
-      [PaymentMethod.QR]: "bank_transfer",
-      [PaymentMethod.ONLINE]: "bank_transfer",
-    };
-    const apiClosingPayments = closingPayments.map((payment) => ({
-      method: paymentMap[payment.method],
-      amount: payment.amount,
-      reference: payment.reference,
-    }));
+    // Normalize all payment methods — مع المحافظة على entity data
+    const apiClosingPayments = closingPayments
+      .map((payment) => {
+        const method = normalizeApiPaymentMethod(payment.method);
+        if (!method) return null;
+        const result: any = {
+          method,
+          amount: payment.amount,
+          reference: payment.reference,
+        };
+        // المحافظة على entity data إذا كانت موجودة
+        if ((payment as any).entity_type) {
+          result.entity_type = (payment as any).entity_type;
+          result.entity_id = (payment as any).entity_id;
+          result.subledger_type = (payment as any).subledger_type;
+          result.subledger_id = (payment as any).subledger_id;
+        }
+        return result;
+      })
+      .filter((p): p is NonNullable<typeof p> => p !== null) as any[];
+    console.log('[POS] apiClosingPayments:', JSON.stringify(apiClosingPayments));
 
     const activeTable =
       cartOrderType === OrderType.DINE_IN ? resolveActiveDineInTable() : null;
@@ -841,11 +843,11 @@ export const POS: React.FC<{
         discount_value: discountValue || undefined,
         discount_type: discountType === "PERCENT" ? "percent" : "amount",
         payment_method: isClosingOrder
-          ? paymentMap[selectedPaymentMethod]
+          ? normalizeApiPaymentMethod(selectedPaymentMethod)
           : undefined,
       },
       shouldConfirm,
-      isClosingOrder ? apiClosingPayments : [],
+      isClosingOrder ? (apiClosingPayments as any[]) : [],
       isClosingOrder,
       editingApiOrderId,
     );

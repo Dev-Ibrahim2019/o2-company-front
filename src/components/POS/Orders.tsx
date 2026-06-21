@@ -208,6 +208,12 @@ export const OrdersView = () => {
     setActionError(null);
     setBusyOrderId(order.id);
     try {
+      console.debug("POS.Orders.closeOrder", {
+        received_entity_type: null,
+        received_entity_id: null,
+        received_subledger_type: null,
+        received_subledger_id: null,
+      });
       await orderService.pay(order.id, {
         payment_method: order.payment_method ?? "cash",
         amount: order.total,

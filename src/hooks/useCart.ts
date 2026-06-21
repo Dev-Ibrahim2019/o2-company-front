@@ -79,7 +79,9 @@ const getApiError = (error: unknown) => error as ApiErrorLike;
 
 const getApiErrorMessage = (error: unknown, fallback = "") => {
   const apiError = getApiError(error);
-  return String(apiError.response?.data?.message ?? apiError.message ?? fallback);
+  return String(
+    apiError.response?.data?.message ?? apiError.message ?? fallback,
+  );
 };
 
 const isCloseUpdateStateError = (error: unknown) => {
@@ -198,9 +200,7 @@ export const useCart = () => {
             existingTableNumber &&
             existingTableNumber !== requestedTableNumber
           ) {
-            throw new Error(
-              "لا يمكن تعديل طلب طاولة مختلفة من السلة الحالية",
-            );
+            throw new Error("لا يمكن تعديل طلب طاولة مختلفة من السلة الحالية");
           }
         }
         // ═══════════════════════════════════════════════════
@@ -295,6 +295,11 @@ export const useCart = () => {
             );
           }
 
+          // سجل الـ payments قبل الإرسال للتأكد
+          console.log(
+            "[useCart] paymentsToRecord:",
+            JSON.stringify(paymentsToRecord),
+          );
           order = await orderService.closeOrderWithPayments(order.id, {
             customer_name: payload.customer_name,
             customer_phone: payload.customer_phone,
@@ -304,6 +309,11 @@ export const useCart = () => {
               payment_method: payment.method,
               amount: payment.amount,
               reference_number: payment.reference,
+              // المحافظة على entity data إذا كانت موجودة
+              entity_type: (payment as any).entity_type,
+              entity_id: (payment as any).entity_id,
+              subledger_type: (payment as any).subledger_type,
+              subledger_id: (payment as any).subledger_id,
             })),
           });
         }

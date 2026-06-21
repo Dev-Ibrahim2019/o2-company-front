@@ -1,4 +1,4 @@
-// src/services/orderService.ts — مُحدَّث بإضافة pay و verifyReference و createJournalEntryFromInvoice
+// src/services/orderService.ts — Limited & Updated with Settlement Engine integration
 
 import api from "../api/axios";
 import type { Transaction as AccountingTransaction } from "./accountingService";
@@ -13,7 +13,7 @@ export type OrderStatus =
   | "served"
   | "paid"
   | "cancelled";
-export type PaymentMethod = "cash" | "credit_card" | "wallet" | "bank_transfer";
+export type PaymentMethod = "cash" | "card" | "wallet" | "bank" | "account";
 export type DiscountType = "amount" | "percent";
 
 const normalizeMoney = (value: number) =>
@@ -62,22 +62,63 @@ const getInvoiceFromError = (error: unknown): InvoiceFromApi | null => {
     : null;
 };
 
-const normalizePaymentMethod = (
+export const normalizePaymentMethod = (
   value: PaymentMethod | string | null | undefined,
 ): PaymentMethod | undefined => {
-  const method = String(value ?? "").trim().toLowerCase();
+  const method = String(value ?? "")
+    .trim()
+    .toLowerCase();
   if (!method) return undefined;
 
   if (method === "cash") return "cash";
-  if (["credit_card", "card", "credit", "visa", "mastercard"].includes(method)) {
-    return "credit_card";
+  if (
+    ["credit_card", "card", "credit", "visa", "mastercard"].includes(method)
+  ) {
+    return "card";
   }
   if (method === "wallet") return "wallet";
   if (["bank_transfer", "bank", "transfer", "qr", "online"].includes(method)) {
-    return "bank_transfer";
+    return "bank";
+  }
+  // Entity payment methods — يجب إرسالها كـ 'account' لأن جدول payments
+  // يقبل فقط: cash, card, bank, wallet, account, mixed
+  if (["employee", "customer", "supplier", "account"].includes(method)) {
+    return "account";
   }
 
   return undefined;
+};
+
+// Cache for payment method type -> DB ID mapping
+let _paymentMethodIdCache: Record<string, number> | null = null;
+
+async function resolvePaymentMethodIdToDbId(method: string): Promise<number> {
+  if (!_paymentMethodIdCache) {
+    const { settlementService } = await import("./settlementService");
+    const methods = await settlementService.getPaymentMethods();
+    _paymentMethodIdCache = {};
+    for (const m of methods) {
+      _paymentMethodIdCache[m.type] = m.id;
+    }
+  }
+  const id = _paymentMethodIdCache[method];
+  if (!id) {
+    throw new Error(`طريقة الدفع '${method}' غير موجودة في قاعدة البيانات.`);
+  }
+  return id;
+}
+
+const logSettlementPayload = (
+  label: string,
+  payload: Record<string, unknown>,
+) => {
+  console.debug(label, {
+    received_entity_type: payload.entity_type ?? null,
+    received_entity_id: payload.entity_id ?? null,
+    received_subledger_type: payload.subledger_type ?? null,
+    received_subledger_id: payload.subledger_id ?? null,
+    payload,
+  });
 };
 
 export interface OrderQueryFilters {
@@ -124,6 +165,10 @@ export interface PayOrderPayload {
   customer_name?: string;
   customer_phone?: string;
   note?: string;
+  entity_type?: "customer" | "employee" | "supplier";
+  entity_id?: number;
+  subledger_type?: "customer" | "employee" | "supplier";
+  subledger_id?: number;
 }
 
 export interface InvoicePayload {
@@ -169,6 +214,10 @@ export interface InvoicePaymentPayload {
   method?: PaymentMethod | string;
   amount: number;
   reference_number?: string;
+  entity_type?: "customer" | "employee" | "supplier";
+  entity_id?: number;
+  subledger_type?: "customer" | "employee" | "supplier";
+  subledger_id?: number;
 }
 
 export interface CloseOrderWithPaymentsPayload extends InvoicePayload {
@@ -182,6 +231,10 @@ export interface InvoicePaymentResponse {
   payment_method: string;
   method?: string;
   reference_number?: string;
+  entity_type?: "customer" | "employee" | "supplier" | null;
+  entity_id?: number | null;
+  subledger_type?: "customer" | "employee" | "supplier" | null;
+  subledger_id?: number | null;
   created_at: string;
 }
 
@@ -258,8 +311,8 @@ export interface OrderFromApi {
   discount_amount: number;
   total: number;
   payment_method: PaymentMethod | null;
-  reference_number: string | null; // ✅
-  paid_at: string | null; // ✅
+  reference_number: string | null;
+  paid_at: string | null;
   items: OrderItemFromApi[];
   tickets: ProductionTicketFromApi[];
   payments?: InvoicePaymentResponse[];
@@ -349,7 +402,9 @@ export const orderService = {
   }): Promise<InvoiceFromApi[]> => {
     const { data } = await api.get("/invoices", { params });
     const payload = data.data;
-    return (Array.isArray(payload) ? payload : payload?.data ?? []) as InvoiceFromApi[];
+    return (
+      Array.isArray(payload) ? payload : (payload?.data ?? [])
+    ) as InvoiceFromApi[];
   },
 
   /** إضافة دفعة إلى فاتورة موجودة */
@@ -357,25 +412,41 @@ export const orderService = {
     invoiceId: number,
     payload: InvoicePaymentPayload,
   ): Promise<InvoicePaymentResponse> => {
-    const method = normalizePaymentMethod(payload.method ?? payload.payment_method);
+    // إذا كان هناك entity_type، method = 'account' (لأن ENUM يقبل فقط: cash,card,bank,wallet,account,mixed)
+    const isEntityPayment = !!(payload.entity_type || payload.subledger_type);
+    const method = isEntityPayment
+      ? "account"
+      : normalizePaymentMethod(payload.method ?? payload.payment_method);
     if (!method) {
       throw new Error("طريقة الدفع مطلوبة");
     }
+    logSettlementPayload(
+      "orderService.addPaymentToInvoice",
+      payload as Record<string, unknown>,
+    );
     const { data } = await api.post(`/invoices/${invoiceId}/payments`, {
       ...payload,
       method,
       payment_method: method,
       amount: normalizeMoney(payload.amount),
       reference_number: payload.reference_number?.trim() || undefined,
+      entity_type: payload.entity_type,
+      entity_id: payload.entity_id,
+      subledger_type: payload.subledger_type,
+      subledger_id: payload.subledger_id,
     });
 
     return data.data as InvoicePaymentResponse;
   },
 
-  getInvoiceForOrder: async (orderId: number): Promise<InvoiceFromApi | null> => {
+  getInvoiceForOrder: async (
+    orderId: number,
+  ): Promise<InvoiceFromApi | null> => {
     const invoices = await orderService.getInvoices({ order_id: orderId });
     return (
-      invoices.find((invoice) => Number(invoice.order_id) === Number(orderId)) ??
+      invoices.find(
+        (invoice) => Number(invoice.order_id) === Number(orderId),
+      ) ??
       invoices[0] ??
       null
     );
@@ -398,7 +469,8 @@ export const orderService = {
       }
 
       const existingInvoice =
-        getInvoiceFromError(error) ?? (await orderService.getInvoiceForOrder(orderId));
+        getInvoiceFromError(error) ??
+        (await orderService.getInvoiceForOrder(orderId));
       if (!existingInvoice) {
         throw error;
       }
@@ -406,13 +478,35 @@ export const orderService = {
     }
 
     const normalizedPayments = payload.payments
-      .map((payment) => ({
-        ...payment,
-        method: normalizePaymentMethod(payment.method ?? payment.payment_method),
-        amount: normalizeMoney(payment.amount),
-        reference_number: payment.reference_number?.trim() || undefined,
-      }))
+      .map((payment) => {
+        const isEntityPayment = !!(
+          payment.entity_type || payment.subledger_type
+        );
+        return {
+          ...payment,
+          method: isEntityPayment
+            ? "account"
+            : normalizePaymentMethod(payment.method ?? payment.payment_method),
+          amount: normalizeMoney(payment.amount),
+          reference_number: payment.reference_number?.trim() || undefined,
+          entity_type: payment.entity_type,
+          entity_id: payment.entity_id,
+          subledger_type: payment.subledger_type,
+          subledger_id: payment.subledger_id,
+        };
+      })
       .filter((payment) => payment.method && payment.amount > 0);
+
+    logSettlementPayload("orderService.closeOrderWithPayments", {
+      payments: normalizedPayments.map((payment) => ({
+        entity_type: payment.entity_type ?? null,
+        entity_id: payment.entity_id ?? null,
+        subledger_type: payment.subledger_type ?? null,
+        subledger_id: payment.subledger_id ?? null,
+        method: payment.method,
+        amount: payment.amount,
+      })),
+    } as Record<string, unknown>);
 
     if (payload.payments.length > 0 && normalizedPayments.length === 0) {
       throw new Error("طريقة الدفع المحددة غير مدعومة");
@@ -426,7 +520,9 @@ export const orderService = {
       ),
     );
     let remainingAmount =
-      invoiceTotal > 0 ? Math.max(0, normalizeMoney(invoiceTotal - existingPaid)) : 0;
+      invoiceTotal > 0
+        ? Math.max(0, normalizeMoney(invoiceTotal - existingPaid))
+        : 0;
 
     for (const payment of normalizedPayments) {
       if (invoiceTotal > 0 && remainingAmount <= 0) break;
@@ -496,71 +592,71 @@ export const orderService = {
   },
 
   /**
-   * إغلاق الطلب ماليًا عبر إنشاء فاتورة ثم إرسال دفعة
-   * إذا payment_method === 'wallet' → reference_number مطلوب
-   * يتبع التدفق الكامل: invoice → payment → journal entry → order status=paid
+   * إغلاق الطلب ماليًا عبر SettlementEngine
+   * يدعم المدفوعات المختلطة والمحفظة والتحويلات
    */
   pay: async (id: number, payload: PayOrderPayload): Promise<OrderFromApi> => {
-    // Phase 4a: إنشاء فاتورة
-    const invoice = await api.post(`/orders/${id}/invoice`, {
-      customer_name: payload.customer_name,
-      customer_phone: payload.customer_phone,
-      note: payload.note,
-    });
-    const invoiceData = invoice.data.data as InvoiceFromApi;
-
-    // Phase 4b: تسجيل الدفعة
-    const paymentMethod = normalizePaymentMethod(
-      payload.method ?? payload.payment_method,
-    );
-    if (!paymentMethod) {
+    const entityDrivenMethod = payload.entity_type ?? payload.subledger_type;
+    const method =
+      entityDrivenMethod ??
+      normalizePaymentMethod(payload.method ?? payload.payment_method);
+    if (!method) {
       throw new Error("طريقة الدفع مطلوبة");
     }
-    await api.post(`/invoices/${invoiceData.id}/payments`, {
-      method: paymentMethod,
-      payment_method: paymentMethod,
-      amount: normalizeMoney(payload.amount),
-      reference_number: payload.reference_number?.trim() || undefined,
+    const paymentMethodId = await resolvePaymentMethodIdToDbId(method);
+    logSettlementPayload("orderService.pay", {
+      ...payload,
+      method,
+      payment_method: method,
+    } as Record<string, unknown>);
+    const { data } = await api.post(`/orders/${id}/settle`, {
+      payments: [
+        {
+          payment_method_id: paymentMethodId,
+          amount: normalizeMoney(payload.amount),
+          reference_number: payload.reference_number?.trim() || undefined,
+          entity_type: payload.entity_type,
+          entity_id: payload.entity_id,
+          subledger_type: payload.subledger_type,
+          subledger_id: payload.subledger_id,
+        },
+      ],
     });
-
-    await api.put(`/orders/${id}`, { payment_method: paymentMethod });
-
-    // جلب الطلب المحدث
-    const { data } = await api.get(`/orders/${id}`);
-    return data.data as OrderFromApi;
+    return data.data?.order || data.data;
   },
 
   transferClosedOrderToSales: async (
     order: OrderFromApi,
   ): Promise<AccountingTransaction> => {
-    const paymentMethod = order.payment_method ?? "cash";
-    const cashAccountMap: Record<PaymentMethod, number> = {
-      cash: 1001,
-      credit_card: 1002,
-      wallet: 1003,
-      bank_transfer: 1004,
-    };
-
-    const { data } = await api.post("/accounting/transactions", {
-      type: "sale",
-      description: `ترحيل مبيعات طلب #${order.order_number}`,
-      source_type: "order",
-      source_id: order.id,
-      reference: order.order_number,
-      entries: [
+    // Use SettlementEngine on backend - no hardcoded account IDs
+    const firstPayment = order.payments?.[0];
+    const method =
+      firstPayment?.entity_type ??
+      firstPayment?.subledger_type ??
+      normalizePaymentMethod(order.payment_method) ??
+      "cash";
+    const paymentMethodId = await resolvePaymentMethodIdToDbId(method);
+    logSettlementPayload("orderService.transferClosedOrderToSales", {
+      method,
+      payment_method: method,
+      entity_type: firstPayment?.entity_type,
+      entity_id: firstPayment?.entity_id,
+      subledger_type: firstPayment?.subledger_type,
+      subledger_id: firstPayment?.subledger_id,
+    } as Record<string, unknown>);
+    const { data } = await api.post(`/orders/${order.id}/settle`, {
+      payments: [
         {
-          account_id: cashAccountMap[paymentMethod] ?? 1001,
-          debit: order.total,
-          description: "قبض مبيعات",
-        },
-        {
-          account_id: 4001,
-          credit: order.total,
-          description: "إيرادات مبيعات",
+          payment_method_id: paymentMethodId,
+          amount: order.total,
+          entity_type: firstPayment?.entity_type,
+          entity_id: firstPayment?.entity_id,
+          subledger_type: firstPayment?.subledger_type,
+          subledger_id: firstPayment?.subledger_id,
         },
       ],
     });
-    return data.data as AccountingTransaction;
+    return data.data?.transaction || data.data;
   },
 
   /** التحقق من الرقم المرجعي قبل الإرسال (لمنع التكرار) */
@@ -575,44 +671,50 @@ export const orderService = {
     return data.data as ReferenceVerifyResult;
   },
 
-  /** إنشاء قيد محاسبي تلقائي عند دفع الفاتورة */
+  /**
+   * إنشاء قيد محاسبي — تم تحديثه لاستخدام SettlementEngine
+   * بدلاً من الأكواد الثابتة للحسابات
+   */
   createJournalEntryFromInvoice: async (
     invoiceId: number,
     orderId: number,
     amount: number,
     paymentMethod: PaymentMethod,
     description?: string,
+    subledger?: {
+      entity_type?: "customer" | "employee" | "supplier";
+      entity_id?: number;
+      subledger_type?: "customer" | "employee" | "supplier";
+      subledger_id?: number;
+    },
   ): Promise<AccountingTransaction> => {
-    const cashAccountMap: Record<PaymentMethod, number> = {
-      cash: 1001,
-      credit_card: 1002,
-      wallet: 1003,
-      bank_transfer: 1004,
-    };
-
-    const revenueAccountId = 4001;
-    const cashAccountId = cashAccountMap[paymentMethod] ?? 1001;
-
-    const { data } = await api.post("/accounting/transactions", {
-      type: "sale",
-      description:
-        description ?? `فاتورة #${invoiceId} - طلب #${orderId}`,
-      source_type: "invoice",
-      source_id: invoiceId,
-      entries: [
+    // Delegated to backend SettlementEngine
+    const method =
+      subledger?.entity_type ??
+      subledger?.subledger_type ??
+      normalizePaymentMethod(paymentMethod) ??
+      "cash";
+    const paymentMethodId = await resolvePaymentMethodIdToDbId(method);
+    logSettlementPayload("orderService.createJournalEntryFromInvoice", {
+      invoiceId,
+      orderId,
+      amount,
+      method,
+      ...subledger,
+    } as Record<string, unknown>);
+    const { data } = await api.post(`/orders/${orderId}/settle`, {
+      payments: [
         {
-          account_id: cashAccountId,
-          debit: amount,
-          description: "قبض نقد/بطاقة",
-        },
-        {
-          account_id: revenueAccountId,
-          credit: amount,
-          description: "إيرادات مبيعات",
+          payment_method_id: paymentMethodId,
+          amount: amount,
+          entity_type: subledger?.entity_type,
+          entity_id: subledger?.entity_id,
+          subledger_type: subledger?.subledger_type,
+          subledger_id: subledger?.subledger_id,
         },
       ],
     });
-    return data.data as AccountingTransaction;
+    return data.data?.transaction || data.data;
   },
 
   cancel: async (id: number): Promise<OrderFromApi> => {

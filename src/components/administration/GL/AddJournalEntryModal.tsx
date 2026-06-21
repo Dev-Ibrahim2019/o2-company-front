@@ -58,9 +58,9 @@ const emptyLine = (): JournalLine => ({
 
 const DEFAULT_ACCOUNT_CODE: Record<SubledgerType, string | null> = {
   none: null,
-  employee: '11011',  // ذمم موظفين / سلف موظفين
-  customer: '11021',  // ذمم زبائن
-  supplier: '21011',  // ذمم موردين
+  employee: '1130',   // employee control account
+  customer: '1130',   // accounts receivable control
+  supplier: '2110',   // accounts payable control
 };
 
 const SUBLEDGER_LABELS: Record<SubledgerType, string> = {

@@ -222,6 +222,12 @@ const OrdersPage = () => {
     setBusyOrderId(order.id);
     setActionError(null);
     try {
+      console.debug("OrdersPage.closeOrder", {
+        received_entity_type: null,
+        received_entity_id: null,
+        received_subledger_type: null,
+        received_subledger_id: null,
+      });
       await orderService.pay(order.id, {
         payment_method: order.payment_method ?? "cash",
         amount: order.total,

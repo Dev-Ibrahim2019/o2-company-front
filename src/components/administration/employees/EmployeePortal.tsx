@@ -443,7 +443,16 @@ const AdvanceModal: React.FC<ModalProps> = ({ employee, accounts, onClose, onSuc
         if (amount <= 0) { setError("المبلغ يجب أن يكون أكبر من صفر"); return; }
         setSubmitting(true); setError("");
         try {
-            const res = await employeeService.recordAdvance(employee.id, { amount, cash_account_id: Number(cashAccountId), date, description: description || `سلفة: ${employee.name}` });
+            const res = await employeeService.recordAdvance(employee.id, {
+                amount,
+                cash_account_id: Number(cashAccountId),
+                date,
+                description: description || `سلفة: ${employee.name}`,
+                entity_type: "employee",
+                entity_id: employee.id,
+                subledger_type: "employee",
+                subledger_id: employee.id,
+            });
             if (res.success) onSuccess(); else setError(res.message);
         } catch (err: any) { setError(err?.response?.data?.message || "فشل"); } finally { setSubmitting(false); }
     };
@@ -479,7 +488,16 @@ const AdvanceSettlementModal: React.FC<ModalProps> = ({ employee, accounts, onCl
         if (amount > (employee.outstanding_advance || 0)) { setError(`السلفة المستحقة هي ₪${money(employee.outstanding_advance)} فقط`); return; }
         setSubmitting(true); setError("");
         try {
-            const res = await employeeService.recordAdvanceRepayment(employee.id, { amount, cash_account_id: Number(cashAccountId), date, description: description || `تسديد سلفة: ${employee.name}` });
+            const res = await employeeService.recordAdvanceRepayment(employee.id, {
+                amount,
+                cash_account_id: Number(cashAccountId),
+                date,
+                description: description || `تسديد سلفة: ${employee.name}`,
+                entity_type: "employee",
+                entity_id: employee.id,
+                subledger_type: "employee",
+                subledger_id: employee.id,
+            });
             if (res.success) onSuccess(); else setError(res.message);
         } catch (err: any) { setError(err?.response?.data?.message || "فشل"); } finally { setSubmitting(false); }
     };
