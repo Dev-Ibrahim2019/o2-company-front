@@ -155,6 +155,29 @@ body {
   background-color: var(--o2-surface) !important;
 }
 
+.bg-white\/5 {
+  background-color: color-mix(in srgb, var(--o2-text) 5%, transparent) !important;
+}
+
+.bg-white\/10 {
+  background-color: color-mix(in srgb, var(--o2-text) 10%, transparent) !important;
+}
+
+.bg-white\/20 {
+  background-color: color-mix(in srgb, var(--o2-text) 16%, transparent) !important;
+}
+
+:root[data-theme="light"] .bg-red-500 .bg-white\/20,
+:root[data-theme="light"] .bg-red-600 .bg-white\/20,
+:root[data-theme="light"] .bg-red-700 .bg-white\/20,
+:root[data-theme="light"] .from-red-600 .bg-white\/20,
+.theme-light .bg-red-500 .bg-white\/20,
+.theme-light .bg-red-600 .bg-white\/20,
+.theme-light .bg-red-700 .bg-white\/20,
+.theme-light .from-red-600 .bg-white\/20 {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+}
+
 .bg-slate-900\/20 {
   background-color: color-mix(in srgb, var(--o2-surface) 20%, transparent) !important;
 }
@@ -262,6 +285,63 @@ body {
   color: var(--o2-text) !important;
 }
 
+:root[data-theme="light"] .text-white,
+.theme-light .text-white {
+  color: var(--o2-text) !important;
+}
+
+:root[data-theme="light"] .bg-red-500.text-white,
+:root[data-theme="light"] .bg-red-600.text-white,
+:root[data-theme="light"] .bg-red-700.text-white,
+:root[data-theme="light"] .from-red-600.text-white,
+:root[data-theme="light"] .to-red-700.text-white,
+:root[data-theme="light"] .bg-blue-500.text-white,
+:root[data-theme="light"] .bg-blue-600.text-white,
+:root[data-theme="light"] .bg-emerald-500.text-white,
+:root[data-theme="light"] .bg-emerald-600.text-white,
+:root[data-theme="light"] .bg-orange-500.text-white,
+:root[data-theme="light"] .bg-orange-600.text-white,
+:root[data-theme="light"] .bg-red-500 .text-white,
+:root[data-theme="light"] .bg-red-600 .text-white,
+:root[data-theme="light"] .bg-red-700 .text-white,
+:root[data-theme="light"] .from-red-600 .text-white,
+:root[data-theme="light"] .to-red-700 .text-white,
+:root[data-theme="light"] .bg-blue-500 .text-white,
+:root[data-theme="light"] .bg-blue-600 .text-white,
+:root[data-theme="light"] .bg-emerald-500 .text-white,
+:root[data-theme="light"] .bg-emerald-600 .text-white,
+:root[data-theme="light"] .bg-orange-500 .text-white,
+:root[data-theme="light"] .bg-orange-600 .text-white,
+.theme-light .bg-red-500.text-white,
+.theme-light .bg-red-600.text-white,
+.theme-light .bg-red-700.text-white,
+.theme-light .from-red-600.text-white,
+.theme-light .to-red-700.text-white,
+.theme-light .bg-blue-500.text-white,
+.theme-light .bg-blue-600.text-white,
+.theme-light .bg-emerald-500.text-white,
+.theme-light .bg-emerald-600.text-white,
+.theme-light .bg-orange-500.text-white,
+.theme-light .bg-orange-600.text-white,
+.theme-light .bg-red-500 .text-white,
+.theme-light .bg-red-600 .text-white,
+.theme-light .bg-red-700 .text-white,
+.theme-light .from-red-600 .text-white,
+.theme-light .to-red-700 .text-white,
+.theme-light .bg-blue-500 .text-white,
+.theme-light .bg-blue-600 .text-white,
+.theme-light .bg-emerald-500 .text-white,
+.theme-light .bg-emerald-600 .text-white,
+.theme-light .bg-orange-500 .text-white,
+.theme-light .bg-orange-600 .text-white {
+  color: #ffffff !important;
+}
+
+:root[data-theme="light"] .text-white\/60,
+.theme-light .text-white\/60 {
+  color: rgba(255, 255, 255, 0.72) !important;
+}
+
 .text-slate-400,
 .text-slate-500,
 .text-slate-600,
@@ -296,6 +376,11 @@ body {
 .border-slate-700,
 .border-slate-800,
 .border-slate-900 {
+  border-color: var(--o2-border) !important;
+}
+
+.divide-white\/5 > :not([hidden]) ~ :not([hidden]),
+.divide-white\/10 > :not([hidden]) ~ :not([hidden]) {
   border-color: var(--o2-border) !important;
 }
 

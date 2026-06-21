@@ -8,6 +8,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useApp } from "../../../store";
 import { useAuth, Can } from "../../auth";
 import { PERMISSIONS } from "../../auth/permissions";
+import { ThemeToggle } from "../shared/ThemeToggle";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Power,
@@ -202,6 +203,7 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({ children
 
         {/* Footer */}
         <div className="mt-auto border-t border-white/5 pt-4 space-y-2">
+          <ThemeToggle compact={collapsed} />
           <div className={`px-4 py-2 transition-all duration-300 ${!isSidebarOpen && "lg:opacity-0 lg:w-0 lg:overflow-hidden"}`}>
             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest truncate">الإدارة العامة</p>
             <p className="text-sm font-black text-slate-100 truncate">{currentUser?.name}</p>

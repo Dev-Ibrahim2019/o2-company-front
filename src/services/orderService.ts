@@ -94,6 +94,30 @@ const unwrapOrderList = (payload: unknown): OrderFromApi[] => {
   return Array.isArray(nested) ? (nested as OrderFromApi[]) : [];
 };
 
+const unwrapInvoiceList = (payload: unknown): InvoiceFromApi[] => {
+  const candidate = Array.isArray(payload)
+    ? payload
+    : (payload as { data?: unknown } | null)?.data ?? payload;
+
+  if (Array.isArray(candidate)) return candidate as InvoiceFromApi[];
+
+  const nested = (candidate as { data?: unknown } | null)?.data;
+  return Array.isArray(nested) ? (nested as InvoiceFromApi[]) : [];
+};
+
+const unwrapInvoice = (payload: unknown): InvoiceFromApi | null => {
+  const candidate = (payload as { data?: unknown } | null)?.data ?? payload;
+  const nested = (candidate as { data?: unknown } | null)?.data ?? candidate;
+
+  if (Array.isArray(nested)) {
+    return (nested[0] as InvoiceFromApi | undefined) ?? null;
+  }
+
+  return nested && typeof nested === "object" && "id" in nested
+    ? (nested as InvoiceFromApi)
+    : null;
+};
+
 export interface OrderItemPayload {
   item_id: number;
   quantity: number;
@@ -132,19 +156,44 @@ export interface InvoicePayload {
   note?: string;
 }
 
+export interface InvoiceItemFromApi {
+  id: number;
+  item_id: number;
+  item_name: string;
+  quantity: number;
+  price: number;
+  total: number;
+}
+
 export interface InvoiceFromApi {
   id: number;
-  invoice_number: string;
+  number: string;
+  invoice_number?: string;
   order_id: number;
   branch_id?: number;
+  customer_id?: number;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  table_number?: string | number | null;
+  order_number?: string | number | null;
+  order_type?: OrderType | null;
+  note?: string | null;
+  payment_method?: PaymentMethod | string | null;
+  discount_type?: DiscountType | null;
+  discount_value?: number | string | null;
   subtotal?: number;
+  discount?: number;
   discount_amount?: number;
   total: number;
   status: string;
+  paid_amount?: number;
+  remaining_amount?: number;
   paid_at?: string | null;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
   payments?: InvoicePaymentResponse[];
+  items?: InvoiceItemFromApi[];
+  invoice_items?: InvoiceItemFromApi[];
   order?: {
     id: number;
     order_number: string;
@@ -340,6 +389,7 @@ export const orderService = {
   },
 
   getInvoices: async (params?: {
+    id?: number;
     branch_id?: number;
     order_id?: number;
     status?: string;
@@ -348,8 +398,29 @@ export const orderService = {
     search?: string;
   }): Promise<InvoiceFromApi[]> => {
     const { data } = await api.get("/invoices", { params });
-    const payload = data.data;
-    return (Array.isArray(payload) ? payload : payload?.data ?? []) as InvoiceFromApi[];
+    return unwrapInvoiceList(data.data ?? data);
+  },
+
+  getInvoice: async (id: number): Promise<InvoiceFromApi | null> => {
+    try {
+      const { data } = await api.get(`/invoices/${id}`);
+      const invoice = unwrapInvoice(data);
+      if (invoice) return invoice;
+    } catch (error) {
+      const status = (error as { response?: { status?: number } }).response
+        ?.status;
+      if (status && status !== 404 && status !== 405) {
+        throw error;
+      }
+    }
+
+    const invoices = await orderService.getInvoices({
+      id,
+      search: String(id),
+    });
+    return (
+      invoices.find((invoice) => Number(invoice.id) === Number(id)) ?? null
+    );
   },
 
   /** إضافة دفعة إلى فاتورة موجودة */
@@ -370,6 +441,21 @@ export const orderService = {
     });
 
     return data.data as InvoicePaymentResponse;
+  },
+
+  addPaymentsToInvoice: async (
+    invoiceId: number,
+    payments: InvoicePaymentPayload[],
+  ): Promise<InvoicePaymentResponse[]> => {
+    const createdPayments: InvoicePaymentResponse[] = [];
+
+    for (const payment of payments) {
+      createdPayments.push(
+        await orderService.addPaymentToInvoice(invoiceId, payment),
+      );
+    }
+
+    return createdPayments;
   },
 
   getInvoiceForOrder: async (orderId: number): Promise<InvoiceFromApi | null> => {

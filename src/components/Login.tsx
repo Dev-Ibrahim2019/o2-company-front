@@ -15,6 +15,7 @@ import {
   ChefHat,
   Mail,
 } from "lucide-react";
+import { ThemeToggle } from "./shared/ThemeToggle";
 
 /**
  * خريطة تحويل أدوار API (lowercase) → أدوار Store (UPPERCASE)
@@ -116,9 +117,12 @@ export const Login: React.FC = () => {
   if (mode === "SELECT") {
     return (
       <div
-        className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-slate-100"
+        className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-slate-100 relative"
         dir="rtl"
       >
+        <div className="fixed top-4 left-4 z-20 w-44">
+          <ThemeToggle />
+        </div>
         <div className="max-w-7xl w-full">
           <div className="text-center mb-16">
             <div className="w-24 h-24 bg-red-600 rounded-[2.5rem] flex items-center justify-center text-white text-5xl font-black mx-auto mb-8 shadow-2xl rotate-3 shadow-red-600/20">
@@ -283,9 +287,12 @@ export const Login: React.FC = () => {
   if (mode === "API_LOGIN") {
     return (
       <div
-        className="min-h-screen bg-slate-950 flex items-center justify-center p-4 text-slate-100"
+        className="min-h-screen bg-slate-950 flex items-center justify-center p-4 text-slate-100 relative"
         dir="rtl"
       >
+        <div className="fixed top-4 left-4 z-20 w-44">
+          <ThemeToggle />
+        </div>
         <div className="max-w-md w-full p-10 space-y-10 bg-slate-900 rounded-[4rem] border border-white/5 shadow-2xl">
           <button
             onClick={() => setMode("SELECT")}
@@ -376,9 +383,12 @@ export const Login: React.FC = () => {
   // ── نماذج الدخول المحلي (الأصلي) ──
   return (
     <div
-      className="min-h-screen bg-slate-950 flex items-center justify-center p-4 text-slate-100"
+      className="min-h-screen bg-slate-950 flex items-center justify-center p-4 text-slate-100 relative"
       dir="rtl"
     >
+      <div className="fixed top-4 left-4 z-20 w-44">
+        <ThemeToggle />
+      </div>
       <div className="max-w-md w-full p-10 space-y-10 bg-slate-900 rounded-[4rem] border border-white/5 shadow-2xl">
         <button
           onClick={() => setMode("SELECT")}

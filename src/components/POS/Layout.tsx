@@ -8,6 +8,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useApp } from "../../../store";
 import { useAuth, Can } from "../../auth";
 import { PERMISSIONS } from "../../auth/permissions";
+import { ThemeToggle } from "../shared/ThemeToggle";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ShoppingCart,
@@ -96,6 +97,7 @@ export const POSLayout: React.FC<{ children?: React.ReactNode }> = ({ children }
         </nav>
 
         <div className="mt-auto border-t border-white/5 pt-4 space-y-2">
+          <ThemeToggle compact={collapsed} />
           {isHospitality && isSidebarOpen && (
             <div className="px-4 mb-4 space-y-1">
               <div className="flex items-center gap-2">
