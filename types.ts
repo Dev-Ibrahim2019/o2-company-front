@@ -1,45 +1,47 @@
-
 export enum OrderType {
-  DINE_IN = 'DINE_IN',
-  TAKEAWAY = 'TAKEAWAY',
-  DELIVERY = 'DELIVERY'
+  DINE_IN = "DINE_IN",
+  TAKEAWAY = "TAKEAWAY",
+  DELIVERY = "DELIVERY",
 }
 
 export enum OrderStatus {
-  PENDING = 'PENDING',
-  PREPARING = 'PREPARING',
-  READY = 'READY',
-  ON_DELIVERY = 'ON_DELIVERY',
-  DELIVERED = 'DELIVERED',
-  CANCELED = 'CANCELED',
-  REFUNDED = 'REFUNDED',
-  COMPLETED = 'COMPLETED',
-  IN_PROGRESS = 'IN_PROGRESS',
-  PENDING_CONFIRMATION = 'PENDING_CONFIRMATION',
-  CONFIRMED = 'CONFIRMED',
-  COLLECTED = 'COLLECTED'
+  PENDING = "PENDING",
+  PREPARING = "PREPARING",
+  READY = "READY",
+  ON_DELIVERY = "ON_DELIVERY",
+  DELIVERED = "DELIVERED",
+  CANCELED = "CANCELED",
+  REFUNDED = "REFUNDED",
+  COMPLETED = "COMPLETED",
+  IN_PROGRESS = "IN_PROGRESS",
+  PENDING_CONFIRMATION = "PENDING_CONFIRMATION",
+  CONFIRMED = "CONFIRMED",
+  COLLECTED = "COLLECTED",
 }
 
 export enum PaymentMethod {
-  CASH = 'CASH',
-  CREDIT_CARD = 'CREDIT_CARD',
-  WALLET = 'WALLET',
-  QR = 'QR',
-  ONLINE = 'ONLINE'
+  CASH = "CASH",
+  CREDIT_CARD = "CREDIT_CARD",
+  WALLET = "WALLET",
+  QR = "QR",
+  ONLINE = "ONLINE",
+  EMPLOYEE = "EMPLOYEE",
+  CUSTOMER = "CUSTOMER",
+  SUPPLIER = "SUPPLIER",
 }
 
 export interface Transaction {
   id: string;
   date: Date;
   amount: number;
-  type: 'DEPOSIT' | 'PURCHASE' | 'REFUND' | 'BONUS';
-  status: 'SUCCESS' | 'FAILED' | 'PENDING';
+  type: "DEPOSIT" | "PURCHASE" | "REFUND" | "BONUS";
+  status: "SUCCESS" | "FAILED" | "PENDING";
   description: string;
 }
 
 export interface SavedCard {
   id: string;
-  brand: 'VISA' | 'MASTERCARD';
+  brand: "VISA" | "MASTERCARD";
   last4: string;
   expiry: string;
 }
@@ -64,7 +66,7 @@ export interface MenuItem {
   description?: string;
   descriptionAr?: string;
   prepTime: number; // in minutes
-  status: 'AVAILABLE' | 'UNAVAILABLE' | 'OUT_OF_STOCK';
+  status: "AVAILABLE" | "UNAVAILABLE" | "OUT_OF_STOCK";
   displayOrder: number;
   requiresKitchen: boolean;
   barcode?: string;
@@ -88,7 +90,7 @@ export interface OrderItem {
   uniqueId: string;
   name: string;
   quantity: number;
-  price: number; 
+  price: number;
   basePrice: number;
   departmentId?: string;
   status?: OrderStatus;
@@ -141,43 +143,43 @@ export interface Branch {
   id: string;
   name: string;
   code: string;
-  status: 'ACTIVE' | 'INACTIVE' | 'MAINTENANCE' | 'BUSY';
+  status: "ACTIVE" | "INACTIVE" | "MAINTENANCE" | "BUSY";
   isMainBranch: boolean;
   parentId?: string;
-  
+
   // Location
   city: string;
   address: string;
   googleMapUrl?: string;
-  
+
   // Contact
   phone: string;
   whatsapp?: string;
   email?: string;
-  
+
   // Operational Settings
   openingTime: string; // "08:00"
   closingTime: string; // "23:00"
   is24Hours: boolean;
   timezone?: string;
-  
+
   // Financial Settings
   currency: string;
   defaultTax: number;
   allowDiscount: boolean;
   maxDiscountLimit: number;
-  
+
   // Cashier Settings
   requireShiftOpening: boolean;
   cashierCount: number;
   firstInvoiceNumber: number;
   defaultPrinter?: string;
-  
+
   // Advanced
   managerId?: string;
   hasDelivery: boolean;
   specialHours?: { day: number; open: string; close: string }[];
-  
+
   createdAt: Date;
 }
 
@@ -197,9 +199,15 @@ export interface Department {
   kdsScreenId?: string;
   kdsDeviceName?: string;
   defaultPrepTime: number; // in minutes
-  type: 'MAIN_KITCHEN' | 'FAST_FOOD' | 'BAR' | 'COLD_PREP' | 'BAKERY' | 'DESSERT';
+  type:
+    | "MAIN_KITCHEN"
+    | "FAST_FOOD"
+    | "BAR"
+    | "COLD_PREP"
+    | "BAKERY"
+    | "DESSERT";
   displayOrder: number;
-  status: 'ACTIVE' | 'INACTIVE' | 'BUSY';
+  status: "ACTIVE" | "INACTIVE" | "BUSY";
   maxConcurrentOrders: number;
   priority: number;
   autoPrintTicket: boolean;
@@ -226,11 +234,11 @@ export interface JobType {
 }
 
 export enum EmployeeStatus {
-  ACTIVE = 'ACTIVE',
-  ON_LEAVE = 'ON_LEAVE',
-  TERMINATED = 'TERMINATED',
-  SUSPENDED = 'SUSPENDED',
-  RESIGNED = 'RESIGNED'
+  ACTIVE = "ACTIVE",
+  ON_LEAVE = "ON_LEAVE",
+  TERMINATED = "TERMINATED",
+  SUSPENDED = "SUSPENDED",
+  RESIGNED = "RESIGNED",
 }
 
 export interface Employee {
@@ -251,7 +259,19 @@ export interface Employee {
   hireDate: Date;
   salary: number;
   status: EmployeeStatus;
-  role: 'CASHIER' | 'WAITER' | 'MANAGER' | 'ADMIN' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'KITCHEN' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | 'HEAD_CHEF' | 'COOK';
+  role:
+    | "CASHIER"
+    | "WAITER"
+    | "MANAGER"
+    | "ADMIN"
+    | "BRANCH_MANAGER"
+    | "HOSPITALITY"
+    | "KITCHEN"
+    | "DEPARTMENT_STAFF"
+    | "ORDER_AGGREGATOR"
+    | "FINANCE"
+    | "HEAD_CHEF"
+    | "COOK";
   username?: string;
   password?: string;
   pin?: string; // 4 digits
@@ -266,12 +286,12 @@ export interface Employee {
 }
 
 export enum CustomerType {
-  REGULAR = 'REGULAR',
-  LOYAL = 'LOYAL',
-  VIP = 'VIP',
-  COMPANY = 'COMPANY',
-  EMPLOYEE = 'EMPLOYEE',
-  SUPPLIER = 'SUPPLIER'
+  REGULAR = "REGULAR",
+  LOYAL = "LOYAL",
+  VIP = "VIP",
+  COMPANY = "COMPANY",
+  EMPLOYEE = "EMPLOYEE",
+  SUPPLIER = "SUPPLIER",
 }
 
 export interface CustomerAddress {
@@ -307,12 +327,24 @@ export interface User {
   id: string;
   name: string;
   phone: string;
-  role: 'CASHIER' | 'CUSTOMER' | 'WAITER' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'KITCHEN' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | 'ADMIN' | 'HEAD_CHEF' | 'COOK';
+  role:
+    | "CASHIER"
+    | "CUSTOMER"
+    | "WAITER"
+    | "BRANCH_MANAGER"
+    | "HOSPITALITY"
+    | "KITCHEN"
+    | "DEPARTMENT_STAFF"
+    | "ORDER_AGGREGATOR"
+    | "FINANCE"
+    | "ADMIN"
+    | "HEAD_CHEF"
+    | "COOK";
   branchId?: string;
   departmentId?: string;
   points: number;
   balance: number;
-  tier: 'SILVER' | 'GOLD' | 'PLATINUM';
+  tier: "SILVER" | "GOLD" | "PLATINUM";
   vouchers: any[];
   favorites: string[];
   addresses: any[];
@@ -322,11 +354,11 @@ export interface User {
 }
 
 export enum AccountType {
-  ASSET = 'ASSET',
-  LIABILITY = 'LIABILITY',
-  EQUITY = 'EQUITY',
-  REVENUE = 'REVENUE',
-  EXPENSE = 'EXPENSE'
+  ASSET = "ASSET",
+  LIABILITY = "LIABILITY",
+  EQUITY = "EQUITY",
+  REVENUE = "REVENUE",
+  EXPENSE = "EXPENSE",
 }
 
 export interface ChartOfAccount {
@@ -345,14 +377,14 @@ export interface FiscalYear {
   name: string;
   startDate: string;
   endDate: string;
-  status: 'OPEN' | 'CLOSED';
+  status: "OPEN" | "CLOSED";
 }
 
 export interface FiscalPeriod {
   id: string;
   yearId: string;
   month: number;
-  status: 'OPEN' | 'CLOSED';
+  status: "OPEN" | "CLOSED";
 }
 
 export interface CostCenter {
@@ -360,7 +392,7 @@ export interface CostCenter {
   code: string;
   name: string;
   nameAr: string;
-  type: 'OPERATIONAL' | 'SUPPORT' | 'PROFIT';
+  type: "OPERATIONAL" | "SUPPORT" | "PROFIT";
   parentId?: string;
 }
 
@@ -375,7 +407,7 @@ export interface JournalEntry {
     credit: number;
     description?: string;
   }[];
-  status: 'DRAFT' | 'POSTED';
+  status: "DRAFT" | "POSTED";
   fiscalYearId: string;
   createdBy: string;
 }
@@ -409,12 +441,12 @@ export interface CashBox {
 }
 
 export enum TableStatus {
-  AVAILABLE = 'AVAILABLE',
-  OCCUPIED = 'OCCUPIED',
-  PAYMENT_PENDING = 'PAYMENT_PENDING',
-  PAID = 'PAID',
-  RESERVED = 'RESERVED',
-  CLEANING = 'CLEANING'
+  AVAILABLE = "AVAILABLE",
+  OCCUPIED = "OCCUPIED",
+  PAYMENT_PENDING = "PAYMENT_PENDING",
+  PAID = "PAID",
+  RESERVED = "RESERVED",
+  CLEANING = "CLEANING",
 }
 
 export interface Hall {
@@ -438,13 +470,13 @@ export interface Table {
 }
 
 export enum FinancialTransactionType {
-  SALE = 'SALE',             // مبيعات
-  EXPENSE = 'EXPENSE',       // مصروفات
-  WITHDRAWAL = 'WITHDRAWAL', // سحوبات (مدير)
-  DEPOSIT = 'DEPOSIT',       // إيداع (توريد)
-  REFUND = 'REFUND',         // مرتجع
-  CASH_DROP = 'CASH_DROP',   // توريد للبنك/الإدارة
-  VOID = 'VOID'              // إلغاء فاتورة
+  SALE = "SALE", // مبيعات
+  EXPENSE = "EXPENSE", // مصروفات
+  WITHDRAWAL = "WITHDRAWAL", // سحوبات (مدير)
+  DEPOSIT = "DEPOSIT", // إيداع (توريد)
+  REFUND = "REFUND", // مرتجع
+  CASH_DROP = "CASH_DROP", // توريد للبنك/الإدارة
+  VOID = "VOID", // إلغاء فاتورة
 }
 
 export interface FinancialTransaction {
@@ -455,7 +487,7 @@ export interface FinancialTransaction {
   amount: number;
   reason: string;
   timestamp: Date;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  status: "PENDING" | "APPROVED" | "REJECTED";
   attachment?: string; // Optional image/receipt
 }
 
@@ -464,11 +496,11 @@ export interface CustomerFeedback {
   orderId?: string;
   customerId?: string;
   customerName: string;
-  type: 'COMPLAINT' | 'SUGGESTION' | 'COMPLIMENT';
-  category: 'FOOD' | 'SERVICE' | 'CLEANLINESS' | 'ATMOSPHERE' | 'OTHER';
+  type: "COMPLAINT" | "SUGGESTION" | "COMPLIMENT";
+  category: "FOOD" | "SERVICE" | "CLEANLINESS" | "ATMOSPHERE" | "OTHER";
   rating: number; // 1-5
   comment: string;
-  status: 'NEW' | 'REVIEWED' | 'RESOLVED';
+  status: "NEW" | "REVIEWED" | "RESOLVED";
   timestamp: Date;
 }
 
@@ -477,8 +509,8 @@ export interface StaffTask {
   title: string;
   description: string;
   assignedTo: string; // Employee ID
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
-  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+  priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+  status: "PENDING" | "IN_PROGRESS" | "COMPLETED";
   dueDate: Date;
 }
 
@@ -499,8 +531,8 @@ export interface Shift {
   totalSales?: number;
   totalExpenses?: number;
   totalWithdrawals?: number;
-  status: 'OPEN' | 'CLOSED';
-  type: 'MORNING' | 'EVENING' | 'NIGHT';
+  status: "OPEN" | "CLOSED";
+  type: "MORNING" | "EVENING" | "NIGHT";
 }
 
 export interface Attendance {
@@ -509,7 +541,7 @@ export interface Attendance {
   date: Date;
   checkIn: Date;
   checkOut?: Date;
-  status: 'PRESENT' | 'LATE' | 'ABSENT';
+  status: "PRESENT" | "LATE" | "ABSENT";
   note?: string;
 }
 
@@ -521,7 +553,7 @@ export interface WorkSchedule {
   shiftId: string;
   dayOfWeek: number; // 0-6 (Sunday-Saturday)
   startTime: string; // "08:00"
-  endTime: string;   // "16:00"
+  endTime: string; // "16:00"
 }
 
 export interface ActivityLog {

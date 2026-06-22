@@ -3,26 +3,9 @@
 import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Package } from 'lucide-react';
-import type { MenuCategory } from "../../hooks/useMenu";
+import type { MenuCategory, MenuItem } from "../../hooks/useMenu";
 import { CATEGORIES } from '../../../constants';
 import { getItemImageUrl, resolvePublicAssetUrl } from '../../services/itemService';
-
-interface MenuItem {
-  id: string;
-  nameAr: string;
-  name: string;
-  image: string;
-  /** Full URL from API when menu is loaded from backend */
-  image_url?: string | null;
-  category: string;
-  price: number;
-  dineInPrice?: number;
-  takeawayPrice?: number;
-  deliveryPrice?: number;
-  offerPrice?: number;
-  offerStartDate?: string;
-  offerEndDate?: string;
-}
 
 interface MenuGridProps {
   categories: MenuCategory[];
@@ -41,11 +24,24 @@ export const MenuGrid: React.FC<MenuGridProps> = ({
   addToCart,
   loading = false,
 }) => {
+  // ── DEBUG ─────────────────────────────────────────────────────────────────
+  console.log("🟢 [MenuGrid] Rendering with:", {
+    categoriesCount: categories.length,
+    selectedCategory,
+    searchQuery,
+    categories: categories.map(c => ({
+      id: c.id,
+      name: c.name_ar,
+      itemsCount: c.items?.length || 0,
+      items: c.items?.map(i => ({ id: i.id, name: i.name_ar, price: i.price }))
+    }))
+  });
+
   // ── Filtered items ────────────────────────────────────────────────────────
   const filteredItems = useMemo(() => {
     const q = searchQuery.toLowerCase();
 
-    return categories
+    const result = categories
       .filter(cat => selectedCategory === 'all' || String(cat.id) === selectedCategory)
       .flatMap(cat => cat.items)
       .filter(item =>
@@ -55,6 +51,9 @@ export const MenuGrid: React.FC<MenuGridProps> = ({
         String(item.id).includes(q) ||
         item.code.toLowerCase().includes(q)
       );
+
+    console.log("🔵 [MenuGrid] Filtered items:", result.length, result.map(i => ({ id: i.id, name: i.name_ar, price: i.price })));
+    return result;
   }, [categories, selectedCategory, searchQuery]);
 
   // ── Loading skeleton ──────────────────────────────────────────────────────
@@ -68,6 +67,17 @@ export const MenuGrid: React.FC<MenuGridProps> = ({
             <div className="h-3 bg-slate-800 rounded w-1/2" />
           </div>
         ))}
+      </div>
+    );
+  }
+
+  // ── Error state ───────────────────────────────────────────────────────────
+  if (!loading && categories.length === 0) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center py-20 text-slate-600 gap-3">
+        <Package size={48} strokeWidth={1} />
+        <p className="font-black text-sm">لا توجد أصناف متاحة حالياً</p>
+        <p className="text-xs text-slate-500">تأكد من تفعيل الأصناف وربطها بالفرع</p>
       </div>
     );
   }

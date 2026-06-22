@@ -13,6 +13,7 @@ import {
   FileText,
   Landmark,
   Loader2,
+  Plus,
   ReceiptText,
   RefreshCw,
   RotateCcw,
@@ -24,11 +25,17 @@ import {
 } from "lucide-react";
 import { useApp } from "../../../store";
 import { orderService } from "../../services/orderService";
-import { InvoiceEditModal } from "./InvoiceEditModal";
-import { InvoiceDetailsModal } from "./InvoiceDetailsModal";
+import { InvoiceViewEditModal } from "./InvoiceViewEditModal";
+import { CreateInvoiceModal } from "./CreateInvoiceModal";
+import { InvoicePaymentsEditor } from "./shared/InvoicePaymentsEditor";
+import {
+  createPaymentDraft,
+  paymentDraftsToPayloads,
+  validatePaymentDrafts,
+  type PaymentDraft,
+} from "./shared/invoicePayments";
 import type {
   InvoiceFromApi,
-  InvoicePaymentPayload,
   InvoicePaymentResponse,
   OrderFromApi,
   PaymentMethod,
@@ -48,6 +55,7 @@ type SalesInvoiceRow = {
   invoiceNumber: string;
   orderId: number;
   orderNumber: string;
+  tableNumber: string;
   customerName: string;
   customerPhone: string;
   total: number;
@@ -63,6 +71,10 @@ type SalesInvoiceRow = {
   paidAt?: string | null;
   payments: InvoicePaymentResponse[];
   primaryPaymentMethod?: PaymentMethod;
+  primaryEntityType?: "customer" | "employee" | "supplier" | null;
+  primaryEntityId?: number | null;
+  primarySubledgerType?: "customer" | "employee" | "supplier" | null;
+  primarySubledgerId?: number | null;
   source: SalesInvoiceSource;
 };
 
@@ -122,6 +134,16 @@ const normalizePaymentMethod = (
   return "other";
 };
 
+const normalizeEntityType = (
+  value?: string | null,
+): "customer" | "employee" | "supplier" | null => {
+  const method = String(value ?? "").trim().toLowerCase();
+  if (method === "customer" || method === "employee" || method === "supplier") {
+    return method;
+  }
+  return null;
+};
+
 const isPaidLikeStatus = (status?: string | null) => {
   const normalized = String(status ?? "").toLowerCase();
   return ["paid", "closed", "settled", "completed"].some((item) =>
@@ -155,11 +177,18 @@ const normalizePayments = (
     const method = normalizePaymentMethod(
       payment.payment_method ?? payment.method,
     );
+    const inferredEntityType =
+      payment.entity_type ??
+      payment.subledger_type ??
+      normalizeEntityType(payment.payment_method) ??
+      normalizeEntityType(payment.method);
     return {
       ...payment,
       payment_method:
         method && method !== "other" ? method : payment.payment_method,
       method: method && method !== "other" ? method : payment.method,
+      entity_type: inferredEntityType,
+      subledger_type: inferredEntityType,
     };
   });
 
@@ -218,6 +247,8 @@ const summarizePayments = (
     fallbackMethod ??
     undefined;
 
+  const primaryPayment = effectivePayments[0];
+
   return {
     payments: effectivePayments,
     paidCash: totals.cash,
@@ -228,12 +259,18 @@ const summarizePayments = (
     paidTotal: totals.total,
     remaining: Math.max(0, Number((total - totals.total).toFixed(2))),
     primaryPaymentMethod,
+    primaryEntityType: primaryPayment?.entity_type ?? null,
+    primaryEntityId: primaryPayment?.entity_id ?? null,
+    primarySubledgerType: primaryPayment?.subledger_type ?? null,
+    primarySubledgerId: primaryPayment?.subledger_id ?? null,
   };
 };
 
 const invoiceToRow = (invoice: InvoiceFromApi): SalesInvoiceRow => {
   const total = Number(invoice.total || 0);
-  const fallbackMethod = normalizePaymentMethod(invoice.order?.payment_method);
+  const fallbackMethod = normalizePaymentMethod(
+    invoice.payment_method ?? invoice.order?.payment_method,
+  );
   const paymentSummary = summarizePayments(
     normalizePayments(invoice.payments),
     total,
@@ -245,11 +282,20 @@ const invoiceToRow = (invoice: InvoiceFromApi): SalesInvoiceRow => {
 
   return {
     id: invoice.id,
-    invoiceNumber: invoice.invoice_number ?? `INV-${invoice.id}`,
-    orderId: invoice.order_id,
-    orderNumber: invoice.order?.order_number ?? String(invoice.order_id),
-    customerName: invoice.order?.customer_name || "عميل نقدي",
-    customerPhone: invoice.order?.customer_phone || "---",
+    invoiceNumber: invoice.invoice_number ?? invoice.number ?? `INV-${invoice.id}`,
+    orderId: Number(invoice.order_id ?? invoice.order?.id ?? 0),
+    orderNumber:
+      invoice.order?.order_number ??
+      (invoice.order_number
+        ? String(invoice.order_number)
+        : String(invoice.order_id ?? "")),
+    tableNumber: String(
+      invoice.order?.table_number ?? invoice.table_number ?? "",
+    ),
+    customerName:
+      invoice.customer_name ?? invoice.order?.customer_name ?? "عميل نقدي",
+    customerPhone:
+      invoice.customer_phone ?? invoice.order?.customer_phone ?? "---",
     total,
     status: invoice.status,
     createdAt: invoice.created_at,
@@ -276,6 +322,7 @@ const orderToRow = (order: OrderFromApi): SalesInvoiceRow => {
     invoiceNumber: `ORD-${order.order_number}`,
     orderId: order.id,
     orderNumber: order.order_number,
+    tableNumber: order.table_number ?? "",
     customerName: order.customer_name || "عميل نقدي",
     customerPhone: order.customer_phone || "---",
     total,
@@ -436,29 +483,25 @@ const PaymentProcessModal = ({
   row: SalesInvoiceRow;
   saving: boolean;
   onClose: () => void;
-  onSubmit: (payload: InvoicePaymentPayload) => Promise<void>;
+  onSubmit: (payments: PaymentDraft[]) => Promise<void>;
 }) => {
-  const [method, setMethod] = useState<PaymentMethod>(
-    row.primaryPaymentMethod ?? "cash",
-  );
-  const [amount, setAmount] = useState(String(row.remaining || row.total));
-  const [reference, setReference] = useState("");
+  const [paymentDrafts, setPaymentDrafts] = useState<PaymentDraft[]>([
+    createPaymentDraft(row.remaining || row.total, row.primaryPaymentMethod),
+  ]);
   const [error, setError] = useState<string | null>(null);
 
   const submit = async () => {
-    const value = Number(amount);
-    if (!Number.isFinite(value) || value <= 0) {
-      setError("أدخل مبلغ صحيح للمعالجة");
+    const paymentError = validatePaymentDrafts(
+      paymentDrafts,
+      row.remaining || row.total,
+    );
+    if (paymentError) {
+      setError(paymentError);
       return;
     }
 
     setError(null);
-    await onSubmit({
-      payment_method: method,
-      method,
-      amount: value,
-      reference_number: reference.trim() || undefined,
-    });
+    await onSubmit(paymentDrafts);
   };
 
   return (
@@ -486,47 +529,13 @@ const PaymentProcessModal = ({
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <label className="space-y-1">
-              <span className="text-[10px] font-black text-slate-500">
-                طريقة الدفع
-              </span>
-              <select
-                value={method}
-                onChange={(event) =>
-                  setMethod(event.target.value as PaymentMethod)
-                }
-                className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none"
-              >
-                <option value="cash">كاش</option>
-                <option value="credit_card">بطاقة</option>
-                <option value="wallet">محفظة</option>
-                <option value="bank_transfer">بنك</option>
-              </select>
-            </label>
-            <label className="space-y-1">
-              <span className="text-[10px] font-black text-slate-500">
-                المبلغ
-              </span>
-              <input
-                value={amount}
-                onChange={(event) => setAmount(event.target.value)}
-                className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none"
-              />
-            </label>
-          </div>
-
-          <label className="space-y-1 block">
-            <span className="text-[10px] font-black text-slate-500">
-              رقم مرجعي
-            </span>
-            <input
-              value={reference}
-              onChange={(event) => setReference(event.target.value)}
-              placeholder="اختياري، مهم للبطاقة والمحفظة والبنك"
-              className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none"
-            />
-          </label>
+          <InvoicePaymentsEditor
+            payments={paymentDrafts}
+            targetAmount={row.remaining || row.total}
+            onChange={setPaymentDrafts}
+            disabled={saving}
+            title="دفعات السداد"
+          />
         </div>
 
         <div className="p-4 border-t border-white/5 flex items-center justify-end gap-3">
@@ -566,9 +575,7 @@ export default function SalesInvoicesPage() {
   const [showFilters, setShowFilters] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
-  const [editingInvoice, setEditingInvoice] = useState<InvoiceFromApi | null>(
-    null,
-  );
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [processingRow, setProcessingRow] = useState<SalesInvoiceRow | null>(
     null,
   );
@@ -603,7 +610,7 @@ export default function SalesInvoicesPage() {
       setRows(
         invoiceList
           .map(invoiceToRow)
-          .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
+          .sort((a: SalesInvoiceRow, b: SalesInvoiceRow) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
       );
       setSource("invoice");
     } catch (e) {
@@ -635,6 +642,7 @@ export default function SalesInvoicesPage() {
         !q ||
         row.invoiceNumber.toLowerCase().includes(q) ||
         row.orderNumber.toLowerCase().includes(q) ||
+        row.tableNumber.toLowerCase().includes(q) ||
         row.customerName.toLowerCase().includes(q) ||
         row.customerPhone.toLowerCase().includes(q) ||
         row.payments.some((payment) =>
@@ -705,46 +713,17 @@ export default function SalesInvoicesPage() {
     return created.id;
   };
 
-  const fetchInvoiceForEdit = async (row: SalesInvoiceRow) => {
-    const branchId = branchFilter(currentUser);
-    const invoices = await orderService.getInvoices({
-      branch_id: branchId,
-      order_id: row.orderId,
-    });
-    const found =
-      invoices.find((invoice) => invoice.id === row.id) ?? invoices[0];
-    if (found) return found;
-
-    if (row.source === "order") {
-      return orderService.createInvoiceFromOrder(row.orderId, {
-        customer_name:
-          row.customerName === "عميل نقدي" ? undefined : row.customerName,
-        customer_phone:
-          row.customerPhone === "---" ? undefined : row.customerPhone,
-      });
-    }
-
-    return null;
-  };
-
-  const handleEditInvoice = async (row: SalesInvoiceRow) => {
-    setSavingAction(true);
-    setError(null);
-    try {
-      const invoice = await fetchInvoiceForEdit(row);
-      if (invoice) setEditingInvoice(invoice);
-      else setError("لم يتم العثور على الفاتورة للتعديل");
-    } catch {
-      setError("فشل تحميل الفاتورة للتعديل");
-    } finally {
-      setSavingAction(false);
-    }
-  };
-
   const handleProcessPayment = async (
     row: SalesInvoiceRow,
-    payload: InvoicePaymentPayload,
+    payments: PaymentDraft[],
   ) => {
+    const paymentError = validatePaymentDrafts(payments, row.remaining || row.total);
+    if (paymentError) {
+      setError(paymentError);
+      return;
+    }
+
+    const paymentPayloads = paymentDraftsToPayloads(payments);
     setSavingAction(true);
     setError(null);
     try {
@@ -754,6 +733,14 @@ export default function SalesInvoicesPage() {
       );
       if (!method || method === "other")
         throw new Error("طريقة الدفع غير مدعومة");
+
+      console.debug("SalesInvoicesPage.handleProcessPayment", {
+        received_entity_type: payload.entity_type ?? row.primaryEntityType ?? null,
+        received_entity_id: payload.entity_id ?? row.primaryEntityId ?? null,
+        received_subledger_type:
+          payload.subledger_type ?? row.primarySubledgerType ?? null,
+        received_subledger_id: payload.subledger_id ?? row.primarySubledgerId ?? null,
+      });
 
       if (row.remaining > 0 && amount >= row.remaining - 0.01) {
         await orderService.closeOrderWithPayments(row.orderId, {
@@ -767,6 +754,11 @@ export default function SalesInvoicesPage() {
               method,
               payment_method: method,
               amount,
+              entity_type: payload.entity_type ?? row.primaryEntityType ?? undefined,
+              entity_id: payload.entity_id ?? row.primaryEntityId ?? undefined,
+              subledger_type:
+                payload.subledger_type ?? row.primarySubledgerType ?? undefined,
+              subledger_id: payload.subledger_id ?? row.primarySubledgerId ?? undefined,
             },
           ],
         });
@@ -777,9 +769,16 @@ export default function SalesInvoicesPage() {
           method,
           payment_method: method,
           amount,
+          entity_type: payload.entity_type ?? row.primaryEntityType ?? undefined,
+          entity_id: payload.entity_id ?? row.primaryEntityId ?? undefined,
+          subledger_type:
+            payload.subledger_type ?? row.primarySubledgerType ?? undefined,
+          subledger_id: payload.subledger_id ?? row.primarySubledgerId ?? undefined,
         });
       }
 
+      const invoiceId = await ensureInvoiceForRow(row);
+      await orderService.addPaymentsToInvoice(invoiceId, paymentPayloads);
       setProcessingRow(null);
       await load();
     } catch (e: unknown) {
@@ -805,13 +804,48 @@ export default function SalesInvoicesPage() {
     try {
       const invoiceId = await ensureInvoiceForRow(row);
       const method = row.primaryPaymentMethod ?? "cash";
+      console.debug("SalesInvoicesPage.handlePostJournal", {
+        received_entity_type: row.primaryEntityType ?? null,
+        received_entity_id: row.primaryEntityId ?? null,
+        received_subledger_type: row.primarySubledgerType ?? null,
+        received_subledger_id: row.primarySubledgerId ?? null,
+      });
       await orderService.createJournalEntryFromInvoice(
         invoiceId,
         row.orderId,
         row.paidTotal,
         method,
         `ترحيل مبيعات فاتورة ${row.invoiceNumber}`,
+        {
+          entity_type: row.primaryEntityType ?? undefined,
+          entity_id: row.primaryEntityId ?? undefined,
+          subledger_type: row.primarySubledgerType ?? undefined,
+          subledger_id: row.primarySubledgerId ?? undefined,
+        },
       );
+      const journalPayments = Object.entries(groupedPayments)
+        .map(([method, amount]) => ({
+          method: method as PaymentMethod,
+          amount,
+        }))
+        .filter((payment) => payment.amount > 0);
+
+      if (journalPayments.length === 0) {
+        journalPayments.push({
+          method: row.primaryPaymentMethod ?? "cash",
+          amount: row.paidTotal,
+        });
+      }
+
+      for (const payment of journalPayments) {
+        await orderService.createJournalEntryFromInvoice(
+          invoiceId,
+          row.orderId,
+          payment.amount,
+          payment.method,
+          `ترحيل مبيعات فاتورة ${row.invoiceNumber} - ${methodLabels[payment.method]}`,
+        );
+      }
       setPostedInvoiceIds((prev) => [...new Set([...prev, invoiceId])]);
     } catch (e: unknown) {
       const message =
@@ -935,6 +969,13 @@ export default function SalesInvoicesPage() {
             تصدير
           </button>
           <button
+            onClick={() => setShowCreateModal(true)}
+            className="px-3 py-2.5 bg-red-600 border border-red-600 rounded-xl text-white text-xs font-black flex items-center gap-2 hover:bg-red-700"
+          >
+            <Plus size={15} />
+            إنشاء فاتورة
+          </button>
+          <button
             onClick={load}
             className="p-2.5 bg-slate-900 border border-white/5 rounded-xl text-slate-400 hover:text-white"
             title="تحديث"
@@ -1019,7 +1060,9 @@ export default function SalesInvoicesPage() {
                           {row.invoiceNumber}
                         </p>
                         <p className="text-[10px] text-slate-500">
-                          طلب #{row.orderNumber}
+                          {row.orderNumber
+                            ? `طلب #${row.orderNumber}`
+                            : "فاتورة مستقلة"}
                         </p>
                       </td>
                       <td className="p-4">
@@ -1100,13 +1143,13 @@ export default function SalesInvoicesPage() {
                             <Eye size={15} />
                           </button>
                           <button
-                            onClick={() => handleEditInvoice(row)}
+                            onClick={() => setDetailsRow(row)}
                             disabled={
                               savingAction ||
                               rowPaymentStatus(row) === "cancelled"
                             }
                             className="p-2 rounded-lg bg-white/5 text-slate-400 hover:text-white disabled:opacity-40"
-                            title="تعديل الفاتورة"
+                            title="عرض/تعديل الفاتورة"
                           >
                             <Edit3 size={15} />
                           </button>
@@ -1201,17 +1244,6 @@ export default function SalesInvoicesPage() {
         </div>
       </div>
 
-      {editingInvoice && (
-        <InvoiceEditModal
-          invoice={editingInvoice}
-          onClose={() => setEditingInvoice(null)}
-          onSaved={() => {
-            setEditingInvoice(null);
-            load();
-          }}
-        />
-      )}
-
       {processingRow && (
         <PaymentProcessModal
           row={processingRow}
@@ -1221,10 +1253,21 @@ export default function SalesInvoicesPage() {
         />
       )}
 
+      {showCreateModal && (
+        <CreateInvoiceModal
+          onClose={() => setShowCreateModal(false)}
+          onCreated={() => {
+            setShowCreateModal(false);
+            load();
+          }}
+        />
+      )}
+
       {detailsRow && (
-        <InvoiceDetailsModal
+        <InvoiceViewEditModal
           row={detailsRow}
           onClose={() => setDetailsRow(null)}
+          onSaved={() => load()}
         />
       )}
     </div>

@@ -135,6 +135,16 @@ export interface ApiResponse<T = any> {
   data: T;
 }
 
+const logCustomerPayload = (label: string, payload: Record<string, unknown>) => {
+  console.debug(label, {
+    received_entity_type: payload.entity_type ?? null,
+    received_entity_id: payload.entity_id ?? null,
+    received_subledger_type: payload.subledger_type ?? null,
+    received_subledger_id: payload.subledger_id ?? null,
+    payload,
+  });
+};
+
 export const customerService = {
   // ── CRUD ──────────────────────────────────────────────────
 
@@ -200,8 +210,13 @@ export const customerService = {
       date: string;
       reference?: string;
       branch_id?: number;
+      entity_type?: "customer";
+      entity_id?: number;
+      subledger_type?: "customer";
+      subledger_id?: number;
     },
   ): Promise<ApiResponse<any>> => {
+    logCustomerPayload("customerService.recordInvoice", data as Record<string, unknown>);
     const res = await api.post(`/customers/${customerId}/invoice`, data);
     return res.data;
   },
@@ -214,8 +229,13 @@ export const customerService = {
       date: string;
       reference?: string;
       branch_id?: number;
+      entity_type?: "customer";
+      entity_id?: number;
+      subledger_type?: "customer";
+      subledger_id?: number;
     },
   ): Promise<ApiResponse<any>> => {
+    logCustomerPayload("customerService.recordReceipt", data as Record<string, unknown>);
     const res = await api.post(`/customers/${customerId}/receipt`, data);
     return res.data;
   },
@@ -228,8 +248,13 @@ export const customerService = {
       date: string;
       reference?: string;
       branch_id?: number;
+      entity_type?: "customer";
+      entity_id?: number;
+      subledger_type?: "customer";
+      subledger_id?: number;
     },
   ): Promise<ApiResponse<any>> => {
+    logCustomerPayload("customerService.recordCreditNote", data as Record<string, unknown>);
     const res = await api.post(`/customers/${customerId}/credit-note`, data);
     return res.data;
   },
@@ -242,8 +267,13 @@ export const customerService = {
       date: string;
       reference?: string;
       branch_id?: number;
+      entity_type?: "customer";
+      entity_id?: number;
+      subledger_type?: "customer";
+      subledger_id?: number;
     },
   ): Promise<ApiResponse<any>> => {
+    logCustomerPayload("customerService.recordDebitNote", data as Record<string, unknown>);
     const res = await api.post(`/customers/${customerId}/debit-note`, data);
     return res.data;
   },

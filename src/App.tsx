@@ -23,6 +23,7 @@ import { ShiftView } from "./components/POS/Shift";
 import UsersManagementPage from "./pages/UsersManagementPage";
 import RolesPermissionsPage from "./pages/RolesPermissionsPage";
 import DepartmentsPage from "./components/administration/DepartmentsPage";
+import { ThemeProvider } from "./theme";
 
 /* ══════════════════════════════════════════════════════════════
  *  حماية الأدوار — تمنع الوصول لمن لا يملك الدور المطلوب
@@ -225,9 +226,11 @@ function AppRoutes() {
 
 function App() {
   return (
-    <AuthProvider>
-      <AppRoutes />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 

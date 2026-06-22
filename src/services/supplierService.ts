@@ -91,6 +91,16 @@ export interface ApiResponse<T = any> {
   data: T;
 }
 
+const logSupplierPayload = (label: string, payload: Record<string, unknown>) => {
+  console.debug(label, {
+    received_entity_type: payload.entity_type ?? null,
+    received_entity_id: payload.entity_id ?? null,
+    received_subledger_type: payload.subledger_type ?? null,
+    received_subledger_id: payload.subledger_id ?? null,
+    payload,
+  });
+};
+
 export const supplierService = {
   // ── CRUD ──────────────────────────────────────────────────
 
@@ -154,8 +164,13 @@ export const supplierService = {
       date: string;
       reference?: string;
       branch_id?: number;
+      entity_type?: "supplier";
+      entity_id?: number;
+      subledger_type?: "supplier";
+      subledger_id?: number;
     },
   ): Promise<ApiResponse<any>> => {
+    logSupplierPayload("supplierService.recordBill", data as Record<string, unknown>);
     const res = await api.post(`/suppliers/${supplierId}/bill`, data);
     return res.data;
   },
@@ -168,8 +183,13 @@ export const supplierService = {
       date: string;
       reference?: string;
       branch_id?: number;
+      entity_type?: "supplier";
+      entity_id?: number;
+      subledger_type?: "supplier";
+      subledger_id?: number;
     },
   ): Promise<ApiResponse<any>> => {
+    logSupplierPayload("supplierService.recordPayment", data as Record<string, unknown>);
     const res = await api.post(`/suppliers/${supplierId}/payment`, data);
     return res.data;
   },
@@ -182,8 +202,13 @@ export const supplierService = {
       date: string;
       reference?: string;
       branch_id?: number;
+      entity_type?: "supplier";
+      entity_id?: number;
+      subledger_type?: "supplier";
+      subledger_id?: number;
     },
   ): Promise<ApiResponse<any>> => {
+    logSupplierPayload("supplierService.recordCreditNote", data as Record<string, unknown>);
     const res = await api.post(`/suppliers/${supplierId}/credit-note`, data);
     return res.data;
   },
@@ -196,8 +221,13 @@ export const supplierService = {
       date: string;
       reference?: string;
       branch_id?: number;
+      entity_type?: "supplier";
+      entity_id?: number;
+      subledger_type?: "supplier";
+      subledger_id?: number;
     },
   ): Promise<ApiResponse<any>> => {
+    logSupplierPayload("supplierService.recordDebitNote", data as Record<string, unknown>);
     const res = await api.post(`/suppliers/${supplierId}/debit-note`, data);
     return res.data;
   },

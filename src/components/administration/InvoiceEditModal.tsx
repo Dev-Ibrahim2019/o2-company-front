@@ -188,7 +188,7 @@ export const InvoiceEditModal = ({
               تعديل الفاتورة #{invoice.invoice_number}
             </h3>
             <p className="text-[11px] text-slate-500 font-bold">
-             {faktura.order?.order_number ? (
+              {invoice.order?.order_number ? (
                 `مرتبط بالطلب #{invoice.order.order_number}`
               ) : (
                 "فاتورة مستقلة"
