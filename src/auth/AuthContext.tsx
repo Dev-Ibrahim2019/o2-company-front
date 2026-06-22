@@ -21,6 +21,7 @@ export interface AuthUser {
   id?: number;
   name: string;
   email: string;
+  branch_id?: number | null;
   roles: string[];
   permissions: string[];
 }
@@ -65,14 +66,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       const { data } = await api.get("/auth/me");
-      // الـ API يُرجع: { user: { id, name, email, ... } }
-      // والأدوار والصلاحيات محفوظة في localStorage بالفعل من الـ login
       const userData = data.user || data.data?.user || data;
 
       setUser({
         id: userData.id,
         name: userData.name,
         email: userData.email,
+        branch_id: userData.branch_id ?? null,
         roles: getRoles(),
         permissions: getPermissions(),
       });
@@ -104,7 +104,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const permissions: string[] = responseData.permissions || [];
 
     // الحفظ في localStorage
-    saveAuthData({ token, roles, permissions });
+    saveAuthData({ token, roles, permissions, branch_id: responseData.user?.branch_id ?? null });
 
     // تحديث الحالة
     setToken(token);
@@ -112,6 +112,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       id: responseData.user?.id,
       name: responseData.user?.name || "",
       email: responseData.user?.email || "",
+      branch_id: responseData.user?.branch_id ?? null,
       roles,
       permissions,
     });

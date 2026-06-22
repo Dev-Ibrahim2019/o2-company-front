@@ -139,9 +139,10 @@ export const POS: React.FC<{
   const isHospitality = userRole === "HOSPITALITY";
 
   // ── Branch ID ─────────────────────────────────────────────────────────────
-  // نأخذه من currentUser إذا موجود، وإلا نستخدم 1 كـ fallback مؤقت
-  const branchId: number =
-    (currentUser as any)?.branch_id ?? (currentUser as any)?.branchId ?? 1;
+  // نأخذه من currentUser — إذا ما في فرع، يستخدم null
+  // (MenuController سيرفض الطلب لغير super-admin بدون فرع)
+  const branchId: number | null =
+    (currentUser as any)?.branch_id ?? (currentUser as any)?.branchId ?? null;
 
   // ── Menu from API ─────────────────────────────────────────────────────────
   const {

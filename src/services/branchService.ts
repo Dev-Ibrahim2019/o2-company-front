@@ -21,6 +21,11 @@ export const branchService = {
     return data.data; // Laravel يلف البيانات في "data"
   },
 
+  getOne: async (id: number): Promise<Branch> => {
+    const { data } = await api.get(`/branches/${id}`);
+    return data.data;
+  },
+
   create: async (payload: Omit<Branch, "id">): Promise<Branch> => {
     const { data } = await api.post("/branches", payload);
     return data.data;

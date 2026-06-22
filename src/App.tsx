@@ -22,6 +22,7 @@ import { OrdersView } from "./components/POS/Orders";
 import { ShiftView } from "./components/POS/Shift";
 import UsersManagementPage from "./pages/UsersManagementPage";
 import RolesPermissionsPage from "./pages/RolesPermissionsPage";
+import DepartmentsPage from "./components/administration/DepartmentsPage";
 
 /* ══════════════════════════════════════════════════════════════
  *  حماية الأدوار — تمنع الوصول لمن لا يملك الدور المطلوب
@@ -153,7 +154,7 @@ function AppRoutes() {
               <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard" element={<FinanceView />} />
               <Route path="branches" element={<FinanceView />} />
-              <Route path="departments" element={<FinanceView />} />
+              <Route path="departments" element={<DepartmentsPage />} />
               <Route path="menu" element={<FinanceView />} />
               <Route path="item-tree" element={<FinanceView />} />
               <Route path="items-index" element={<FinanceView />} />
@@ -220,6 +221,7 @@ function AppRoutes() {
 /* ══════════════════════════════════════════════════════════════
  *  المكون الرئيسي
  * ══════════════════════════════════════════════════════════════ */
+
 
 function App() {
   return (

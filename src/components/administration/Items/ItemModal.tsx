@@ -79,19 +79,18 @@ const getInitialBranchPrices = (item?: Item | null): BranchPriceDraft[] => {
         return pivotRows.map((entry) => ({
             branch_id: Number(entry.branch_id),
             price: entry.price === null || entry.price === undefined ? '' : String(entry.price),
-            is_availble: entry.is_availble === undefined ? true : Boolean(entry.is_availble),
+            is_availble: entry.is_active === undefined ? true : Boolean(entry.is_active),
         }));
     }
 
     if (item.branches?.length) {
         return item.branches.map((branch) => {
-            const price = branch.pivot?.price ?? branch.price ?? '';
+            const price = (branch as any).price ?? '';
+            const isAvailble = (branch as any).is_availble ?? (branch as any).is_active ?? true;
             return {
                 branch_id: Number(branch.id),
                 price: price === null || price === undefined ? '' : String(price),
-                is_availble: branch.pivot?.is_availble === undefined
-                    ? branch.is_availble === undefined ? true : Boolean(branch.is_availble)
-                    : Boolean(branch.pivot.is_availble),
+                is_availble: Boolean(isAvailble),
             };
         });
     }

@@ -14,6 +14,7 @@ export {
   hasRole,
   hasPermission,
   clearAuthData,
+  getBranchId,
 } from "./authStorage";
 
 // ── AuthContext ──

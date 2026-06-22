@@ -6,7 +6,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import api from "../../api/axios";
 import { Can } from "../../auth";
-import { Plus, Pencil, Trash2, Search, X, Loader2, AlertCircle, CheckCircle } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, X, Loader2, AlertCircle, CheckCircle, Building2 } from "lucide-react";
 
 /* ── Types ── */
 export interface Column {
@@ -31,10 +31,14 @@ interface Props {
   requiredPermission: string;
   formFields: FormField[];
   title: string;
+  /** إظهار قسم الفروع في المودال */
+  showBranches?: boolean;
+  /** دالة اختيارية لتحويل بيانات الفورم قبل الإرسال */
+  onBeforeSubmit?: (form: Record<string, any>, editing: any | null) => Record<string, any>;
 }
 
 /* ── المكون ── */
-const DynamicCRUDTable: React.FC<Props> = ({ apiEndpoint, columns, requiredPermission, formFields, title }) => {
+const DynamicCRUDTable: React.FC<Props> = ({ apiEndpoint, columns, requiredPermission, formFields, title, showBranches, onBeforeSubmit }) => {
   const [data, setData] = useState<any[]>([]);
   const [filtered, setFiltered] = useState<any[]>([]);
   const [search, setSearch] = useState("");
@@ -47,6 +51,8 @@ const DynamicCRUDTable: React.FC<Props> = ({ apiEndpoint, columns, requiredPermi
   const [success, setSuccess] = useState("");
   const [dynOpts, setDynOpts] = useState<Record<string, any[]>>({});
   const [loadingOpts, setLoadingOpts] = useState<Record<string, boolean>>({});
+  const [branches, setBranches] = useState<any[]>([]);
+  const [branchValues, setBranchValues] = useState<Record<string, { is_active: boolean }>>({});
 
   /* ── جلب الخيارات الديناميكية ── */
   const fetchDynOpts = useCallback(async () => {
@@ -80,6 +86,18 @@ const DynamicCRUDTable: React.FC<Props> = ({ apiEndpoint, columns, requiredPermi
 
   useEffect(() => { fetchData(); fetchDynOpts(); }, [fetchData, fetchDynOpts]);
 
+  /* ── جلب الفروع ── */
+  useEffect(() => {
+    if (!showBranches) return;
+    (async () => {
+      try {
+        const { data: res } = await api.get("/branches");
+        const items = Array.isArray(res.data) ? res.data : Array.isArray(res) ? res : [];
+        setBranches(items);
+      } catch { /* ignore */ }
+    })();
+  }, [showBranches]);
+
   /* ── بحث ── */
   useEffect(() => {
     if (!search) { setFiltered(data); return; }
@@ -95,6 +113,7 @@ const DynamicCRUDTable: React.FC<Props> = ({ apiEndpoint, columns, requiredPermi
     const init: Record<string, any> = {};
     formFields.forEach((f) => { init[f.name] = f.type === "number" ? 0 : ""; });
     setForm(init);
+    setBranchValues({});
     setShowModal(true);
   };
 
@@ -104,6 +123,17 @@ const DynamicCRUDTable: React.FC<Props> = ({ apiEndpoint, columns, requiredPermi
     const init: Record<string, any> = {};
     formFields.forEach((f) => { init[f.name] = item[f.name] ?? ""; });
     setForm(init);
+    // تحميل الفروع المرتبطة من الباك إند
+    const linkedBranches = item.branches ?? item.branch_categories ?? [];
+    if (linkedBranches.length > 0) {
+      const bv: Record<string, { is_active: boolean }> = {};
+      linkedBranches.forEach((bc: any) => {
+        bv[String(bc.id)] = { is_active: bc.pivot?.is_active ?? true };
+      });
+      setBranchValues(bv);
+    } else {
+      setBranchValues({});
+    }
     setShowModal(true);
   };
 
@@ -111,12 +141,17 @@ const DynamicCRUDTable: React.FC<Props> = ({ apiEndpoint, columns, requiredPermi
     e.preventDefault();
     setSubmitting(true);
     setError("");
+    let payload = onBeforeSubmit ? onBeforeSubmit(form, editing) : form;
+    if (showBranches) {
+      const branchIds = Object.keys(branchValues).filter(id => branchValues[id].is_active).map(id => parseInt(id, 10));
+      payload = { ...payload, branch_ids: branchIds };
+    }
     try {
       if (editing) {
-        await api.put(`${apiEndpoint}/${editing.id}`, form);
+        await api.put(`${apiEndpoint}/${editing.id}`, payload);
         setSuccess("تم التعديل بنجاح");
       } else {
-        await api.post(apiEndpoint, form);
+        await api.post(apiEndpoint, payload);
         setSuccess("تم الإضافة بنجاح");
       }
       setShowModal(false);
@@ -232,6 +267,47 @@ const DynamicCRUDTable: React.FC<Props> = ({ apiEndpoint, columns, requiredPermi
                   )}
                 </div>
               ))}
+
+              {showBranches && (
+                <div className="space-y-2">
+                  <label className="block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider">الفروع المتاحة للقسم</label>
+                  <div className="rounded-xl border border-white/10 bg-slate-950/30 overflow-hidden">
+                    {branches.length === 0 ? (
+                      <div className="px-3 py-3 text-xs text-slate-500">لا توجد فروع متاحة للربط</div>
+                    ) : (
+                      <div className="max-h-52 overflow-y-auto divide-y divide-white/5">
+                        {branches.map((branch) => {
+                          const selected = !!branchValues[String(branch.id)];
+                          return (
+                            <div key={branch.id} className="grid grid-cols-[1fr_100px] gap-3 px-3 py-2.5 items-center">
+                              <label className="flex items-center gap-3 min-w-0 cursor-pointer">
+                                <input type="checkbox" checked={selected} onChange={() => {
+                                  const key = String(branch.id);
+                                  setBranchValues((prev) => {
+                                    const next = { ...prev };
+                                    if (next[key]) delete next[key]; else next[key] = { is_active: true };
+                                    return next;
+                                  });
+                                }} className="h-4 w-4 accent-red-600" />
+                                <span className="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 flex items-center justify-center shrink-0"><Building2 size={13} /></span>
+                                <span className="text-sm text-white truncate">{branch.name}</span>
+                              </label>
+                              <label className="flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
+                                <input type="checkbox" checked={selected ? (branchValues[String(branch.id)]?.is_active ?? true) : false} disabled={!selected} onChange={(e) => {
+                                  const key = String(branch.id);
+                                  setBranchValues((prev) => ({ ...prev, [key]: { ...prev[key], is_active: e.target.checked } }));
+                                }} className="h-3.5 w-3.5 accent-emerald-600 disabled:opacity-40" />
+                                متاح
+                              </label>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-3 pt-2">
                 <button type="submit" disabled={submitting}
                   className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold text-sm hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-2">

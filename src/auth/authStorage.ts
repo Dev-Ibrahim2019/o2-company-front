@@ -9,6 +9,7 @@ const KEYS = {
   TOKEN: "token",
   ROLES: "roles",
   PERMISSIONS: "permissions",
+  BRANCH_ID: "branch_id",
 } as const;
 
 /** ── حفظ بيانات المصادقة بعد نجاح الـ Login ── */
@@ -16,10 +17,16 @@ export function saveAuthData(data: {
   token: string;
   roles: string[];
   permissions: string[];
+  branch_id?: number | null;
 }): void {
   localStorage.setItem(KEYS.TOKEN, data.token);
   localStorage.setItem(KEYS.ROLES, JSON.stringify(data.roles));
   localStorage.setItem(KEYS.PERMISSIONS, JSON.stringify(data.permissions));
+  if (data.branch_id != null) {
+    localStorage.setItem(KEYS.BRANCH_ID, String(data.branch_id));
+  } else {
+    localStorage.removeItem(KEYS.BRANCH_ID);
+  }
 }
 
 /** ── استرجاع التوكن ── */
@@ -64,9 +71,18 @@ export function hasPermission(permission: string): boolean {
   return getPermissions().includes(permission);
 }
 
+/** ── استرجاع branch_id ── */
+export function getBranchId(): number | null {
+  const raw = localStorage.getItem(KEYS.BRANCH_ID);
+  if (!raw) return null;
+  const n = parseInt(raw, 10);
+  return isNaN(n) ? null : n;
+}
+
 /** ── حذف جميع بيانات المصادقة (تسجيل خروج) ── */
 export function clearAuthData(): void {
   localStorage.removeItem(KEYS.TOKEN);
   localStorage.removeItem(KEYS.ROLES);
   localStorage.removeItem(KEYS.PERMISSIONS);
+  localStorage.removeItem(KEYS.BRANCH_ID);
 }
