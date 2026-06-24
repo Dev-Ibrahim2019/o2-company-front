@@ -88,6 +88,9 @@ export const PERMISSIONS = {
 
   // ── إدارة المستخدمين ──
   MANAGE_USERS: "manage-users",
+
+  // ── الخصومات ──
+  MANAGE_DISCOUNTS: "manage-discounts",
 } as const;
 
 /** نوع يمثل جميع قيم الصلاحيات الممكنة */
@@ -153,7 +156,5 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     PERMISSIONS.MANAGE_CUSTOMERS,
   ],
 
-  [ROLES.DEPT_STAFF]: [
-    PERMISSIONS.VIEW_ORDERS,
-  ],
+  [ROLES.DEPT_STAFF]: [PERMISSIONS.VIEW_ORDERS],
 };

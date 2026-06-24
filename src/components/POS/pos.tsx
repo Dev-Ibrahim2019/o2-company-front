@@ -811,13 +811,15 @@ export const POS: React.FC<{
       .map((payment) => {
         const method = normalizeApiPaymentMethod(payment.method);
         if (!method) return null;
+        const isEntityMethod = (method as string) === 'account' || (method as string) === 'customer' || (method as string) === 'employee' || (method as string) === 'supplier';
         const result: any = {
           method,
           amount: payment.amount,
           reference: payment.reference,
         };
-        // المحافظة على entity data إذا كانت موجودة
-        if ((payment as any).entity_type) {
+        // FIXED: نرسل entity_type فقط إذا method = account/customer/employee/supplier
+        // لا نرسل entity_type مع cash/bank/card/wallet أبداً
+        if (isEntityMethod && (payment as any).entity_type) {
           result.entity_type = (payment as any).entity_type;
           result.entity_id = (payment as any).entity_id;
           result.subledger_type = (payment as any).subledger_type;

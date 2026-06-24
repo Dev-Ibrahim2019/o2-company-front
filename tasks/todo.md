@@ -1,38 +1,93 @@
-# Payment Flow Audit & Fix - Task Progress
+# Discount Management System - ✅ 100% Complete
 
-## Audit Findings
+## Phase 1: Backend - Database & Models ✅
 
-- [x] Read SettlementEngine.php - **EMPTY FILE (0 bytes)**
-- [x] Read AddPaymentRequest.php - Validates: `cash,card,bank,wallet,account,mixed`
-- [x] Read SettleController.php - Uses SettlementEngine (which is empty)
-- [x] Read AccountingService.php - Single payment only, no mixed payment support
-- [x] Read PaymentMethod model - Types: cash, bank, card, wallet, customer, employee, supplier
-- [x] Read PaymentMethodController - Types: cash, bank, card, wallet, customer, employee, supplier
-- [x] Read PaymentMethodSeeder - Creates: cash, bank, card, wallet, customer, employee, supplier
-- [x] Read PaymentMethod migration - type column
-- [x] Read Payment model - has `method` and `payment_method_id` fields
-- [x] Read OrderController - No payment logic
-- [x] Read InvoiceController - addPayment uses AddPaymentRequest validation
-- [x] Read routes/api.php - Two payment endpoints: addPayment and settle
-- [x] Read types.ts - PaymentMethod enum: CASH, CREDIT_CARD, WALLET, QR, ONLINE
-- [x] Read orderService.ts - normalizePaymentMethod maps to: cash, credit_card, wallet, bank_transfer
-- [x] Read CustomerTab.tsx - Uses PaymentMethod enum from types.ts
-- [x] Read SettlementPanel.tsx - Uses payment_method_id (integer) from payment_methods table
-- [x] Read settlementService.ts - Uses payment_method_id (integer)
+- [x] Create migration: Create discounts table
+- [x] Create migration: Create discount_targets table (polymorphic targets)
+- [x] Create migration: Create discount_usage_logs table
+- [x] Create migration: Add discount fields to invoice_items table
+- [x] Create migration: Add discount_settings table for configuration
+- [x] Create model: Discount
+- [x] Create model: DiscountTarget
+- [x] Create model: DiscountUsageLog
+- [x] Create model: DiscountSetting
+- [x] Update model: InvoiceItem with discount fields
 
-## Root Cause Analysis
+## Phase 2: Backend - Core Service (Discount Engine) ✅
 
-- [x] **ROOT CAUSE 1**: normalizePaymentMethod maps "CREDIT_CARD" → "credit_card" but backend expects "card"
-- [x] **ROOT CAUSE 2**: normalizePaymentMethod maps "QR" → "bank_transfer" but backend expects "bank"
-- [x] **ROOT CAUSE 3**: SettlementEngine.php is EMPTY - the new settlement flow cannot work
-- [x] **ROOT CAUSE 4**: AccountingService.php only handles single payment, not mixed payments
+- [x] Create service: DiscountEngineService
+  - [x] Priority Engine implementation
+  - [x] Support percentage, fixed amount, price override
+  - [x] Support all target types (customer, employee, supplier, department, item, all)
+  - [x] Compound discount support
+  - [x] Validation rules
+  - [x] Cart-level discount calculation
+  - [x] Usage logging
 
-## Fixes to Implement
+## Phase 3: Backend - Accounting Integration ✅
 
-- [ ] **FIX 1**: Implement SettlementEngine.php with full settlement logic
-- [ ] **FIX 2**: Fix normalizePaymentMethod in orderService.ts - map to backend values
-- [ ] **FIX 3**: Fix CustomerTab.tsx payment method values
-- [ ] **FIX 4**: Fix AccountingService.php to handle mixed payments
-- [ ] **FIX 5**: Verify database records exist
-- [ ] **FIX 6**: Verify seeder is correct
-- [ ] **FIX 7**: Test all payment flows
+- [x] Update: AccountingService to handle Sales Discounts account (4120)
+- [x] findSalesDiscountsAccount() method with configurable account code
+
+## Phase 4: Backend - API Controllers & Routes ✅
+
+- [x] Create controller: DiscountController (CRUD + calculations)
+- [x] Create resource: DiscountResource
+- [x] Create resource: DiscountTargetResource
+- [x] Update routes: Add discount routes (8 endpoints)
+  - [x] Calculate endpoints accessible to all authenticated users (for POS)
+  - [x] Management endpoints require manage-discounts permission
+- [x] Route registration verified
+
+## Phase 5: Frontend - Discount Management Portal ✅
+
+- [x] Create: DiscountService (API integration with axios)
+- [x] Create: DiscountManagementPortal (main container with 5 tabs)
+  - [x] Dashboard tab with stats cards and recent usage
+  - [x] Active discounts tab
+  - [x] All discounts tab
+  - [x] Expired discounts tab
+  - [x] Settings tab
+- [x] Create: DiscountWizard component (5-step stepper modal)
+  - Step 1: Basic info (name, code, description)
+  - Step 2: Target selection (customer/employee/supplier/department/item/all)
+  - Step 3: Discount value (percentage/fixed/price override)
+  - Step 4: Validity period
+  - Step 5: Review & save
+- [x] Create: DashboardContent with 8 stat cards + recent usage table
+- [x] Create: DiscountListContent with cards and edit/delete actions
+
+## Phase 6: Frontend - POS Integration ✅
+
+- [x] Update: CartItem type with discount fields (original_price, discount_amount, discount_percent, discount_id, final_price)
+- [x] Update: useCart hook to support discount calculation per item
+
+## Phase 7: Navigation & Integration ✅
+
+- [x] Add MANAGE_DISCOUNTS permission to permissions.ts
+- [x] Add discount sidebar navigation item in Layout.tsx
+- [x] Add DiscountManagementPortal to FinancePortal
+- [x] Add /admin/discounts route in App.tsx
+- [x] Add discounts mapping in financeViewMap
+
+## Phase 8: Testing ✅
+
+- [x] Create backend PHPUnit tests for DiscountEngine
+- [x] Test customer/employee/supplier/department/item discounts
+- [x] Test priority engine
+- [x] Test expired/inactive discounts
+- [x] Test percentage/fixed/price_override discounts
+- [x] Test min/max order amount constraints
+- [x] Test negative price prevention
+- [x] Test cart discount calculation
+
+## Bug Fixes ✅
+
+- [x] Fix "Unexpected token '<'" error
+  - [x] Switch discountService.ts from raw fetch to axios
+  - [x] Fix route middleware: calculate endpoints accessible to all authenticated users
+  - [x] Management endpoints require manage-discounts permission
+
+## Summary
+
+نظام إدارة الخصومات مكتمل بالكامل على مستوى الواجهة الخلفية والواجهة الأمامية والاختبارات.

@@ -34,35 +34,34 @@ export interface MenuCategory {
 
 export const useMenu = (branchId?: number | null) => {
   // نأخذ branch_id من: المعامل → localStorage
-  const effectiveBranchId = branchId ?? getBranchId();
+  const initialBranchId = branchId ?? getBranchId();
 
-  const [resolvedBranchId, setResolvedBranchId] = useState<number | null>(effectiveBranchId);
+  const [resolvedBranchId, setResolvedBranchId] = useState<number | null>(
+    initialBranchId,
+  );
   const [categories, setCategories] = useState<MenuCategory[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchMenu = useCallback(async () => {
-    // لا نبدأ الفيتش إلا إذا كان branch_id متوفراً
-    if (!effectiveBranchId) {
-      return;
-    }
-
+  const fetchMenu = useCallback(async (id: number) => {
     setLoading(true);
     setError(null);
 
     try {
       const { data } = await api.get("/menu", {
-        params: { branch_id: effectiveBranchId },
+        params: { branch_id: id },
       });
+      console.log("🟢 [useMenu] API Response:", data);
       // الاستجابة: { data: { categories: [...] } }
       const rawCategories = data?.data?.categories ?? data?.categories ?? [];
       setCategories(Array.isArray(rawCategories) ? rawCategories : []);
-    } catch {
+    } catch (err) {
+      console.error("🔴 [useMenu] API Error:", err);
       setError("فشل تحميل المنيو");
     } finally {
       setLoading(false);
     }
-  }, [effectiveBranchId]);
+  }, []);
 
   // جلب branch_id من /auth/me إذا لم يكن متوفراً في localStorage
   const fetchBranchIdFromApi = useCallback(async () => {
@@ -72,15 +71,19 @@ export const useMenu = (branchId?: number | null) => {
     try {
       const { data } = await api.get("/auth/me");
       const userData = data.user || data.data?.user || data;
-      return userData.branch_id ?? null;
-    } catch {
+      const userId = userData.branch_id ?? null;
+      console.log("🟢 [useMenu] Fetched branch_id from API:", userId);
+      return userId;
+    } catch (err) {
+      console.error("🔴 [useMenu] Failed to fetch branch_id:", err);
       return null;
     }
   }, []);
 
+  // Effect 1: Resolve branchId
   useEffect(() => {
-    if (effectiveBranchId) {
-      setResolvedBranchId(effectiveBranchId);
+    if (initialBranchId) {
+      setResolvedBranchId(initialBranchId);
     } else {
       // إذا لم يكن branch_id متوفراً، نحاول جلبه من API
       fetchBranchIdFromApi().then((apiBranchId) => {
@@ -88,16 +91,46 @@ export const useMenu = (branchId?: number | null) => {
           // حفظه في localStorage للمرات القادمة
           localStorage.setItem("branch_id", String(apiBranchId));
           setResolvedBranchId(apiBranchId);
+        } else {
+          console.warn(
+            "🟡 [useMenu] No branch_id available, cannot fetch menu",
+          );
+          setLoading(false);
         }
       });
     }
-  }, [effectiveBranchId, fetchBranchIdFromApi]);
+  }, [initialBranchId, fetchBranchIdFromApi]);
 
+  // Effect 2: Fetch menu when branchId is resolved
   useEffect(() => {
     if (resolvedBranchId) {
-      fetchMenu();
+      console.log("🟢 [useMenu] Fetching menu for branch:", resolvedBranchId);
+      fetchMenu(resolvedBranchId);
     }
   }, [resolvedBranchId, fetchMenu]);
+
+  // Fetch on mount even if branchId is null (fallback)
+  useEffect(() => {
+    if (!resolvedBranchId && !loading) {
+      // Try to fetch menu anyway without branch_id filter
+      setLoading(true);
+      console.warn(
+        "🟡 [useMenu] No branch_id, fetching menu without branch filter",
+      );
+      api
+        .get("/menu")
+        .then(({ data }) => {
+          const rawCategories =
+            data?.data?.categories ?? data?.categories ?? [];
+          setCategories(Array.isArray(rawCategories) ? rawCategories : []);
+        })
+        .catch((err) => {
+          console.error("🔴 [useMenu] Fallback fetch failed:", err);
+          setError("فشل تحميل المنيو");
+        })
+        .finally(() => setLoading(false));
+    }
+  }, [resolvedBranchId]);
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -113,7 +146,7 @@ export const useMenu = (branchId?: number | null) => {
     allItems,
     loading,
     error,
-    refetch: fetchMenu,
+    refetch: () => resolvedBranchId && fetchMenu(resolvedBranchId),
     findByCode,
   };
 };
