@@ -106,24 +106,16 @@ export const useCart = () => {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // ── addToCart ─────────────────────────────────────────────────────────────
-  // ✅ الإصلاح: نتحقق إذا الصنف موجود → نزيد الكمية بدل صف جديد
+  // تم تعديل الإضافة ليُضيف sempre صنف جديد بدلاً من زيادة الكمية
+  //これにより、同じ商品でもカスタマイズが異なる場合は別々のカートアイテムとして扱われます
   const addToCart = useCallback(
     (item: MenuItem, opts?: { quantity?: number; price?: number }) => {
       const qty = opts?.quantity ?? 1;
       const price = opts?.price ?? item.price;
 
       setCart((prev) => {
-        const existing = prev.find((c) => c.id === item.id);
-
-        if (existing) {
-          // الصنف موجود → زيادة الكمية فقط
-          return prev.map((c) =>
-            c.id === item.id ? { ...c, quantity: c.quantity + qty } : c,
-          );
-        }
-
-        // صنف جديد → أضف صف
-        const uniqueId = String(item.id);
+        // siempre añadir un nuevo elemento del carrito
+        const uniqueId = String(item.id) + '-' + Math.random().toString(36).substr(2, 9);
         return [
           ...prev,
           {
@@ -135,6 +127,8 @@ export const useCart = () => {
             price,
             quantity: qty,
             department_id: item.department_id,
+            // ملاحظات مبدئية فارغة - يمكن تخصيصها لاحقًا عبر updateCartItem
+            notes: undefined,
           },
         ];
       });
