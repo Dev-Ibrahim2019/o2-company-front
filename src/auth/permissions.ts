@@ -94,6 +94,8 @@ export const PERMISSIONS = {
 
   // ── واجهة الكاشير ──
   ACCESS_POS_INTERFACE: "access-pos-interface",
+  // ── الخصومات ──
+  MANAGE_DISCOUNTS: "manage-discounts",
 } as const;
 
 /** نوع يمثل جميع قيم الصلاحيات الممكنة */
@@ -160,7 +162,5 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     PERMISSIONS.MANAGE_CUSTOMERS,
   ],
 
-  [ROLES.DEPT_STAFF]: [
-    PERMISSIONS.VIEW_ORDERS,
-  ],
+  [ROLES.DEPT_STAFF]: [PERMISSIONS.VIEW_ORDERS],
 };

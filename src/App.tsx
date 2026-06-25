@@ -95,6 +95,7 @@ const financeViewMap: Record<string, string> = {
   archive: "ARCHIVE",
   settings: "SETTINGS",
   orgstructure: "ORGSTRUCTURE",
+  discounts: "DISCOUNTS",
 };
 
 /**
@@ -178,6 +179,7 @@ function AppRoutes() {
               <Route path="archive" element={<FinanceView />} />
               <Route path="settings" element={<FinanceView />} />
               <Route path="orgstructure" element={<FinanceView />} />
+              <Route path="discounts" element={<FinanceView />} />
 
               <Route path="accounting">
                 <Route index element={<Navigate to="dashboard" replace />} />
@@ -197,7 +199,7 @@ function AppRoutes() {
         <Route element={<RoleGuard allowedRoles={POS_ROLES} />}>
           <Route element={<POSLayout />}>
             <Route path="/pos">
-              <Route index element={<POS onViewTables={() => {}} />} />
+              <Route index element={<POS onViewTables={() => { }} />} />
               <Route path="orders" element={<OrdersView />} />
               <Route path="tables" element={<TablesView />} />
             </Route>
@@ -213,9 +215,9 @@ function AppRoutes() {
               summary: null,
               shiftLoading: false,
               currentUserName: "",
-              onOpen: async () => {},
-              onClose: async () => {},
-              onFetchSummary: async () => {},
+              onOpen: async () => { },
+              onClose: async () => { },
+              onFetchSummary: async () => { },
             })
           }
         />
