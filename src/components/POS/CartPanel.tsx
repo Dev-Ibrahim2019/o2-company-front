@@ -284,7 +284,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
               <ShoppingCart size={32} strokeWidth={1.5} />
             </div>
             <p className="font-black text-lg">الفاتورة فارغة</p>
-            <button
+            {/* <button
               onClick={() => {
                 // Focus the search input to activate inline search
                 const searchInput = document.querySelector('input[placeholder="ابحث عن صنف..."]');
@@ -296,7 +296,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
             >
               <Plus size={16} />
               <span>إضافة صنف</span>
-            </button>
+            </button> */}
           </div>
         ) : (
           <div className="overflow-x-auto">

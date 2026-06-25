@@ -1,13 +1,12 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useApp } from "../../../store";
 import { useOrders } from "../../hooks/useOrders";
 import { orderService } from "../../services/orderService";
-import { OrderEditModal } from "../orders/OrderEditModal";
 import type {
   OrderFromApi,
   OrderStatus as ApiOrderStatus,
   OrderType as ApiOrderType,
-  PaymentMethod as ApiPaymentMethod,
 } from "../../services/orderService";
 import {
   Banknote,
@@ -121,13 +120,15 @@ const getStatusLabel = (status: ApiOrderStatus) => {
 const getOrderTypeLabel = (type: ApiOrderType) =>
   type === "dine_in" ? "محلي" : "سفري";
 
-const getPaymentIcon = (method?: ApiPaymentMethod | null) => {
+const getPaymentIcon = (method?: string | null) => {
   switch (method) {
     case "credit_card":
+    case "card":
       return <CreditCard size={14} />;
     case "wallet":
       return <Wallet size={14} />;
     case "bank_transfer":
+    case "bank":
       return <Landmark size={14} />;
     case "cash":
     default:
@@ -135,15 +136,17 @@ const getPaymentIcon = (method?: ApiPaymentMethod | null) => {
   }
 };
 
-const getPaymentLabel = (method?: ApiPaymentMethod | null) => {
+const getPaymentLabel = (method?: string | null) => {
   switch (method) {
     case "cash":
       return "كاش";
     case "credit_card":
+    case "card":
       return "بطاقة";
     case "wallet":
       return "محفظة";
     case "bank_transfer":
+    case "bank":
       return "بنكي";
     default:
       return "لم يحدد";
@@ -153,6 +156,7 @@ const getPaymentLabel = (method?: ApiPaymentMethod | null) => {
 const formatMoney = (value: number) => `${Number(value || 0).toFixed(2)} ₪`;
 
 export const OrdersView = () => {
+  const navigate = useNavigate();
   const { currentShift, currentUser } = useApp();
   const branchFilter = useMemo(() => getBranchFilter(currentUser), [currentUser]);
   const { orders, loading, error, refetch } = useOrders(branchFilter);
@@ -164,7 +168,6 @@ export const OrdersView = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyOrderId, setBusyOrderId] = useState<number | null>(null);
-  const [editingOrder, setEditingOrder] = useState<OrderFromApi | null>(null);
   const [transferredOrderIds, setTransferredOrderIds] = useState<number[]>([]);
 
   const filteredOrders = useMemo(() => {
@@ -255,16 +258,7 @@ export const OrdersView = () => {
 
   return (
     <div className="space-y-5 w-full p-3 sm:p-5 lg:p-6 bg-slate-950 h-full overflow-y-auto rounded-[2rem] custom-scrollbar">
-      {editingOrder && (
-        <OrderEditModal
-          order={editingOrder}
-          onClose={() => setEditingOrder(null)}
-          onSaved={() => {
-            setEditingOrder(null);
-            refreshOrders();
-          }}
-        />
-      )}
+      {/* تم إزالة مودال التعديل — الآن التعديل يفتح في واجهة POS */}
 
       <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div className="space-y-0.5">
@@ -486,7 +480,7 @@ export const OrdersView = () => {
                         {activeTab === "ACTIVE" ? (
                           <div className="flex items-center gap-2">
                             <button
-                              onClick={() => setEditingOrder(order)}
+                              onClick={() => navigate(`/pos?editOrderId=${order.id}`)}
                               disabled={busy}
                               className="px-3 py-2 rounded-xl bg-slate-800 border border-white/5 text-slate-300 hover:bg-slate-700 text-[10px] font-black flex items-center gap-1.5 disabled:opacity-40"
                             >
@@ -685,7 +679,7 @@ export const OrdersView = () => {
                   {activeTab === "ACTIVE" ? (
                     <>
                       <button
-                        onClick={() => setEditingOrder(order)}
+                        onClick={() => navigate(`/pos?editOrderId=${order.id}`)}
                         disabled={busy}
                         className="flex-1 bg-slate-800 border border-white/5 text-slate-300 py-2.5 rounded-xl font-black text-[10px] hover:bg-slate-700 flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-40"
                       >

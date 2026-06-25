@@ -7,6 +7,7 @@
 // 4. getItemCurrentPrice تقرأ item.price مباشرة (جاي من pivot الفرع)
 
 import React, { useState, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useApp } from "../../../store";
 import {
   OrderType,
@@ -40,6 +41,10 @@ import {
 } from "../../services/orderService";
 import { TablesView } from "./Tables";
 import type { Order, Table } from "../../../types";
+import { getDeviceUUIDSecurely } from "../../utils/posSecurity";
+import POSActivationPage from "./POSActivationPage";
+import { PERMISSIONS, ROLES } from "../../auth/permissions";
+
 
 const MONEY_EPSILON = 0.01;
 
@@ -116,6 +121,40 @@ export const POS: React.FC<{
   onViewTables: () => void;
   initialMode?: "tables" | "menu" | "info" | "customer";
 }> = ({ onViewTables, initialMode = "tables" }) => {
+
+  const [searchParams] = useSearchParams();
+  const [deviceUuid, setDeviceUuid] = useState<string | null>(null);
+  const [posInfo, setPosInfo] = useState<any>(null);
+  const [checkingSecurity, setCheckingSecurity] = useState(true);
+  const [invoiceData, setInvoiceData] = useState<any>(null);
+
+  useEffect(() => {
+    const checkDeviceSecurity = async () => {
+      try {
+        const uuid = await getDeviceUUIDSecurely();
+        const storedInfo = localStorage.getItem("pos_register_info");
+
+        if (uuid && storedInfo) {
+          setDeviceUuid(uuid);
+          setPosInfo(JSON.parse(storedInfo));
+        }
+      } catch (error) {
+        console.error("خطأ في فحص أمان نقطة البيع:", error);
+      } finally {
+        setCheckingSecurity(false);
+      }
+    };
+    checkDeviceSecurity();
+  }, []);
+
+// دالة يتم استدعاؤها لتحديث الحالة فور إدخال كود التفعيل بنجاح
+const handleActivationSuccess = (activatedInfo: any) => {
+  getDeviceUUIDSecurely().then((uuid) => {
+    setDeviceUuid(uuid);
+    setPosInfo(activatedInfo);
+  });
+};
+
   // ── Store (للحالات القديمة غير المنقولة بعد) ──────────────────────────────
   const {
     selectedTable,
@@ -136,8 +175,9 @@ export const POS: React.FC<{
   // ── Branch ID ─────────────────────────────────────────────────────────────
   // نأخذه من currentUser — إذا ما في فرع، يستخدم null
   // (MenuController سيرفض الطلب لغير super-admin بدون فرع)
+
   const branchId: number | null =
-    (currentUser as any)?.branch_id ?? (currentUser as any)?.branchId ?? null;
+  posInfo?.branch_id ?? (currentUser as any)?.branch_id ?? null;
 
   // ── Menu from API ─────────────────────────────────────────────────────────
   const {
@@ -220,6 +260,94 @@ export const POS: React.FC<{
   const currentEditingOrderId = editingApiOrderId
     ? String(editingApiOrderId)
     : null;
+
+  // ── قراءة editOrderId من الرابط وتحميل الطلب تلقائياً ──
+  useEffect(() => {
+    const editOrderIdParam = searchParams.get("editOrderId");
+    if (!editOrderIdParam) return;
+
+    const orderId = Number(editOrderIdParam);
+    if (!Number.isFinite(orderId)) return;
+
+    // تنظيف الرابط بعد القراءة
+    const newSearchParams = new URLSearchParams(searchParams);
+    newSearchParams.delete("editOrderId");
+    const newUrl = `${window.location.pathname}${newSearchParams.toString() ? "?" + newSearchParams.toString() : ""}`;
+    window.history.replaceState({}, "", newUrl);
+
+    let cancelled = false;
+
+    const loadOrderForEdit = async () => {
+      try {
+        const order = await orderService.getOne(orderId);
+        if (!cancelled) {
+          applyApiOrderToCart(order);
+          setIsCartOpen(true);
+          setActivePOSMode("menu");
+        }
+      } catch (err) {
+        console.error("فشل تحميل الطلب للتعديل:", err);
+        if (!cancelled) setPosError("فشل تحميل الطلب للتعديل");
+      }
+    };
+
+    loadOrderForEdit();
+
+    return () => { cancelled = true; };
+  }, [searchParams]);
+
+  // ── جلب بيانات الفاتورة عند تعديل طلب موجود ──
+  useEffect(() => {
+    if (!editingApiOrderId) {
+      setInvoiceData(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchInvoiceForOrder = async () => {
+      try {
+        const invoice = await orderService.getInvoiceForOrder(editingApiOrderId);
+        if (!cancelled && invoice) {
+          // تحويل هيكل الفاتورة من API إلى الشكل المطلوب في InvoiceInfoTab
+          setInvoiceData({
+            pos: {
+              register_id: (invoice as any).pos_register_id,
+              code: (invoice as any).pos_code,
+              name: (invoice as any).pos_name,
+              branch: (invoice as any).branch ? { id: (invoice as any).branch.id, name: (invoice as any).branch.name } : null,
+            },
+            details: {
+              number: invoice.number,
+              date: invoice.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+              time: invoice.created_at ? new Date(invoice.created_at).toLocaleTimeString('ar-PS', { hour: '2-digit', minute: '2-digit' }) : '',
+              currency: (invoice as any).currency || 'ILS',
+              account_number: (invoice as any).account_number || null,
+            },
+            opening: {
+              user: (invoice as any).opened_by_user ? { id: (invoice as any).opened_by_user.id, name: (invoice as any).opened_by_user.name } : null,
+              pos_name: (invoice as any).pos_name,
+              date: (invoice as any).opened_at?.split('T')[0] || null,
+              time: (invoice as any).opened_at ? new Date((invoice as any).opened_at).toLocaleTimeString('ar-PS', { hour: '2-digit', minute: '2-digit' }) : null,
+            },
+            closing: (invoice as any).closed_at ? {
+              user: (invoice as any).closed_by_user ? { id: (invoice as any).closed_by_user.id, name: (invoice as any).closed_by_user.name } : null,
+              pos_name: (invoice as any).pos_name,
+              date: (invoice as any).closed_at?.split('T')[0] || null,
+              time: (invoice as any).closed_at ? new Date((invoice as any).closed_at).toLocaleTimeString('ar-PS', { hour: '2-digit', minute: '2-digit' }) : null,
+            } : null,
+          });
+        }
+      } catch (err) {
+        console.warn('لم يتم العثور على فاتورة لهذا الطلب:', err);
+        if (!cancelled) setInvoiceData(null);
+      }
+    };
+
+    fetchInvoiceForOrder();
+
+    return () => { cancelled = true; };
+  }, [editingApiOrderId]);
 
   // ── Effects ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -926,7 +1054,30 @@ export const POS: React.FC<{
     allItems,
     addToCart,
   };
+  // 1. إذا كان النظام ما زال يفحص هوية المتصفح
+  if (checkingSecurity) {
+    return (
+      <div className="fixed inset-0 flex flex-col items-center justify-center bg-slate-950 text-white" dir="rtl">
+        <Loader2 size={40} className="text-red-500 animate-spin mb-4" />
+        <p className="text-sm font-bold text-slate-400">جاري التحقق من الهوية الرقمية لجهاز نقطة البيع...</p>
+      </div>
+    );
+  }
 
+  // 2. إذا لم يجد بصمة مفعلة أو كود مسجل، يحجب الكاشير ويعرض شاشة التفعيل
+  //    لكن إذا كان المستخدم من لوحة الإدارة (يملك صلاحية ACCESS_POS_INTERFACE) يتجاوز التفعيل
+  const adminRoles = [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BRANCH_MANAGER];
+  const hasPosInterfaceAccess = userRole && adminRoles.includes(userRole as any);
+  
+  if (!deviceUuid || !posInfo) {
+    if (hasPosInterfaceAccess) {
+      // المستخدم من لوحة الإدارة — يسمح له بالدخول بدون تفعيل جهاز
+      // استخدم بيانات وهمية لـ posInfo لتجنب الأخطاء
+      setPosInfo({ code: 'ADMIN', name: 'واجهة الإدارة', branch_id: null });
+    } else {
+      return <POSActivationPage onActivationSuccess={handleActivationSuccess} />;
+    }
+  }
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col lg:flex-row gap-4 h-full bg-slate-950 overflow-y-auto lg:overflow-hidden p-2 sm:p-4 lg:p-0 custom-scrollbar relative">
@@ -1002,6 +1153,8 @@ export const POS: React.FC<{
             <InvoiceInfoTab
               editingOrderId={currentEditingOrderId}
               currentUser={currentUser}
+              posInfo={posInfo}
+              invoiceData={invoiceData}
             />
           ) : (
             <CustomerTab

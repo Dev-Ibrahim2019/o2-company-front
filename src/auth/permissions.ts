@@ -88,6 +88,12 @@ export const PERMISSIONS = {
 
   // ── إدارة المستخدمين ──
   MANAGE_USERS: "manage-users",
+
+  // ── نقاط البيع ──
+  MANAGE_POS_REGISTERS: "manage-pos-registers",
+
+  // ── واجهة الكاشير ──
+  ACCESS_POS_INTERFACE: "access-pos-interface",
 } as const;
 
 /** نوع يمثل جميع قيم الصلاحيات الممكنة */
@@ -102,6 +108,7 @@ export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   [ROLES.SUPER_ADMIN]: [
     // يملك كل شيء
+    PERMISSIONS.MANAGE_POS_REGISTERS,
     PERMISSIONS.MANAGE_BRANCHES,
     PERMISSIONS.MANAGE_DEPARTMENTS,
     PERMISSIONS.MANAGE_ITEMS,

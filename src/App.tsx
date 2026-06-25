@@ -17,10 +17,12 @@ import { FinancePortal } from "./components/administration/FinancePortal";
 import { AccountingPortal } from "./components/administration/GL/AccountingPortal";
 import { POSLayout } from "./components/POS/Layout";
 import { POS } from "./components/POS/pos";
+import AdminPOSWrapper from "./components/POS/AdminPOSWrapper";
 import { TablesView } from "./components/POS/Tables";
 import { OrdersView } from "./components/POS/Orders";
 import { ShiftView } from "./components/POS/Shift";
 import UsersManagementPage from "./pages/UsersManagementPage";
+import PosRegistersPage from "./pages/PosRegistersPage";
 import RolesPermissionsPage from "./pages/RolesPermissionsPage";
 import DepartmentsPage from "./components/administration/DepartmentsPage";
 import { ThemeProvider } from "./theme";
@@ -33,7 +35,14 @@ import { ThemeProvider } from "./theme";
 const ADMIN_ROLES = [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BRANCH_MANAGER];
 
 /** الأدوار المسموح بها في مسارات /pos/* */
-const POS_ROLES = [ROLES.CASHIER, ROLES.HOSPITALITY, ROLES.DEPT_STAFF];
+const POS_ROLES = [
+  ROLES.CASHIER,
+  ROLES.HOSPITALITY,
+  ROLES.DEPT_STAFF,
+  ROLES.SUPER_ADMIN,
+  ROLES.ACCOUNTANT,
+  ROLES.BRANCH_MANAGER,
+];
 
 /**
  * RoleGuard — layout route يفحص الدور ثم يعرض المحتوى عبر Outlet
@@ -176,6 +185,8 @@ function AppRoutes() {
               </Route>
               <Route path="users" element={<UsersManagementPage />} />
               <Route path="permissions" element={<RolesPermissionsPage />} />
+              <Route path="pos-registers" element={<PosRegistersPage />} />
+              <Route path="pos" element={<AdminPOSWrapper />} />
             </Route>
           </Route>
         </Route>

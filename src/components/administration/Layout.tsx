@@ -31,6 +31,7 @@ import {
   Banknote,
   ChevronDown,
   Shield,
+  Monitor,
 } from "lucide-react";
 
 /* ── روابط التنقل ── */
@@ -51,6 +52,8 @@ const NAV = [
   { to: "/admin/archive", icon: Archive, label: "أرشيف العمليات", permission: PERMISSIONS.VIEW_ARCHIVE },
   { to: "/admin/settings", icon: Settings, label: "الإعدادات العامة", permission: PERMISSIONS.MANAGE_SETTINGS },
   { to: "/admin/orgstructure", icon: Building2, label: "الهيكل التنظيمي", permission: PERMISSIONS.MANAGE_EMPLOYEES },
+  { to: "/admin/pos-registers", icon: Monitor, label: "نقاط البيع", permission: PERMISSIONS.MANAGE_POS_REGISTERS },
+  { to: "/admin/pos", icon: Monitor, label: "واجهة الكاشير", permission: PERMISSIONS.ACCESS_POS_INTERFACE },
 ];
 
 export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
@@ -199,6 +202,8 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({ children
           {/* ── إدارة المستخدمين ── */}
           <SidebarLink to="/admin/users" icon={Users2} label="إدارة المستخدمين" permission={PERMISSIONS.MANAGE_USERS} />
           <SidebarLink to="/admin/permissions" icon={Shield} label="الأدوار والصلاحيات" permission={PERMISSIONS.MANAGE_USERS} />
+          <SidebarLink to="/admin/pos-registers" icon={Monitor} label="نقاط البيع" permission={PERMISSIONS.MANAGE_POS_REGISTERS} />
+          <SidebarLink to="/admin/pos" icon={Monitor} label="واجهة الكاشير" permission={PERMISSIONS.ACCESS_POS_INTERFACE} />
         </nav>
 
         {/* Footer */}
