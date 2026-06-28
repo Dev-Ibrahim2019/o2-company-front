@@ -20,6 +20,8 @@ import { POS } from "./components/POS/pos";
 import { TablesView } from "./components/POS/Tables";
 import { OrdersView } from "./components/POS/Orders";
 import { ShiftView } from "./components/POS/Shift";
+import { FinancialInvoicesPage } from "./components/financial/FinancialInvoicesPage";
+import { FinancialInvoiceForm } from "./components/financial/FinancialInvoiceForm";
 import UsersManagementPage from "./pages/UsersManagementPage";
 import RolesPermissionsPage from "./pages/RolesPermissionsPage";
 import DepartmentsPage from "./components/administration/DepartmentsPage";
@@ -86,6 +88,7 @@ const financeViewMap: Record<string, string> = {
   archive: "ARCHIVE",
   settings: "SETTINGS",
   orgstructure: "ORGSTRUCTURE",
+  "financial-invoices": "FINANCIAL_INVOICES",
 };
 
 /**
@@ -169,6 +172,7 @@ function AppRoutes() {
               <Route path="archive" element={<FinanceView />} />
               <Route path="settings" element={<FinanceView />} />
               <Route path="orgstructure" element={<FinanceView />} />
+              <Route path="financial-invoices" element={<FinanceView />} />
 
               <Route path="accounting">
                 <Route index element={<Navigate to="dashboard" replace />} />

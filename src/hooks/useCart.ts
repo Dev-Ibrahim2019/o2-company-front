@@ -106,15 +106,24 @@ export const useCart = () => {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // ── addToCart ─────────────────────────────────────────────────────────────
-  // تم تعديل الإضافة ليُضيف sempre صنف جديد بدلاً من زيادة الكمية
-  //これにより、同じ商品でもカスタマイズが異なる場合は別々のカートアイテムとして扱われます
+  // اذا الصنف موجود بالسلة → تزيد الكمية بدل صف جديد
   const addToCart = useCallback(
     (item: MenuItem, opts?: { quantity?: number; price?: number }) => {
       const qty = opts?.quantity ?? 1;
       const price = opts?.price ?? item.price;
 
       setCart((prev) => {
-        // siempre añadir un nuevo elemento del carrito
+        const existingIdx = prev.findIndex((c) => c.id === item.id);
+        if (existingIdx >= 0) {
+          // الصنف موجود — زيد الكمية
+          const updated = [...prev];
+          updated[existingIdx] = {
+            ...updated[existingIdx],
+            quantity: updated[existingIdx].quantity + qty,
+          };
+          return updated;
+        }
+        // صنف جديد — أضف صف جديد
         const uniqueId = String(item.id) + '-' + Math.random().toString(36).substr(2, 9);
         return [
           ...prev,
@@ -127,7 +136,6 @@ export const useCart = () => {
             price,
             quantity: qty,
             department_id: item.department_id,
-            // ملاحظات مبدئية فارغة - يمكن تخصيصها لاحقًا عبر updateCartItem
             notes: undefined,
           },
         ];

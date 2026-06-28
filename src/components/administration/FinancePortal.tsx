@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../../store';
 import DashboardPage from '../administration/DashboardPage';
 import DepartmentsPage from './Departments/DepartmentsPage';
@@ -12,15 +12,16 @@ import SettingsPage from '../administration/SettingsPage';
 import MenuPage from '../administration/Items/MenuPage';
 import renderModal from '../administration/renderModal';
 import BranchesPage from '../administration/BranchesPage/BranchesPage';
-import SalesInvoicesPage from '../administration/SalesInvoicesPage';
 import SupplierPortal from './suppliers/SupplierPortal';
+import { FinancialInvoicesPage } from '../financial/FinancialInvoicesPage';
+import { FinancialInvoiceForm } from '../financial/FinancialInvoiceForm';
 
 import { OrgStructure } from './OrgStructure/OrgStructure';
 import { AccountingPortal } from './GL/AccountingPortal';
 
 
 interface FinancePortalProps {
-  initialView?: 'DASHBOARD' | 'BRANCHES' | 'DEPARTMENTS' | 'ITEM_TREE' | 'ITEMS_INDEX' | 'MENU' | 'ORDERS' | 'SALES' | 'CUSTOMERS' | 'SUPPLIERS' | 'EMPLOYEES' | 'ACCOUNTING' | 'REPORTS' | 'SETTINGS' | 'AUDIT_LOG' | 'ARCHIVE' | 'ORGSTRUCTURE';
+  initialView?: 'DASHBOARD' | 'BRANCHES' | 'DEPARTMENTS' | 'ITEM_TREE' | 'ITEMS_INDEX' | 'MENU' | 'ORDERS' | 'SALES' | 'CUSTOMERS' | 'SUPPLIERS' | 'EMPLOYEES' | 'ACCOUNTING' | 'REPORTS' | 'SETTINGS' | 'AUDIT_LOG' | 'ARCHIVE' | 'ORGSTRUCTURE' | 'FINANCIAL_INVOICES';
 }
 
 export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DASHBOARD' }) => {
@@ -29,12 +30,44 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
   const canManageFinance = currentUser?.role === 'ADMIN' || currentUser?.role === 'FINANCE' || currentUser?.role === 'BRANCH_MANAGER';
   const canEditSettings = currentUser?.role === 'ADMIN';
 
-  const renderCustomers = () => <CustomerPortal />;
+  const [financialView, setFinancialView] = useState<'list' | 'form'>('list');
+  const [editingId, setEditingId] = useState<number | undefined>(undefined);
 
+  const renderCustomers = () => <CustomerPortal />;
   const renderSuppliers = () => <SupplierPortal />;
 
-  const view = initialView;
-  const viewContent: Record<NonNullable<FinancePortalProps['initialView']>, React.ReactNode> = {
+  const handleOpenForm = (id?: number) => {
+    setEditingId(id);
+    setFinancialView('form');
+  };
+
+  const handleFormBack = () => {
+    setFinancialView('list');
+    setEditingId(undefined);
+  };
+
+  const handleFormSaved = () => {
+    setFinancialView('list');
+    setEditingId(undefined);
+  };
+
+  // Financial invoices page — manages its own sub-views
+  if (initialView === 'FINANCIAL_INVOICES' || initialView === 'SALES') {
+    if (financialView === 'form') {
+      return (
+        <div className="h-full overflow-y-auto custom-scrollbar">
+          <FinancialInvoiceForm invoiceId={editingId} onBack={handleFormBack} onSaved={handleFormSaved} />
+        </div>
+      );
+    }
+    return (
+      <div className="h-full overflow-y-auto custom-scrollbar">
+        <FinancialInvoicesPage onOpenForm={handleOpenForm} />
+      </div>
+    );
+  }
+
+  const viewContent: Record<string, React.ReactNode> = {
     DASHBOARD: <DashboardPage />,
     BRANCHES: <BranchesPage />,
     DEPARTMENTS: <DepartmentsPage />,
@@ -42,7 +75,6 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
     ITEMS_INDEX: <MenuPage initialMode="list" />,
     MENU: <MenuPage initialMode="tree" />,
     ORDERS: <OrdersPage />,
-    SALES: <SalesInvoicesPage />,
     CUSTOMERS: renderCustomers(),
     SUPPLIERS: renderSuppliers(),
     EMPLOYEES: <EmployeeManagement />,
@@ -56,13 +88,9 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
 
   return (
     <div className="h-full flex flex-col min-h-0">
-      {/* Header */}
-
-      {/* Main Content */}
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 min-h-0">
-        {viewContent[view]}
+        {viewContent[initialView]}
       </div>
-
       {renderModal()}
     </div>
   );

@@ -916,6 +916,7 @@ export const POS: React.FC<{
     handleTotalChange,
     setEditingNames,
     removeFromCart,
+    updateCartItem,
     getItemCurrentPrice,
     setPosError,
     submitOrder,
