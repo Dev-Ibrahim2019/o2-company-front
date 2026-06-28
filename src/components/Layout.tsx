@@ -39,6 +39,7 @@ import {
   Archive,
   Calendar,
   CreditCard,
+  Tag,
 } from 'lucide-react';
 
 interface SidebarItemProps {
@@ -166,6 +167,12 @@ export const AppLayout: React.FC<{
                 <SidebarItem
                   icon={Wallet} label="المحاسبة والمالية"
                   active={activeView === 'finance_accounting'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_accounting'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
+                />
+              </Can>
+              <Can permission={PERMISSIONS.MANAGE_DISCOUNTS}>
+                <SidebarItem
+                  icon={Tag} label="إدارة الخصومات"
+                  active={activeView === 'finance_discounts'} collapsed={!isSidebarOpen} onClick={() => { setActiveView('finance_discounts'); if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
                 />
               </Can>
               <Can permission={PERMISSIONS.VIEW_REPORTS}>

@@ -22,6 +22,11 @@ export interface CartItem {
   name: string;
   name_ar: string;
   price: number; // السعر الحالي (من pivot)
+  original_price?: number; // السعر الأصلي قبل الخصم
+  discount_amount?: number; // قيمة الخصم
+  discount_percent?: number; // نسبة الخصم
+  discount_id?: number; // معرف الخصم المطبق
+  final_price?: number; // السعر النهائي بعد الخصم
   quantity: number;
   notes?: string;
   department_id: number;

@@ -314,8 +314,8 @@ export const CartPanel: React.FC<CartPanelProps> = ({
             <div className="w-14 h-14 bg-slate-800 rounded-full flex items-center justify-center shadow-inner">
               <ShoppingCart size={24} strokeWidth={1.5} />
             </div>
-            <p className="font-black text-sm">الفاتورة فارغة</p>
-            <button
+            <p className="font-black text-lg">الفاتورة فارغة</p>
+            {/* <button
               onClick={() => {
                 const searchInput = document.querySelector<HTMLInputElement>('input[placeholder="ابحث عن صنف..."]');
                 if (searchInput) {
@@ -327,7 +327,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
             >
               <Plus size={14} />
               <span>إضافة صنف</span>
-            </button>
+            </button> */}
           </div>
         )}
         <div className="overflow-x-auto">

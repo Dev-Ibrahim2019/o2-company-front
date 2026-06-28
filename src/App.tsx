@@ -17,12 +17,14 @@ import { FinancePortal } from "./components/administration/FinancePortal";
 import { AccountingPortal } from "./components/administration/GL/AccountingPortal";
 import { POSLayout } from "./components/POS/Layout";
 import { POS } from "./components/POS/pos";
+import AdminPOSWrapper from "./components/POS/AdminPOSWrapper";
 import { TablesView } from "./components/POS/Tables";
 import { OrdersView } from "./components/POS/Orders";
 import { ShiftView } from "./components/POS/Shift";
 import { FinancialInvoicesPage } from "./components/financial/FinancialInvoicesPage";
 import { FinancialInvoiceForm } from "./components/financial/FinancialInvoiceForm";
 import UsersManagementPage from "./pages/UsersManagementPage";
+import PosRegistersPage from "./pages/PosRegistersPage";
 import RolesPermissionsPage from "./pages/RolesPermissionsPage";
 import DepartmentsPage from "./components/administration/DepartmentsPage";
 import { ThemeProvider } from "./theme";
@@ -35,7 +37,14 @@ import { ThemeProvider } from "./theme";
 const ADMIN_ROLES = [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BRANCH_MANAGER];
 
 /** الأدوار المسموح بها في مسارات /pos/* */
-const POS_ROLES = [ROLES.CASHIER, ROLES.HOSPITALITY, ROLES.DEPT_STAFF];
+const POS_ROLES = [
+  ROLES.CASHIER,
+  ROLES.HOSPITALITY,
+  ROLES.DEPT_STAFF,
+  ROLES.SUPER_ADMIN,
+  ROLES.ACCOUNTANT,
+  ROLES.BRANCH_MANAGER,
+];
 
 /**
  * RoleGuard — layout route يفحص الدور ثم يعرض المحتوى عبر Outlet
@@ -89,6 +98,7 @@ const financeViewMap: Record<string, string> = {
   settings: "SETTINGS",
   orgstructure: "ORGSTRUCTURE",
   "financial-invoices": "FINANCIAL_INVOICES",
+  discounts: "DISCOUNTS",
 };
 
 /**
@@ -173,6 +183,7 @@ function AppRoutes() {
               <Route path="settings" element={<FinanceView />} />
               <Route path="orgstructure" element={<FinanceView />} />
               <Route path="financial-invoices" element={<FinanceView />} />
+              <Route path="discounts" element={<FinanceView />} />
 
               <Route path="accounting">
                 <Route index element={<Navigate to="dashboard" replace />} />
@@ -180,6 +191,8 @@ function AppRoutes() {
               </Route>
               <Route path="users" element={<UsersManagementPage />} />
               <Route path="permissions" element={<RolesPermissionsPage />} />
+              <Route path="pos-registers" element={<PosRegistersPage />} />
+              <Route path="pos" element={<AdminPOSWrapper />} />
             </Route>
           </Route>
         </Route>
@@ -190,7 +203,7 @@ function AppRoutes() {
         <Route element={<RoleGuard allowedRoles={POS_ROLES} />}>
           <Route element={<POSLayout />}>
             <Route path="/pos">
-              <Route index element={<POS onViewTables={() => {}} />} />
+              <Route index element={<POS onViewTables={() => { }} />} />
               <Route path="orders" element={<OrdersView />} />
               <Route path="tables" element={<TablesView />} />
             </Route>
@@ -206,9 +219,9 @@ function AppRoutes() {
               summary: null,
               shiftLoading: false,
               currentUserName: "",
-              onOpen: async () => {},
-              onClose: async () => {},
-              onFetchSummary: async () => {},
+              onOpen: async () => { },
+              onClose: async () => { },
+              onFetchSummary: async () => { },
             })
           }
         />

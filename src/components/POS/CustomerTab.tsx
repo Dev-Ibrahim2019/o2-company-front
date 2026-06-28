@@ -166,9 +166,12 @@ export const CustomerTab: React.FC<CustomerTabProps> = ({
   // اختيار وسائل الدفع حسب نوع الحساب
   // accountType = 'ACCOUNT' يعني زبون → نستخدم مفتاح 'CUSTOMER'
   const entityTypeKey = accountType === 'ACCOUNT' ? 'CUSTOMER' : accountType;
-  const paymentMethods = selectedEntity
-    ? (entityPaymentMethods[entityTypeKey] || directPaymentMethods)
-    : directPaymentMethods;
+  // FIXED: نعرض جميع وسائل الدفع (cash/bank/card/wallet + entity) معاً دائماً
+  // حتى لو تم اختيار كيان، نسمح بالدفع المختلط
+  const entityMethod = selectedEntity
+    ? (entityPaymentMethods[entityTypeKey] || [])
+    : [];
+  const paymentMethods = [...directPaymentMethods, ...entityMethod];
 
   const getPaymentLabel = (method: string) => {
     if (method === 'cash') return 'كاش (نقد)';
