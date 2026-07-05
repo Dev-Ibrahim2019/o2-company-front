@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useApp } from "../../../store";
+import { useAppContext } from "../../../store";
 import { TableStatus, OrderType } from "../../../types";
 import type { Table } from "../../../types";
 import { HALLS as DEFAULT_HALLS } from "../../../constants";
@@ -127,7 +127,7 @@ export const TablesView: React.FC<{
     setOrderType,
     diningZones,
     tablesLoading,
-  } = useApp();
+  } = useAppContext();
 
   const HALLS = diningZones;
 

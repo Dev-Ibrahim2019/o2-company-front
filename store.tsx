@@ -1,5 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import {
   Order, OrderType, OrderStatus, MenuItem, OrderItem, User, PaymentMethod,
   Transaction, SavedCard, Table, Shift, Branch, Department, JobTitle, JobType, Employee,
@@ -131,6 +133,9 @@ interface AppState {
   addNotification: (message: string, type?: 'success' | 'error' | 'info') => void;
   removeNotification: (id: string) => void;
 }
+
+const AppContext = createContext<any>(null);
+export const useAppContext = () => useContext(AppContext);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
