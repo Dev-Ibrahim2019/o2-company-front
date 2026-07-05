@@ -56,8 +56,9 @@ api.interceptors.response.use(
 
     // 2️⃣ 🛡️ الحماية الذكية لأخطاء الـ 403 (مهم جداً!)
     if (error.response?.status === 403) {
+      
       // الفحص السحري: هل الخطأ قادم من محاولة تسجيل الدخول (Login)؟
-      const isLoginRequest = error.config.url?.includes("/login");
+      const isLoginRequest = error.config.url?.includes('/login');
 
       if (isLoginRequest) {
         // ❌ إذا كان خطأ فرع في الـ Login: لا تمسح الـ UUID الفعال للجهاز!
