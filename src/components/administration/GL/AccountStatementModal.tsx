@@ -43,7 +43,7 @@ const SubledgerStatementView: React.FC<{
 
     const [from, setFrom] = useState(defaultFrom);
     const [to, setTo] = useState(defaultTo);
-    const { lines, closingBalance, isLoading, error, refetch } =
+    const { lines, closingBalance, openingBalance, isLoading, error, refetch } =
         useAccountStatement(entityType, entityId, from, to);
 
     const totals = useMemo(
@@ -103,7 +103,7 @@ const SubledgerStatementView: React.FC<{
                         الرصيد الافتتاحي
                     </p>
                     <p className="text-sm font-black font-mono text-slate-300">
-                        ₪{money(lines[0]?.running_balance ? lines[0].running_balance - (Number(lines[0].debit) || 0) + (Number(lines[0].credit) || 0) : 0)}
+                        ₪{money(openingBalance)}
                     </p>
                 </div>
                 <div className="bg-slate-950 border border-white/5 rounded-2xl p-4">

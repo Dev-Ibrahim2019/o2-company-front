@@ -18,6 +18,11 @@ interface CartItem {
   name: string;
   price: number;
   quantity: number;
+  original_price?: number;
+  final_price?: number;
+  discount_amount?: number;
+  discount_percent?: number;
+  discount_id?: number;
 }
 
 interface SearchableItem {
@@ -41,6 +46,15 @@ interface CartPanelProps {
   onViewTables: () => void;
   subtotal: number;
   calculatedDiscount: number;
+  engineDiscountTotal?: number;
+  manualDiscount?: number;
+  appliedDiscounts?: Array<{
+    id: number;
+    name: string;
+    code: string;
+    amount: number;
+  }>;
+  discountLoading?: boolean;
   discountType: "AMOUNT" | "PERCENT";
   discountValue: number;
   total: number;
@@ -92,6 +106,10 @@ export const CartPanel: React.FC<CartPanelProps> = ({
   onViewTables,
   subtotal,
   calculatedDiscount,
+  engineDiscountTotal = 0,
+  manualDiscount = 0,
+  appliedDiscounts = [],
+  discountLoading = false,
   discountType,
   discountValue,
   total,
@@ -274,22 +292,67 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                   {subtotal.toFixed(2)} ₪
                 </span>
               </div>
-              <div className="flex justify-between items-center text-red-500">
-                <div className="flex items-center gap-1">
-                  <span className="text-[8px] font-black uppercase tracking-widest">
-                    الخصم
-                  </span>
-                  {discountType === "PERCENT" && (
-                    <span className="text-[9px] font-bold text-slate-500 px-1.5 py-0.5 bg-slate-800 rounded">
-                      %{discountValue}
+              {engineDiscountTotal > 0 && (
+                <div className="flex justify-between items-center text-emerald-400">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[8px] font-black uppercase tracking-widest">
+                      خصم تلقائي
                     </span>
-                  )}
+                    {appliedDiscounts.map((d) => (
+                      <span
+                        key={d.id}
+                        className="text-[7px] text-emerald-300/80"
+                        title={`${d.name} (${d.code})`}
+                      >
+                        {d.name} — {d.code}
+                      </span>
+                    ))}
+                  </div>
+                  <span className="text-sm font-black">
+                    -{engineDiscountTotal.toFixed(2)} ₪
+                  </span>
                 </div>
-                <span className="text-sm font-black">
-                  -{calculatedDiscount.toFixed(2)} ₪
-                </span>
-              </div>
+              )}
+              {manualDiscount > 0 && (
+                <div className="flex justify-between items-center text-red-500">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[8px] font-black uppercase tracking-widest">
+                      خصم إضافي
+                    </span>
+                    {discountType === "PERCENT" && (
+                      <span className="text-[9px] font-bold text-slate-500 px-1.5 py-0.5 bg-slate-800 rounded">
+                        %{discountValue}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-sm font-black">
+                    -{manualDiscount.toFixed(2)} ₪
+                  </span>
+                </div>
+              )}
+              {engineDiscountTotal <= 0 && manualDiscount <= 0 && (
+                <div className="flex justify-between items-center text-red-500">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[8px] font-black uppercase tracking-widest">
+                      الخصم
+                    </span>
+                    {discountType === "PERCENT" && (
+                      <span className="text-[9px] font-bold text-slate-500 px-1.5 py-0.5 bg-slate-800 rounded">
+                        %{discountValue}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-sm font-black">
+                    -{calculatedDiscount.toFixed(2)} ₪
+                  </span>
+                </div>
+              )}
             </>
+          )}
+          {discountLoading && (
+            <div className="text-[8px] text-slate-500 animate-pulse">
+              جاري حساب الخصومات...
+            </div>
           )}
           <div
             className={`pt-1 mt-1 ${calculatedDiscount > 0 ? "border-t border-red-600/20" : ""} flex justify-between items-center`}
@@ -550,7 +613,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
               <div className="flex items-center gap-1">
                 <Tag size={10} />
                 <span className="text-[8px] font-black uppercase tracking-widest">
-                  الخصم
+                  خصم إضافي
                 </span>
               </div>
               <div className="flex bg-slate-800 rounded-lg p-0.5">

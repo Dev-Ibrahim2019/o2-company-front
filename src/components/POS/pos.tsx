@@ -18,6 +18,7 @@ import {
 } from "../../../types";
 import { AlertCircle, ShoppingCart, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useDiscountCart } from "../../hooks/useDiscountCart";
 
 import { POSHeader } from "./POSHeader";
 import { HospitalityPOSHeader } from "../Hospitality/HospitalityPOSHeader";
@@ -391,11 +392,84 @@ const handleActivationSuccess = (activatedInfo: any) => {
     );
   }, [customers, customerSearchQuery]);
 
-  const calculatedDiscount =
+  const getEntityDepartmentId = (): number | undefined => {
+    if (accountType === "EMPLOYEE" && accountNumber) {
+      const empId = parseInt(accountNumber, 10);
+      if (empId) {
+        // نحاول إيجاد القسم من الموظف — سيحله محرك الخصم من الـ mock entities
+        return undefined; // المحرك سيستنتج department_id من employee_id
+      }
+    }
+    // إذا كان العميل مختار من القائمة، نحاول إيجاد department_id من أول صنف في السلة
+    if (currentCart.length > 0 && currentCart[0].department_id) {
+      return currentCart[0].department_id;
+    }
+    return undefined;
+  };
+
+  const getPricingContext = () => ({
+    customer_id:
+      accountType === "ACCOUNT"
+        ? (selectedCustomer?.id ??
+          (accountNumber ? parseInt(accountNumber, 10) || undefined : undefined))
+        : undefined,
+    employee_id:
+      accountType === "EMPLOYEE" && accountNumber
+        ? parseInt(accountNumber, 10) || undefined
+        : undefined,
+    supplier_id:
+      accountType === "SUPPLIER" && accountNumber
+        ? parseInt(accountNumber, 10) || undefined
+        : undefined,
+    department_id: getEntityDepartmentId(),
+    branch_id: branchId ?? undefined,
+  });
+
+  const discountContext = useMemo(() => getPricingContext(), [
+    accountType,
+    selectedCustomer,
+    accountNumber,
+    branchId,
+    currentCart,
+  ]);
+
+  const {
+    engineDiscountTotal,
+    originalSubtotal: engineOriginalSubtotal,
+    appliedDiscounts,
+    items: engineDiscountItems,
+    loading: discountLoading,
+  } = useDiscountCart(currentCart, discountContext);
+
+  const enrichedCart = useMemo(
+    () =>
+      currentCart.map((item) => {
+        const line = engineDiscountItems.find((l) => l.item_id === item.id);
+        if (!line || line.discount_amount <= 0) return item;
+        return {
+          ...item,
+          original_price: line.original_price,
+          final_price: line.final_unit_price,
+          discount_amount: line.discount_amount,
+          discount_percent: line.discount_percent,
+          discount_id: line.discount?.id,
+        };
+      }),
+    [currentCart, engineDiscountItems],
+  );
+
+  const displaySubtotal =
+    engineOriginalSubtotal > 0 ? engineOriginalSubtotal : subtotal;
+  const afterEngineSubtotal = Math.max(
+    0,
+    displaySubtotal - engineDiscountTotal,
+  );
+  const manualDiscount =
     discountType === "PERCENT"
-      ? (subtotal * discountValue) / 100
+      ? (afterEngineSubtotal * discountValue) / 100
       : discountValue;
-  const total = roundMoney(Math.max(0, subtotal - calculatedDiscount));
+  const calculatedDiscount = roundMoney(engineDiscountTotal + manualDiscount);
+  const total = roundMoney(Math.max(0, displaySubtotal - calculatedDiscount));
   const totalPaid = roundMoney(
     payments.reduce((sum, payment) => sum + payment.amount, 0),
   );
@@ -753,6 +827,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
         note: invoiceNote || undefined,
         discount_value: discountValue || undefined,
         discount_type: discountType === "PERCENT" ? "percent" : "amount",
+        ...getPricingContext(),
       },
       true, // confirm order
       [],
@@ -974,6 +1049,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
         note: meta.note || undefined,
         discount_value: discountValue || undefined,
         discount_type: discountType === "PERCENT" ? "percent" : "amount",
+        ...getPricingContext(),
         payment_method: isClosingOrder
           ? normalizeApiPaymentMethod(selectedPaymentMethod)
           : undefined,
@@ -1022,12 +1098,16 @@ const handleActivationSuccess = (activatedInfo: any) => {
     isHospitality,
     cartOrderType,
     setOrderType,
-    currentCart,
+    currentCart: enrichedCart,
     manualTable,
     handleTableInput,
     onViewTables,
-    subtotal,
+    subtotal: displaySubtotal,
     calculatedDiscount,
+    engineDiscountTotal,
+    manualDiscount,
+    appliedDiscounts,
+    discountLoading,
     discountType,
     discountValue,
     total,

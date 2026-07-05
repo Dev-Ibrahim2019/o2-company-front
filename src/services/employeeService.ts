@@ -88,23 +88,29 @@ export interface AccountStatementResponse {
 export interface EmployeeDashboardStats {
   total_employees: number;
   active_employees: number;
+  inactive_employees?: number;
+  total_salaries?: number;
   monthly_salary_expense: number;
+  current_month_salaries?: number;
   outstanding_advances: number;
+  paid_advances?: number;
+  advances_issued_period?: number;
   total_payments: number;
   average_salary: number;
+  departments_count?: number;
+  attendance_percentage?: number | null;
+  employees_with_loans?: number;
+  employees_without_salary?: number;
+  upcoming_payroll?: number;
   pending_salary_employees: number;
+  accrued_salaries?: number;
   department_breakdown: {
     department: string;
     count: number;
     salary: number;
     advances: number;
   }[];
-  monthly_trend: {
-    month: string;
-    salaries: number;
-    advances: number;
-    payments: number;
-  }[];
+  period?: { month: number; year: number; from: string; to: string };
 }
 
 export interface EmployeeAnalyticsData {
@@ -212,10 +218,25 @@ export const employeeService = {
     department_id?: number;
     branch_id?: number;
     status?: string;
+    search?: string;
+    employment_type?: string;
+    salary_from?: number;
+    salary_to?: number;
+    hire_date_from?: string;
+    hire_date_to?: string;
+    from?: string;
+    to?: string;
+    month?: number;
+    year?: number;
   }): Promise<ApiResponse<FinancialBatchResponse>> => {
     const { data } = await api.get("/employees/financial-batch", {
       params: filters,
     });
+    return data;
+  },
+
+  getFinancialSummary: async (employeeId: number): Promise<ApiResponse<any>> => {
+    const { data } = await api.get(`/employees/${employeeId}/financial-summary`);
     return data;
   },
 
@@ -250,6 +271,20 @@ export const employeeService = {
       `/employees/${employeeId}/account-statement`,
       { params: { from, to, type } },
     );
+    return data;
+  },
+
+  getAccountStatementPdf: async (
+    employeeId: number,
+    from: string,
+    to: string,
+    type: string = "all",
+    pdfStyle: string = "detailed",
+  ): Promise<Blob> => {
+    const { data } = await api.get(`/employees/${employeeId}/account-statement/pdf`, {
+      params: { from, to, type, pdf_style: pdfStyle },
+      responseType: "blob",
+    });
     return data;
   },
 

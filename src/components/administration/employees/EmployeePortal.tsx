@@ -15,8 +15,10 @@ import {
     Phone, Mail, Save,
 } from "lucide-react";
 import { employeeService, type EmployeeFromApi, type FinancialBatchEmployee, type FinancialBatchResponse, type AccountStatementResponse } from "../../../services/employeeService";
+import api from "../../../api/axios";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, LineChart, Line, AreaChart, Area } from "recharts";
 import FinancialStatementTable from "../shared/FinancialStatementTable";
+import EmployeeStatement from "../GL/EmployeeStatement";
 
 // ─── Constants & Helpers ───────────────────────────────────────
 const COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#f97316", "#ef4444", "#8b5cf6", "#06b6d4", "#d946ef"];
@@ -54,6 +56,7 @@ const typeBadge = (type: string) => {
         opening: { label: "رصيد افتتاحي", color: "bg-slate-500/15 text-slate-400 border-slate-500/25" },
         journal: { label: "قيد يومية", color: "bg-cyan-500/15 text-cyan-400 border-cyan-500/25" },
         loan: { label: "قرض", color: "bg-rose-500/15 text-rose-400 border-rose-500/25" },
+        sale: { label: "فاتورة", color: "bg-sky-500/15 text-sky-400 border-sky-500/25" },
     };
     const m = map[type] || { label: type, color: "bg-slate-500/15 text-slate-400 border-slate-500/25" };
     return <span className={`px-2 py-0.5 rounded text-[8px] font-black border ${m.color}`}>{m.label}</span>;
@@ -148,12 +151,18 @@ const EmployeeDashboard: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-                <KpiCard label="إجمالي الموظفين" value={stats.total_employees.toString()} icon={Users} color="text-blue-400" bg="bg-blue-500/10" subtitle={`${stats.active_employees} نشط`} />
-                <KpiCard label="رواتب الشهر" value={`₪${money(stats.monthly_salary_expense)}`} icon={TrendingUp} color="text-rose-400" bg="bg-rose-500/10" subtitle={`${monthNames[month - 1]} ${year}`} />
-                <KpiCard label="سلف مستحقة" value={`₪${money(stats.outstanding_advances)}`} icon={Wallet} color="text-amber-400" bg="bg-amber-500/10" subtitle="من القيود المحاسبية" />
-                <KpiCard label="المدفوعات" value={`₪${money(stats.total_payments)}`} icon={DollarSign} color="text-emerald-400" bg="bg-emerald-500/10" subtitle="صافي المستحق" />
+                <KpiCard label="إجمالي الموظفين" value={String(stats.total_employees ?? 0)} icon={Users} color="text-blue-400" bg="bg-blue-500/10" subtitle={`${stats.active_employees ?? 0} نشط · ${stats.inactive_employees ?? 0} غير نشط`} />
+                <KpiCard label="رواتب الشهر" value={`₪${money(stats.current_month_salaries ?? stats.monthly_salary_expense)}`} icon={TrendingUp} color="text-rose-400" bg="bg-rose-500/10" subtitle={`${monthNames[month - 1]} ${year}`} />
+                <KpiCard label="سلف مستحقة" value={`₪${money(stats.outstanding_advances)}`} icon={Wallet} color="text-amber-400" bg="bg-amber-500/10" subtitle="من Subledger" />
+                <KpiCard label="سلف مسددة" value={`₪${money(stats.paid_advances ?? 0)}`} icon={Receipt} color="text-emerald-400" bg="bg-emerald-500/10" subtitle="خلال الفترة" />
                 <KpiCard label="متوسط الراتب" value={`₪${money(stats.average_salary)}`} icon={BarChart3} color="text-violet-400" bg="bg-violet-500/10" subtitle="للموظف النشط" />
-                <KpiCard label={stats.pending_salary_employees > 0 ? "⚠️ متأخر صرف" : "مسدد"} value={stats.pending_salary_employees.toString()} icon={AlertTriangle} color={stats.pending_salary_employees > 0 ? "text-rose-400" : "text-emerald-400"} bg={stats.pending_salary_employees > 0 ? "bg-rose-500/10" : "bg-emerald-500/10"} subtitle="باقي صرف راتب" />
+                <KpiCard label="الرواتب القادمة" value={`₪${money(stats.upcoming_payroll ?? stats.total_payments)}`} icon={DollarSign} color="text-cyan-400" bg="bg-cyan-500/10" subtitle={`${stats.pending_salary_employees ?? 0} موظف`} />
+                <KpiCard label="الأقسام" value={String(stats.departments_count ?? 0)} icon={Building2} color="text-sky-400" bg="bg-sky-500/10" />
+                <KpiCard label="موظفون بقروض" value={String(stats.employees_with_loans ?? 0)} icon={Banknote} color="text-orange-400" bg="bg-orange-500/10" />
+                <KpiCard label="بدون راتب" value={String(stats.employees_without_salary ?? 0)} icon={AlertTriangle} color="text-rose-400" bg="bg-rose-500/10" />
+                <KpiCard label="إجمالي الرواتب" value={`₪${money(stats.total_salaries ?? stats.monthly_salary_expense)}`} icon={TrendingUp} color="text-pink-400" bg="bg-pink-500/10" subtitle="الرواتب الأساسية" />
+                <KpiCard label="الرواتب المستحقة" value={`₪${money(stats.accrued_salaries ?? 0)}`} icon={Wallet} color="text-emerald-400" bg="bg-emerald-500/10" />
+                <KpiCard label="صافي المستحق" value={`₪${money(stats.total_payments)}`} icon={UserCheck} color="text-lime-400" bg="bg-lime-500/10" />
             </div>
 
             <div className="bg-slate-900 border border-white/5 rounded-2xl p-5">
@@ -180,11 +189,20 @@ const EmployeeDashboard: React.FC = () => {
 const EmployeeDirectory: React.FC<{ onViewEmployee: (id: number) => void }> = ({ onViewEmployee }) => {
     const [batch, setBatch] = useState<FinancialBatchResponse | null>(null);
     const [departments, setDepartments] = useState<any[]>([]);
+    const [branches, setBranches] = useState<any[]>([]);
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
     const [deptFilter, setDeptFilter] = useState<number | "">("");
+    const [branchFilter, setBranchFilter] = useState<number | "">("");
     const [statusFilter, setStatusFilter] = useState("");
+    const [employmentType, setEmploymentType] = useState("");
+    const [salaryFrom, setSalaryFrom] = useState("");
+    const [salaryTo, setSalaryTo] = useState("");
+    const [hireFrom, setHireFrom] = useState("");
+    const [hireTo, setHireTo] = useState("");
+    const [dateFrom, setDateFrom] = useState("");
+    const [dateTo, setDateTo] = useState("");
     const [month, setMonth] = useState(new Date().getMonth() + 1);
     const [year, setYear] = useState(new Date().getFullYear());
     const [actionModal, setActionModal] = useState<{ type: "payroll" | "advance" | "settle-advance" | "settlement"; employee: FinancialBatchEmployee } | null>(null);
@@ -192,32 +210,41 @@ const EmployeeDirectory: React.FC<{ onViewEmployee: (id: number) => void }> = ({
     const loadData = useCallback(() => {
         setLoading(true);
         Promise.all([
-            employeeService.getFinancialBatch(),
-            fetch("/api/departments").then(r => r.json()).then(d => Array.isArray(d) ? d : d?.data || []).catch(() => []),
-            fetch("/api/accounting/accounts?type=asset")
-                .then(r => r.json())
-                .then(d => {
-                    const accs = Array.isArray(d) ? d : d?.data || [];
+            employeeService.getFinancialBatch({
+                department_id: deptFilter !== "" ? Number(deptFilter) : undefined,
+                branch_id: branchFilter !== "" ? Number(branchFilter) : undefined,
+                status: statusFilter || undefined,
+                search: search || undefined,
+                employment_type: employmentType || undefined,
+                salary_from: salaryFrom ? Number(salaryFrom) : undefined,
+                salary_to: salaryTo ? Number(salaryTo) : undefined,
+                hire_date_from: hireFrom || undefined,
+                hire_date_to: hireTo || undefined,
+                from: dateFrom || undefined,
+                to: dateTo || undefined,
+                month,
+                year,
+            }),
+            api.get("/departments").then(r => r.data?.data || []).catch(() => []),
+            api.get("/branches").then(r => r.data?.data || r.data || []).catch(() => []),
+            api.get("/accounting/accounts", { params: { type: "asset" } })
+                .then(r => {
+                    const accs = r.data?.data || [];
                     return accs.filter((a: any) => a.code?.startsWith("111") || a.code?.startsWith("112"));
                 }).catch(() => []),
-        ]).then(([b, depts, accs]) => {
+        ]).then(([b, depts, branchList, accs]) => {
             setBatch(b.data);
             setDepartments(depts);
+            setBranches(Array.isArray(branchList) ? branchList : []);
             setAccounts(accs);
         }).finally(() => setLoading(false));
-    }, []);
+    }, [deptFilter, branchFilter, statusFilter, search, employmentType, salaryFrom, salaryTo, hireFrom, hireTo, dateFrom, dateTo, month, year]);
 
     useEffect(() => { loadData(); }, [loadData]);
 
     const employees = batch?.employees || [];
     const totals = batch?.totals;
-
-    const filtered = employees.filter((e) => {
-        if (statusFilter && e.status !== statusFilter) return false;
-        if (deptFilter !== "" && e.department_id !== deptFilter) return false;
-        if (search && !e.name?.toLowerCase().includes(search.toLowerCase()) && !e.phone?.includes(search) && !e.employeeId?.includes(search)) return false;
-        return true;
-    });
+    const filtered = employees;
 
     if (loading) return <div className="flex items-center justify-center h-64"><RefreshCw size={24} className="animate-spin text-slate-600" /></div>;
 
@@ -263,6 +290,21 @@ const EmployeeDirectory: React.FC<{ onViewEmployee: (id: number) => void }> = ({
                     <option value="active">نشط</option>
                     <option value="inactive">غير نشط</option>
                 </select>
+                <select value={branchFilter} onChange={(e) => setBranchFilter(e.target.value ? Number(e.target.value) : "")}
+                    className="bg-slate-950 border border-white/5 rounded-lg px-2 py-1.5 text-[11px] text-white outline-none">
+                    <option value="">كل الفروع</option>
+                    {branches.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+                <input value={employmentType} onChange={(e) => setEmploymentType(e.target.value)} placeholder="نوع التوظيف"
+                    className="bg-slate-950 border border-white/5 rounded-lg px-2 py-1.5 text-[11px] text-white outline-none w-28" />
+                <input type="number" value={salaryFrom} onChange={(e) => setSalaryFrom(e.target.value)} placeholder="راتب من"
+                    className="bg-slate-950 border border-white/5 rounded-lg px-2 py-1.5 text-[11px] text-white outline-none w-24" />
+                <input type="number" value={salaryTo} onChange={(e) => setSalaryTo(e.target.value)} placeholder="راتب إلى"
+                    className="bg-slate-950 border border-white/5 rounded-lg px-2 py-1.5 text-[11px] text-white outline-none w-24" />
+                <input type="date" value={hireFrom} onChange={(e) => setHireFrom(e.target.value)} className="bg-slate-950 border border-white/5 rounded-lg px-2 py-1.5 text-[11px] text-white outline-none" />
+                <input type="date" value={hireTo} onChange={(e) => setHireTo(e.target.value)} className="bg-slate-950 border border-white/5 rounded-lg px-2 py-1.5 text-[11px] text-white outline-none" />
+                <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-slate-950 border border-white/5 rounded-lg px-2 py-1.5 text-[11px] text-white outline-none" />
+                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="bg-slate-950 border border-white/5 rounded-lg px-2 py-1.5 text-[11px] text-white outline-none" />
                 <select value={month} onChange={(e) => setMonth(Number(e.target.value))}
                     className="bg-slate-950 border border-white/5 rounded-lg px-2 py-1.5 text-[11px] text-white outline-none">
                     {monthNames.map((n, i) => <option key={i + 1} value={i + 1}>{n}</option>)}
@@ -571,36 +613,20 @@ const SettlementModal: React.FC<ModalProps> = ({ employee, accounts, onClose, on
 // ══════════════════════════════════════════════════════════════
 const EmployeeProfile: React.FC<{ employeeId: number; onBack: () => void }> = ({ employeeId, onBack }) => {
     const [employee, setEmployee] = useState<EmployeeFromApi | null>(null);
-    const [statement, setStatement] = useState<any>(null);
+    const [summary, setSummary] = useState<any>(null);
     const [activeTab, setActiveTab] = useState<ProfileTab>("overview");
     const [loading, setLoading] = useState(true);
-    const [statementLoading, setStatementLoading] = useState(false);
-    const [from, setFrom] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split("T")[0]);
-    const [to, setTo] = useState(new Date().toISOString().split("T")[0]);
 
     useEffect(() => {
-        employeeService.getOne(employeeId).then((data) => { setEmployee(data); }).finally(() => setLoading(false));
+        setLoading(true);
+        Promise.all([
+            employeeService.getOne(employeeId),
+            employeeService.getFinancialSummary(employeeId),
+        ]).then(([emp, sum]) => {
+            setEmployee(emp);
+            setSummary(sum.data);
+        }).finally(() => setLoading(false));
     }, [employeeId]);
-
-    const loadStatement = useCallback(async () => {
-        setStatementLoading(true);
-        try {
-            const res = await employeeService.getAccountStatement(employeeId, from, to, "all");
-            const accounts = res.data.accounts;
-            const allLines: any[] = [];
-            let totalDebit = 0, totalCredit = 0, balance = 0;
-            Object.entries(accounts || {}).forEach(([type, stmt]: [string, any]) => {
-                if (stmt?.lines) {
-                    stmt.lines.forEach((line: any) => allLines.push({ ...line, account_name: type === "advance" ? "سلفة" : type === "salary" ? "راتب" : "قرض" }));
-                    totalDebit += stmt.total_debit || 0;
-                    totalCredit += stmt.total_credit || 0;
-                }
-            });
-            allLines.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-            allLines.forEach((line) => { balance += (line.debit || 0) - (line.credit || 0); line.balance = balance; });
-            setStatement({ lines: allLines, opening_balance: 0, closing_balance: balance, total_debit: totalDebit, total_credit: totalCredit });
-        } catch { } finally { setStatementLoading(false); }
-    }, [employeeId, from, to]);
 
     const tabs: { key: ProfileTab; label: string; icon: React.ElementType }[] = [
         { key: "overview", label: "نظرة عامة", icon: LayoutDashboard },
@@ -611,8 +637,10 @@ const EmployeeProfile: React.FC<{ employeeId: number; onBack: () => void }> = ({
     if (loading) return <div className="flex items-center justify-center h-64"><RefreshCw size={24} className="animate-spin text-slate-600" /></div>;
     if (!employee) return <div className="text-center py-16 text-slate-500">الموظف غير موجود</div>;
 
-    const transactionCount = statement?.lines?.length || 0;
-    const lastTransactionDate = statement?.lines?.[statement.lines.length - 1]?.date || "—";
+    const financial = summary?.financial ?? {};
+    const profile = summary?.employee ?? {};
+    const transactionCount = financial.sales_count ?? 0;
+    const lastTransactionDate = financial.last_sale_at || financial.last_withdrawal?.date || "—";
 
     return (
         <div className="space-y-4">
@@ -634,7 +662,7 @@ const EmployeeProfile: React.FC<{ employeeId: number; onBack: () => void }> = ({
                     </div>
                     <div className="text-left">
                         <p className="text-[10px] text-slate-500 font-bold">الرصيد الحالي</p>
-                        <p className="text-2xl font-black font-mono text-emerald-400">₪{money(employee.net_payable)}</p>
+                        <p className="text-2xl font-black font-mono text-emerald-400">₪{money(financial.current_balance ?? employee.net_payable)}</p>
                     </div>
                 </div>
             </div>
@@ -655,7 +683,7 @@ const EmployeeProfile: React.FC<{ employeeId: number; onBack: () => void }> = ({
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                 <div className="bg-slate-950 border border-white/5 rounded-xl p-4">
                                     <div className="flex items-center gap-2 mb-2"><Briefcase size={14} className="text-blue-400" /><span className="text-[9px] text-slate-500 font-bold">الوظيفة</span></div>
-                                    <p className="text-xs font-bold text-white">{employee.job_title?.name || "—"}</p>
+                                    <p className="text-xs font-bold text-white">{profile.job_title || employee.job_title?.name || "—"}</p>
                                 </div>
                                 <div className="bg-slate-950 border border-white/5 rounded-xl p-4">
                                     <div className="flex items-center gap-2 mb-2"><Building2 size={14} className="text-violet-400" /><span className="text-[9px] text-slate-500 font-bold">القسم</span></div>
@@ -671,10 +699,16 @@ const EmployeeProfile: React.FC<{ employeeId: number; onBack: () => void }> = ({
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                <div className="bg-slate-950 border border-white/5 rounded-xl p-4"><p className="text-[9px] text-slate-500 font-bold mb-1">آخر راتب</p><p className="text-sm font-black font-mono text-emerald-400">₪{money(employee.salary)}</p></div>
-                                <div className="bg-slate-950 border border-white/5 rounded-xl p-4"><p className="text-[9px] text-slate-500 font-bold mb-1">آخر سلفة (من القيود)</p><p className="text-sm font-black font-mono text-amber-400">₪{money(employee.outstanding_advance)}</p></div>
-                                <div className="bg-slate-950 border border-white/5 rounded-xl p-4"><p className="text-[9px] text-slate-500 font-bold mb-1">إجمالي المدفوعات</p><p className="text-sm font-black font-mono text-blue-400">₪{money(employee.net_payable)}</p></div>
-                                <div className="bg-slate-950 border border-white/5 rounded-xl p-4"><p className="text-[9px] text-slate-500 font-bold mb-1">عدد العمليات</p><p className="text-sm font-black font-mono text-violet-400">{transactionCount}</p></div>
+                                <div className="bg-slate-950 border border-white/5 rounded-xl p-4"><p className="text-[9px] text-slate-500 font-bold mb-1">آخر راتب مدفوع</p><p className="text-sm font-black font-mono text-emerald-400">₪{money(financial.last_salary_payment?.amount)}</p><p className="text-[9px] text-slate-600 mt-1">{dateFmt(financial.last_salary_payment?.date)}</p></div>
+                                <div className="bg-slate-950 border border-white/5 rounded-xl p-4"><p className="text-[9px] text-slate-500 font-bold mb-1">السلف القائمة</p><p className="text-sm font-black font-mono text-amber-400">₪{money(financial.outstanding_advance)}</p></div>
+                                <div className="bg-slate-950 border border-white/5 rounded-xl p-4"><p className="text-[9px] text-slate-500 font-bold mb-1">إجمالي المبيعات</p><p className="text-sm font-black font-mono text-sky-400">₪{money(financial.total_sales_withdrawals)}</p></div>
+                                <div className="bg-slate-950 border border-white/5 rounded-xl p-4"><p className="text-[9px] text-slate-500 font-bold mb-1">آخر سحب/سلفة</p><p className="text-sm font-black font-mono text-rose-400">₪{money(financial.last_withdrawal?.amount)}</p><p className="text-[9px] text-slate-600 mt-1">{dateFmt(financial.last_withdrawal?.date)}</p></div>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div className="bg-slate-950 border border-white/5 rounded-xl p-4"><p className="text-[9px] text-slate-500 font-bold mb-1">الراتب الحالي</p><p className="text-sm font-black font-mono text-emerald-400">₪{money(financial.current_salary ?? employee.salary)}</p></div>
+                                <div className="bg-slate-950 border border-white/5 rounded-xl p-4"><p className="text-[9px] text-slate-500 font-bold mb-1">الراتب المستحق</p><p className="text-sm font-black font-mono text-rose-400">₪{money(financial.accrued_salary)}</p></div>
+                                <div className="bg-slate-950 border border-white/5 rounded-xl p-4"><p className="text-[9px] text-slate-500 font-bold mb-1">القروض القائمة</p><p className="text-sm font-black font-mono text-violet-400">₪{money(financial.outstanding_loan)}</p></div>
+                                <div className="bg-slate-950 border border-white/5 rounded-xl p-4"><p className="text-[9px] text-slate-500 font-bold mb-1">عدد العمليات</p><p className="text-sm font-black font-mono text-blue-400">{transactionCount}</p></div>
                             </div>
                             {lastTransactionDate !== "—" && (
                                 <div className="bg-cyan-500/5 border border-cyan-500/20 rounded-xl p-3 flex items-center gap-2"><Clock size={12} className="text-cyan-400" /><span className="text-[10px] text-cyan-400">آخر حركة مالية: {dateFmt(lastTransactionDate)}</span></div>
@@ -688,18 +722,8 @@ const EmployeeProfile: React.FC<{ employeeId: number; onBack: () => void }> = ({
                         </div>
                     )}
 
-                    {activeTab === "statement" && (
-                        <div className="space-y-4">
-                            <div className="flex flex-wrap items-center gap-3 mb-4">
-                                <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50" />
-                                <span className="text-slate-500 text-xs">إلى</span>
-                                <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="bg-slate-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-blue-500/50" />
-                                <button onClick={loadStatement} className="p-2 bg-blue-600/10 border border-blue-500/20 rounded-xl text-blue-400 hover:bg-blue-600/20 transition-all"><Search size={14} /></button>
-                                <button onClick={() => { }} className="p-2 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-400 hover:bg-amber-500/20 transition-all"><Download size={14} /></button>
-                                <button onClick={() => { }} className="p-2 bg-slate-500/10 border border-slate-500/20 rounded-xl text-slate-400 hover:bg-slate-500/20 transition-all"><Printer size={14} /></button>
-                            </div>
-                            <EmployeeStatementTable statement={statement} loading={statementLoading} />
-                        </div>
+                    {activeTab === "statement" && employee && (
+                        <EmployeeStatement employeeId={employee.id} employeeName={employee.name} />
                     )}
 
                     {activeTab === "salary" && (
@@ -724,59 +748,7 @@ const EmployeeProfile: React.FC<{ employeeId: number; onBack: () => void }> = ({
     );
 };
 
-// ─── Employee Statement Table (Using FinancialStatementTable pattern)
-const EmployeeStatementTable: React.FC<{ statement: any; loading: boolean }> = ({ statement, loading }) => {
-    if (loading) return <div className="flex items-center justify-center h-64"><RefreshCw size={24} className="animate-spin text-slate-600" /></div>;
-    if (!statement || !statement.lines?.length) {
-        return <div className="flex items-center justify-center h-64 text-slate-500 font-bold">لا توجد حركات في هذه الفترة</div>;
-    }
-    return (
-        <div className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div className="bg-slate-950 border border-white/5 rounded-xl p-3"><p className="text-[10px] text-slate-500 font-bold">الرصيد الافتتاحي</p><p className="text-sm font-black font-mono text-slate-300">₪{money(statement.opening_balance)}</p></div>
-                <div className="bg-slate-950 border border-white/5 rounded-xl p-3"><p className="text-[10px] text-slate-500 font-bold">إجمالي المدين</p><p className="text-sm font-black font-mono text-rose-400">₪{money(statement.total_debit)}</p></div>
-                <div className="bg-slate-950 border border-white/5 rounded-xl p-3"><p className="text-[10px] text-slate-500 font-bold">إجمالي الدائن</p><p className="text-sm font-black font-mono text-emerald-400">₪{money(statement.total_credit)}</p></div>
-                <div className="bg-slate-950 border border-white/5 rounded-xl p-3"><p className="text-[10px] text-slate-500 font-bold">الرصيد الختامي</p><p className={`text-sm font-black font-mono ${(statement.closing_balance || 0) > 0 ? "text-rose-400" : "text-emerald-400"}`}>₪{money(Math.abs(statement.closing_balance || 0))}</p></div>
-            </div>
-            <div className="bg-slate-900 border border-white/5 rounded-2xl overflow-x-auto">
-                <div className="min-w-[1100px]">
-                    <table className="w-full text-xs">
-                        <thead className="bg-slate-950/40 border-b border-white/5 sticky top-0 z-10">
-                            <tr className="text-slate-500 font-black text-[10px]">
-                                <th className="text-right px-4 py-3">التاريخ</th>
-                                <th className="text-right px-4 py-3">نوع العملية</th>
-                                <th className="text-right px-4 py-3">الوصف</th>
-                                <th className="text-right px-4 py-3">المرجع</th>
-                                <th className="text-right px-4 py-3">الحساب</th>
-                                <th className="text-right px-4 py-3">مدين</th>
-                                <th className="text-right px-4 py-3">دائن</th>
-                                <th className="text-right px-4 py-3">الرصيد الجاري</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                            {statement.lines.map((line: any, i: number) => (
-                                <tr key={i} className="hover:bg-white/[0.02] transition-colors group cursor-pointer" onClick={() => {/* click-to-source */ }}>
-                                    <td className="px-4 py-3 text-slate-300 font-mono text-[10px]">{dateFmt(line.date)}</td>
-                                    <td className="px-4 py-3">{typeBadge(line.type)}</td>
-                                    <td className="px-4 py-3"><p className="text-slate-300 text-[11px]">{line.description || line.type}</p></td>
-                                    <td className="px-4 py-3 text-slate-500 font-mono text-[9px]">{line.transaction_number || "—"}</td>
-                                    <td className="px-4 py-3 text-slate-500 text-[9px]">{line.account_name || "—"}</td>
-                                    <td className={`px-4 py-3 font-mono text-[11px] ${line.debit > 0 ? "text-rose-400 font-bold" : "text-slate-600"}`}>{line.debit > 0 ? money(line.debit) : "—"}</td>
-                                    <td className={`px-4 py-3 font-mono text-[11px] ${line.credit > 0 ? "text-emerald-400 font-bold" : "text-slate-600"}`}>{line.credit > 0 ? money(line.credit) : "—"}</td>
-                                    <td className={`px-4 py-3 font-mono font-bold text-[11px] ${line.balance > 0 ? "text-rose-400" : "text-emerald-400"}`}>₪{money(Math.abs(line.balance))}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <div className="flex items-center justify-between text-xs text-slate-500 bg-slate-950/40 border border-white/5 rounded-xl px-4 py-3">
-                <span>{statement.lines.length} معاملة</span>
-                <span>الرصيد الختامي: <strong className="text-white font-black">₪{money(Math.abs(statement.closing_balance || 0))}</strong></span>
-            </div>
-        </div>
-    );
-};
+
 
 // ══════════════════════════════════════════════════════════════
 // 4. EMPLOYEE STATEMENTS BROWSE
@@ -841,7 +813,7 @@ const EmployeeAnalytics: React.FC = () => {
     if (loading) return <div className="flex items-center justify-center h-64"><RefreshCw size={24} className="animate-spin text-slate-600" /></div>;
     if (!data) return <div className="text-center py-16 text-slate-500">لا توجد بيانات</div>;
 
-    const { department_payroll = [], totals = {} } = data;
+    const { department_payroll = [], totals = {}, monthly_trend = [], salary_distribution = [] } = data;
     const averageSalary = totals.average_salary || 0;
 
     const chartData = department_payroll.map((d: any) => ({
@@ -867,6 +839,22 @@ const EmployeeAnalytics: React.FC = () => {
                 <div className="bg-slate-900 border border-white/5 rounded-2xl p-5"><p className="text-[10px] text-slate-500 font-bold mb-1">إجمالي السلف</p><p className="text-xl font-black font-mono text-amber-400">₪{money(totals.total_advances)}</p></div>
                 <div className="bg-slate-900 border border-white/5 rounded-2xl p-5"><p className="text-[10px] text-slate-500 font-bold mb-1">متوسط الراتب</p><p className="text-xl font-black font-mono text-emerald-400">₪{money(averageSalary)}</p><p className="text-[8px] text-slate-600 mt-1">لكل موظف</p></div>
                 <div className="bg-slate-900 border border-white/5 rounded-2xl p-5"><p className="text-[10px] text-slate-500 font-bold mb-1">إجمالي الموظفين</p><p className="text-xl font-black font-mono text-blue-400">{totals.total_employees}</p></div>
+            </div>
+
+            <div className="bg-slate-900 border border-white/5 rounded-2xl p-5">
+                <h4 className="text-sm font-bold text-white mb-4">اتجاه الرواتب والسلف — {year}</h4>
+                <ResponsiveContainer width="100%" height={280}>
+                    <LineChart data={monthly_trend}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                        <XAxis dataKey="label" tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                        <YAxis tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                        <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 12, fontSize: 11 }} />
+                        <Legend wrapperStyle={{ fontSize: 10 }} />
+                        <Line type="monotone" dataKey="salaries" name="رواتب مدفوعة" stroke="#f43f5e" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="advances" name="سلف مصروفة" stroke="#f59e0b" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="payments" name="سلف مسددة" stroke="#10b981" strokeWidth={2} dot={false} />
+                    </LineChart>
+                </ResponsiveContainer>
             </div>
 
             <div className="bg-slate-900 border border-white/5 rounded-2xl p-5">
