@@ -198,6 +198,9 @@ export interface PayOrderPayload {
 export interface InvoicePayload {
   customer_name?: string;
   customer_phone?: string;
+  customer_id?: number;
+  employee_id?: number;
+  supplier_id?: number;
   note?: string;
 }
 
@@ -208,6 +211,8 @@ export interface InvoiceItemFromApi {
   quantity: number;
   price: number;
   total: number;
+  tax_rate?: number;
+  tax_amount?: number;
 }
 
 export interface InvoiceFromApi {
@@ -311,6 +316,8 @@ export interface OrderItemFromApi {
   quantity: number;
   total_price: number;
   notes: string | null;
+  tax_rate?: number;
+  tax_amount?: number;
   department?: { id: number; name: string; color: string; icon: string };
 }
 
@@ -358,6 +365,12 @@ export interface OrderFromApi {
   discount_value: number;
   discount_type: DiscountType;
   discount_amount: number;
+  engine_discount_amount?: number;
+  total_discount?: number;
+  grand_total?: number;
+  customer_id?: number;
+  employee_id?: number;
+  supplier_id?: number;
   total: number;
   payment_method: PaymentMethod | null;
   reference_number: string | null;
@@ -426,6 +439,24 @@ export const orderService = {
   /** تأكيد الطلب → إنشاء تذاكر الأقسام */
   confirm: async (id: number): Promise<OrderFromApi> => {
     const { data } = await api.post(`/orders/${id}/confirm`);
+    return data.data as OrderFromApi;
+  },
+
+  /** مزامنة سياق التسعير وإعادة حساب المجاميع (خصم المحرك + يدوي) */
+  syncPricing: async (
+    id: number,
+    payload: Partial<{
+      customer_id?: number;
+      employee_id?: number;
+      supplier_id?: number;
+      discount_value?: number;
+      discount_type?: DiscountType;
+      customer_name?: string;
+      customer_phone?: string;
+      note?: string;
+    }>,
+  ): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${id}/sync-pricing`, payload);
     return data.data as OrderFromApi;
   },
 
@@ -543,6 +574,9 @@ export const orderService = {
       invoice = await orderService.createInvoiceFromOrder(orderId, {
         customer_name: payload.customer_name,
         customer_phone: payload.customer_phone,
+        customer_id: payload.customer_id,
+        employee_id: payload.employee_id,
+        supplier_id: payload.supplier_id,
         note: payload.note,
       });
     } catch (error) {
@@ -601,6 +635,21 @@ export const orderService = {
         0,
       ),
     );
+
+    if (normalizedPayments.length > 0 && invoiceTotal > 0) {
+      const newPaymentTotal = normalizeMoney(
+        normalizedPayments.reduce((sum, p) => sum + p.amount, 0),
+      );
+      const expectedRemaining = normalizeMoney(invoiceTotal - existingPaid);
+      if (Math.abs(newPaymentTotal - expectedRemaining) > 0.01) {
+        throw new Error(
+          newPaymentTotal < expectedRemaining
+            ? `المبلغ المدفوع ناقص ${normalizeMoney(expectedRemaining - newPaymentTotal).toFixed(2)} ₪`
+            : `المبلغ المدفوع زائد ${normalizeMoney(newPaymentTotal - expectedRemaining).toFixed(2)} ₪`,
+        );
+      }
+    }
+
     let remainingAmount =
       invoiceTotal > 0
         ? Math.max(0, normalizeMoney(invoiceTotal - existingPaid))

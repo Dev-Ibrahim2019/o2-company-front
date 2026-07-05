@@ -14,10 +14,10 @@ import renderModal from '../administration/renderModal';
 import BranchesPage from '../administration/BranchesPage/BranchesPage';
 import SalesInvoicesPage from '../administration/SalesInvoicesPage';
 import SupplierPortal from './suppliers/SupplierPortal';
-
 import { OrgStructure } from './OrgStructure/OrgStructure';
 import { AccountingPortal } from './GL/AccountingPortal';
 import { DiscountManagementPortal } from './discounts/DiscountManagementPortal';
+
 
 interface FinancePortalProps {
   initialView?: 'DASHBOARD' | 'BRANCHES' | 'DEPARTMENTS' | 'ITEM_TREE' | 'ITEMS_INDEX' | 'MENU' | 'ORDERS' | 'SALES' | 'CUSTOMERS' | 'SUPPLIERS' | 'EMPLOYEES' | 'ACCOUNTING' | 'REPORTS' | 'SETTINGS' | 'AUDIT_LOG' | 'ARCHIVE' | 'ORGSTRUCTURE' | 'DISCOUNTS';
@@ -30,7 +30,6 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
   const canEditSettings = currentUser?.role === 'ADMIN';
 
   const renderCustomers = () => <CustomerPortal />;
-
   const renderSuppliers = () => <SupplierPortal />;
 
   const view = initialView;
@@ -57,13 +56,10 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
 
   return (
     <div className="h-full flex flex-col min-h-0">
-      {/* Header */}
-
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 min-h-0">
         {viewContent[view]}
       </div>
-
       {renderModal()}
     </div>
   );

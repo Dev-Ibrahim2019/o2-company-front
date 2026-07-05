@@ -1,888 +1,649 @@
-// src/components/administration/GL/EmployeeStatement.tsx
-//
-// ✅ كشف حساب الموظف — تصميم احترافي بمستوى ERP متكامل
-// ✅ دعم كامل لـ: السلف، استحقاق الرواتب، صرف الرواتب
-// ✅ عرض كروت ملخص مالي متكامل
-// ✅ جدول معاملات احترافي مع تلوين حسب النوع
-// ✅ رسم بياني زمني للرصيد (timeline)
-// ✅ دعم أنواع الرواتب الثلاثة (hourly, daily, monthly)
-
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-    Calendar,
-    RefreshCw,
-    TrendingUp,
-    TrendingDown,
-    Wallet,
-    Activity,
-    Filter,
-    ArrowUpRight,
-    ArrowDownLeft,
-    DollarSign,
-    Clock,
-    Users,
-    BanknoteIcon,
-    Receipt,
-    PieChart,
-    Download,
-    Printer,
-    Search,
-    FileText,
+    Calendar, RefreshCw, Wallet, Activity, Printer, Search, FileText,
+    LayoutDashboard, List, Download, ChevronDown, ChevronUp, Building2, Hash,
+    Tag, Package, ExternalLink,
 } from "lucide-react";
 import { financeService } from "../../../services/financeService";
+import { employeeService } from "../../../services/employeeService";
 import type {
-    StatementEntry,
-    EmployeeStatementData,
+    StatementEntry, EmployeeStatementData, StatementType, StatementFilters, SaleItem,
 } from "../../../services/financeService";
-
-// ─── Types ─────────────────────────────────────────────────────────────────
-
-type StatementType = "all" | "advance" | "salary" | "loan";
+import { MOVEMENT_LABELS, MOVEMENT_COLORS, MOVEMENT_ICONS } from "../../../services/financeService";
+import InvoiceDrawer from "./InvoiceDrawer";
+import { invoiceDetailsService } from "../../../services/invoiceDetailsService";
 
 interface EmployeeStatementProps {
     employeeId: number;
     employeeName: string;
 }
 
-// ─── Helper ────────────────────────────────────────────────────────────────
-
-function extractLines(
-    data: EmployeeStatementData,
-    type: StatementType,
-): { lines: StatementEntry[]; closingBalance: number } {
-    const { accounts = {} } = data;
-
-    if (type === "advance" && accounts.advance) {
-        return {
-            lines: accounts.advance.lines ?? [],
-            closingBalance: accounts.advance.closing_balance ?? 0,
-        };
-    }
-
-    if (type === "salary" && accounts.salary) {
-        return {
-            lines: accounts.salary.lines ?? [],
-            closingBalance: accounts.salary.closing_balance ?? 0,
-        };
-    }
-
-    if (type === "loan" && accounts.loan) {
-        return {
-            lines: accounts.loan.lines ?? [],
-            closingBalance: accounts.loan.closing_balance ?? 0,
-        };
-    }
-
-    const advanceLines: StatementEntry[] = accounts.advance?.lines ?? [];
-    const salaryLines: StatementEntry[] = accounts.salary?.lines ?? [];
-    const loanLines: StatementEntry[] = accounts.loan?.lines ?? [];
-
-    const combined = [...advanceLines, ...salaryLines, ...loanLines].sort(
-        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-    );
-
-    const closingBalance =
-        (accounts.advance?.closing_balance ?? 0) +
-        (accounts.salary?.closing_balance ?? 0) +
-        (accounts.loan?.closing_balance ?? 0);
-
-    return { lines: combined, closingBalance };
-}
-
-/**
- * Rebuild a unified running_balance for a statement by ignoring the API's
- * running_balance when we merge multiple blocks (type=all).
- *
- * Strategy:
- * - Compute net movement within period: sum(debit - credit)
- * - Derive opening so that last running matches provided closingBalance
- *   opening = closingBalance - netMovement
- * - Build running cumulatively
- */
-function rebuildUnifiedRunningBalance(
-    entries: StatementEntry[],
-    closingBalance: number,
-): { entries: StatementEntry[]; openingBalance: number } {
-    const sorted = [...entries].sort(
-        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
-    );
-
-    const netMovement = sorted.reduce((sum, e) => {
-        const debit = Number(e.debit || 0);
-        const credit = Number(e.credit || 0);
-        return sum + (debit - credit);
-    }, 0);
-
-    // opening is derived to keep closing consistent with backend closingBalance
-    const openingBalance = closingBalance - netMovement;
-
-    let running = openingBalance;
-    const rebuilt = sorted.map((e) => {
-        const debit = Number(e.debit || 0);
-        const credit = Number(e.credit || 0);
-        running += debit;
-        running -= credit;
-
-        return {
-            ...e,
-            running_balance: running,
-        };
-    });
-
-    return { entries: rebuilt, openingBalance };
-}
-
-// ─── Format helpers ────────────────────────────────────────────────────────
-
-const money = (v: number) => {
+const money = (v: number | undefined | null) => {
     if (v === undefined || v === null || isNaN(v)) return "0.00";
-    return v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
 const dateFmt = (d: string) => {
     try {
-        return new Date(d).toLocaleDateString("ar-SA", {
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-        });
-    } catch {
-        return d;
-    }
+        return new Date(d).toLocaleDateString("ar-SA", { day: "2-digit", month: "short", year: "numeric" });
+    } catch { return d; }
 };
 
-// ─── كارت الملخص ──────────────────────────────────────────────────────────
-
-interface SummaryCardProps {
-    label: string;
-    value: number;
-    icon: React.ElementType;
-    color: string;
-    bg: string;
-    border: string;
-    trend?: "up" | "down" | "neutral";
-    subtitle?: string;
+function extractLines(data: EmployeeStatementData) {
+    if (Array.isArray(data.all_lines)) {
+        return {
+            lines: data.all_lines,
+            closingBalance: data.totals?.closing_balance ?? 0,
+            openingBalance: data.totals?.opening_balance ?? 0,
+        };
+    }
+    const { accounts = {} } = data;
+    const combined = [
+        ...(accounts.advance?.lines ?? []),
+        ...(accounts.salary?.lines ?? []),
+        ...(accounts.loan?.lines ?? []),
+        ...(accounts.sales?.lines ?? []),
+    ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    return {
+        lines: combined,
+        closingBalance:
+            (accounts.advance?.closing_balance ?? 0) +
+            (accounts.salary?.closing_balance ?? 0) +
+            (accounts.loan?.closing_balance ?? 0) +
+            (accounts.sales?.closing_balance ?? 0),
+        openingBalance: 0,
+    };
 }
 
-const SummaryCard: React.FC<SummaryCardProps> = ({
-    label,
-    value,
-    icon: Icon,
-    color,
-    bg,
-    border,
-    trend,
-    subtitle,
-}) => (
-    <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        className={`${bg} border ${border} rounded-2xl p-4 hover:scale-[1.02] transition-all duration-300`}
-    >
-        <div className="flex items-start justify-between mb-3">
-            <div
-                className={`w-10 h-10 rounded-xl ${bg} border ${border} flex items-center justify-center ${color}`}
-            >
-                <Icon size={18} />
-            </div>
-            {trend && (
-                <span
-                    className={`text-[10px] font-black px-2 py-0.5 rounded-lg ${trend === "up"
-                        ? "bg-emerald-500/15 text-emerald-400"
-                        : trend === "down"
-                            ? "bg-rose-500/15 text-rose-400"
-                            : "bg-slate-500/15 text-slate-400"
-                        }`}
-                >
-                    {trend === "up" ? "↑" : trend === "down" ? "↓" : "—"}
-                </span>
-            )}
-        </div>
-        <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1">
-            {label}
-        </p>
-        <p className={`text-xl font-black font-mono ${color} leading-tight`}>
-            ₪{money(Math.abs(value))}
-        </p>
-        {subtitle && (
-            <p className="text-[10px] text-slate-600 font-bold mt-1">{subtitle}</p>
-        )}
-    </motion.div>
-);
+const TYPE_OPTIONS: { value: StatementType; label: string }[] = [
+    { value: "all", label: "الكل" },
+    { value: "sales", label: "المبيعات" },
+    { value: "advance", label: "السلف" },
+    { value: "payment", label: "الدفعات" },
+    { value: "salary", label: "الرواتب" },
+    { value: "loan", label: "القروض" },
+    { value: "journal", label: "القيود" },
+    { value: "return", label: "المرتجعات" },
+    { value: "purchase", label: "المشتريات" },
+    { value: "settlement", label: "التسويات" },
+];
 
-// ─── Transaction Type Badge ────────────────────────────────────────────────
-
-const TypeBadge: React.FC<{ description: string | null }> = ({
-    description,
-}) => {
-    const desc = (description ?? "").toLowerCase();
-    let cls = "bg-slate-800 border-white/10 text-slate-400";
-    let icon = <FileText size={10} />;
-
-    if (desc.includes("قرض") || desc.includes("loan")) {
-        cls = "bg-violet-500/15 border-violet-500/25 text-violet-400";
-        icon = <BanknoteIcon size={10} />;
-    } else if (desc.includes("سلف") || desc.includes("advance")) {
-        cls = "bg-amber-500/15 border-amber-500/25 text-amber-400";
-        icon = <ArrowUpRight size={10} />;
-    } else if (desc.includes("راتب") || desc.includes("salary")) {
-        cls = "bg-emerald-500/15 border-emerald-500/25 text-emerald-400";
-        icon = <DollarSign size={10} />;
-    } else if (desc.includes("سداد") || desc.includes("repay")) {
-        cls = "bg-blue-500/15 border-blue-500/25 text-blue-400";
-        icon = <ArrowDownLeft size={10} />;
-    } else if (desc.includes("صرف") || desc.includes("pay")) {
-        cls = "bg-rose-500/15 border-rose-500/25 text-rose-400";
-        icon = <BanknoteIcon size={10} />;
-    }
-
+const MovementBadge: React.FC<{ type?: string | null; label?: string | null }> = ({ type, label }) => {
+    const mt = type || "other";
+    const colors = MOVEMENT_COLORS[mt] || "text-slate-400 bg-slate-500/10 border-slate-500/20";
     return (
-        <span
-            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[9px] font-black ${cls}`}
-        >
-            {icon}
-            {description?.slice(0, 40) || "—"}
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[10px] font-bold whitespace-nowrap ${colors}`}>
+            <span>{MOVEMENT_ICONS[mt] || "•"}</span>
+            {label || MOVEMENT_LABELS[mt] || "أخرى"}
         </span>
     );
 };
 
-// ─── Timeline Visual ───────────────────────────────────────────────────────
-
-const BalanceTimeline: React.FC<{ entries: StatementEntry[] }> = ({
-    entries,
-}) => {
-    if (entries.length === 0) return null;
-
-    const maxBal = Math.max(
-        ...entries.map((e) => Math.abs(e.running_balance)),
-        1,
-    );
-    const minBal = Math.min(
-        ...entries.map((e) => e.running_balance),
-        0,
-    );
-    const range = Math.max(maxBal - minBal, 1);
+/* ─── Inline expandable detail for detailed mode ─── */
+const RowDetailPanel: React.FC<{ entry: StatementEntry; onOpenInvoice?: () => void }> = ({ entry, onOpenInvoice }) => {
+    const isSale = entry.movement_type === "sales" || entry.type === "sale";
+    const items: SaleItem[] = entry.items ?? [];
 
     return (
-        <div className="bg-slate-900/60 border border-white/5 rounded-2xl p-5 overflow-hidden">
-            <div className="flex items-center gap-2 mb-4">
-                <Activity size={14} className="text-slate-500" />
-                <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">
-                    الخط الزمني للرصيد
-                </span>
+        <div className="bg-slate-950/80 border-t border-b border-white/5 px-4 py-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                <InfoCell icon={Hash} label="رقم القيد" value={entry.transaction_number} />
+                <InfoCell icon={FileText} label="نوع المستند" value={entry.document_type} />
+                <InfoCell icon={Building2} label="الفرع" value={entry.branch_name} />
+                <InfoCell icon={Tag} label="المرجع" value={entry.reference} />
             </div>
 
-            <div className="relative h-24">
-                {/* Y-axis label */}
-                <div className="absolute -right-1 top-0 text-[8px] text-slate-600 font-mono">
-                    ₪{money(maxBal)}
-                </div>
-                <div className="absolute -right-1 bottom-0 text-[8px] text-slate-600 font-mono">
-                    ₪{money(minBal)}
-                </div>
-
-                {/* Grid lines */}
-                <div className="absolute inset-0 flex flex-col justify-between pr-10">
-                    <div className="border-t border-white/5" />
-                    <div className="border-t border-white/5" />
-                    <div className="border-t border-white/5" />
-                    <div className="border-t border-white/5" />
-                </div>
-
-                {/* Bars */}
-                <div className="absolute inset-0 flex items-end gap-1 pr-10 pb-1">
-                    {entries.slice(-30).map((entry, idx) => {
-                        const isPositive = entry.running_balance >= 0;
-                        const heightPct = Math.abs(entry.running_balance) / range;
-                        return (
-                            <div
-                                key={idx}
-                                className="flex-1 flex flex-col items-center justify-end group"
-                            >
-                                <div
-                                    className={`w-full rounded-t-sm transition-all duration-300 ${isPositive
-                                        ? "bg-emerald-500/40 hover:bg-emerald-500/70"
-                                        : "bg-rose-500/40 hover:bg-rose-500/70"
-                                        }`}
-                                    style={{ height: `${Math.max(heightPct * 100, 2)}%` }}
-                                />
-                                {/* Tooltip */}
-                                <div className="opacity-0 group-hover:opacity-100 absolute bottom-full mb-2 bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-[10px] font-bold whitespace-nowrap z-10 shadow-2xl transition-opacity">
-                                    <p className="text-slate-400">{dateFmt(entry.date)}</p>
-                                    <p
-                                        className={
-                                            isPositive ? "text-emerald-400" : "text-rose-400"
-                                        }
-                                    >
-                                        ₪{money(entry.running_balance)}
-                                    </p>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// ─── جدول المعاملات المحسّن ──────────────────────────────────────────────
-
-const TransactionTable: React.FC<{ entries: StatementEntry[] }> = ({
-    entries,
-}) => {
-    const [searchTerm, setSearchTerm] = useState("");
-
-    const filtered = searchTerm
-        ? entries.filter(
-            (e) =>
-                (e.description ?? "")
-                    .toLowerCase()
-                    .includes(searchTerm.toLowerCase()) ||
-                (e.transaction_number ?? "")
-                    .toLowerCase()
-                    .includes(searchTerm.toLowerCase()),
-        )
-        : entries;
-
-    return (
-        <div className="bg-slate-900/60 border border-white/5 rounded-2xl overflow-hidden">
-            {/* Header with search */}
-            <div className="p-4 border-b border-white/5 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                    <FileText size={14} className="text-slate-500" />
-                    <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">
-                        سجل المعاملات ({entries.length})
-                    </span>
-                </div>
-                <div className="relative">
-                    <Search
-                        size={12}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-600"
-                    />
-                    <input
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder="بحث..."
-                        className="bg-slate-950 border border-white/5 rounded-lg py-1.5 pr-8 pl-3 text-[11px] text-white outline-none focus:border-blue-500/40 w-40"
-                    />
-                </div>
-            </div>
-
-            {/* Table */}
-            <div className="overflow-x-auto">
-                <table className="w-full text-right text-xs">
-                    <thead className="bg-slate-950/40 border-b border-white/5">
-                        <tr className="text-slate-500 font-black uppercase tracking-wider text-[10px]">
-                            <th className="px-4 py-3">التاريخ</th>
-                            <th className="px-4 py-3">رقم القيد</th>
-                            <th className="px-4 py-3">البيان</th>
-                            <th className="px-4 py-3">الحساب</th>
-                            <th className="px-4 py-3">المصدر</th>
-                            <th className="px-4 py-3 text-center">مدين</th>
-                            <th className="px-4 py-3 text-center">دائن</th>
-                            <th className="px-4 py-3 text-center">الرصيد</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                        {filtered.length === 0 ? (
-                            <tr>
-                                <td
-                                    colSpan={8}
-                                    className="px-4 py-12 text-center text-slate-600 text-sm"
-                                >
-                                    <Search size={24} className="mx-auto mb-2 opacity-50" />
-                                    لا توجد معاملات مطابقة
-                                </td>
-                            </tr>
-                        ) : (
-                            filtered.map((entry, idx) => {
-                                const isAdvance =
-                                    (entry.description ?? "")
-                                        .toLowerCase()
-                                        .includes("سلف") ||
-                                    (entry.transaction_source ?? "")
-                                        .toLowerCase()
-                                        .includes("advance");
-                                const isSalary =
-                                    (entry.description ?? "")
-                                        .toLowerCase()
-                                        .includes("راتب") ||
-                                    (entry.transaction_source ?? "")
-                                        .toLowerCase()
-                                        .includes("salary");
-
-                                return (
-                                    <motion.tr
-                                        key={idx}
-                                        initial={{ opacity: 0, x: -10 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        transition={{ delay: Math.min(idx * 0.02, 0.4) }}
-                                        className={`hover:bg-white/[0.02] transition-colors ${isAdvance
-                                            ? "border-r-2 border-r-amber-500/30"
-                                            : isSalary
-                                                ? "border-r-2 border-r-emerald-500/30"
-                                                : ""
-                                            }`}
-                                    >
-                                        <td className="px-4 py-3 text-slate-300 whitespace-nowrap font-medium">
-                                            {dateFmt(entry.date)}
-                                        </td>
-                                        <td className="px-4 py-3 font-mono text-slate-500 text-[11px] whitespace-nowrap">
-                                            {entry.transaction_number || "—"}
-                                        </td>
-                                        <td className="px-4 py-3 max-w-[200px]">
-                                            <TypeBadge description={entry.description} />
-                                        </td>
-                                        <td className="px-4 py-3 text-slate-400 max-w-[140px] truncate">
-                                            {entry.account_name || "—"}
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            {entry.transaction_source ? (
-                                                <span className="px-2 py-0.5 rounded-lg bg-slate-800 border border-white/5 text-slate-400 text-[10px] font-bold whitespace-nowrap">
-                                                    {entry.transaction_source}
-                                                </span>
-                                            ) : (
-                                                <span className="text-slate-700">—</span>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3 text-center font-mono">
-                                            {entry.debit > 0 ? (
-                                                <span className="text-emerald-400 font-bold text-[11px]">
-                                                    ₪{money(entry.debit)}
-                                                </span>
-                                            ) : (
-                                                <span className="text-slate-700">—</span>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3 text-center font-mono">
-                                            {entry.credit > 0 ? (
-                                                <span className="text-rose-400 font-bold text-[11px]">
-                                                    ₪{money(entry.credit)}
-                                                </span>
-                                            ) : (
-                                                <span className="text-slate-700">—</span>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3 text-center font-mono">
-                                            <span
-                                                className={`font-black text-[12px] ${entry.running_balance >= 0
-                                                    ? "text-blue-400"
-                                                    : "text-rose-400"
-                                                    }`}
-                                            >
-                                                ₪{money(entry.running_balance)}
-                                            </span>
-                                        </td>
-                                    </motion.tr>
-                                );
-                            })
+            {isSale && items.length > 0 && (
+                <div className="rounded-xl border border-sky-500/20 overflow-hidden mb-3">
+                    <div className="bg-sky-500/10 px-3 py-2 flex items-center justify-between">
+                        <span className="text-[10px] font-black text-sky-400 flex items-center gap-1.5">
+                            <Package size={12} /> المنتجات ({items.length})
+                        </span>
+                        {onOpenInvoice && (
+                            <button onClick={onOpenInvoice} className="text-[10px] text-sky-400 hover:text-sky-300 flex items-center gap-1 font-bold">
+                                <ExternalLink size={10} /> عرض الفاتورة كاملة
+                            </button>
                         )}
-                    </tbody>
-                </table>
-            </div>
-
-            {/* Footer */}
-            {filtered.length > 0 && (
-                <div className="px-4 py-3 border-t border-white/5 flex items-center justify-between bg-slate-950/20">
-                    <span className="text-[11px] text-slate-600 font-bold">
-                        {filtered.length} معاملة
-                    </span>
-                    <div className="flex items-center gap-3 text-[11px] font-bold">
-                        <span className="text-emerald-400">
-                            مدين: ₪
-                            {money(
-                                filtered.reduce((s, e) => s + e.debit, 0),
-                            )}
-                        </span>
-                        <span className="text-rose-400">
-                            دائن: ₪
-                            {money(
-                                filtered.reduce((s, e) => s + e.credit, 0),
-                            )}
-                        </span>
                     </div>
+                    <table className="w-full text-[11px]">
+                        <thead>
+                            <tr className="text-slate-500 border-b border-white/5 bg-slate-900/50">
+                                <th className="text-right px-3 py-2 font-bold">الصنف</th>
+                                <th className="text-center px-2 py-2 font-bold">كمية</th>
+                                <th className="text-center px-2 py-2 font-bold">السعر</th>
+                                <th className="text-center px-2 py-2 font-bold">خصم</th>
+                                <th className="text-center px-2 py-2 font-bold">الإجمالي</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                            {items.map((item, i) => (
+                                <tr key={i} className="hover:bg-white/[0.02]">
+                                    <td className="px-3 py-2 text-slate-300">{item.product_name_ar || item.product_name}</td>
+                                    <td className="px-2 py-2 text-center font-mono text-slate-400">{item.quantity}</td>
+                                    <td className="px-2 py-2 text-center font-mono text-slate-400">₪{money(item.unit_price)}</td>
+                                    <td className="px-2 py-2 text-center font-mono text-rose-400">
+                                        {item.discount_amount > 0 ? `-₪${money(item.discount_amount)}` : "—"}
+                                    </td>
+                                    <td className="px-2 py-2 text-center font-mono font-bold text-white">₪{money(item.total)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+
+            {isSale && items.length === 0 && onOpenInvoice && (
+                <button onClick={onOpenInvoice} className="w-full py-2.5 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs font-bold hover:bg-sky-500/20 transition-all flex items-center justify-center gap-2">
+                    <ExternalLink size={14} /> فتح تفاصيل الفاتورة الكاملة
+                </button>
+            )}
+
+            {!isSale && (
+                <div className="rounded-xl bg-slate-900/60 border border-white/5 p-3">
+                    <p className="text-[11px] text-slate-400 leading-relaxed">{entry.description || "—"}</p>
+                    {entry.notes && <p className="text-[10px] text-slate-600 mt-2">{entry.notes}</p>}
                 </div>
             )}
         </div>
     );
 };
 
-// ─── المكون الرئيسي ────────────────────────────────────────────────────────
+const InfoCell: React.FC<{ icon: React.ElementType; label: string; value?: string | null }> = ({ icon: Icon, label, value }) => (
+    <div className="bg-slate-900/60 border border-white/5 rounded-lg p-2.5">
+        <div className="flex items-center gap-1.5 mb-1">
+            <Icon size={10} className="text-slate-600" />
+            <span className="text-[9px] text-slate-600 font-bold">{label}</span>
+        </div>
+        <p className="text-[11px] text-slate-200 font-bold truncate">{value || "—"}</p>
+    </div>
+);
 
-const EmployeeStatement: React.FC<EmployeeStatementProps> = ({
-    employeeId,
-    employeeName,
-}) => {
+/* ─── Main Statement Table ─── */
+interface StatementTableProps {
+    entries: StatementEntry[];
+    openingBalance: number;
+    closingBalance: number;
+    viewMode: "simple" | "detailed";
+    onOpenInvoice: (entry: StatementEntry) => void;
+}
+
+const StatementTable: React.FC<StatementTableProps> = ({ entries, openingBalance, closingBalance, viewMode, onOpenInvoice }) => {
+    const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+    const [localSearch, setLocalSearch] = useState("");
+
+    const filtered = useMemo(() => {
+        const q = localSearch.trim().toLowerCase();
+        if (!q) return entries;
+        return entries.filter((e) =>
+            [e.transaction_number, e.description, e.movement_label, e.document_type, e.branch_name, e.reference]
+                .filter(Boolean).join(" ").toLowerCase().includes(q)
+        );
+    }, [entries, localSearch]);
+
+    const totals = useMemo(() => ({
+        debit: filtered.reduce((s, e) => s + (e.debit || 0), 0),
+        credit: filtered.reduce((s, e) => s + (e.credit || 0), 0),
+    }), [filtered]);
+
+    const toggleExpand = (idx: number, entry: StatementEntry) => {
+        if (viewMode !== "detailed") {
+            if (entry.movement_type === "sales" || entry.type === "sale") onOpenInvoice(entry);
+            return;
+        }
+        setExpandedIdx(expandedIdx === idx ? null : idx);
+    };
+
+    return (
+        <div className="bg-white/[0.02] border border-white/10 rounded-2xl overflow-hidden shadow-xl print:border print:border-gray-300 print:shadow-none print:bg-white">
+            {/* Table toolbar */}
+            <div className="px-4 py-3 border-b border-white/10 bg-slate-950/60 flex items-center justify-between gap-3 print:bg-gray-50 print:border-gray-200">
+                <div className="flex items-center gap-2">
+                    <FileText size={14} className="text-blue-400" />
+                    <span className="text-xs font-black text-white print:text-gray-900">كشف حساب</span>
+                    <span className="text-[10px] text-slate-500 bg-slate-800/60 px-2 py-0.5 rounded-full print:text-gray-600 print:bg-gray-100">
+                        {filtered.length} حركة
+                    </span>
+                </div>
+                <div className="relative">
+                    <Search size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-600" />
+                    <input
+                        value={localSearch}
+                        onChange={(e) => setLocalSearch(e.target.value)}
+                        placeholder="بحث في الحركات..."
+                        className="bg-slate-900 border border-white/10 rounded-lg py-1.5 pr-8 pl-3 text-[11px] text-white outline-none focus:border-blue-500/50 w-44 print:hidden"
+                    />
+                </div>
+            </div>
+
+            <div className="overflow-x-auto">
+                <table className="w-full text-right min-w-[900px] print:min-w-0">
+                    <thead className="bg-slate-950/80 border-b-2 border-white/10 sticky top-0 z-10 print:bg-gray-100 print:border-gray-300">
+                        <tr className="text-[10px] font-black uppercase tracking-wider text-slate-400 print:text-gray-600">
+                            {viewMode === "detailed" && <th className="w-8 px-2 py-3" />}
+                            <th className="px-3 py-3 whitespace-nowrap">التاريخ</th>
+                            <th className="px-3 py-3 whitespace-nowrap">رقم القيد</th>
+                            <th className="px-3 py-3 whitespace-nowrap">رقم المستند</th>
+                            <th className="px-3 py-3 whitespace-nowrap">نوع الحركة</th>
+                            <th className="px-3 py-3 min-w-[140px]">البيان</th>
+                            <th className="px-3 py-3 text-center whitespace-nowrap">مدين</th>
+                            <th className="px-3 py-3 text-center whitespace-nowrap">دائن</th>
+                            <th className="px-3 py-3 text-center whitespace-nowrap">الرصيد</th>
+                            <th className="px-3 py-3 whitespace-nowrap hidden lg:table-cell">الفرع</th>
+                            <th className="px-3 py-3 whitespace-nowrap hidden xl:table-cell">الحالة</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 print:divide-gray-200">
+                        {/* Opening balance row */}
+                        <tr className="bg-blue-500/[0.06] border-b border-blue-500/10 print:bg-blue-50">
+                            <td colSpan={viewMode === "detailed" ? 8 : 7} className="px-3 py-2.5 text-[11px] font-black text-blue-400 print:text-blue-800">
+                                ◆ الرصيد الافتتاحي
+                            </td>
+                            <td className="px-3 py-2.5 text-center font-mono font-black text-blue-400 print:text-blue-800">
+                                ₪{money(openingBalance)}
+                            </td>
+                            <td colSpan={2} className="hidden lg:table-cell" />
+                        </tr>
+
+                        {filtered.length === 0 ? (
+                            <tr>
+                                <td colSpan={viewMode === "detailed" ? 11 : 10} className="px-4 py-16 text-center">
+                                    <Wallet size={28} className="mx-auto mb-2 text-slate-700 opacity-50" />
+                                    <p className="text-sm text-slate-500 font-bold">لا توجد حركات في هذه الفترة</p>
+                                </td>
+                            </tr>
+                        ) : filtered.map((entry, idx) => {
+                            const isExpanded = expandedIdx === idx;
+                            const isSale = entry.movement_type === "sales" || entry.type === "sale";
+                            const canExpand = viewMode === "detailed" || isSale;
+
+                            return (
+                                <React.Fragment key={`${entry.transaction_number}-${idx}`}>
+                                    <tr
+                                        onClick={() => canExpand && toggleExpand(idx, entry)}
+                                        className={`group transition-colors ${canExpand ? "cursor-pointer" : ""} ${isExpanded ? "bg-white/[0.04]" : "hover:bg-white/[0.03]"} ${isSale ? "border-r-2 border-r-sky-500/40" : ""} print:hover:bg-transparent`}
+                                    >
+                                        {viewMode === "detailed" && (
+                                            <td className="px-2 py-2.5 text-slate-600">
+                                                {canExpand && (isExpanded
+                                                    ? <ChevronUp size={14} className="text-blue-400" />
+                                                    : <ChevronDown size={14} className="text-slate-600 group-hover:text-slate-400" />
+                                                )}
+                                            </td>
+                                        )}
+                                        <td className="px-3 py-2.5 text-[11px] text-slate-300 whitespace-nowrap font-medium print:text-gray-800">
+                                            {dateFmt(entry.date)}
+                                        </td>
+                                        <td className="px-3 py-2.5 font-mono text-[10px] text-slate-500 whitespace-nowrap print:text-gray-700">
+                                            {entry.transaction_id ? `#${entry.transaction_id}` : "—"}
+                                        </td>
+                                        <td className="px-3 py-2.5 font-mono text-[10px] text-slate-400 whitespace-nowrap print:text-gray-700">
+                                            {entry.transaction_number || "—"}
+                                        </td>
+                                        <td className="px-3 py-2.5">
+                                            <MovementBadge type={entry.movement_type} label={entry.movement_label} />
+                                        </td>
+                                        <td className="px-3 py-2.5 max-w-[200px]">
+                                            <p className={`text-[11px] truncate ${isSale ? "text-sky-300 font-medium" : "text-slate-400"}`}>
+                                                {entry.description || entry.document_type || "—"}
+                                            </p>
+                                            {entry.reference && (
+                                                <p className="text-[9px] text-slate-600 font-mono mt-0.5">{entry.reference}</p>
+                                            )}
+                                        </td>
+                                        <td className="px-3 py-2.5 text-center font-mono text-[11px]">
+                                            {entry.debit > 0
+                                                ? <span className="text-emerald-400 font-bold print:text-green-700">₪{money(entry.debit)}</span>
+                                                : <span className="text-slate-700 print:text-gray-300">—</span>}
+                                        </td>
+                                        <td className="px-3 py-2.5 text-center font-mono text-[11px]">
+                                            {entry.credit > 0
+                                                ? <span className="text-rose-400 font-bold print:text-red-700">₪{money(entry.credit)}</span>
+                                                : <span className="text-slate-700 print:text-gray-300">—</span>}
+                                        </td>
+                                        <td className="px-3 py-2.5 text-center font-mono text-[11px]">
+                                            <span className={`font-black ${(entry.running_balance ?? 0) >= 0 ? "text-blue-400 print:text-blue-800" : "text-rose-400 print:text-red-700"}`}>
+                                                ₪{money(entry.running_balance ?? 0)}
+                                            </span>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-[10px] text-slate-500 hidden lg:table-cell print:text-gray-600">
+                                            {entry.branch_name || "—"}
+                                        </td>
+                                        <td className="px-3 py-2.5 hidden xl:table-cell">
+                                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
+                                                {entry.status || "مرحّل"}
+                                            </span>
+                                        </td>
+                                    </tr>
+
+                                    <AnimatePresence>
+                                        {isExpanded && viewMode === "detailed" && (
+                                            <tr>
+                                                <td colSpan={11} className="p-0">
+                                                    <motion.div
+                                                        initial={{ opacity: 0, height: 0 }}
+                                                        animate={{ opacity: 1, height: "auto" }}
+                                                        exit={{ opacity: 0, height: 0 }}
+                                                        transition={{ duration: 0.2 }}
+                                                    >
+                                                        <RowDetailPanel
+                                                            entry={entry}
+                                                            onOpenInvoice={isSale ? () => onOpenInvoice(entry) : undefined}
+                                                        />
+                                                    </motion.div>
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </AnimatePresence>
+                                </React.Fragment>
+                            );
+                        })}
+
+                        {/* Closing balance row */}
+                        {filtered.length > 0 && (
+                            <tr className="bg-emerald-500/[0.06] border-t-2 border-emerald-500/20 print:bg-green-50">
+                                <td colSpan={viewMode === "detailed" ? 8 : 7} className="px-3 py-2.5 text-[11px] font-black text-emerald-400 print:text-green-800">
+                                    ◆ الرصيد الختامي
+                                </td>
+                                <td className="px-3 py-2.5 text-center font-mono font-black text-emerald-400 print:text-green-800">
+                                    ₪{money(closingBalance)}
+                                </td>
+                                <td colSpan={2} className="hidden lg:table-cell" />
+                            </tr>
+                        )}
+                    </tbody>
+                    {filtered.length > 0 && (
+                        <tfoot className="bg-slate-950/60 border-t border-white/10 print:bg-gray-100">
+                            <tr className="text-[11px] font-black">
+                                <td colSpan={viewMode === "detailed" ? 6 : 5} className="px-3 py-3 text-slate-500 print:text-gray-600">
+                                    إجمالي الفترة ({filtered.length} حركة)
+                                </td>
+                                <td className="px-3 py-3 text-center font-mono text-emerald-400 print:text-green-700">
+                                    ₪{money(totals.debit)}
+                                </td>
+                                <td className="px-3 py-3 text-center font-mono text-rose-400 print:text-red-700">
+                                    ₪{money(totals.credit)}
+                                </td>
+                                <td colSpan={3} />
+                            </tr>
+                        </tfoot>
+                    )}
+                </table>
+            </div>
+        </div>
+    );
+};
+
+/* ─── Sticky Summary Bar ─── */
+const SummaryBar: React.FC<{
+    opening: number; closing: number; debit: number; credit: number;
+    outstanding?: number; netPayable?: number;
+}> = ({ opening, closing, debit, credit, outstanding, netPayable }) => (
+    <div className="sticky top-0 z-30 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 p-3 bg-slate-950/95 backdrop-blur-md border border-white/10 rounded-2xl shadow-lg print:static print:bg-white print:border-gray-200">
+        {[
+            { label: "افتتاحي", value: opening, color: "text-blue-400" },
+            { label: "مدين", value: debit, color: "text-emerald-400" },
+            { label: "دائن", value: credit, color: "text-rose-400" },
+            { label: "ختامي", value: closing, color: "text-violet-400" },
+            ...(outstanding !== undefined ? [{ label: "سلف قائمة", value: outstanding, color: "text-amber-400" }] : []),
+            ...(netPayable !== undefined ? [{ label: "صافي مستحق", value: netPayable, color: "text-emerald-400" }] : []),
+        ].map((item) => (
+            <div key={item.label} className="text-center px-2 py-1.5 rounded-xl bg-white/[0.03] border border-white/5 print:border-gray-200">
+                <p className="text-[9px] text-slate-500 font-bold mb-0.5 print:text-gray-500">{item.label}</p>
+                <p className={`text-sm font-black font-mono ${item.color} print:text-gray-900`}>₪{money(item.value)}</p>
+            </div>
+        ))}
+    </div>
+);
+
+/* ─── Main Component ─── */
+const EmployeeStatement: React.FC<EmployeeStatementProps> = ({ employeeId, employeeName }) => {
     const today = new Date();
-    const defaultFrom = new Date(
-        today.getFullYear(),
-        today.getMonth(),
-        1,
-    )
-        .toISOString()
-        .split("T")[0];
-    const defaultTo = new Date(
-        today.getFullYear(),
-        today.getMonth() + 1,
-        0,
-    )
-        .toISOString()
-        .split("T")[0];
+    const defaultFrom = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0];
+    const defaultTo = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split("T")[0];
 
     const [fromDate, setFromDate] = useState(defaultFrom);
     const [toDate, setToDate] = useState(defaultTo);
     const [statementType, setStatementType] = useState<StatementType>("all");
+    const [viewMode, setViewMode] = useState<"simple" | "detailed">("simple");
+    const [searchQuery, setSearchQuery] = useState("");
+    const [amountFrom, setAmountFrom] = useState("");
+    const [amountTo, setAmountTo] = useState("");
 
     const [lines, setLines] = useState<StatementEntry[]>([]);
-    const [closingBalance, setClosingBalance] = useState(0);
     const [openingBalance, setOpeningBalance] = useState(0);
-    const [summaryData, setSummaryData] = useState<{
-        outstanding_advance?: number;
-        outstanding_loan?: number;
-        accrued_salary?: number;
-        net_payable?: number;
-    }>({});
-
+    const [closingBalance, setClosingBalance] = useState(0);
+    const [rawData, setRawData] = useState<EmployeeStatementData | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
+    const [invoiceIds, setInvoiceIds] = useState<number[]>([]);
+    const [currentInvoiceIdx, setCurrentInvoiceIdx] = useState(-1);
+
+    const totals = useMemo(() => ({
+        debit: lines.reduce((s, e) => s + (e.debit || 0), 0),
+        credit: lines.reduce((s, e) => s + (e.credit || 0), 0),
+    }), [lines]);
+
     const fetchStatement = useCallback(async () => {
         if (!fromDate || !toDate) return;
-
+        setIsLoading(true);
+        setError(null);
         try {
-            setIsLoading(true);
-            setError(null);
-
-            const response = await financeService.getEmployeeStatement(
-                employeeId,
-                fromDate,
-                toDate,
-                statementType,
-            );
-
-            if (!response.success) {
-                setError(response.message || "فشل جلب كشف الحساب");
-                return;
-            }
-
+            const filters: StatementFilters = {
+                from: fromDate, to: toDate, type: statementType,
+                mode: viewMode === "detailed" ? "detailed" : "simple",
+                search: searchQuery || undefined,
+                amount_from: amountFrom ? Number(amountFrom) : undefined,
+                amount_to: amountTo ? Number(amountTo) : undefined,
+                limit: 500,
+            };
+            const response = await financeService.getEmployeeStatement(employeeId, filters);
+            if (!response.success) { setError(response.message || "فشل جلب كشف الحساب"); return; }
             const data = response.data as EmployeeStatementData;
-
-            const extracted = extractLines(data, statementType);
-
-            if (statementType === "all") {
-                const rebuilt = rebuildUnifiedRunningBalance(
-                    extracted.lines,
-                    extracted.closingBalance,
-                );
-
-                setLines(rebuilt.entries);
-                setClosingBalance(extracted.closingBalance);
-                setOpeningBalance(rebuilt.openingBalance);
-            } else {
-                setLines(extracted.lines);
-                setClosingBalance(extracted.closingBalance);
-
-                const opening =
-                    extracted.lines.length > 0
-                        ? extracted.lines[0].running_balance -
-                        (extracted.lines[0].debit -
-                            extracted.lines[0].credit)
-                        : 0;
-
-                setOpeningBalance(opening);
-            }
-
-            setSummaryData({
-                outstanding_advance: data.outstanding_advance,
-                outstanding_loan: data.outstanding_loan,
-                accrued_salary: data.accrued_salary,
-                net_payable: data.net_payable,
-            });
+            setRawData(data);
+            const extracted = extractLines(data);
+            setLines(extracted.lines);
+            setClosingBalance(extracted.closingBalance);
+            setOpeningBalance(extracted.openingBalance);
         } catch (err: any) {
-            setError(
-                err?.response?.data?.message ||
-                err?.message ||
-                "حدث خطأ غير متوقع",
-            );
+            setError(err?.response?.data?.message || err?.message || "حدث خطأ");
         } finally {
             setIsLoading(false);
         }
-    }, [employeeId, fromDate, toDate, statementType]);
+    }, [employeeId, fromDate, toDate, statementType, viewMode, searchQuery, amountFrom, amountTo]);
+
+    useEffect(() => { fetchStatement(); }, [fetchStatement]);
 
     useEffect(() => {
-        fetchStatement();
-    }, [fetchStatement]);
+        const orderIds = lines
+            .filter((e) => e.movement_type === "sales" || e.source_type?.includes("Order"))
+            .map((e) => e.source_id)
+            .filter((id): id is number => id != null);
+        const unique = [...new Set(orderIds)];
+        if (unique.length > 0) {
+            invoiceDetailsService.batchInvoiceIds(unique).then((map) => {
+                setInvoiceIds(unique.map((oid) => map[oid]?.invoice_id).filter((id): id is number => id != null));
+            }).catch(() => {});
+        }
+    }, [lines]);
 
-    const totalDebit = lines.reduce((s, e) => s + e.debit, 0);
-    const totalCredit = lines.reduce((s, e) => s + e.credit, 0);
+    const handleOpenInvoice = useCallback(async (entry: StatementEntry) => {
+        if (!entry.source_id) return;
+        try {
+            const result = await invoiceDetailsService.getInvoiceIdByOrder(entry.source_id);
+            if (result?.invoice_id) {
+                setSelectedInvoiceId(result.invoice_id);
+                const idx = invoiceIds.indexOf(result.invoice_id);
+                setCurrentInvoiceIdx(idx >= 0 ? idx : -1);
+            }
+        } catch { /* no invoice */ }
+    }, [invoiceIds]);
 
+    const handleDownloadPdf = async (style: "simple" | "detailed" = "detailed") => {
+        try {
+            const blob = await employeeService.getAccountStatementPdf(employeeId, fromDate, toDate, statementType, style);
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `كشف_حساب_${employeeName}_${fromDate}_${toDate}.pdf`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        } catch { /* ignore */ }
+    };
 
-    const typeOptions: { value: StatementType; label: string; icon: React.ElementType }[] =
-        [
-            { value: "all", label: "الكل", icon: PieChart },
-            { value: "advance", label: "السلف", icon: ArrowUpRight },
-            { value: "salary", label: "الرواتب", icon: DollarSign },
-            { value: "loan", label: "القروض", icon: BanknoteIcon },
-        ];
+    const handleExport = async (format: "csv" | "excel") => {
+        try {
+            const blob = await financeService.exportEmployeeStatement(employeeId, {
+                from: fromDate, to: toDate, type: statementType, mode: "detailed", search: searchQuery || undefined,
+            }, format);
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `كشف_${employeeName}_${fromDate}_${toDate}.${format === "excel" ? "xls" : "csv"}`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        } catch { /* ignore */ }
+    };
 
     return (
-        <div className="space-y-5" dir="rtl">
-            {/* ── Header / Filters ───────────────────────────────── */}
-            <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-gradient-to-l from-slate-900 to-slate-950 border border-white/5 rounded-3xl p-5"
-            >
-                <div className="flex flex-col lg:flex-row lg:items-end gap-4">
-                    {/* Employee info */}
-                    <div className="flex items-center gap-3 flex-1">
-                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center text-white font-black text-lg shadow-xl">
-                            {employeeName
-                                .split(" ")
-                                .map((n) => n[0])
-                                .join("")
-                                .slice(0, 2)
-                                .toUpperCase()}
+        <div className="space-y-4 print:space-y-2" dir="rtl">
+            {/* ── Letterhead Header ── */}
+            <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-blue-950/30 border border-white/10 rounded-2xl overflow-hidden print:border-gray-300 print:bg-white">
+                <div className="px-5 py-4 border-b border-white/5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 print:border-gray-200">
+                    <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center shadow-lg print:bg-blue-700">
+                            <span className="text-white font-black text-lg">{employeeName.charAt(0)}</span>
                         </div>
-                        <div className="text-right">
-                            <h3 className="text-lg font-black text-white">
-                                كشف حساب {employeeName}
-                            </h3>
-                            <p className="text-[10px] text-slate-500 font-bold mt-0.5">
-                                من {dateFmt(fromDate)} إلى {dateFmt(toDate)}
+                        <div>
+                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest print:text-gray-500">كشف حساب موظف</p>
+                            <h2 className="text-xl font-black text-white print:text-gray-900">{employeeName}</h2>
+                            <p className="text-[11px] text-slate-400 mt-0.5 print:text-gray-600">
+                                <Calendar size={10} className="inline ml-1" />
+                                {dateFmt(fromDate)} — {dateFmt(toDate)}
                             </p>
                         </div>
                     </div>
 
-                    {/* Date Range */}
-                    <div className="flex items-center gap-2">
-                        <div className="relative">
-                            <Calendar
-                                size={12}
-                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"
-                            />
-                            <input
-                                type="date"
-                                value={fromDate}
-                                onChange={(e) => setFromDate(e.target.value)}
-                                className="bg-slate-950 border border-white/5 rounded-xl py-2 pr-8 pl-3 text-[11px] text-white outline-none focus:border-blue-500/50 w-36"
-                            />
-                        </div>
-                        <span className="text-slate-600 text-[10px]">—</span>
-                        <div className="relative">
-                            <Calendar
-                                size={12}
-                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"
-                            />
-                            <input
-                                type="date"
-                                value={toDate}
-                                onChange={(e) => setToDate(e.target.value)}
-                                className="bg-slate-950 border border-white/5 rounded-xl py-2 pr-8 pl-3 text-[11px] text-white outline-none focus:border-blue-500/50 w-36"
-                            />
+                    {/* View mode toggle */}
+                    <div className="flex items-center gap-2 print:hidden">
+                        <div className="flex bg-slate-950/80 border border-white/10 rounded-xl p-1 gap-1">
+                            <button onClick={() => setViewMode("simple")} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-black transition-all ${viewMode === "simple" ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-white"}`}>
+                                <LayoutDashboard size={13} /> بسيط
+                            </button>
+                            <button onClick={() => setViewMode("detailed")} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-black transition-all ${viewMode === "detailed" ? "bg-indigo-600 text-white shadow-md" : "text-slate-400 hover:text-white"}`}>
+                                <List size={13} /> مفصل
+                            </button>
                         </div>
                     </div>
+                </div>
 
-                    {/* Type Filter + Refresh */}
-                    <div className="flex items-center gap-2">
-                        <div className="flex bg-slate-950 border border-white/5 rounded-xl p-0.5 gap-0.5">
-                            {typeOptions.map((opt) => (
-                                <button
-                                    key={opt.value}
-                                    onClick={() => setStatementType(opt.value)}
-                                    className={`flex items - center gap - 1.5 px - 3 py - 1.5 rounded - lg text - [10px] font - black transition - all ${statementType === opt.value
-                                        ? "bg-blue-600 text-white shadow-lg"
-                                        : "text-slate-400 hover:text-white"
-                                        } `}
-                                >
-                                    <opt.icon size={12} />
-                                    {opt.label}
-                                </button>
-                            ))}
-                        </div>
+                {/* Controls row */}
+                <div className="px-5 py-3 flex flex-wrap items-center gap-2 bg-slate-950/40 print:hidden">
+                    <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
+                        className="bg-slate-900 border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-white outline-none focus:border-blue-500/50" />
+                    <span className="text-slate-600 text-xs">→</span>
+                    <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
+                        className="bg-slate-900 border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-white outline-none focus:border-blue-500/50" />
 
-                        <button
-                            onClick={fetchStatement}
-                            disabled={isLoading}
-                            className="p-2 rounded-xl bg-blue-600/20 border border-blue-500/30 text-blue-400 hover:bg-blue-600 hover:text-white transition-all disabled:opacity-50"
-                        >
-                            <RefreshCw
-                                size={14}
-                                className={isLoading ? "animate-spin" : ""}
-                            />
+                    <select value={statementType} onChange={(e) => setStatementType(e.target.value as StatementType)}
+                        className="bg-slate-900 border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-white outline-none focus:border-blue-500/50">
+                        {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+
+                    <div className="relative">
+                        <Search size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-600" />
+                        <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="بحث..."
+                            className="bg-slate-900 border border-white/10 rounded-lg py-1.5 pr-8 pl-3 text-[11px] text-white outline-none w-36 focus:border-blue-500/50" />
+                    </div>
+
+                    <div className="mr-auto flex items-center gap-1.5">
+                        <button onClick={fetchStatement} disabled={isLoading} title="تحديث"
+                            className="p-2 rounded-lg bg-blue-600/20 border border-blue-500/30 text-blue-400 hover:bg-blue-600 hover:text-white transition-all disabled:opacity-50">
+                            <RefreshCw size={13} className={isLoading ? "animate-spin" : ""} />
                         </button>
-
-                        <button className="p-2 rounded-xl bg-white/5 border border-white/5 text-slate-400 hover:text-white transition-all">
-                            <Printer size={14} />
+                        <button onClick={() => handleExport("csv")} title="CSV"
+                            className="p-2 rounded-lg bg-emerald-600/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-600 hover:text-white transition-all">
+                            <Download size={13} />
+                        </button>
+                        <button onClick={() => handleDownloadPdf("simple")} title="PDF بسيط"
+                            className="p-2 rounded-lg bg-amber-600/20 border border-amber-500/30 text-amber-400 hover:bg-amber-600 hover:text-white transition-all">
+                            <FileText size={13} />
+                        </button>
+                        <button onClick={() => handleDownloadPdf("detailed")} title="PDF مفصل"
+                            className="p-2 rounded-lg bg-orange-600/20 border border-orange-500/30 text-orange-400 hover:bg-orange-600 hover:text-white transition-all">
+                            <FileText size={13} />
+                        </button>
+                        <button onClick={() => window.print()} title="طباعة"
+                            className="p-2 rounded-lg bg-slate-700/40 border border-white/10 text-slate-400 hover:text-white transition-all">
+                            <Printer size={13} />
                         </button>
                     </div>
                 </div>
-            </motion.div>
-
-            {/* ── Summary Cards ─────────────────────────────────────── */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <SummaryCard
-                    label="الرصيد الافتتاحي"
-                    value={openingBalance}
-                    icon={Activity}
-                    color="text-slate-300"
-                    bg="bg-slate-800/40"
-                    border="border-white/5"
-                    trend={openingBalance >= 0 ? "up" : "down"}
-                />
-                <SummaryCard
-                    label="إجمالي مدين"
-                    value={totalDebit}
-                    icon={TrendingUp}
-                    color="text-emerald-400"
-                    bg="bg-emerald-500/10"
-                    border="border-emerald-500/20"
-                    trend="up"
-                    subtitle={`${lines.filter((l) => l.debit > 0).length} معاملة`}
-                />
-                <SummaryCard
-                    label="إجمالي دائن"
-                    value={totalCredit}
-                    icon={TrendingDown}
-                    color="text-rose-400"
-                    bg="bg-rose-500/10"
-                    border="border-rose-500/20"
-                    trend="down"
-                    subtitle={`${lines.filter((l) => l.credit > 0).length} معاملة`}
-                />
-                <SummaryCard
-                    label="الرصيد الختامي"
-                    value={closingBalance}
-                    icon={Wallet}
-                    color={
-                        closingBalance >= 0 ? "text-blue-400" : "text-rose-400"
-                    }
-                    bg={
-                        closingBalance >= 0
-                            ? "bg-blue-500/10"
-                            : "bg-rose-500/10"
-                    }
-                    border={
-                        closingBalance >= 0
-                            ? "border-blue-500/20"
-                            : "border-rose-500/20"
-                    }
-                    trend={closingBalance >= 0 ? "up" : "down"}
-                />
             </div>
 
-            {/* ── Employee Financial Summary ──────────────────────────── */}
-            {(summaryData.outstanding_advance !== undefined ||
-                summaryData.accrued_salary !== undefined ||
-                summaryData.net_payable !== undefined) && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="bg-gradient-to-l from-slate-900 to-slate-950 border border-white/5 rounded-2xl p-5"
-                    >
-                        <div className="flex items-center gap-2 mb-4">
-                            <Wallet size={14} className="text-slate-500" />
-                            <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">
-                                الملخص المالي للموظف
-                            </span>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            {summaryData.outstanding_advance !== undefined && (
-                                <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4">
-                                    <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">
-                                        السلف القائمة
-                                    </p>
-                                    <p className="text-xl font-black font-mono text-amber-400">
-                                        ₪{money(summaryData.outstanding_advance)}
-                                    </p>
-                                    <p className="text-[10px] text-slate-600 font-bold mt-1">
-                                        إجمالي السلف غير المسددة
-                                    </p>
-                                </div>
-                            )}
-
-                            {summaryData.accrued_salary !== undefined && (
-                                <div className="bg-purple-500/10 border border-purple-500/20 rounded-2xl p-4">
-                                    <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">
-                                        الرواتب المستحقة
-                                    </p>
-                                    <p className="text-xl font-black font-mono text-purple-400">
-                                        ₪{money(summaryData.accrued_salary)}
-                                    </p>
-                                    <p className="text-[10px] text-slate-600 font-bold mt-1">
-                                        إجمالي الرواتب غير المدفوعة
-                                    </p>
-                                </div>
-                            )}
-
-                            {summaryData.net_payable !== undefined && (
-                                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4">
-                                    <p className="text-[9px] text-slate-500 font-black uppercase tracking-widest mb-1">
-                                        صافي المستحق
-                                    </p>
-                                    <p className="text-xl font-black font-mono text-emerald-400">
-                                        ₪{money(summaryData.net_payable)}
-                                    </p>
-                                    <p className="text-[10px] text-slate-600 font-bold mt-1">
-                                        {summaryData.outstanding_advance && summaryData.outstanding_advance > 0
-                                            ? `بعد خصم السلف(₪${money(summaryData.outstanding_advance)
-                                            })`
-                                            : "صافي الراتب المستحق"}
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    </motion.div>
-                )}
-
-            {/* ── Timeline ───────────────────────────────────────────── */}
-            {!isLoading && lines.length > 0 && (
-                <BalanceTimeline entries={lines} />
-            )}
-
-            {/* ── Table / States ─────────────────────────────────────── */}
+            {/* ── Loading / Error ── */}
             {isLoading ? (
-                <div className="bg-slate-900/60 border border-white/5 rounded-2xl flex items-center justify-center h-48">
-                    <div className="flex flex-col items-center gap-3 text-slate-500">
-                        <RefreshCw size={20} className="animate-spin" />
-                        <span className="text-sm font-bold">
-                            جاري تحميل كشف الحساب...
-                        </span>
-                    </div>
+                <div className="space-y-3">
+                    <div className="h-16 bg-slate-800/40 rounded-2xl animate-pulse" />
+                    {[1, 2, 3, 4, 5].map((i) => (
+                        <div key={i} className="h-10 bg-slate-800/30 rounded-xl animate-pulse" style={{ animationDelay: `${i * 80}ms` }} />
+                    ))}
                 </div>
             ) : error ? (
                 <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-5 text-rose-400 text-sm font-bold flex items-center gap-3">
-                    <Activity size={18} />
-                    {error}
-                </div>
-            ) : lines.length === 0 ? (
-                <div className="bg-slate-900/60 border border-white/5 rounded-2xl flex flex-col items-center justify-center h-48 gap-3">
-                    <Wallet size={32} className="text-slate-700" />
-                    <p className="text-slate-600 font-black text-sm">
-                        لا توجد معاملات مالية في هذه الفترة
-                    </p>
-                    <p className="text-[11px] text-slate-700 font-bold">
-                        قم بتغيير نطاق التاريخ أو نوع المعاملات
-                    </p>
+                    <Activity size={18} />{error}
                 </div>
             ) : (
                 <>
-                    <TransactionTable entries={lines} />
+                    {/* Sticky summary */}
+                    <SummaryBar
+                        opening={openingBalance}
+                        closing={closingBalance}
+                        debit={totals.debit}
+                        credit={totals.credit}
+                        outstanding={rawData?.outstanding_advance}
+                        netPayable={rawData?.net_payable}
+                    />
 
-                    {/* Footer info */}
-                    <div className="flex items-center justify-between px-1">
-                        <span className="text-[11px] text-slate-600 font-bold">
-                            {lines.length} معاملة مالية
-                        </span>
-                        <span className="text-[11px] text-slate-600 font-bold font-mono">
-                            {fromDate} — {toDate}
-                        </span>
+                    {/* Movement type quick filters */}
+                    <div className="flex flex-wrap gap-1.5 print:hidden">
+                        {TYPE_OPTIONS.map((opt) => (
+                            <button key={opt.value} onClick={() => setStatementType(opt.value)}
+                                className={`px-3 py-1 rounded-full text-[10px] font-black border transition-all ${statementType === opt.value
+                                    ? "bg-blue-600 border-blue-500 text-white shadow-md"
+                                    : "bg-slate-900/60 border-white/10 text-slate-400 hover:text-white hover:border-white/20"
+                                }`}>
+                                {opt.label}
+                            </button>
+                        ))}
                     </div>
+
+                    {/* Main statement table */}
+                    <StatementTable
+                        entries={lines}
+                        openingBalance={openingBalance}
+                        closingBalance={closingBalance}
+                        viewMode={viewMode}
+                        onOpenInvoice={handleOpenInvoice}
+                    />
+
+                    {/* Footer note */}
+                    <p className="text-[10px] text-slate-600 text-center print:text-gray-500">
+                        كشف حساب {employeeName} · {dateFmt(fromDate)} — {dateFmt(toDate)} · {lines.length} حركة · الرصيد ₪{money(closingBalance)}
+                    </p>
                 </>
             )}
+
+            <InvoiceDrawer
+                invoiceId={selectedInvoiceId}
+                onClose={() => { setSelectedInvoiceId(null); setCurrentInvoiceIdx(-1); }}
+                onPrev={() => { if (currentInvoiceIdx > 0) { const i = currentInvoiceIdx - 1; setCurrentInvoiceIdx(i); setSelectedInvoiceId(invoiceIds[i]); } }}
+                onNext={() => { if (currentInvoiceIdx < invoiceIds.length - 1) { const i = currentInvoiceIdx + 1; setCurrentInvoiceIdx(i); setSelectedInvoiceId(invoiceIds[i]); } }}
+                hasPrev={currentInvoiceIdx > 0}
+                hasNext={currentInvoiceIdx < invoiceIds.length - 1}
+            />
         </div>
     );
 };

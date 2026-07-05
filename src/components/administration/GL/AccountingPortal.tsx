@@ -20,6 +20,7 @@ import {
   Plus,
   UserPlus,
   Truck,
+  Percent,
 } from "lucide-react";
 
 import { useApp } from "../../../../store";
@@ -57,8 +58,9 @@ import {
 import ViewJournalModal from "./ViewJournalModal";
 import CustomerPortal from "../customers/CustomerPortal";
 import SupplierPortal from "../suppliers/SupplierPortal";
+import { DiscountManagementPortal } from "../discounts/DiscountManagementPortal";
 
-type ActiveTab = "DASHBOARD" | "GL" | "AR" | "AP" | "CASH" | "HR";
+type ActiveTab = "DASHBOARD" | "GL" | "AR" | "AP" | "CASH" | "HR" | "DISCOUNTS";
 type GLSubTab = "YEARS" | "COA" | "COST_CENTERS" | "JOURNAL" | "LEDGER";
 type ModalType =
   | "ADD_COA"
@@ -136,10 +138,10 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
         setBranchesFromApi(
           app.branches?.length
             ? app.branches.map((branch) => ({
-                id: String(branch.id),
-                name: branch.name,
-                currency: (branch as any).currency ?? undefined,
-              }))
+              id: String(branch.id),
+              name: branch.name,
+              currency: (branch as any).currency ?? undefined,
+            }))
             : [],
         );
       });
@@ -214,10 +216,10 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
     if (branchesFromApi.length > 0) return branchesFromApi;
     return app.branches?.length
       ? app.branches.map((branch) => ({
-          id: String(branch.id),
-          name: branch.name,
-          currency: (branch as any).currency ?? undefined,
-        }))
+        id: String(branch.id),
+        name: branch.name,
+        currency: (branch as any).currency ?? undefined,
+      }))
       : [];
   }, [branchesFromApi, app.branches]);
 
@@ -315,7 +317,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
             items.map((c: any) => ({ id: c.id, name: c.name, code: c.code })),
           );
         })
-        .catch(() => {});
+        .catch(() => { });
     } catch (err) {
       console.error("Failed to create customer:", err);
     } finally {
@@ -739,6 +741,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
       AP: "الذمم الدائنة",
       CASH: "النقدية والبنوك",
       HR: "الموارد البشرية",
+      DISCOUNTS: "إدارة الخصومات",
     };
     return map[activeTab];
   })();
@@ -1552,11 +1555,10 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                 <button
                   key={sub.id}
                   onClick={() => setGlSubTab(sub.id as GLSubTab)}
-                  className={`flex items-center gap-2 px-5 py-2 rounded-xl text-[10px] font-black transition-all ${
-                    glSubTab === sub.id
+                  className={`flex items-center gap-2 px-5 py-2 rounded-xl text-[10px] font-black transition-all ${glSubTab === sub.id
                       ? "bg-red-600 text-white shadow-lg"
                       : "text-slate-400 hover:bg-white/5"
-                  }`}
+                    }`}
                 >
                   <sub.icon size={14} /> {sub.label}
                 </button>
@@ -1585,6 +1587,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
             {activeTab === "CASH" && (
               <CashBankTab bankAccounts={app.bankAccounts} />
             )}
+            {activeTab === "DISCOUNTS" && <DiscountManagementPortal />}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -1602,7 +1605,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                 parentName={
                   coaForm.parentId
                     ? flatAccounts.find((a) => a.id === coaForm.parentId)
-                        ?.nameAr
+                      ?.nameAr
                     : undefined
                 }
               />
@@ -1640,11 +1643,11 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
                   );
                   return je
                     ? {
-                        transaction_number: je.reference,
-                        date: je.date,
-                        description: je.description,
-                        status: je.status,
-                      }
+                      transaction_number: je.reference,
+                      date: je.date,
+                      description: je.description,
+                      status: je.status,
+                    }
                     : undefined;
                 })()}
               />

@@ -31,6 +31,7 @@ import {
   Banknote,
   ChevronDown,
   Shield,
+  Percent,
 } from "lucide-react";
 
 /* ── روابط التنقل ── */
@@ -68,7 +69,7 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({ children
   // فتح المجموعات تلقائياً حسب الرابط الحالي
   useEffect(() => {
     const path = window.location.pathname;
-    if (path.startsWith("/admin/accounting")) setOpenGroups(p => ({ ...p, accounting: true }));
+    if (path.startsWith("/admin/accounting") || path.startsWith("/admin/discounts")) setOpenGroups(p => ({ ...p, accounting: true }));
     if (path.includes("item-tree") || path.includes("items-index")) setOpenGroups(p => ({ ...p, items: true }));
   }, []);
 
@@ -106,9 +107,8 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({ children
       <div className="space-y-1">
         <button
           onClick={() => setOpenGroups(p => ({ ...p, [groupKey]: !p[groupKey] }))}
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
-            isOpen ? "bg-red-600/20 text-red-300" : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-          } ${collapsed ? "justify-center px-0" : ""}`}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${isOpen ? "bg-red-600/20 text-red-300" : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+            } ${collapsed ? "justify-center px-0" : ""}`}
         >
           <Icon size={20} />
           {!collapsed && (
@@ -185,6 +185,7 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({ children
             <SidebarLink to="/admin/sales" icon={Receipt} label="فواتير المبيعات" indent permission={PERMISSIONS.MANAGE_INVOICES} />
             <SidebarLink to="/admin/customers" icon={Receipt} label="حسابات العملاء" indent permission={PERMISSIONS.MANAGE_CUSTOMERS} />
             <SidebarLink to="/admin/suppliers" icon={Wallet} label="حسابات الموردين" indent permission={PERMISSIONS.MANAGE_SUPPLIERS} />
+            <SidebarLink to="/admin/discounts" icon={Percent} label="إدارة الخصومات" indent />
             <SidebarLink to="/admin/accounting/cash" icon={Banknote} label="النقدية والبنوك" indent />
             <SidebarLink to="/admin/accounting/hr" icon={Users2} label="الموظفون والمرتبات" indent />
           </SidebarGroup>

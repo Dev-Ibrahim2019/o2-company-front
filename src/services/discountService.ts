@@ -12,11 +12,15 @@ export interface DiscountTarget {
     | "supplier"
     | "department"
     | "item"
+    | "category"
+    | "branch"
     | "all_customers"
     | "all_employees"
     | "all_suppliers"
     | "all";
   target_id?: number | null;
+  business_code?: string;
+  target_business_code?: string;
   target_type_label?: string;
   target_name?: string | null;
 }
@@ -34,6 +38,7 @@ export interface Discount {
     | "buy_x_get_y";
   discount_type_label?: string;
   value: number;
+  apply_strategy?: "per_quantity" | "per_line" | "per_invoice" | "once";
   priority: number;
   start_date?: string;
   end_date?: string;
@@ -42,6 +47,7 @@ export interface Discount {
   max_discount_amount?: number;
   min_order_amount?: number;
   targets?: DiscountTarget[];
+  exclusions?: DiscountTarget[];
   creator?: { id: number; name: string };
   usage_count?: number;
   created_at: string;
@@ -59,6 +65,7 @@ export interface DiscountCreatePayload {
     | "price_override"
     | "buy_x_get_y";
   value: number;
+  apply_strategy?: "per_quantity" | "per_line" | "per_invoice" | "once";
   priority?: number;
   start_date?: string;
   end_date?: string;
@@ -66,6 +73,36 @@ export interface DiscountCreatePayload {
   max_discount_amount?: number;
   min_order_amount?: number;
   targets?: Omit<DiscountTarget, "id" | "discount_id">[];
+  exclusions?: Omit<DiscountTarget, "id" | "discount_id">[];
+}
+
+export interface EntityRecord {
+  id: number;
+  name: string;
+  name_ar?: string;
+  type: string;
+  business_code?: string;
+  employee_number?: string;
+  customer_code?: string;
+  supplier_code?: string;
+  department?: string;
+  department_id?: number;
+  department_name?: string;
+  status?: string | boolean;
+  branch?: string;
+  branch_id?: number;
+  price?: number;
+  phone?: string;
+}
+
+export interface EntityLookupResponse {
+  data: EntityRecord[];
+  meta?: {
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    total: number;
+  };
 }
 
 export interface DiscountCalculateResult {
@@ -75,6 +112,13 @@ export interface DiscountCalculateResult {
   discount_amount: number;
   final_price: number;
   discount_percent?: number;
+  matched_rule?: unknown;
+  matched_target?: unknown;
+  matched_entity?: unknown;
+  priority?: number;
+  apply_strategy?: string;
+  reason?: string;
+  rejected_discounts?: Array<{ id: number; name: string; code: string; reason: string }>;
 }
 
 export interface CartDiscountResult {
@@ -96,6 +140,28 @@ export interface CartDiscountItem {
   discount_percent?: number;
   final_unit_price: number;
   final_total: number;
+  apply_strategy?: string;
+}
+
+export interface DiscountDebugPayload {
+  price: number;
+  quantity?: number;
+  customer_id?: number;
+  employee_id?: number;
+  supplier_id?: number;
+  department_id?: number;
+  item_id?: number;
+  category_id?: number;
+  branch_id?: number;
+}
+
+export interface DiscountTargetValidation {
+  found: boolean;
+  target_type: DiscountTarget["target_type"];
+  target_id?: number;
+  entity?: Record<string, unknown>;
+  relations?: Record<string, unknown>;
+  message?: string;
 }
 
 const API_BASE = "/discounts";
@@ -162,6 +228,21 @@ export const discountService = {
   },
 
   // حساب الخصم لعنصر
+  async getEntities(params?: {
+    type?: string;
+    search?: string;
+    page?: number;
+    per_page?: number;
+  } | string): Promise<{ data: EntityRecord[]; meta?: EntityLookupResponse["meta"] }> {
+    const finalParams = typeof params === "string" ? { type: params } : params;
+    const response = await api.get(`${API_BASE}/entities`, { params: finalParams });
+    const payload = response.data?.data;
+    if (payload?.data && Array.isArray(payload.data)) {
+      return payload;
+    }
+    return response.data;
+  },
+
   async calculate(params: {
     price: number;
     quantity?: number;
@@ -170,20 +251,11 @@ export const discountService = {
     supplier_id?: number;
     department_id?: number;
     item_id?: number;
+    category_id?: number;
+    branch_id?: number;
   }): Promise<{ data: DiscountCalculateResult }> {
-    const query = new URLSearchParams();
-    query.set("price", String(params.price));
-    if (params.quantity) query.set("quantity", String(params.quantity));
-    if (params.customer_id)
-      query.set("customer_id", String(params.customer_id));
-    if (params.employee_id)
-      query.set("employee_id", String(params.employee_id));
-    if (params.supplier_id)
-      query.set("supplier_id", String(params.supplier_id));
-    if (params.department_id)
-      query.set("department_id", String(params.department_id));
-    if (params.item_id) query.set("item_id", String(params.item_id));
-    return request(`${API_BASE}/calculate?${query.toString()}`);
+    const response = await api.post(`${API_BASE}/calculate`, params);
+    return response.data;
   },
 
   // حساب خصومات السلة
@@ -194,12 +266,30 @@ export const discountService = {
       item_id?: number;
       item_name?: string;
       department_id?: number;
+      category_id?: number;
     }>;
     customer_id?: number;
     employee_id?: number;
     supplier_id?: number;
+    department_id?: number;
+    branch_id?: number;
   }): Promise<{ data: CartDiscountResult }> {
     const response = await api.post(`${API_BASE}/calculate-cart`, params);
+    return response.data;
+  },
+
+  async debug(
+    payload: DiscountDebugPayload,
+  ): Promise<{ data: DiscountCalculateResult }> {
+    const response = await api.post(`${API_BASE}/debug`, payload);
+    return response.data;
+  },
+
+  async validateTarget(params: {
+    target_type: DiscountTarget["target_type"];
+    target_id?: number;
+  }): Promise<{ data: DiscountTargetValidation }> {
+    const response = await api.post(`${API_BASE}/validate-target`, params);
     return response.data;
   },
 

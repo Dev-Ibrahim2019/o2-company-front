@@ -70,11 +70,19 @@ export interface AgingReportItem {
 export interface SupplierStatementLine {
   date: string;
   transaction_number: string;
+  transaction_id?: number;
   type: string;
   description: string | null;
+  reference?: string | null;
   debit: number;
   credit: number;
   balance: number;
+  source_type?: string | null;
+  source_id?: number | null;
+  source_label?: string | null;
+  branch_id?: number | null;
+  branch_name?: string | null;
+  notes?: string | null;
 }
 
 export interface SupplierStatement {
