@@ -1,4 +1,12 @@
-@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Tajawal:wght@400;500;700;800;900&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Cairo", "Tajawal", "Arial", sans-serif;
+  --color-brand: #a30000;
+  --color-brand-dark: #7a0000;
+  --color-brand-soft: rgba(163, 0, 0, 0.12);
+  --shadow-card: 0 18px 45px rgba(0, 0, 0, 0.28);
+}
 
 :root {
   color-scheme: dark;

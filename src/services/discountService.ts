@@ -164,7 +164,7 @@ export interface DiscountTargetValidation {
   message?: string;
 }
 
-const API_BASE = "/discounts";
+const API_BASE = "/admin/pos-registers/discounts";
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const config: any = {

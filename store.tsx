@@ -1,5 +1,7 @@
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useEffect, useCallback } from 'react';
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import {
   Order, OrderType, OrderStatus, MenuItem, OrderItem, User, PaymentMethod,
   Transaction, SavedCard, Table, Shift, Branch, Department, JobTitle, JobType, Employee,
@@ -11,6 +13,7 @@ import {
 import { TABLES, MENU_ITEMS } from './constants';
 import api from './src/api/axios';
 
+const AppContext = createContext<any>(null as any);
 
 interface AppState {
   // Auth
@@ -30,7 +33,6 @@ interface AppState {
 
   // Menu Items
   menuItems: MenuItem[];
-  customers: Customer[];
   diningZones: Hall[];
   tablesLoading: boolean;
   fetchDiningZones: (branchId?: number) => Promise<void>;
@@ -47,12 +49,8 @@ interface AppState {
   addJobType: (jt: Omit<JobType, 'id'>) => void;
   updateJobType: (id: string, jt: Partial<JobType>) => void;
   deleteJobType: (id: string) => void;
-  addEmployee: (emp: Omit<Employee, 'id'>) => void;
-  updateEmployee: (id: string, emp: Partial<Employee>) => void;
-  deleteEmployee: (id: string) => void;
   addMenuItem: (item: Omit<MenuItem, 'id'>) => void;
   updateMenuItem: (id: string, item: Partial<MenuItem>) => void;
-
   deleteMenuItem: (id: string) => void;
 
   // Orders
@@ -1788,6 +1786,8 @@ export const useApp = create<AppState>()(
 
       // Menu Items
       menuItems: [],
+      diningZones: [],
+      tablesLoading: false,
       setMenuItems: (menuItems) => set({ menuItems }),
       addMenuItem: (item) => set((state) => ({ menuItems: [...state.menuItems, item] })),
       updateMenuItem: (item) =>
@@ -1798,6 +1798,17 @@ export const useApp = create<AppState>()(
         set((state) => ({
           menuItems: state.menuItems.filter((i) => i.id !== id),
         })),
+      fetchDiningZones: async (branchId?: number) => {
+        try {
+          set({ tablesLoading: true });
+          const params = branchId ? { branch_id: branchId } : {};
+          const response = await api.get('/dining-zones', { params });
+          set({ diningZones: response.data.data || response.data, tablesLoading: false });
+        } catch (error) {
+          console.error('Failed to fetch dining zones:', error);
+          set({ tablesLoading: false });
+        }
+      },
 
       // Orders
       orders: [],

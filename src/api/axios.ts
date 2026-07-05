@@ -100,55 +100,55 @@ function getDiscountMockHandler(
   const discountApi = tryGetDiscountApi();
   if (!discountApi) return null;
 
-  // GET /discounts (list)
-  if (method === "GET" && u === "/discounts") {
+  // GET /admin/pos-registers/discounts (list)
+  if (method === "GET" && u === "/admin/pos-registers/discounts") {
     return discountApi.getAll(config.params);
   }
-  // GET /discounts/dashboard
-  if (method === "GET" && u === "/discounts/dashboard") {
+  // GET /admin/pos-registers/discounts/dashboard
+  if (method === "GET" && u === "/admin/pos-registers/discounts/dashboard") {
     return discountApi.dashboard();
   }
-  // GET /discounts/entities (for entity dropdowns)
-  if (method === "GET" && u === "/discounts/entities") {
+  // GET /admin/pos-registers/discounts/entities (for entity dropdowns)
+  if (method === "GET" && u === "/admin/pos-registers/discounts/entities") {
     return discountApi.getEntities(config.params?.type);
   }
-  // POST /discounts/calculate
-  if (method === "POST" && u === "/discounts/calculate") {
+  // POST /admin/pos-registers/discounts/calculate
+  if (method === "POST" && u === "/admin/pos-registers/discounts/calculate") {
     return discountApi.calculate(config.data ? JSON.parse(config.data) : {});
   }
-  // GET /discounts/:id
-  const singleMatch = u.match(/^\/discounts\/(\d+)$/);
+  // GET /admin/pos-registers/discounts/:id
+  const singleMatch = u.match(/^\/admin\/pos-registers\/discounts\/(\d+)$/);
   if (method === "GET" && singleMatch) {
     return discountApi.getById(parseInt(singleMatch[1]));
   }
-  // POST /discounts
-  if (method === "POST" && u === "/discounts") {
+  // POST /admin/pos-registers/discounts
+  if (method === "POST" && u === "/admin/pos-registers/discounts") {
     return discountApi.create(config.data ? JSON.parse(config.data) : {});
   }
-  // POST /discounts/calculate-cart
-  if (method === "POST" && u === "/discounts/calculate-cart") {
+  // POST /admin/pos-registers/discounts/calculate-cart
+  if (method === "POST" && u === "/admin/pos-registers/discounts/calculate-cart") {
     return discountApi.calculateCart(
       config.data ? JSON.parse(config.data) : {},
     );
   }
-  // POST /discounts/debug
-  if (method === "POST" && u === "/discounts/debug") {
+  // POST /admin/pos-registers/discounts/debug
+  if (method === "POST" && u === "/admin/pos-registers/discounts/debug") {
     return discountApi.debug(config.data ? JSON.parse(config.data) : {});
   }
-  // POST /discounts/validate-target
-  if (method === "POST" && u === "/discounts/validate-target") {
+  // POST /admin/pos-registers/discounts/validate-target
+  if (method === "POST" && u === "/admin/pos-registers/discounts/validate-target") {
     return discountApi.validateTarget(
       config.data ? JSON.parse(config.data) : {},
     );
   }
-  // PUT /discounts/:id
+  // PUT /admin/pos-registers/discounts/:id
   if (method === "PUT" && singleMatch) {
     return discountApi.update(
       parseInt(singleMatch[1]),
       config.data ? JSON.parse(config.data) : {},
     );
   }
-  // DELETE /discounts/:id
+  // DELETE /admin/pos-registers/discounts/:id
   if (method === "DELETE" && singleMatch) {
     return discountApi.delete(parseInt(singleMatch[1]));
   }
