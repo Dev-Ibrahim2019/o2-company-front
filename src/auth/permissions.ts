@@ -92,6 +92,12 @@ export const PERMISSIONS = {
   // ── نقاط البيع ──
   MANAGE_POS_REGISTERS: "manage-pos-registers",
 
+  // ── أجهزة الضيافة ──
+  MANAGE_HOSPITALITY_DEVICES: "manage-hospitality-devices",
+
+  // ── القاعات والطاولات ──
+  MANAGE_DINING_ZONES: "manage-dining-zones",
+
   // ── واجهة الكاشير ──
   ACCESS_POS_INTERFACE: "access-pos-interface",
   // ── الخصومات ──
@@ -111,6 +117,8 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   [ROLES.SUPER_ADMIN]: [
     // يملك كل شيء
     PERMISSIONS.MANAGE_POS_REGISTERS,
+    PERMISSIONS.MANAGE_HOSPITALITY_DEVICES,
+    PERMISSIONS.MANAGE_DINING_ZONES,
     PERMISSIONS.MANAGE_BRANCHES,
     PERMISSIONS.MANAGE_DEPARTMENTS,
     PERMISSIONS.MANAGE_ITEMS,
@@ -137,6 +145,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     PERMISSIONS.VIEW_REPORTS,
     PERMISSIONS.VIEW_ACCOUNTING,
     PERMISSIONS.MANAGE_CUSTOMERS,
+    PERMISSIONS.MANAGE_DINING_ZONES,
   ],
 
   [ROLES.ACCOUNTANT]: [

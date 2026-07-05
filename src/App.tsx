@@ -21,8 +21,14 @@ import AdminPOSWrapper from "./components/POS/AdminPOSWrapper";
 import { TablesView } from "./components/POS/Tables";
 import { OrdersView } from "./components/POS/Orders";
 import { ShiftView } from "./components/POS/Shift";
+import { HospitalityLayout } from "./components/Hospitality/Layout";
+import { HospitalityPOS } from "./components/Hospitality/HospitalityPOS";
+import { HospitalityOrders } from "./components/Hospitality/HospitalityOrders";
+import { HospitalityTables } from "./components/Hospitality/Tables";
 import UsersManagementPage from "./pages/UsersManagementPage";
 import PosRegistersPage from "./pages/PosRegistersPage";
+import HospitalityDevicesPage from "./pages/HospitalityDevicesPage";
+import DiningZonesPage from "./pages/DiningZonesPage";
 import RolesPermissionsPage from "./pages/RolesPermissionsPage";
 import DepartmentsPage from "./components/administration/DepartmentsPage";
 import { ThemeProvider } from "./theme";
@@ -39,6 +45,14 @@ const POS_ROLES = [
   ROLES.CASHIER,
   ROLES.HOSPITALITY,
   ROLES.DEPT_STAFF,
+  ROLES.SUPER_ADMIN,
+  ROLES.ACCOUNTANT,
+  ROLES.BRANCH_MANAGER,
+];
+
+/** الأدوار المسموح بها في مسارات /Hospitality/* */
+const HOSPITALITY_ROLES = [
+  ROLES.HOSPITALITY,
   ROLES.SUPER_ADMIN,
   ROLES.ACCOUNTANT,
   ROLES.BRANCH_MANAGER,
@@ -188,6 +202,8 @@ function AppRoutes() {
               <Route path="users" element={<UsersManagementPage />} />
               <Route path="permissions" element={<RolesPermissionsPage />} />
               <Route path="pos-registers" element={<PosRegistersPage />} />
+              <Route path="hospitality-devices" element={<HospitalityDevicesPage />} />
+              <Route path="dining-zones" element={<DiningZonesPage />} />
               <Route path="pos" element={<AdminPOSWrapper />} />
             </Route>
           </Route>
@@ -202,6 +218,20 @@ function AppRoutes() {
               <Route index element={<POS onViewTables={() => { }} />} />
               <Route path="orders" element={<OrdersView />} />
               <Route path="tables" element={<TablesView />} />
+            </Route>
+          </Route>
+        </Route>
+
+        {/* ═══ مسارات قسم الضيافة ═══
+            RoleGuard يفحص الدور → HospitalityLayout يعرض السايد بار الخاص بالضيافة
+            يستخدم مكونات خاصة بالضيافة
+        */}
+        <Route element={<RoleGuard allowedRoles={HOSPITALITY_ROLES} />}>
+          <Route element={<HospitalityLayout />}>
+            <Route path="/Hospitality">
+              <Route index element={<HospitalityPOS />} />
+              <Route path="orders" element={<HospitalityOrders />} />
+              <Route path="tables" element={<HospitalityTables />} />
             </Route>
           </Route>
         </Route>
@@ -224,6 +254,7 @@ function AppRoutes() {
 
         {/* ── الصفحة الافتراضية ── */}
         <Route index element={<Navigate to="/admin/dashboard" replace />} />
+
       </Route>
 
       {/* ── 404 ── */}

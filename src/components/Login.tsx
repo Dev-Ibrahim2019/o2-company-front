@@ -64,6 +64,8 @@ export const Login: React.FC = () => {
     const primary = roles[0] || "";
     if (primary === "super-admin" || primary === "accountant" || primary === "branch-manager") {
       navigate("/admin/dashboard", { replace: true });
+    } else if (primary === "hospitality") {
+      navigate("/Hospitality", { replace: true });
     } else {
       navigate("/pos", { replace: true });
     }

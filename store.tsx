@@ -1,14 +1,15 @@
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   Order, OrderType, OrderStatus, MenuItem, OrderItem, User, PaymentMethod,
   Transaction, SavedCard, Table, Shift, Branch, Department, JobTitle, JobType, Employee,
   TableStatus, FinancialTransaction, FinancialTransactionType,
   CustomerFeedback, StaffTask, TableAssignment, Customer, CustomerType, CustomerAddress,
-  EmployeeStatus, Attendance, WorkSchedule, ActivityLog,
+  EmployeeStatus, Attendance, WorkSchedule, ActivityLog, Hall,
   FiscalYear, ChartOfAccount, CostCenter, JournalEntry, Supplier, BankAccount, CashBox, AccountType
 } from './types';
 import { TABLES, MENU_ITEMS } from './constants';
+import api from './src/api/axios';
 
 interface AppContextType {
   activeOrders: Order[];
@@ -24,6 +25,9 @@ interface AppContextType {
   employees: Employee[];
   menuItems: MenuItem[];
   customers: Customer[];
+  diningZones: Hall[];
+  tablesLoading: boolean;
+  fetchDiningZones: (branchId?: number) => Promise<void>;
 
   addBranch: (branch: Omit<Branch, 'id'>) => void;
   updateBranch: (id: string, branch: Partial<Branch>) => void;
@@ -194,7 +198,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentShift, setCurrentShift] = useState<Shift | null>(null);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
-  const [tables, setTables] = useState<Table[]>(TABLES);
+  const [tables, setTables] = useState<Table[]>([]);
+  const [diningZones, setDiningZones] = useState<Hall[]>([]);
+  const [tablesLoading, setTablesLoading] = useState(true);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [financialTransactions, setFinancialTransactions] = useState<FinancialTransaction[]>([]);
 
@@ -953,6 +959,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setStaffTasks(prev => prev.map(t => t.id === id ? { ...t, ...task } : t));
   };
 
+  // ── جلب القاعات والطاولات من API ──
+  const fetchDiningZones = useCallback(async (branchId?: number) => {
+    setTablesLoading(true);
+    try {
+      const params = branchId ? `?branch_id=${branchId}` : '';
+      const { data: res } = await api.get(`/dining-zones${params}`);
+      const zones = res.data ?? res;
+
+      if (Array.isArray(zones)) {
+        const halls: Hall[] = [];
+        const allTables: Table[] = [];
+
+        zones.forEach((zone: any) => {
+          halls.push({
+            id: String(zone.id),
+            name: zone.name,
+            code: zone.code,
+            branch_id: zone.branch_id,
+            status: zone.status,
+          });
+
+          if (Array.isArray(zone.tables)) {
+            zone.tables.forEach((table: any, idx: number) => {
+              allTables.push({
+                id: String(table.id),
+                number: idx + 1,
+                label: table.table_number || `${zone.code}${idx + 1}`,
+                status: table.status || 'AVAILABLE',
+                capacity: table.capacity || 4,
+                hallId: String(zone.id),
+                qr_code: table.qr_code,
+                qr_url: table.qr_url,
+                position: { x: (idx % 10) * 120 + 50, y: Math.floor(idx / 10) * 120 + 50 },
+              });
+            });
+          }
+        });
+
+        setDiningZones(halls);
+        setTables(allTables);
+      }
+    } catch (err) {
+      console.error('فشل جلب القاعات:', err);
+    } finally {
+      setTablesLoading(false);
+    }
+  }, []);
+
+  // تحميل القاعات عند بدء التطبيق
+  useEffect(() => {
+    // لا نمرر branch_id — الـ backend يستخدم $user->branch_id من التوكن تلقائياً
+    // super-admin يشوف كل القاعات، غيره يشوف فرعه فقط
+    fetchDiningZones();
+  }, [fetchDiningZones]);
+
   const assignTable = (tableId: string, staffId: string) => {
     if (!currentShift) return;
     setTableAssignments(prev => {
@@ -1704,6 +1765,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       login, logout, addToCart, removeFromCart, updateCartQuantity, updateCartItem, updateOrderItemStatus, updateOrderStatus, cancelOrder, transferOrder, mergeOrders, splitOrder, refundOrder, submitOrder, depositToWallet, refundToWallet, saveNewCard, toggleFavorite, setOrderType,
       reorder,
       tables, selectedTable, setSelectedTable, updateTableStatus, transferTable, mergeTables, editingOrderId, clearCart, voidOrder, completeOrder, loadOrderToPOS, confirmOrder, deliverOrder, assignShelfToOrder, collectOrderItemByAggregator,
+      diningZones, tablesLoading, fetchDiningZones,
 
       fiscalYears, chartOfAccounts, costCenters, journalEntries, suppliers, bankAccounts, cashBoxes,
       addFiscalYear, updateFiscalYear, addCOA, updateCOA, deleteCOA, addCostCenter, updateCostCenter, addJournalEntry, updateJournalEntry, deleteJournalEntry,
