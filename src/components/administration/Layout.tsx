@@ -27,6 +27,7 @@ import {
   Archive,
   BookOpen,
   Receipt,
+  ReceiptText,
   Wallet,
   Banknote,
   ChevronDown,
@@ -46,7 +47,7 @@ const NAV = [
   { to: "/admin/employees", icon: Users2, label: "إدارة الموظفين", permission: PERMISSIONS.MANAGE_EMPLOYEES },
   { to: "/admin/accounting/dashboard", icon: LayoutDashboard, label: "الرئيسية المالية", permission: PERMISSIONS.VIEW_ACCOUNTING, indent: true, group: "accounting" },
   { to: "/admin/accounting/gl", icon: BookOpen, label: "المحاسبة العامة", permission: PERMISSIONS.MANAGE_ACCOUNTING, indent: true, group: "accounting" },
-  { to: "/admin/sales", icon: Receipt, label: "فواتير المبيعات", permission: PERMISSIONS.MANAGE_INVOICES, indent: true, group: "accounting" },
+  { to: "/admin/sales-invoices", icon: ReceiptText, label: "فواتير المبيعات", permission: PERMISSIONS.MANAGE_INVOICES, indent: true, group: "accounting" },
   { to: "/admin/customers", icon: Receipt, label: "حسابات العملاء", permission: PERMISSIONS.MANAGE_CUSTOMERS, indent: true, group: "accounting" },
   { to: "/admin/suppliers", icon: Wallet, label: "حسابات الموردين", permission: PERMISSIONS.MANAGE_SUPPLIERS, indent: true, group: "accounting" },
   { to: "/admin/reports", icon: FileText, label: "مركز التقارير", permission: PERMISSIONS.VIEW_REPORTS },
@@ -189,7 +190,7 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({ children
           <SidebarGroup icon={BookOpen} label="المحاسبة والمالية" groupKey="accounting" permission={PERMISSIONS.VIEW_ACCOUNTING}>
             <SidebarLink to="/admin/accounting/dashboard" icon={LayoutDashboard} label="الرئيسية المالية" indent />
             <SidebarLink to="/admin/accounting/gl" icon={BookOpen} label="المحاسبة العامة" indent permission={PERMISSIONS.MANAGE_ACCOUNTING} />
-            <SidebarLink to="/admin/sales" icon={Receipt} label="فواتير المبيعات" indent permission={PERMISSIONS.MANAGE_INVOICES} />
+            <SidebarLink to="/admin/sales-invoices" icon={ReceiptText} label="فواتير المبيعات" indent permission={PERMISSIONS.MANAGE_INVOICES} />
             <SidebarLink to="/admin/customers" icon={Receipt} label="حسابات العملاء" indent permission={PERMISSIONS.MANAGE_CUSTOMERS} />
             <SidebarLink to="/admin/suppliers" icon={Wallet} label="حسابات الموردين" indent permission={PERMISSIONS.MANAGE_SUPPLIERS} />
             <SidebarLink to="/admin/accounting/cash" icon={Banknote} label="النقدية والبنوك" indent />

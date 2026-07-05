@@ -5,7 +5,7 @@
  * 3. تحديث المحتوى عند تغيير الرابط (key prop)
  */
 
-import React from "react";
+import React, { useState } from "react";
 import { Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth, ProtectedRoute, UnauthorizedPage } from "./auth";
 import { ROLES } from "./auth/permissions";
@@ -25,6 +25,9 @@ import { HospitalityLayout } from "./components/Hospitality/Layout";
 import { HospitalityPOS } from "./components/Hospitality/HospitalityPOS";
 import { HospitalityOrders } from "./components/Hospitality/HospitalityOrders";
 import { HospitalityTables } from "./components/Hospitality/Tables";
+import { FinancialInvoicesPage } from "./components/financial/FinancialInvoicesPage";
+import { FinancialInvoiceForm } from "./components/financial/FinancialInvoiceForm";
+import { SalesInvoiceListPage, SalesInvoiceFormPage } from "./components/sales-invoices";
 import UsersManagementPage from "./pages/UsersManagementPage";
 import PosRegistersPage from "./pages/PosRegistersPage";
 import HospitalityDevicesPage from "./pages/HospitalityDevicesPage";
@@ -109,6 +112,7 @@ const financeViewMap: Record<string, string> = {
   archive: "ARCHIVE",
   settings: "SETTINGS",
   orgstructure: "ORGSTRUCTURE",
+  "financial-invoices": "FINANCIAL_INVOICES",
   discounts: "DISCOUNTS",
 };
 
@@ -139,6 +143,36 @@ function AccountingView() {
     hr: "HR",
   };
   return <AccountingPortal key={lastSegment} initialTab={tabMap[lastSegment] as any} />;
+}
+
+/** SalesInvoicesView — page-based list ↔ form for new sales invoices module */
+function SalesInvoicesView() {
+  const [view, setView] = useState<"list" | "form">("list");
+  const [editId, setEditId] = useState<number | undefined>(undefined);
+
+  const handleOpenForm = (id?: number) => {
+    setEditId(id);
+    setView("form");
+  };
+
+  const handleBack = () => {
+    setView("list");
+    setEditId(undefined);
+  };
+
+  if (view === "form") {
+    return (
+      <div className="h-full overflow-y-auto custom-scrollbar">
+        <SalesInvoiceFormPage invoiceId={editId} onBack={handleBack} onSaved={handleBack} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full overflow-y-auto custom-scrollbar">
+      <SalesInvoiceListPage onOpenForm={handleOpenForm} />
+    </div>
+  );
 }
 
 /** صفحة 404 مخصصة */
@@ -193,6 +227,8 @@ function AppRoutes() {
               <Route path="archive" element={<FinanceView />} />
               <Route path="settings" element={<FinanceView />} />
               <Route path="orgstructure" element={<FinanceView />} />
+              <Route path="financial-invoices" element={<FinanceView />} />
+              <Route path="sales-invoices" element={<SalesInvoicesView />} />
               <Route path="discounts" element={<FinanceView />} />
 
               <Route path="accounting">

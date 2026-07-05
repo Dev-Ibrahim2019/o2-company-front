@@ -1047,6 +1047,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
     handleTotalChange,
     setEditingNames,
     removeFromCart,
+    updateCartItem,
     getItemCurrentPrice,
     setPosError,
     submitOrder,
