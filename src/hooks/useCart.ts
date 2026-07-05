@@ -45,6 +45,9 @@ export interface SubmitOrderPayload {
   table_number?: string;
   customer_name?: string;
   customer_phone?: string;
+  customer_id?: number;
+  employee_id?: number;
+  supplier_id?: number;
   note?: string;
   discount_value?: number;
   discount_type?: "amount" | "percent";
@@ -275,6 +278,23 @@ export const useCart = () => {
         // ═══════════════════════════════════════════════════
         // PHASE 4: التسليم والدفع
         // ═══════════════════════════════════════════════════
+        if (createInvoice && order.id) {
+          try {
+            order = await orderService.syncPricing(order.id, {
+              customer_id: payload.customer_id,
+              employee_id: payload.employee_id,
+              supplier_id: payload.supplier_id,
+              discount_value: payload.discount_value,
+              discount_type: payload.discount_type,
+              customer_name: payload.customer_name,
+              customer_phone: payload.customer_phone,
+              note: payload.note,
+            });
+          } catch {
+            // confirmed orders may still proceed — invoice creation recalculates totals
+          }
+        }
+
         const orderTotal = roundMoney(Number(order.total ?? 0));
         const normalizedPayments = normalizePaymentEntries(paymentEntries);
         const paymentsToRecord: PaymentEntry[] =
@@ -294,7 +314,11 @@ export const useCart = () => {
             throw new Error("يرجى تحديد طريقة الدفع قبل إغلاق الفاتورة");
           }
 
-          if (orderTotal > 0 && Math.abs(paymentDiff) > MONEY_EPSILON) {
+          if (
+            !createInvoice &&
+            orderTotal > 0 &&
+            Math.abs(paymentDiff) > MONEY_EPSILON
+          ) {
             throw new Error(
               paymentDiff > 0
                 ? `المبلغ المدفوع ناقص ${paymentDiff.toFixed(2)} ₪`
@@ -302,14 +326,12 @@ export const useCart = () => {
             );
           }
 
-          // سجل الـ payments قبل الإرسال للتأكد
-          console.log(
-            "[useCart] paymentsToRecord:",
-            JSON.stringify(paymentsToRecord),
-          );
           order = await orderService.closeOrderWithPayments(order.id, {
             customer_name: payload.customer_name,
             customer_phone: payload.customer_phone,
+            customer_id: payload.customer_id,
+            employee_id: payload.employee_id,
+            supplier_id: payload.supplier_id,
             note: payload.note,
             payments: paymentsToRecord.map((payment) => ({
               method: payment.method,

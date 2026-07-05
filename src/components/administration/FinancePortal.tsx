@@ -16,9 +16,13 @@ import SupplierPortal from './suppliers/SupplierPortal';
 import { FinancialInvoicesPage } from '../financial/FinancialInvoicesPage';
 import { FinancialInvoiceForm } from '../financial/FinancialInvoiceForm';
 
+import { FinancialInvoicesPage } from '../financial/FinancialInvoicesPage';
+import { FinancialInvoiceForm } from '../financial/FinancialInvoiceForm';
+
 import { OrgStructure } from './OrgStructure/OrgStructure';
 import { AccountingPortal } from './GL/AccountingPortal';
 import { DiscountManagementPortal } from './discounts/DiscountManagementPortal';
+
 
 interface FinancePortalProps {
   initialView?: 'DASHBOARD' | 'BRANCHES' | 'DEPARTMENTS' | 'ITEM_TREE' | 'ITEMS_INDEX' | 'MENU' | 'ORDERS' | 'SALES' | 'CUSTOMERS' | 'SUPPLIERS' | 'EMPLOYEES' | 'ACCOUNTING' | 'REPORTS' | 'SETTINGS' | 'AUDIT_LOG' | 'ARCHIVE' | 'ORGSTRUCTURE' | 'FINANCIAL_INVOICES' | 'DISCOUNTS';

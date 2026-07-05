@@ -154,7 +154,7 @@ export const AccountingDashboard: React.FC<Props> = ({ stats }) => {
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-w-0">
 
         {/* Area Chart */}
         <div className="lg:col-span-2 bg-slate-900/60 border border-white/5 rounded-3xl p-6">
@@ -177,8 +177,8 @@ export const AccountingDashboard: React.FC<Props> = ({ stats }) => {
               ))}
             </div>
           </div>
-          <div className="h-[260px]">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="w-full" style={{ minHeight: 260, position: 'relative' }}>
+            <ResponsiveContainer width="100%" height={260}>
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="gRevenue" x1="0" y1="0" x2="0" y2="1">
@@ -218,8 +218,8 @@ export const AccountingDashboard: React.FC<Props> = ({ stats }) => {
               <p className="text-[10px] text-slate-500 font-bold">حسب الفئة</p>
             </div>
           </div>
-          <div className="h-[260px]">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="w-full" style={{ minHeight: 260, position: 'relative' }}>
+            <ResponsiveContainer width="100%" height={260}>
               <BarChart data={[
                 { name: 'رواتب', value: 45000 },
                 { name: 'إيجارات', value: 18000 },

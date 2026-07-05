@@ -56,9 +56,11 @@ const EmployeeLoansList: React.FC<EmployeeLoansListProps> = ({ employeeId }) => 
             const from = new Date(today.getFullYear(), 0, 1).toISOString().split('T')[0];
             const to = today.toISOString().split('T')[0];
 
-            const response = await financeService.getEmployeeStatement(
-                employeeId, from, to, 'all',
-            );
+            const response = await financeService.getEmployeeStatement(employeeId, {
+                from,
+                to,
+                type: "all",
+            });
 
             if (!response.success) {
                 setError(response.message || 'فشل جلب البيانات');

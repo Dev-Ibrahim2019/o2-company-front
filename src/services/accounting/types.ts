@@ -29,6 +29,8 @@ export interface SubledgerInfo {
   type: SubledgerType;
   id: number;
   name?: string | null;
+  code?: string | null;
+  order_number?: string | null;
 }
 
 export interface Account {
@@ -85,6 +87,24 @@ export interface Transaction {
   source_type?: string;
   source_id?: number;
   source_label?: string;
+  source?: {
+    type?: string;
+    id?: number;
+    name?: string | null;
+    code?: string | null;
+    order_number?: string | null;
+    customer_name?: string | null;
+    total?: number;
+    status?: string | null;
+    invoice?: {
+      id: number;
+      number: string;
+      total?: number;
+      status?: string;
+      items?: Array<Record<string, unknown>>;
+      discount_info?: Record<string, unknown> | null;
+    } | null;
+  } | null;
   entries?: EntryLine[];
   branch?: { id: number; name: string };
   user?: { id: number; name: string };
@@ -113,6 +133,14 @@ export interface LedgerLine {
   debit: number;
   credit: number;
   balance: number;
+  transaction_id?: number;
+  type?: string;
+  source_type?: string | null;
+  source_id?: number | null;
+  source_label?: string | null;
+  branch_id?: number | null;
+  branch_name?: string | null;
+  notes?: string | null;
 }
 
 export interface LedgerData {

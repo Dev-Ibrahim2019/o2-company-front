@@ -9,28 +9,37 @@ import {
     List,
     Clock,
     BarChart3,
-    Settings,
     Plus,
     AlertCircle,
     Loader2,
     Search,
     SlidersHorizontal,
     ChevronLeft,
+    Shield,
+    Settings,
 } from "lucide-react";
-import { discountService, type Discount, type DiscountTarget } from "../../../services/discountService";
+import { discountService, type Discount, type DiscountTarget, type DiscountCreatePayload, type EntityRecord } from "../../../services/discountService";
+import { DiscountDebugPanel } from "./DiscountDebugPanel";
+import { DiscountValidationPanel } from "./DiscountValidationPanel";
+import { EntityAsyncAutocomplete } from "./EntityAsyncAutocomplete";
+import { DiscountManagementPortalV2 } from "./DiscountManagementPortalV2";
 
 // ── Tabs ──
-type TabKey = "dashboard" | "active" | "all" | "expired" | "settings";
+type TabKey = "dashboard" | "active" | "all" | "expired" | "settings" | "debug" | "validation";
 
 const TABS: { key: TabKey; label: string; icon: React.FC<any> }[] = [
     { key: "dashboard", label: "لوحة الخصومات", icon: BarChart3 },
     { key: "active", label: "الخصومات النشطة", icon: Percent },
     { key: "all", label: "جميع الخصومات", icon: List },
     { key: "expired", label: "الخصومات المنتهية", icon: Clock },
+    { key: "debug", label: "اختبار الخصومات", icon: SlidersHorizontal },
+    { key: "validation", label: "التحقق من الأهداف", icon: Shield },
     { key: "settings", label: "إعدادات الخصومات", icon: Settings },
 ];
 
 export const DiscountManagementPortal: React.FC = () => {
+    return <DiscountManagementPortalV2 />;
+
     const [activeTab, setActiveTab] = useState<TabKey>("dashboard");
     const [discounts, setDiscounts] = useState<Discount[]>([]);
     const [loading, setLoading] = useState(true);
@@ -57,7 +66,7 @@ export const DiscountManagementPortal: React.FC = () => {
         setLoading(true);
         try {
             const response = await discountService.dashboard();
-            setDashboardStats(response.data);
+            setDashboardStats(response.data ?? response);
         } catch (err: any) {
             setError(err.message || "فشل تحميل الإحصائيات");
         } finally {
@@ -75,6 +84,8 @@ export const DiscountManagementPortal: React.FC = () => {
                 all: undefined,
                 expired: "expired",
                 settings: undefined,
+                debug: undefined,
+                validation: undefined,
             };
             fetchDiscounts(statusMap[activeTab]);
         }
@@ -119,6 +130,10 @@ export const DiscountManagementPortal: React.FC = () => {
         switch (activeTab) {
             case "dashboard":
                 return <DashboardContent stats={dashboardStats} />;
+            case "debug":
+                return <DiscountDebugPanel />;
+            case "validation":
+                return <DiscountValidationPanel />;
             case "settings":
                 return <SettingsContent />;
             default:
@@ -207,17 +222,26 @@ export const DiscountManagementPortal: React.FC = () => {
 // Dashboard Content
 // ═══════════════════════════════════════════════════════
 const DashboardContent: React.FC<{ stats: any }> = ({ stats }) => {
-    if (!stats) return null;
+    const data = stats?.data || stats?.stats ? stats : { data: stats };
+    const s = data?.stats || {};
+    if (!stats) {
+        return (
+            <div className="flex items-center justify-center py-20 text-white/30">
+                <BarChart3 size={48} className="mb-4" />
+                <p className="text-lg">لا توجد إحصائيات متوفرة</p>
+            </div>
+        );
+    }
 
     const cards = [
-        { label: "إجمالي الخصومات", value: stats.stats?.total_discounts ?? 0, color: "from-blue-500 to-blue-700" },
-        { label: "نشطة حالياً", value: stats.stats?.active_discounts ?? 0, color: "from-green-500 to-green-700" },
-        { label: "منتهية", value: stats.stats?.expired_discounts ?? 0, color: "from-red-500 to-red-700" },
-        { label: "نسبة مئوية", value: stats.stats?.percentage_discounts ?? 0, color: "from-purple-500 to-purple-700" },
-        { label: "مبلغ ثابت", value: stats.stats?.fixed_discounts ?? 0, color: "from-yellow-500 to-yellow-700" },
-        { label: "تجاوز سعر", value: stats.stats?.price_override_discounts ?? 0, color: "from-cyan-500 to-cyan-700" },
-        { label: "مرات الاستخدام", value: stats.stats?.total_usage ?? 0, color: "from-orange-500 to-orange-700" },
-        { label: "قيمة الخصومات", value: `${(stats.stats?.total_discount_amount ?? 0).toFixed(2)} ₪`, color: "from-pink-500 to-pink-700" },
+        { label: "إجمالي الخصومات", value: s.total_discounts ?? 0, color: "from-blue-500 to-blue-700" },
+        { label: "نشطة حالياً", value: s.active_discounts ?? 0, color: "from-green-500 to-green-700" },
+        { label: "منتهية", value: s.expired_discounts ?? 0, color: "from-red-500 to-red-700" },
+        { label: "نسبة مئوية", value: s.percentage_discounts ?? 0, color: "from-purple-500 to-purple-700" },
+        { label: "مبلغ ثابت", value: s.fixed_discounts ?? 0, color: "from-yellow-500 to-yellow-700" },
+        { label: "تجاوز سعر", value: s.price_override_discounts ?? 0, color: "from-cyan-500 to-cyan-700" },
+        { label: "مرات الاستخدام", value: s.total_usage ?? 0, color: "from-orange-500 to-orange-700" },
+        { label: "قيمة الخصومات", value: `${Number(s.total_discount_amount ?? 0).toFixed(2)} ₪`, color: "from-pink-500 to-pink-700" },
     ];
 
     return (
@@ -238,7 +262,7 @@ const DashboardContent: React.FC<{ stats: any }> = ({ stats }) => {
             </div>
 
             {/* Recent Usage */}
-            {stats.recent_usage?.length > 0 && (
+            {data.recent_usage?.length > 0 && (
                 <div>
                     <h3 className="text-lg font-bold mb-4">آخر استخدامات الخصومات</h3>
                     <div className="bg-slate-900 border border-white/10 rounded-2xl overflow-hidden">
@@ -251,7 +275,7 @@ const DashboardContent: React.FC<{ stats: any }> = ({ stats }) => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {stats.recent_usage.map((log: any, i: number) => (
+                                {data.recent_usage.map((log: any, i: number) => (
                                     <tr key={i} className="border-b border-white/5 hover:bg-white/5">
                                         <td className="p-3">{log.discount?.name || log.discount_id}</td>
                                         <td className="p-3 text-yellow-400">{log.discount_amount} ₪</td>
@@ -305,6 +329,16 @@ const DiscountListContent: React.FC<{
                                 <span className="px-2 py-0.5 rounded-full text-xs bg-purple-600/20 text-purple-400">
                                     {discount.discount_type_label}
                                 </span>
+                                {discount.apply_strategy && (
+                                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                                        discount.apply_strategy === "per_quantity" ? "bg-blue-600/20 text-blue-400" :
+                                        discount.apply_strategy === "per_line" ? "bg-green-600/20 text-green-400" :
+                                        discount.apply_strategy === "per_invoice" ? "bg-purple-600/20 text-purple-400" :
+                                        "bg-orange-600/20 text-orange-400"
+                                    }`}>
+                                        {{ per_quantity: 'لكل قطعة', per_line: 'لكل سطر', per_invoice: 'لكل فاتورة', once: 'مرة واحدة' }[discount.apply_strategy] || discount.apply_strategy}
+                                    </span>
+                                )}
                             </div>
                             <p className="text-white/50 text-sm mb-2">{discount.description}</p>
                             <div className="flex items-center gap-4 text-sm text-white/40">
@@ -370,6 +404,7 @@ const DiscountFormModal: React.FC<{
     const [endDate, setEndDate] = useState(editDiscount?.end_date ?? "");
     const [maxDiscountAmount, setMaxDiscountAmount] = useState<number | null>(editDiscount?.max_discount_amount ?? null);
     const [minOrderAmount, setMinOrderAmount] = useState<number | null>(editDiscount?.min_order_amount ?? null);
+    const [applyStrategy, setApplyStrategy] = useState<string>(editDiscount?.apply_strategy ?? "per_quantity");
 
     // Targets
     const [targets, setTargets] = useState<DiscountTarget[]>(
@@ -378,24 +413,134 @@ const DiscountFormModal: React.FC<{
             target_id: t.target_id ?? null
         })) ?? []
     );
+    const [exclusions, setExclusions] = useState<DiscountTarget[]>(
+        editDiscount?.exclusions?.map(t => ({
+            target_type: t.target_type as DiscountTarget["target_type"],
+            target_id: t.target_id ?? null
+        })) ?? []
+    );
+
+    const concreteTypes = ["customer", "employee", "supplier", "department", "item", "branch", "category", "brand", "modifier"];
+    const targetTypeOptions: Array<{ value: DiscountTarget["target_type"]; label: string }> = [
+        { value: "customer", label: "عميل" },
+        { value: "employee", label: "موظف" },
+        { value: "supplier", label: "مورد" },
+        { value: "department", label: "قسم" },
+        { value: "item", label: "صنف" },
+        { value: "branch", label: "فرع" },
+        { value: "category", label: "فئة" },
+        { value: "brand", label: "علامة" },
+        { value: "modifier", label: "إضافة" },
+        { value: "all_customers", label: "جميع العملاء" },
+        { value: "all_employees", label: "جميع الموظفين" },
+        { value: "all_suppliers", label: "جميع الموردين" },
+        { value: "all", label: "الجميع" },
+    ];
+
+    const setTargetEntity = (
+        list: DiscountTarget[],
+        setter: React.Dispatch<React.SetStateAction<DiscountTarget[]>>,
+        index: number,
+        entity: EntityRecord | null,
+    ) => {
+        const next = [...list];
+        next[index] = {
+            ...next[index],
+            target_id: entity?.id ?? null,
+            business_code: entity?.business_code,
+            target_business_code: entity?.business_code,
+        } as DiscountTarget;
+        setter(next);
+    };
+
+    const renderTargetEditor = (
+        title: string,
+        list: DiscountTarget[],
+        setter: React.Dispatch<React.SetStateAction<DiscountTarget[]>>,
+        accent: string,
+    ) => (
+        <div className="space-y-3">
+            <div className="flex items-center justify-between">
+                <h4 className="font-bold text-sm text-white/75">{title}</h4>
+                <button
+                    type="button"
+                    onClick={() => setter([...list, { target_type: "employee", target_id: null } as DiscountTarget])}
+                    className={`${accent} text-sm font-bold hover:opacity-80`}
+                >
+                    + إضافة
+                </button>
+            </div>
+            {list.length === 0 && (
+                <div className="rounded-xl border border-dashed border-white/10 px-4 py-3 text-sm text-white/40">
+                    لا توجد عناصر
+                </div>
+            )}
+            {list.map((target, i) => {
+                const needsLookup = concreteTypes.includes(target.target_type);
+                return (
+                    <div key={`${title}-${i}`} className="grid grid-cols-1 md:grid-cols-[150px_1fr_36px] gap-2">
+                        <select
+                            value={target.target_type}
+                            onChange={e => {
+                                const next = [...list];
+                                next[i] = { target_type: e.target.value as DiscountTarget["target_type"], target_id: null };
+                                setter(next);
+                            }}
+                            className="bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-white"
+                        >
+                            {targetTypeOptions.map(option => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                        </select>
+                        {needsLookup ? (
+                            <EntityAsyncAutocomplete
+                                type={target.target_type}
+                                valueId={target.target_id ?? ""}
+                                onChange={(entity) => setTargetEntity(list, setter, i, entity)}
+                                placeholder="ابحث بالكود أو الاسم"
+                            />
+                        ) : (
+                            <div className="bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-white/50 text-sm">
+                                لا يحتاج رقم داخلي
+                            </div>
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => setter(list.filter((_, j) => j !== i))}
+                            className="text-red-400 hover:bg-red-500/10 rounded-xl"
+                        >
+                            ×
+                        </button>
+                    </div>
+                );
+            })}
+        </div>
+    );
 
     const handleSave = async () => {
         setSaving(true);
         setFormError(null);
         try {
-            const payload = {
-                name,
+            // التأكد من أن الاسم غير فارغ
+            const safeName = name || nameAr || "خصم بدون اسم";
+            // إنشاء كود تلقائي إذا لم يدخل المستخدم كوداً
+            const safeCode = code || `DISC-${Date.now().toString(36).toUpperCase()}`;
+
+            const payload: DiscountCreatePayload = {
+                name: safeName,
                 name_ar: nameAr || undefined,
-                code,
+                code: safeCode,
                 description: description || undefined,
                 discount_type: discountType as any,
                 value,
+                apply_strategy: applyStrategy as any,
                 priority,
                 start_date: startDate || undefined,
                 end_date: endDate || undefined,
                 max_discount_amount: maxDiscountAmount ?? undefined,
                 min_order_amount: minOrderAmount ?? undefined,
                 targets: targets.length > 0 ? targets : undefined,
+                exclusions: exclusions.length > 0 ? exclusions : undefined,
             };
 
             if (editDiscount) {
@@ -405,7 +550,8 @@ const DiscountFormModal: React.FC<{
             }
             onSaved();
         } catch (err: any) {
-            setFormError(err.message || "فشل حفظ الخصم");
+            const serverMsg = err?.response?.data?.message || err?.response?.data?.error || err?.message;
+            setFormError(serverMsg || "فشل حفظ الخصم");
         } finally {
             setSaving(false);
         }
@@ -514,6 +660,15 @@ const DiscountFormModal: React.FC<{
                             <label className="text-sm text-white/50 block mb-1">الحد الأدنى للطلب (₪) — اختياري</label>
                             <input type="number" value={minOrderAmount ?? ''} onChange={e => setMinOrderAmount(parseFloat(e.target.value) || null)} className="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-2 text-white" />
                         </div>
+                        <div>
+                            <label className="text-sm text-white/50 block mb-1">إستراتيجية التطبيق</label>
+                            <select value={applyStrategy} onChange={e => setApplyStrategy(e.target.value)} className="w-full bg-slate-800 border border-white/10 rounded-xl px-4 py-2 text-white">
+                                <option value="per_quantity">لكل قطعة (Per Quantity)</option>
+                                <option value="per_line">لكل سطر (Per Line)</option>
+                                <option value="per_invoice">لكل فاتورة (Per Invoice)</option>
+                                <option value="once">مرة واحدة (Once)</option>
+                            </select>
+                        </div>
                     </div>
                 );
 
@@ -545,6 +700,7 @@ const DiscountFormModal: React.FC<{
                             <p><span className="text-white/50">الكود:</span> {code}</p>
                             <p><span className="text-white/50">النوع:</span> {{ percentage: 'نسبة مئوية', fixed_amount: 'مبلغ ثابت', price_override: 'تجاوز السعر' }[discountType]}</p>
                             <p><span className="text-white/50">القيمة:</span> {value}{discountType === 'percentage' ? '%' : ' ₪'}</p>
+                            <p><span className="text-white/50">الإستراتيجية:</span> {{ per_quantity: 'لكل قطعة', per_line: 'لكل سطر', per_invoice: 'لكل فاتورة', once: 'مرة واحدة' }[applyStrategy] || applyStrategy}</p>
                             <p><span className="text-white/50">الأولوية:</span> {priority}</p>
                             {startDate && <p><span className="text-white/50">من:</span> {startDate}</p>}
                             {endDate && <p><span className="text-white/50">إلى:</span> {endDate}</p>}
