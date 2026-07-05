@@ -437,6 +437,16 @@ body {
   border-radius: 8px !important;
 }
 
+/* Hide number input spinners for clean keyboard-driven UX (Req 4) */
+.no-spinner::-webkit-inner-spin-button,
+.no-spinner::-webkit-outer-spin-button {
+  -webkit-appearance: none !important;
+  margin: 0 !important;
+}
+.no-spinner {
+  -moz-appearance: textfield !important;
+}
+
 .rounded-full {
   border-radius: 9999px !important;
 }

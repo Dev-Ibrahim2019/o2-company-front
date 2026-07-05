@@ -22,12 +22,19 @@ import {
   Wallet,
   X,
   XCircle,
+  CheckSquare,
+  Square,
+  Layers,
+  Send,
 } from "lucide-react";
 import { useApp } from "../../../store";
 import { orderService } from "../../services/orderService";
+import { salesInvoiceService } from "../../services/salesInvoiceService";
 import { InvoiceViewEditModal } from "./InvoiceViewEditModal";
 import { CreateInvoiceModal } from "./CreateInvoiceModal";
 import { InvoicePaymentsEditor } from "./shared/InvoicePaymentsEditor";
+import { InvoiceFilterModal, emptyFilters } from "./InvoiceFilterModal";
+import type { InvoiceFilters } from "./InvoiceFilterModal";
 import {
   createPaymentDraft,
   paymentDraftsToPayloads,
@@ -78,31 +85,12 @@ type SalesInvoiceRow = {
   source: SalesInvoiceSource;
 };
 
-type InvoiceFilters = {
-  search: string;
-  from: string;
-  to: string;
-  paymentStatus: PaymentStatusFilter;
-  paymentMethod: PaymentMethodFilter;
-  minTotal: string;
-  maxTotal: string;
-};
-
-const emptyFilters: InvoiceFilters = {
-  search: "",
-  from: "",
-  to: "",
-  paymentStatus: "all",
-  paymentMethod: "all",
-  minTotal: "",
-  maxTotal: "",
-};
-
 const methodLabels: Record<PaymentMethod, string> = {
   cash: "كاش",
-  credit_card: "بطاقة",
+  card: "بطاقة",
   wallet: "محفظة",
-  bank_transfer: "بنك",
+  bank: "بنك",
+  account: "حساب",
 };
 
 const formatMoney = (value: number) => `${Number(value || 0).toFixed(2)} ₪`;
@@ -125,12 +113,13 @@ const normalizePaymentMethod = (
   if (
     ["credit_card", "card", "credit", "visa", "mastercard"].includes(method)
   ) {
-    return "credit_card";
+    return "card";
   }
   if (method === "wallet") return "wallet";
   if (["bank_transfer", "bank", "transfer", "qr", "online"].includes(method)) {
-    return "bank_transfer";
+    return "bank";
   }
+  if (method === "account") return "account";
   return "other";
 };
 
@@ -230,9 +219,9 @@ const summarizePayments = (
       );
       const amount = Number(payment.amount || 0);
       if (method === "cash") acc.cash += amount;
-      else if (method === "credit_card") acc.card += amount;
+      else if (method === "card") acc.card += amount;
       else if (method === "wallet") acc.wallet += amount;
-      else if (method === "bank_transfer") acc.bank += amount;
+      else if (method === "bank") acc.bank += amount;
       else acc.other += amount;
       acc.total += amount;
       return acc;
@@ -374,9 +363,9 @@ const statusMeta = (row: SalesInvoiceRow) => {
 
 const paymentIcon = (method?: string | null) => {
   const normalized = normalizePaymentMethod(method);
-  if (normalized === "credit_card") return <CreditCard size={13} />;
+  if (normalized === "card") return <CreditCard size={13} />;
   if (normalized === "wallet") return <Wallet size={13} />;
-  if (normalized === "bank_transfer") return <Landmark size={13} />;
+  if (normalized === "bank") return <Landmark size={13} />;
   return <Banknote size={13} />;
 };
 
@@ -397,9 +386,10 @@ const rowMatchesMethod = (
 ) => {
   if (method === "all") return true;
   if (method === "cash") return row.paidCash > 0;
-  if (method === "credit_card") return row.paidCard > 0;
+  if (method === "card") return row.paidCard > 0;
   if (method === "wallet") return row.paidWallet > 0;
-  return row.paidBank > 0;
+  if (method === "bank") return row.paidBank > 0;
+  return false;
 };
 
 const getRowDateKey = (row: SalesInvoiceRow) => {
@@ -572,7 +562,7 @@ export default function SalesInvoicesPage() {
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<SalesInvoiceSource>("invoice");
   const [filters, setFilters] = useState<InvoiceFilters>(emptyFilters);
-  const [showFilters, setShowFilters] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -581,6 +571,10 @@ export default function SalesInvoicesPage() {
   );
   const [detailsRow, setDetailsRow] = useState<SalesInvoiceRow | null>(null);
   const [postedInvoiceIds, setPostedInvoiceIds] = useState<number[]>([]);
+
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkActionLoading, setBulkActionLoading] = useState(false);
 
   const load = useCallback(async () => {
     const branchId = branchFilter(currentUser);
@@ -630,6 +624,108 @@ export default function SalesInvoicesPage() {
   useEffect(() => {
     setPage(1);
   }, [filters, pageSize]);
+
+  // ── Bulk Selection ──
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectPage = () => {
+    const pageIds = pageRows.map((i) => i.id);
+    const allSelected = pageIds.every((id) => selectedIds.has(id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) pageIds.forEach((id) => next.delete(id));
+      else pageIds.forEach((id) => next.add(id));
+      return next;
+    });
+  };
+
+  const selectedRows = useMemo(
+    () => rows.filter((r) => selectedIds.has(r.id)),
+    [rows, selectedIds],
+  );
+
+  const handleBulkApprove = async () => {
+    const approvable = selectedRows.filter(
+      (r) => r.status === "draft" || r.status === "awaiting_approval",
+    );
+    if (approvable.length === 0) {
+      alert("لم تختر أي فاتورة بانتظار التعميد");
+      return;
+    }
+    if (!confirm(`هل تريد تعميد ${approvable.length} فاتورة دفعة واحدة؟`)) return;
+    setBulkActionLoading(true);
+    try {
+      const invoiceIds = await Promise.all(
+        approvable.map((r) => ensureInvoiceForRow(r))
+      );
+      const result = await salesInvoiceService.bulkApprove(invoiceIds);
+      const approved = (result as any)?.approved ?? invoiceIds.length;
+      const skipped = (result as any)?.skipped ?? 0;
+      alert(`تم تعميد ${approved} فاتورة${skipped > 0 ? ` (تم تخطي ${skipped})` : ""}`);
+      setSelectedIds(new Set());
+      await load();
+    } catch (e: any) {
+      alert(e?.response?.data?.message || "فشل التعميد المجمّع");
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const handleBulkPostJournal = async () => {
+    const payable = selectedRows.filter((r) => r.paidTotal > 0 && !postedInvoiceIds.includes(r.id));
+    if (payable.length === 0) {
+      alert("لم تختر أي فاتورة مدفوعة غير مرحّلة");
+      return;
+    }
+    if (!confirm(`هل تريد ترحيل ${payable.length} فاتورة دفعة واحدة؟`)) return;
+    setBulkActionLoading(true);
+    try {
+      const invoiceIds = await Promise.all(
+        payable.map((r) => ensureInvoiceForRow(r))
+      );
+      const result = await salesInvoiceService.bulkPost(invoiceIds);
+      const posted = (result as any)?.posted ?? invoiceIds.length;
+      const skipped = (result as any)?.skipped ?? 0;
+      setPostedInvoiceIds((prev) => [...new Set([...prev, ...invoiceIds])]);
+      alert(`تم ترحيل ${posted} فاتورة${skipped > 0 ? ` (تم تخطي ${skipped})` : ""}`);
+      setSelectedIds(new Set());
+    } catch (e: any) {
+      alert(e?.response?.data?.message || "فشل الترحيل المجمّع");
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
+
+  const handleGroupInvoices = async () => {
+    if (selectedRows.length < 2) {
+      alert("اختر فاتورتين على الأقل لتجميعهما");
+      return;
+    }
+    const totals = selectedRows.reduce((sum, r) => sum + r.total, 0);
+    const customers = [...new Set(selectedRows.map((r) => r.customerName))];
+    if (!confirm(`تجميع ${selectedRows.length} فاتورة\nالإجمالي: ${formatMoney(totals)}\nالعملاء: ${customers.join(", ")}\n\nهل تريد المتابعة؟`)) return;
+    setBulkActionLoading(true);
+    try {
+      const invoiceIds = await Promise.all(
+        selectedRows.map((r) => ensureInvoiceForRow(r))
+      );
+      await salesInvoiceService.bulkApprove(invoiceIds);
+      alert("تم تجميع الفواتير بنجاح");
+      setSelectedIds(new Set());
+      await load();
+    } catch (e: any) {
+      alert(e?.response?.data?.message || "فشل تجميع الفواتير");
+    } finally {
+      setBulkActionLoading(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     const q = filters.search.trim().toLowerCase();
@@ -698,6 +794,11 @@ export default function SalesInvoicesPage() {
     [filtered],
   );
 
+  const activeFilterCount = Object.entries(filters).filter(([key, value]) => {
+    if (key === "search") return false;
+    return value !== "" && value !== "all";
+  }).length;
+
   const ensureInvoiceForRow = async (row: SalesInvoiceRow) => {
     if (row.source === "invoice") return row.id;
 
@@ -727,58 +828,49 @@ export default function SalesInvoicesPage() {
     setSavingAction(true);
     setError(null);
     try {
-      const amount = Number(payload.amount || 0);
-      const method = normalizePaymentMethod(
-        payload.method ?? payload.payment_method,
-      );
-      if (!method || method === "other")
-        throw new Error("طريقة الدفع غير مدعومة");
+      for (const payload of paymentPayloads) {
+        const amount = Number(payload.amount || 0);
+        const method = normalizePaymentMethod(
+          payload.method ?? payload.payment_method,
+        );
+        if (!method || method === "other")
+          throw new Error("طريقة الدفع غير مدعومة");
 
-      console.debug("SalesInvoicesPage.handleProcessPayment", {
-        received_entity_type: payload.entity_type ?? row.primaryEntityType ?? null,
-        received_entity_id: payload.entity_id ?? row.primaryEntityId ?? null,
-        received_subledger_type:
-          payload.subledger_type ?? row.primarySubledgerType ?? null,
-        received_subledger_id: payload.subledger_id ?? row.primarySubledgerId ?? null,
-      });
-
-      if (row.remaining > 0 && amount >= row.remaining - 0.01) {
-        await orderService.closeOrderWithPayments(row.orderId, {
-          customer_name:
-            row.customerName === "عميل نقدي" ? undefined : row.customerName,
-          customer_phone:
-            row.customerPhone === "---" ? undefined : row.customerPhone,
-          payments: [
-            {
-              ...payload,
-              method,
-              payment_method: method,
-              amount,
-              entity_type: payload.entity_type ?? row.primaryEntityType ?? undefined,
-              entity_id: payload.entity_id ?? row.primaryEntityId ?? undefined,
-              subledger_type:
-                payload.subledger_type ?? row.primarySubledgerType ?? undefined,
-              subledger_id: payload.subledger_id ?? row.primarySubledgerId ?? undefined,
-            },
-          ],
-        });
-      } else {
-        const invoiceId = await ensureInvoiceForRow(row);
-        await orderService.addPaymentToInvoice(invoiceId, {
-          ...payload,
-          method,
-          payment_method: method,
-          amount,
-          entity_type: payload.entity_type ?? row.primaryEntityType ?? undefined,
-          entity_id: payload.entity_id ?? row.primaryEntityId ?? undefined,
-          subledger_type:
-            payload.subledger_type ?? row.primarySubledgerType ?? undefined,
-          subledger_id: payload.subledger_id ?? row.primarySubledgerId ?? undefined,
-        });
+        if (row.remaining > 0 && amount >= row.remaining - 0.01) {
+          await orderService.closeOrderWithPayments(row.orderId, {
+            customer_name:
+              row.customerName === "عميل نقدي" ? undefined : row.customerName,
+            customer_phone:
+              row.customerPhone === "---" ? undefined : row.customerPhone,
+            payments: [
+              {
+                ...payload,
+                method,
+                payment_method: method,
+                amount,
+                entity_type: payload.entity_type ?? row.primaryEntityType ?? undefined,
+                entity_id: payload.entity_id ?? row.primaryEntityId ?? undefined,
+                subledger_type:
+                  payload.subledger_type ?? row.primarySubledgerType ?? undefined,
+                subledger_id: payload.subledger_id ?? row.primarySubledgerId ?? undefined,
+              },
+            ],
+          });
+        } else {
+          const invoiceId = await ensureInvoiceForRow(row);
+          await orderService.addPaymentToInvoice(invoiceId, {
+            ...payload,
+            method,
+            payment_method: method,
+            amount,
+            entity_type: payload.entity_type ?? row.primaryEntityType ?? undefined,
+            entity_id: payload.entity_id ?? row.primaryEntityId ?? undefined,
+            subledger_type:
+              payload.subledger_type ?? row.primarySubledgerType ?? undefined,
+            subledger_id: payload.subledger_id ?? row.primarySubledgerId ?? undefined,
+          });
+        }
       }
-
-      const invoiceId = await ensureInvoiceForRow(row);
-      await orderService.addPaymentsToInvoice(invoiceId, paymentPayloads);
       setProcessingRow(null);
       await load();
     } catch (e: unknown) {
@@ -803,32 +895,12 @@ export default function SalesInvoicesPage() {
     setError(null);
     try {
       const invoiceId = await ensureInvoiceForRow(row);
-      const method = row.primaryPaymentMethod ?? "cash";
-      console.debug("SalesInvoicesPage.handlePostJournal", {
-        received_entity_type: row.primaryEntityType ?? null,
-        received_entity_id: row.primaryEntityId ?? null,
-        received_subledger_type: row.primarySubledgerType ?? null,
-        received_subledger_id: row.primarySubledgerId ?? null,
-      });
-      await orderService.createJournalEntryFromInvoice(
-        invoiceId,
-        row.orderId,
-        row.paidTotal,
-        method,
-        `ترحيل مبيعات فاتورة ${row.invoiceNumber}`,
-        {
-          entity_type: row.primaryEntityType ?? undefined,
-          entity_id: row.primaryEntityId ?? undefined,
-          subledger_type: row.primarySubledgerType ?? undefined,
-          subledger_id: row.primarySubledgerId ?? undefined,
-        },
-      );
-      const journalPayments = Object.entries(groupedPayments)
-        .map(([method, amount]) => ({
-          method: method as PaymentMethod,
-          amount,
-        }))
-        .filter((payment) => payment.amount > 0);
+
+      const journalPayments: { method: PaymentMethod; amount: number }[] = [];
+      if (row.paidCash > 0) journalPayments.push({ method: "cash", amount: row.paidCash });
+      if (row.paidCard > 0) journalPayments.push({ method: "card", amount: row.paidCard });
+      if (row.paidWallet > 0) journalPayments.push({ method: "wallet", amount: row.paidWallet });
+      if (row.paidBank > 0) journalPayments.push({ method: "bank", amount: row.paidBank });
 
       if (journalPayments.length === 0) {
         journalPayments.push({
@@ -844,6 +916,12 @@ export default function SalesInvoicesPage() {
           payment.amount,
           payment.method,
           `ترحيل مبيعات فاتورة ${row.invoiceNumber} - ${methodLabels[payment.method]}`,
+          {
+            entity_type: row.primaryEntityType ?? undefined,
+            entity_id: row.primaryEntityId ?? undefined,
+            subledger_type: row.primarySubledgerType ?? undefined,
+            subledger_id: row.primarySubledgerId ?? undefined,
+          },
         );
       }
       setPostedInvoiceIds((prev) => [...new Set([...prev, invoiceId])]);
@@ -946,20 +1024,26 @@ export default function SalesInvoicesPage() {
               onChange={(event) =>
                 setFilters((prev) => ({ ...prev, search: event.target.value }))
               }
+              onKeyDown={(e) => { if (e.key === "Enter") { setPage(1); load(); } }}
               placeholder="رقم الفاتورة، الطلب، العميل، الجوال أو المرجع..."
               className="w-80 max-w-full bg-slate-900 border border-white/5 rounded-xl py-2.5 pr-9 pl-4 text-xs text-white outline-none focus:border-red-500/50"
             />
           </div>
           <button
-            onClick={() => setShowFilters((prev) => !prev)}
+            onClick={() => setShowFilters(true)}
             className={`px-3 py-2.5 border rounded-xl text-xs font-black flex items-center gap-2 ${
-              showFilters
+              activeFilterCount > 0
                 ? "bg-red-600 border-red-600 text-white"
                 : "bg-slate-900 border-white/5 text-slate-300 hover:text-white"
             }`}
           >
             <SlidersHorizontal size={15} />
             فلاتر
+            {activeFilterCount > 0 && (
+              <span className="bg-white/20 text-white px-1.5 py-0.5 rounded-md text-[10px]">
+                {activeFilterCount}
+              </span>
+            )}
           </button>
           <button
             onClick={() => exportRowsToCsv(filtered)}
@@ -985,6 +1069,48 @@ export default function SalesInvoicesPage() {
         </div>
       </header>
 
+      {/* Bulk Actions Bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 bg-slate-900/80 border border-white/10 rounded-2xl p-4">
+          <div className="flex items-center gap-2 text-xs font-black text-white">
+            <CheckSquare size={16} className="text-red-500" />
+            <span>{selectedIds.size} فاتورة محددة</span>
+          </div>
+          <div className="flex-1" />
+          <button
+            onClick={handleBulkApprove}
+            disabled={bulkActionLoading}
+            className="flex items-center gap-2 px-3 py-2 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/40 rounded-xl text-xs font-black transition disabled:opacity-50"
+          >
+            <CheckCircle2 size={14} />
+            تعميد مجمّع
+          </button>
+          <button
+            onClick={handleBulkPostJournal}
+            disabled={bulkActionLoading}
+            className="flex items-center gap-2 px-3 py-2 bg-orange-600/20 text-orange-400 hover:bg-orange-600/40 rounded-xl text-xs font-black transition disabled:opacity-50"
+          >
+            <Send size={14} />
+            ترحيل مجمّع
+          </button>
+          <button
+            onClick={handleGroupInvoices}
+            disabled={bulkActionLoading}
+            className="flex items-center gap-2 px-3 py-2 bg-purple-600/20 text-purple-400 hover:bg-purple-600/40 rounded-xl text-xs font-black transition disabled:opacity-50"
+          >
+            <Layers size={14} />
+            تجميع
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="p-2 rounded-xl bg-white/5 text-slate-400 hover:text-white transition"
+            title="إلغاء التحديد"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {error && (
         <div className="flex items-center gap-2 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-xs font-bold text-amber-300">
           <AlertCircle size={15} />
@@ -1008,6 +1134,15 @@ export default function SalesInvoicesPage() {
           <table className="w-full min-w-[1180px] text-right text-xs">
             <thead className="bg-slate-950/40 text-slate-500 font-black">
               <tr>
+                <th className="p-4 w-10">
+                  <button onClick={toggleSelectPage} title="اختر الكل" className="text-slate-400 hover:text-white">
+                    {pageRows.length > 0 && pageRows.every((i) => selectedIds.has(i.id)) ? (
+                      <CheckSquare size={15} className="text-red-500" />
+                    ) : (
+                      <Square size={15} />
+                    )}
+                  </button>
+                </th>
                 <th className="p-4">الفاتورة</th>
                 <th className="p-4">العميل</th>
                 <th className="p-4">الحالة</th>
@@ -1026,7 +1161,7 @@ export default function SalesInvoicesPage() {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={12}
+                    colSpan={13}
                     className="p-16 text-center text-slate-500 font-black"
                   >
                     <Loader2
@@ -1039,7 +1174,7 @@ export default function SalesInvoicesPage() {
               ) : pageRows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={12}
+                    colSpan={13}
                     className="p-16 text-center text-slate-500 font-bold"
                   >
                     لا توجد فواتير مطابقة للفلاتر الحالية
@@ -1053,8 +1188,17 @@ export default function SalesInvoicesPage() {
                   return (
                     <tr
                       key={`${row.source}-${row.id}`}
-                      className="hover:bg-white/[0.02]"
+                      className={`hover:bg-white/[0.02] ${selectedIds.has(row.id) ? "bg-red-500/5" : ""}`}
                     >
+                      <td className="p-4">
+                        <button onClick={() => toggleSelect(row.id)} className="text-slate-400 hover:text-white">
+                          {selectedIds.has(row.id) ? (
+                            <CheckSquare size={15} className="text-red-500" />
+                          ) : (
+                            <Square size={15} />
+                          )}
+                        </button>
+                      </td>
                       <td className="p-4">
                         <p className="font-black text-white">
                           {row.invoiceNumber}
@@ -1268,6 +1412,17 @@ export default function SalesInvoicesPage() {
           row={detailsRow}
           onClose={() => setDetailsRow(null)}
           onSaved={() => load()}
+        />
+      )}
+
+      {showFilters && (
+        <InvoiceFilterModal
+          filters={filters}
+          onApply={(newFilters) => {
+            setFilters(newFilters);
+            setPage(1);
+          }}
+          onClose={() => setShowFilters(false)}
         />
       )}
     </div>
