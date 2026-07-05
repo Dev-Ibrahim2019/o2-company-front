@@ -452,69 +452,8 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                         }}
                         className="w-5 h-5 bg-slate-700 rounded text-[10px] font-bold text-white hover:bg-slate-600 flex items-center justify-center"
                       >
-<<<<<<< HEAD
-                        {h}
-                      </th>
-                    ),
-                  )}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {currentCart.map((item) => (
-                  <tr
-                    key={item.uniqueId}
-                    className="group hover:bg-white/5 transition-colors"
-                  >
-                    <td className="p-2 sm:p-3 text-[8px] sm:text-[10px] font-black text-slate-600">
-                      #{item.itemId}
-                    </td>
-                    <td className="p-2 sm:p-3">
-                      <input
-                        type="text"
-                        value={
-                          editingNames[item.uniqueId] !== undefined
-                            ? editingNames[item.uniqueId]
-                            : item.name
-                        }
-                        onChange={(e) =>
-                          handleNameChange(item.uniqueId, e.target.value)
-                        }
-                        onBlur={() =>
-                          setEditingNames((prev) => {
-                            const next = { ...prev };
-                            delete next[item.uniqueId];
-                            return next;
-                          })
-                        }
-                        className="w-full bg-transparent text-[10px] sm:text-xs font-black text-white outline-none border-b border-transparent focus:border-red-500/30"
-                      />
-                    </td>
-                    <td className="p-2 sm:p-3 text-center text-[10px] sm:text-xs font-bold">
-                      {item.original_price && item.original_price > item.price ? (
-                        <div className="flex flex-col items-center gap-0.5">
-                          <span className="text-slate-600 line-through text-[9px]">
-                            {item.original_price.toFixed(2)}
-                          </span>
-                          <span className="text-emerald-400">
-                            {item.price.toFixed(2)}
-                          </span>
-                          {item.discount_percent != null && (
-                            <span className="text-[7px] text-emerald-500 bg-emerald-500/10 px-1 rounded">
-                              -{item.discount_percent}%
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-slate-400">
-                          {getItemCurrentPrice(item).toFixed(2)}
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-2 sm:p-3">
-=======
                         -
                       </button>
->>>>>>> faf331b59275f7255681c2e37e4da93bf8939ebd
                       <input
                         type="text"
                         value={

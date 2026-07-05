@@ -32,13 +32,10 @@ import {
   Banknote,
   ChevronDown,
   Shield,
-<<<<<<< HEAD
   Percent,
-=======
   Monitor,
   HeartHandshake,
   Grid3X3,
->>>>>>> faf331b59275f7255681c2e37e4da93bf8939ebd
 } from "lucide-react";
 
 /* ── روابط التنقل ── */

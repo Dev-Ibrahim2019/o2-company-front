@@ -13,12 +13,10 @@ import MenuPage from '../administration/Items/MenuPage';
 import renderModal from '../administration/renderModal';
 import BranchesPage from '../administration/BranchesPage/BranchesPage';
 import SupplierPortal from './suppliers/SupplierPortal';
-<<<<<<< HEAD
-=======
+
 import { FinancialInvoicesPage } from '../financial/FinancialInvoicesPage';
 import { FinancialInvoiceForm } from '../financial/FinancialInvoiceForm';
 
->>>>>>> faf331b59275f7255681c2e37e4da93bf8939ebd
 import { OrgStructure } from './OrgStructure/OrgStructure';
 import { AccountingPortal } from './GL/AccountingPortal';
 import { DiscountManagementPortal } from './discounts/DiscountManagementPortal';
@@ -34,12 +32,9 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
   const canManageFinance = currentUser?.role === 'ADMIN' || currentUser?.role === 'FINANCE' || currentUser?.role === 'BRANCH_MANAGER';
   const canEditSettings = currentUser?.role === 'ADMIN';
 
-<<<<<<< HEAD
-=======
   const [financialView, setFinancialView] = useState<'list' | 'form'>('list');
   const [editingId, setEditingId] = useState<number | undefined>(undefined);
 
->>>>>>> faf331b59275f7255681c2e37e4da93bf8939ebd
   const renderCustomers = () => <CustomerPortal />;
   const renderSuppliers = () => <SupplierPortal />;
 
@@ -96,10 +91,6 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
 
   return (
     <div className="h-full flex flex-col min-h-0">
-<<<<<<< HEAD
-      {/* Main Content */}
-=======
->>>>>>> faf331b59275f7255681c2e37e4da93bf8939ebd
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 min-h-0">
         {viewContent[initialView]}
       </div>
