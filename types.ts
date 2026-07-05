@@ -452,14 +452,21 @@ export enum TableStatus {
 export interface Hall {
   id: string;
   name: string;
+  code?: string;
+  branch_id?: number;
+  status?: string;
+  tables?: Table[];
 }
 
 export interface Table {
   id: string;
   number: number;
+  label?: string;
   status: TableStatus;
   capacity: number;
   hallId: string;
+  qr_code?: string;
+  qr_url?: string;
   currentOrderId?: string;
   seatedAt?: Date;
   guestCount?: number;

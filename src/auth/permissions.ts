@@ -89,6 +89,17 @@ export const PERMISSIONS = {
   // ── إدارة المستخدمين ──
   MANAGE_USERS: "manage-users",
 
+  // ── نقاط البيع ──
+  MANAGE_POS_REGISTERS: "manage-pos-registers",
+
+  // ── أجهزة الضيافة ──
+  MANAGE_HOSPITALITY_DEVICES: "manage-hospitality-devices",
+
+  // ── القاعات والطاولات ──
+  MANAGE_DINING_ZONES: "manage-dining-zones",
+
+  // ── واجهة الكاشير ──
+  ACCESS_POS_INTERFACE: "access-pos-interface",
   // ── الخصومات ──
   MANAGE_DISCOUNTS: "manage-discounts",
 } as const;
@@ -105,6 +116,9 @@ export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   [ROLES.SUPER_ADMIN]: [
     // يملك كل شيء
+    PERMISSIONS.MANAGE_POS_REGISTERS,
+    PERMISSIONS.MANAGE_HOSPITALITY_DEVICES,
+    PERMISSIONS.MANAGE_DINING_ZONES,
     PERMISSIONS.MANAGE_BRANCHES,
     PERMISSIONS.MANAGE_DEPARTMENTS,
     PERMISSIONS.MANAGE_ITEMS,
@@ -132,7 +146,12 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     PERMISSIONS.VIEW_REPORTS,
     PERMISSIONS.VIEW_ACCOUNTING,
     PERMISSIONS.MANAGE_CUSTOMERS,
+<<<<<<< HEAD
     PERMISSIONS.MANAGE_DISCOUNTS,
+=======
+    PERMISSIONS.MANAGE_DINING_ZONES,
+    PERMISSIONS.MANAGE_INVOICES,
+>>>>>>> faf331b59275f7255681c2e37e4da93bf8939ebd
   ],
 
   [ROLES.ACCOUNTANT]: [

@@ -27,11 +27,18 @@ import {
   Archive,
   BookOpen,
   Receipt,
+  ReceiptText,
   Wallet,
   Banknote,
   ChevronDown,
   Shield,
+<<<<<<< HEAD
   Percent,
+=======
+  Monitor,
+  HeartHandshake,
+  Grid3X3,
+>>>>>>> faf331b59275f7255681c2e37e4da93bf8939ebd
 } from "lucide-react";
 
 /* ── روابط التنقل ── */
@@ -44,7 +51,7 @@ const NAV = [
   { to: "/admin/employees", icon: Users2, label: "إدارة الموظفين", permission: PERMISSIONS.MANAGE_EMPLOYEES },
   { to: "/admin/accounting/dashboard", icon: LayoutDashboard, label: "الرئيسية المالية", permission: PERMISSIONS.VIEW_ACCOUNTING, indent: true, group: "accounting" },
   { to: "/admin/accounting/gl", icon: BookOpen, label: "المحاسبة العامة", permission: PERMISSIONS.MANAGE_ACCOUNTING, indent: true, group: "accounting" },
-  { to: "/admin/sales", icon: Receipt, label: "فواتير المبيعات", permission: PERMISSIONS.MANAGE_INVOICES, indent: true, group: "accounting" },
+  { to: "/admin/sales-invoices", icon: ReceiptText, label: "فواتير المبيعات", permission: PERMISSIONS.MANAGE_INVOICES, indent: true, group: "accounting" },
   { to: "/admin/customers", icon: Receipt, label: "حسابات العملاء", permission: PERMISSIONS.MANAGE_CUSTOMERS, indent: true, group: "accounting" },
   { to: "/admin/suppliers", icon: Wallet, label: "حسابات الموردين", permission: PERMISSIONS.MANAGE_SUPPLIERS, indent: true, group: "accounting" },
   { to: "/admin/reports", icon: FileText, label: "مركز التقارير", permission: PERMISSIONS.VIEW_REPORTS },
@@ -52,6 +59,10 @@ const NAV = [
   { to: "/admin/archive", icon: Archive, label: "أرشيف العمليات", permission: PERMISSIONS.VIEW_ARCHIVE },
   { to: "/admin/settings", icon: Settings, label: "الإعدادات العامة", permission: PERMISSIONS.MANAGE_SETTINGS },
   { to: "/admin/orgstructure", icon: Building2, label: "الهيكل التنظيمي", permission: PERMISSIONS.MANAGE_EMPLOYEES },
+  { to: "/admin/pos-registers", icon: Monitor, label: "نقاط البيع", permission: PERMISSIONS.MANAGE_POS_REGISTERS },
+  { to: "/admin/hospitality-devices", icon: HeartHandshake, label: "أجهزة الضيافة", permission: PERMISSIONS.MANAGE_HOSPITALITY_DEVICES },
+  { to: "/admin/dining-zones", icon: Grid3X3, label: "القاعات والطاولات", permission: PERMISSIONS.MANAGE_DINING_ZONES },
+  { to: "/admin/pos", icon: Monitor, label: "واجهة الكاشير", permission: PERMISSIONS.ACCESS_POS_INTERFACE },
 ];
 
 export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
@@ -182,7 +193,7 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({ children
           <SidebarGroup icon={BookOpen} label="المحاسبة والمالية" groupKey="accounting" permission={PERMISSIONS.VIEW_ACCOUNTING}>
             <SidebarLink to="/admin/accounting/dashboard" icon={LayoutDashboard} label="الرئيسية المالية" indent />
             <SidebarLink to="/admin/accounting/gl" icon={BookOpen} label="المحاسبة العامة" indent permission={PERMISSIONS.MANAGE_ACCOUNTING} />
-            <SidebarLink to="/admin/sales" icon={Receipt} label="فواتير المبيعات" indent permission={PERMISSIONS.MANAGE_INVOICES} />
+            <SidebarLink to="/admin/sales-invoices" icon={ReceiptText} label="فواتير المبيعات" indent permission={PERMISSIONS.MANAGE_INVOICES} />
             <SidebarLink to="/admin/customers" icon={Receipt} label="حسابات العملاء" indent permission={PERMISSIONS.MANAGE_CUSTOMERS} />
             <SidebarLink to="/admin/suppliers" icon={Wallet} label="حسابات الموردين" indent permission={PERMISSIONS.MANAGE_SUPPLIERS} />
             <SidebarLink to="/admin/discounts" icon={Percent} label="إدارة الخصومات" indent />
@@ -200,6 +211,10 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({ children
           {/* ── إدارة المستخدمين ── */}
           <SidebarLink to="/admin/users" icon={Users2} label="إدارة المستخدمين" permission={PERMISSIONS.MANAGE_USERS} />
           <SidebarLink to="/admin/permissions" icon={Shield} label="الأدوار والصلاحيات" permission={PERMISSIONS.MANAGE_USERS} />
+          <SidebarLink to="/admin/pos-registers" icon={Monitor} label="نقاط البيع" permission={PERMISSIONS.MANAGE_POS_REGISTERS} />
+          <SidebarLink to="/admin/hospitality-devices" icon={HeartHandshake} label="أجهزة الضيافة" permission={PERMISSIONS.MANAGE_HOSPITALITY_DEVICES} />
+          <SidebarLink to="/admin/dining-zones" icon={Grid3X3} label="القاعات والطاولات" permission={PERMISSIONS.MANAGE_DINING_ZONES} />
+          <SidebarLink to="/admin/pos" icon={Monitor} label="واجهة الكاشير" permission={PERMISSIONS.ACCESS_POS_INTERFACE} />
         </nav>
 
         {/* Footer */}

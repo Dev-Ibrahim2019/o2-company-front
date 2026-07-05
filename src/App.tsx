@@ -5,7 +5,7 @@
  * 3. تحديث المحتوى عند تغيير الرابط (key prop)
  */
 
-import React from "react";
+import React, { useState } from "react";
 import { Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth, ProtectedRoute, UnauthorizedPage } from "./auth";
 import { ROLES } from "./auth/permissions";
@@ -17,10 +17,21 @@ import { FinancePortal } from "./components/administration/FinancePortal";
 import { AccountingPortal } from "./components/administration/GL/AccountingPortal";
 import { POSLayout } from "./components/POS/Layout";
 import { POS } from "./components/POS/pos";
+import AdminPOSWrapper from "./components/POS/AdminPOSWrapper";
 import { TablesView } from "./components/POS/Tables";
 import { OrdersView } from "./components/POS/Orders";
 import { ShiftView } from "./components/POS/Shift";
+import { HospitalityLayout } from "./components/Hospitality/Layout";
+import { HospitalityPOS } from "./components/Hospitality/HospitalityPOS";
+import { HospitalityOrders } from "./components/Hospitality/HospitalityOrders";
+import { HospitalityTables } from "./components/Hospitality/Tables";
+import { FinancialInvoicesPage } from "./components/financial/FinancialInvoicesPage";
+import { FinancialInvoiceForm } from "./components/financial/FinancialInvoiceForm";
+import { SalesInvoiceListPage, SalesInvoiceFormPage } from "./components/sales-invoices";
 import UsersManagementPage from "./pages/UsersManagementPage";
+import PosRegistersPage from "./pages/PosRegistersPage";
+import HospitalityDevicesPage from "./pages/HospitalityDevicesPage";
+import DiningZonesPage from "./pages/DiningZonesPage";
 import RolesPermissionsPage from "./pages/RolesPermissionsPage";
 import DepartmentsPage from "./components/administration/DepartmentsPage";
 import { ThemeProvider } from "./theme";
@@ -33,7 +44,22 @@ import { ThemeProvider } from "./theme";
 const ADMIN_ROLES = [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BRANCH_MANAGER];
 
 /** الأدوار المسموح بها في مسارات /pos/* */
-const POS_ROLES = [ROLES.CASHIER, ROLES.HOSPITALITY, ROLES.DEPT_STAFF];
+const POS_ROLES = [
+  ROLES.CASHIER,
+  ROLES.HOSPITALITY,
+  ROLES.DEPT_STAFF,
+  ROLES.SUPER_ADMIN,
+  ROLES.ACCOUNTANT,
+  ROLES.BRANCH_MANAGER,
+];
+
+/** الأدوار المسموح بها في مسارات /Hospitality/* */
+const HOSPITALITY_ROLES = [
+  ROLES.HOSPITALITY,
+  ROLES.SUPER_ADMIN,
+  ROLES.ACCOUNTANT,
+  ROLES.BRANCH_MANAGER,
+];
 
 /**
  * RoleGuard — layout route يفحص الدور ثم يعرض المحتوى عبر Outlet
@@ -86,6 +112,7 @@ const financeViewMap: Record<string, string> = {
   archive: "ARCHIVE",
   settings: "SETTINGS",
   orgstructure: "ORGSTRUCTURE",
+  "financial-invoices": "FINANCIAL_INVOICES",
   discounts: "DISCOUNTS",
 };
 
@@ -116,6 +143,36 @@ function AccountingView() {
     hr: "HR",
   };
   return <AccountingPortal key={lastSegment} initialTab={tabMap[lastSegment] as any} />;
+}
+
+/** SalesInvoicesView — page-based list ↔ form for new sales invoices module */
+function SalesInvoicesView() {
+  const [view, setView] = useState<"list" | "form">("list");
+  const [editId, setEditId] = useState<number | undefined>(undefined);
+
+  const handleOpenForm = (id?: number) => {
+    setEditId(id);
+    setView("form");
+  };
+
+  const handleBack = () => {
+    setView("list");
+    setEditId(undefined);
+  };
+
+  if (view === "form") {
+    return (
+      <div className="h-full overflow-y-auto custom-scrollbar">
+        <SalesInvoiceFormPage invoiceId={editId} onBack={handleBack} onSaved={handleBack} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full overflow-y-auto custom-scrollbar">
+      <SalesInvoiceListPage onOpenForm={handleOpenForm} />
+    </div>
+  );
 }
 
 /** صفحة 404 مخصصة */
@@ -170,6 +227,8 @@ function AppRoutes() {
               <Route path="archive" element={<FinanceView />} />
               <Route path="settings" element={<FinanceView />} />
               <Route path="orgstructure" element={<FinanceView />} />
+              <Route path="financial-invoices" element={<FinanceView />} />
+              <Route path="sales-invoices" element={<SalesInvoicesView />} />
               <Route path="discounts" element={<FinanceView />} />
 
               <Route path="accounting">
@@ -178,6 +237,10 @@ function AppRoutes() {
               </Route>
               <Route path="users" element={<UsersManagementPage />} />
               <Route path="permissions" element={<RolesPermissionsPage />} />
+              <Route path="pos-registers" element={<PosRegistersPage />} />
+              <Route path="hospitality-devices" element={<HospitalityDevicesPage />} />
+              <Route path="dining-zones" element={<DiningZonesPage />} />
+              <Route path="pos" element={<AdminPOSWrapper />} />
             </Route>
           </Route>
         </Route>
@@ -191,6 +254,20 @@ function AppRoutes() {
               <Route index element={<POS onViewTables={() => { }} />} />
               <Route path="orders" element={<OrdersView />} />
               <Route path="tables" element={<TablesView />} />
+            </Route>
+          </Route>
+        </Route>
+
+        {/* ═══ مسارات قسم الضيافة ═══
+            RoleGuard يفحص الدور → HospitalityLayout يعرض السايد بار الخاص بالضيافة
+            يستخدم مكونات خاصة بالضيافة
+        */}
+        <Route element={<RoleGuard allowedRoles={HOSPITALITY_ROLES} />}>
+          <Route element={<HospitalityLayout />}>
+            <Route path="/Hospitality">
+              <Route index element={<HospitalityPOS />} />
+              <Route path="orders" element={<HospitalityOrders />} />
+              <Route path="tables" element={<HospitalityTables />} />
             </Route>
           </Route>
         </Route>
@@ -213,6 +290,7 @@ function AppRoutes() {
 
         {/* ── الصفحة الافتراضية ── */}
         <Route index element={<Navigate to="/admin/dashboard" replace />} />
+
       </Route>
 
       {/* ── 404 ── */}

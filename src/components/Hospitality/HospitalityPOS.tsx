@@ -1,10 +1,11 @@
-// src/components/POS/pos.tsx
+// src/components/Hospitality/HospitalityPOS.tsx
 //
-// التغييرات الجوهرية:
-// 1. المنيو يجي من API عبر useMenu(branchId) بدل MENU_ITEMS الثابتة
-// 2. السلة تدار عبر useCart — addToCart يزيد الكمية بدل صف جديد
-// 3. submitOrder يرسل للـ API فعلياً
-// 4. getItemCurrentPrice تقرأ item.price مباشرة (جاي من pivot الفرع)
+// نسخة منفصلة من صفحة POS مخصصة لقسم الضيافة
+// تستخدم HospitalityPOSHeader بدل POSHeader
+// - لا توجد شريط إضافة سريعة (Quick Add)
+// - لا توجد تبويبات (طاولات/منيو/معلومات/عميل)
+// - دائماً نوع الطلب DINE_IN
+// - دائماً يبدأ بعرض المنيو
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -18,19 +19,16 @@ import {
 } from "../../../types";
 import { AlertCircle, ShoppingCart, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useDiscountCart } from "../../hooks/useDiscountCart";
 
-import { POSHeader } from "./POSHeader";
-import { HospitalityPOSHeader } from "../Hospitality/HospitalityPOSHeader";
-import { MenuGrid } from "./MenuGrid";
-import { InvoiceInfoTab } from "./InvoiceInfoTab";
-import { CustomerTab, type PaymentEntry } from "./CustomerTab";
-import { CartPanel } from "./CartPanel";
+import { HospitalityPOSHeader } from "./HospitalityPOSHeader";
+import { MenuGrid } from "../POS/MenuGrid";
+import { CustomerTab, type PaymentEntry } from "../POS/CustomerTab";
+import { CartPanel } from "../POS/CartPanel";
 import {
   CustomerSearchModal,
   QuickAddCustomerModal,
   CloseInvoiceModal,
-} from "./POSModals";
+} from "../POS/POSModals";
 
 import { useMenu } from "../../hooks/useMenu";
 import { useCart, type CartItem } from "../../hooks/useCart";
@@ -41,11 +39,10 @@ import {
   type OrderFromApi,
   type PaymentMethod as ApiPaymentMethod,
 } from "../../services/orderService";
-import { TablesView } from "./Tables";
 import type { Order, Table } from "../../../types";
-import { getDeviceUUIDSecurely } from "../../utils/posSecurity";
-import POSActivationPage from "./POSActivationPage";
-import { PERMISSIONS, ROLES } from "../../auth/permissions";
+import { getDeviceUUIDSecurely } from "../../utils/hospitalitySecurity";
+import HospitalityActivationPage from "./HospitalityActivationPage";
+import { ROLES } from "../../auth/permissions";
 
 
 const MONEY_EPSILON = 0.01;
@@ -119,11 +116,7 @@ const clonePayments = (items: PaymentEntry[]) =>
 const normalizeTableNumber = (value: string | number | null | undefined) =>
   String(value ?? "").trim();
 
-export const POS: React.FC<{
-  onViewTables: () => void;
-  initialMode?: "tables" | "menu" | "info" | "customer";
-}> = ({ onViewTables, initialMode = "tables" }) => {
-
+export const HospitalityPOS: React.FC = () => {
   const [searchParams] = useSearchParams();
   const [deviceUuid, setDeviceUuid] = useState<string | null>(null);
   const [posInfo, setPosInfo] = useState<any>(null);
@@ -134,7 +127,7 @@ export const POS: React.FC<{
     const checkDeviceSecurity = async () => {
       try {
         const uuid = await getDeviceUUIDSecurely();
-        const storedInfo = localStorage.getItem("pos_register_info");
+        const storedInfo = localStorage.getItem("hospitality_register_info");
 
         if (uuid && storedInfo) {
           setDeviceUuid(uuid);
@@ -149,15 +142,13 @@ export const POS: React.FC<{
     checkDeviceSecurity();
   }, []);
 
-// دالة يتم استدعاؤها لتحديث الحالة فور إدخال كود التفعيل بنجاح
-const handleActivationSuccess = (activatedInfo: any) => {
-  getDeviceUUIDSecurely().then((uuid) => {
-    setDeviceUuid(uuid);
-    setPosInfo(activatedInfo);
-  });
-};
+  const handleActivationSuccess = (activatedInfo: any) => {
+    getDeviceUUIDSecurely().then((uuid) => {
+      setDeviceUuid(uuid);
+      setPosInfo(activatedInfo);
+    });
+  };
 
-  // ── Store (للحالات القديمة غير المنقولة بعد) ──────────────────────────────
   const {
     selectedTable,
     setSelectedTable,
@@ -172,16 +163,9 @@ const handleActivationSuccess = (activatedInfo: any) => {
     updateTableStatus,
   } = useApp();
 
-  const isHospitality = userRole === "HOSPITALITY";
-
-  // ── Branch ID ─────────────────────────────────────────────────────────────
-  // نأخذه من currentUser — إذا ما في فرع، يستخدم null
-  // (MenuController سيرفض الطلب لغير super-admin بدون فرع)
-
   const branchId: number | undefined =
-  posInfo?.branch_id ?? (currentUser as any)?.branch_id ?? undefined;
+    posInfo?.branch_id ?? (currentUser as any)?.branch_id ?? undefined;
 
-  // ── Menu from API ─────────────────────────────────────────────────────────
   const {
     categories,
     allItems,
@@ -189,7 +173,6 @@ const handleActivationSuccess = (activatedInfo: any) => {
     findByCode,
   } = useMenu(branchId);
 
-  // ── Cart ──────────────────────────────────────────────────────────────────
   const {
     cart: currentCart,
     subtotal,
@@ -203,10 +186,8 @@ const handleActivationSuccess = (activatedInfo: any) => {
     submitError,
   } = useCart();
 
-  // ── UI State ──────────────────────────────────────────────────────────────
-  const [activePOSMode, setActivePOSMode] = useState<
-    "tables" | "menu" | "info" | "customer"
-  >(initialMode);
+  // الضيافة دائماً تبدأ بعرض المنيو
+  const [activePOSMode, setActivePOSMode] = useState<"menu">("menu");
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [posError, setPosError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState("all");
@@ -243,11 +224,6 @@ const handleActivationSuccess = (activatedInfo: any) => {
   >("ACCOUNT");
   const [accountNumber, setAccountNumber] = useState("");
 
-  // ── Quick Add State ───────────────────────────────────────────────────────
-  const [quickId, setQuickId] = useState("");
-  const [quickQty, setQuickQty] = useState("");
-  const [quickTotal, setQuickTotal] = useState("");
-
   // ── Cart Editing State ────────────────────────────────────────────────────
   const [editingQty, setEditingQty] = useState<{ [id: string]: string }>({});
   const [editingNames, setEditingNames] = useState<{ [id: string]: string }>(
@@ -271,7 +247,6 @@ const handleActivationSuccess = (activatedInfo: any) => {
     const orderId = Number(editOrderIdParam);
     if (!Number.isFinite(orderId)) return;
 
-    // تنظيف الرابط بعد القراءة
     const newSearchParams = new URLSearchParams(searchParams);
     newSearchParams.delete("editOrderId");
     const newUrl = `${window.location.pathname}${newSearchParams.toString() ? "?" + newSearchParams.toString() : ""}`;
@@ -285,7 +260,6 @@ const handleActivationSuccess = (activatedInfo: any) => {
         if (!cancelled) {
           applyApiOrderToCart(order);
           setIsCartOpen(true);
-          setActivePOSMode("menu");
         }
       } catch (err) {
         console.error("فشل تحميل الطلب للتعديل:", err);
@@ -311,7 +285,6 @@ const handleActivationSuccess = (activatedInfo: any) => {
       try {
         const invoice = await orderService.getInvoiceForOrder(editingApiOrderId);
         if (!cancelled && invoice) {
-          // تحويل هيكل الفاتورة من API إلى الشكل المطلوب في InvoiceInfoTab
           setInvoiceData({
             pos: {
               register_id: (invoice as any).pos_register_id,
@@ -364,12 +337,10 @@ const handleActivationSuccess = (activatedInfo: any) => {
     }
   }, [selectedTable]);
 
+  // الضيافة دائماً DINE_IN
   useEffect(() => {
-    if (isHospitality) {
-      setCartOrderType(OrderType.DINE_IN);
-      setActivePOSMode("menu");
-    }
-  }, [isHospitality]);
+    setCartOrderType(OrderType.DINE_IN);
+  }, []);
 
   useEffect(() => {
     if (posError || submitError) {
@@ -380,8 +351,6 @@ const handleActivationSuccess = (activatedInfo: any) => {
     }
   }, [posError, submitError]);
 
-  // ── Account data comes from real API via CustomerTab/SettlementPanel ──
-  // No hardcoded mock account numbers.
   // ── Derived ───────────────────────────────────────────────────────────────
   const filteredCustomers = useMemo(() => {
     if (!customerSearchQuery) return [];
@@ -392,92 +361,17 @@ const handleActivationSuccess = (activatedInfo: any) => {
     );
   }, [customers, customerSearchQuery]);
 
-  const getEntityDepartmentId = (): number | undefined => {
-    if (accountType === "EMPLOYEE" && accountNumber) {
-      const empId = parseInt(accountNumber, 10);
-      if (empId) {
-        // نحاول إيجاد القسم من الموظف — سيحله محرك الخصم من الـ mock entities
-        return undefined; // المحرك سيستنتج department_id من employee_id
-      }
-    }
-    // إذا كان العميل مختار من القائمة، نحاول إيجاد department_id من أول صنف في السلة
-    if (currentCart.length > 0 && currentCart[0].department_id) {
-      return currentCart[0].department_id;
-    }
-    return undefined;
-  };
-
-  const getPricingContext = () => ({
-    customer_id:
-      accountType === "ACCOUNT"
-        ? (selectedCustomer?.id ??
-          (accountNumber ? parseInt(accountNumber, 10) || undefined : undefined))
-        : undefined,
-    employee_id:
-      accountType === "EMPLOYEE" && accountNumber
-        ? parseInt(accountNumber, 10) || undefined
-        : undefined,
-    supplier_id:
-      accountType === "SUPPLIER" && accountNumber
-        ? parseInt(accountNumber, 10) || undefined
-        : undefined,
-    department_id: getEntityDepartmentId(),
-    branch_id: branchId ?? undefined,
-  });
-
-  const discountContext = useMemo(() => getPricingContext(), [
-    accountType,
-    selectedCustomer,
-    accountNumber,
-    branchId,
-    currentCart,
-  ]);
-
-  const {
-    engineDiscountTotal,
-    originalSubtotal: engineOriginalSubtotal,
-    appliedDiscounts,
-    items: engineDiscountItems,
-    loading: discountLoading,
-  } = useDiscountCart(currentCart, discountContext);
-
-  const enrichedCart = useMemo(
-    () =>
-      currentCart.map((item) => {
-        const line = engineDiscountItems.find((l) => l.item_id === item.id);
-        if (!line || line.discount_amount <= 0) return item;
-        return {
-          ...item,
-          original_price: line.original_price,
-          final_price: line.final_unit_price,
-          discount_amount: line.discount_amount,
-          discount_percent: line.discount_percent,
-          discount_id: line.discount?.id,
-        };
-      }),
-    [currentCart, engineDiscountItems],
-  );
-
-  const displaySubtotal =
-    engineOriginalSubtotal > 0 ? engineOriginalSubtotal : subtotal;
-  const afterEngineSubtotal = Math.max(
-    0,
-    displaySubtotal - engineDiscountTotal,
-  );
-  const manualDiscount =
+  const calculatedDiscount =
     discountType === "PERCENT"
-      ? (afterEngineSubtotal * discountValue) / 100
+      ? (subtotal * discountValue) / 100
       : discountValue;
-  const calculatedDiscount = roundMoney(engineDiscountTotal + manualDiscount);
-  const total = roundMoney(Math.max(0, displaySubtotal - calculatedDiscount));
+  const total = roundMoney(Math.max(0, subtotal - calculatedDiscount));
   const totalPaid = roundMoney(
     payments.reduce((sum, payment) => sum + payment.amount, 0),
   );
   const remainingAmount = Math.max(0, roundMoney(total - totalPaid));
 
   // ── Helpers ───────────────────────────────────────────────────────────────
-
-  // ✅ getItemCurrentPrice: السعر يجي من pivot مباشرة
   const getItemCurrentPrice = (item: any): number => item.price ?? 0;
 
   const setOrderType = (type: OrderType) => setCartOrderType(type);
@@ -489,7 +383,6 @@ const handleActivationSuccess = (activatedInfo: any) => {
     addToCartRaw(item, opts);
   };
 
-  // معرفة entityType من accountType الحالي
   const getEntityType = (): string | undefined => {
     if (accountType === 'EMPLOYEE') return 'employee';
     if (accountType === 'SUPPLIER') return 'supplier';
@@ -500,10 +393,8 @@ const handleActivationSuccess = (activatedInfo: any) => {
   const addPayment = (method: PaymentMethod) => {
     if (remainingAmount <= MONEY_EPSILON) return;
     setPaymentMethod(method);
-    // إذا كان هناك كيان محدد (موظف/عميل/مورد)، نرسل بياناته مع الدفعة
     const entityMethod = getEntityType();
     const entityId = accountNumber ? parseInt(accountNumber, 10) : undefined;
-    // سجل الـ payload للتأكد
     const paymentPayload = {
       method,
       amount: roundMoney(remainingAmount),
@@ -512,7 +403,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
       subledger_type: entityMethod,
       subledger_id: entityId,
     };
-    console.log('[POS] addPayment payload:', paymentPayload);
+    console.log('[HospitalityPOS] addPayment payload:', paymentPayload);
     setPayments((prev) => [
       ...prev,
       paymentPayload,
@@ -813,7 +704,6 @@ const handleActivationSuccess = (activatedInfo: any) => {
       cartOrderType === OrderType.DINE_IN ? resolveActiveDineInTable() : null;
     if (cartOrderType === OrderType.DINE_IN && !activeTable) return;
 
-    // Submit the order as PENDING so it is saved to the backend
     const orderType =
       cartOrderType === OrderType.DINE_IN ? "dine_in" : "takeaway";
     const result = await submitOrderApi(
@@ -827,11 +717,10 @@ const handleActivationSuccess = (activatedInfo: any) => {
         note: invoiceNote || undefined,
         discount_value: discountValue || undefined,
         discount_type: discountType === "PERCENT" ? "percent" : "amount",
-        ...getPricingContext(),
       },
-      true, // confirm order
+      true,
       [],
-      false, // do not close/create invoice yet
+      false,
       editingApiOrderId,
     );
 
@@ -870,49 +759,6 @@ const handleActivationSuccess = (activatedInfo: any) => {
     setQuickCustomerPhone("");
   };
 
-  // ── Quick Add ─────────────────────────────────────────────────────────────
-  const handleQuickIdChange = (id: string) => {
-    setQuickId(id);
-    const item = findByCode(id);
-    if (item) {
-      setQuickQty("1");
-      setQuickTotal(item.price.toFixed(2));
-    } else {
-      setQuickQty("");
-      setQuickTotal("");
-    }
-  };
-
-  const handleQuickQtyChange = (qtyStr: string) => {
-    setQuickQty(qtyStr);
-    const item = findByCode(quickId);
-    if (item && qtyStr)
-      setQuickTotal(((parseFloat(qtyStr) || 0) * item.price).toFixed(2));
-  };
-
-  const handleQuickTotalChange = (totalStr: string) => {
-    setQuickTotal(totalStr);
-    const item = findByCode(quickId);
-    if (item && totalStr)
-      setQuickQty(((parseFloat(totalStr) || 0) / item.price).toFixed(2));
-  };
-
-  const handleQuickAdd = () => {
-    const item = findByCode(quickId);
-    if (!item) {
-      setPosError("الصنف غير موجود في منيو هذا الفرع");
-      return;
-    }
-    addToCart(item, { quantity: parseFloat(quickQty) || 1, price: item.price });
-    setQuickId("");
-    setQuickQty("");
-    setQuickTotal("");
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") handleQuickAdd();
-  };
-
   // ── Cart Handlers ─────────────────────────────────────────────────────────
   const handleNameChange = (uniqueId: string, newName: string) => {
     setEditingNames((prev) => ({ ...prev, [uniqueId]: newName }));
@@ -948,7 +794,6 @@ const handleActivationSuccess = (activatedInfo: any) => {
   };
 
   // ── submitOrder ───────────────────────────────────────────────────────────
-  // يرسل الطلب للـ API الحقيقي — محسّن لإرسال entity data للمدفوعات على حساب الكيانات
   const submitOrder = async (
     status: OrderStatus,
     method: PaymentMethod,
@@ -964,7 +809,8 @@ const handleActivationSuccess = (activatedInfo: any) => {
     const orderType =
       cartOrderType === OrderType.DINE_IN ? "dine_in" : "takeaway";
 
-    const shouldConfirm = status === OrderStatus.CONFIRMED || isHospitality; // الضيافة تأكد مباشرة
+    // الضيافة تأكد دائماً
+    const shouldConfirm = status === OrderStatus.CONFIRMED || true;
     const isClosingOrder = status === OrderStatus.DELIVERED;
     const selectedPayments = (paymentsArg ?? payments)
       .map((payment) => ({
@@ -1010,7 +856,6 @@ const handleActivationSuccess = (activatedInfo: any) => {
     }
 
     const selectedPaymentMethod = closingPayments[0]?.method ?? method;
-    // Normalize all payment methods — مع المحافظة على entity data
     const apiClosingPayments = closingPayments
       .map((payment) => {
         const method = normalizeApiPaymentMethod(payment.method);
@@ -1021,8 +866,6 @@ const handleActivationSuccess = (activatedInfo: any) => {
           amount: payment.amount,
           reference: payment.reference,
         };
-        // FIXED: نرسل entity_type فقط إذا method = account/customer/employee/supplier
-        // لا نرسل entity_type مع cash/bank/card/wallet أبداً
         if (isEntityMethod && (payment as any).entity_type) {
           result.entity_type = (payment as any).entity_type;
           result.entity_id = (payment as any).entity_id;
@@ -1032,7 +875,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
         return result;
       })
       .filter((p): p is NonNullable<typeof p> => p !== null) as any[];
-    console.log('[POS] apiClosingPayments:', JSON.stringify(apiClosingPayments));
+    console.log('[HospitalityPOS] apiClosingPayments:', JSON.stringify(apiClosingPayments));
 
     const activeTable =
       cartOrderType === OrderType.DINE_IN ? resolveActiveDineInTable() : null;
@@ -1049,7 +892,6 @@ const handleActivationSuccess = (activatedInfo: any) => {
         note: meta.note || undefined,
         discount_value: discountValue || undefined,
         discount_type: discountType === "PERCENT" ? "percent" : "amount",
-        ...getPricingContext(),
         payment_method: isClosingOrder
           ? normalizeApiPaymentMethod(selectedPaymentMethod)
           : undefined,
@@ -1078,7 +920,6 @@ const handleActivationSuccess = (activatedInfo: any) => {
           setSelectedTable(activeTable);
         }
       }
-      // تنظيف بعد النجاح
       setInvoiceNote("");
       setDiscountValue(0);
       setManualTable("");
@@ -1095,19 +936,15 @@ const handleActivationSuccess = (activatedInfo: any) => {
   const commonCartProps = {
     isCartOpen,
     setIsCartOpen,
-    isHospitality,
+    isHospitality: true,
     cartOrderType,
     setOrderType,
-    currentCart: enrichedCart,
+    currentCart,
     manualTable,
     handleTableInput,
-    onViewTables,
-    subtotal: displaySubtotal,
+    onViewTables: () => {},
+    subtotal,
     calculatedDiscount,
-    engineDiscountTotal,
-    manualDiscount,
-    appliedDiscounts,
-    discountLoading,
     discountType,
     discountValue,
     total,
@@ -1127,7 +964,6 @@ const handleActivationSuccess = (activatedInfo: any) => {
     handleTotalChange,
     setEditingNames,
     removeFromCart,
-    updateCartItem,
     getItemCurrentPrice,
     setPosError,
     submitOrder,
@@ -1138,7 +974,8 @@ const handleActivationSuccess = (activatedInfo: any) => {
     allItems,
     addToCart,
   };
-  // 1. إذا كان النظام ما زال يفحص هوية المتصفح
+
+  // 1. فحص أمان الجهاز
   if (checkingSecurity) {
     return (
       <div className="fixed inset-0 flex flex-col items-center justify-center bg-slate-950 text-white" dir="rtl">
@@ -1148,20 +985,18 @@ const handleActivationSuccess = (activatedInfo: any) => {
     );
   }
 
-  // 2. إذا لم يجد بصمة مفعلة أو كود مسجل، يحجب الكاشير ويعرض شاشة التفعيل
-  //    لكن إذا كان المستخدم من لوحة الإدارة (يملك صلاحية ACCESS_POS_INTERFACE) يتجاوز التفعيل
+  // 2. تفعيل الجهاز — الضيافة يمكنها تجاوز التفعيل إذا كان لديها صلاحية إدارة
   const adminRoles = [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BRANCH_MANAGER];
   const hasPosInterfaceAccess = userRole && adminRoles.includes(userRole as any);
-  
+
   if (!deviceUuid || !posInfo) {
     if (hasPosInterfaceAccess) {
-      // المستخدم من لوحة الإدارة — يسمح له بالدخول بدون تفعيل جهاز
-      // استخدم بيانات وهمية لـ posInfo لتجنب الأخطاء
       setPosInfo({ code: 'ADMIN', name: 'واجهة الإدارة', branch_id: null });
     } else {
-      return <POSActivationPage onActivationSuccess={handleActivationSuccess} />;
+      return <HospitalityActivationPage onActivationSuccess={handleActivationSuccess} />;
     }
   }
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col lg:flex-row gap-4 h-full bg-slate-950 overflow-y-auto lg:overflow-hidden p-2 sm:p-4 lg:p-0 custom-scrollbar relative">
@@ -1203,77 +1038,25 @@ const handleActivationSuccess = (activatedInfo: any) => {
       <div
         className={`flex-1 flex flex-col min-w-0 h-full ${isCartOpen ? "hidden lg:flex" : "flex"}`}
       >
-        {isHospitality ? (
-          <HospitalityPOSHeader
-            editingOrderId={currentEditingOrderId}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            clearCart={clearActiveCart}
-            onNewInvoice={clearActiveCart}
-          />
-        ) : (
-          <POSHeader
-            editingOrderId={currentEditingOrderId}
-            isHospitality={isHospitality}
-            activePOSMode={activePOSMode}
-            setActivePOSMode={setActivePOSMode}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            quickId={quickId}
-            quickQty={quickQty}
-            quickTotal={quickTotal}
-            handleQuickIdChange={handleQuickIdChange}
-            handleQuickQtyChange={handleQuickQtyChange}
-            handleQuickTotalChange={handleQuickTotalChange}
-            handleQuickAdd={handleQuickAdd}
-            handleKeyDown={handleKeyDown}
-            clearCart={clearActiveCart}
-          />
-        )}
+        {/* دائماً HospitalityPOSHeader */}
+        <HospitalityPOSHeader
+          editingOrderId={currentEditingOrderId}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          clearCart={clearActiveCart}
+          onNewInvoice={clearActiveCart}
+        />
 
         <div className="flex-1 flex flex-col min-h-0">
-          {activePOSMode === "tables" ? (
-            <TablesView mode="pos" onSelect={handleTableClick} />
-          ) : activePOSMode === "menu" ? (
-            <MenuGrid
-              categories={categories}
-              selectedCategory={selectedCategory}
-              setSelectedCategory={setSelectedCategory}
-              searchQuery={searchQuery}
-              addToCart={addToCart}
-              loading={menuLoading}
-            />
-          ) : activePOSMode === "info" ? (
-            <InvoiceInfoTab
-              editingOrderId={currentEditingOrderId}
-              currentUser={currentUser}
-              posInfo={posInfo}
-              invoiceData={invoiceData}
-            />
-          ) : (
-            <CustomerTab
-              customerName={customerName}
-              setCustomerName={setCustomerName}
-              customerPhone={customerPhone}
-              setCustomerPhone={setCustomerPhone}
-              selectedCustomer={selectedCustomer}
-              accountType={accountType}
-              setAccountType={setAccountType}
-              accountNumber={accountNumber}
-              setAccountNumber={setAccountNumber}
-              setShowSearchModal={setShowSearchModal}
-              customers={customers ?? []}
-              suppliers={suppliers ?? []}
-              employees={employees ?? []}
-              isHospitality={isHospitality}
-              total={total}
-              payments={payments}
-              addPayment={addPayment}
-              removePayment={removePayment}
-              updatePaymentAmount={updatePaymentAmount}
-              updatePaymentReference={updatePaymentReference}
-            />
-          )}
+          {/* الضيافة دائماً تعرض المنيو */}
+          <MenuGrid
+            categories={categories}
+            selectedCategory={selectedCategory}
+            setSelectedCategory={setSelectedCategory}
+            searchQuery={searchQuery}
+            addToCart={addToCart}
+            loading={menuLoading}
+          />
         </div>
       </div>
 

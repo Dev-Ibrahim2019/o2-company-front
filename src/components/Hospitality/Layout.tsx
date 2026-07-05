@@ -1,31 +1,29 @@
 /**
- * POS/Layout.tsx — النسخة المُحدّثة مع react-router-dom
- * يستخدم NavLink للتنقل و Outlet لعرض المحتوى
+ * Hospitality/Layout.tsx — Layout خاص بقسم الضيافة
+ * منفصل عن layout الكاشير مع مكونات خاصة به
  */
 
 import React, { useState, useEffect } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useApp } from "../../../store";
-import { useAuth, Can } from "../../auth";
-import { PERMISSIONS } from "../../auth/permissions";
+import { useAuth } from "../../auth";
 import { ThemeToggle } from "../shared/ThemeToggle";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ShoppingCart,
+  HeartHandshake,
   ClipboardList,
-  Grid2X2,
-  PieChart,
+  Users,
+  Settings,
   Power,
-  Clock,
   ChevronRight,
   ChevronLeft,
   Menu,
-  Receipt,
-  HeartHandshake,
+  BarChart3,
+  CalendarCheck,
 } from "lucide-react";
 
-export const POSLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
-  const { currentUser, userRole, branches } = useApp();
+export const HospitalityLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
+  const { currentUser, userRole } = useApp();
   const { logout: authLogout } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);
 
@@ -35,20 +33,14 @@ export const POSLayout: React.FC<{ children?: React.ReactNode }> = ({ children }
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const isAdmin = userRole === "ADMIN";
-  const isBranchManager = userRole === "BRANCH_MANAGER";
-  const isDeptStaff = userRole === "DEPARTMENT_STAFF";
-  const isAggregator = userRole === "ORDER_AGGREGATOR";
-  const isFinance = userRole === "FINANCE";
-  const isEmployee = userRole === "EMPLOYEE";
-  const isCustomer = userRole === "CUSTOMER";
+  const isHospitality = userRole === "HOSPITALITY";
   const collapsed = !isSidebarOpen;
 
   /* ── مكوّن رابط Sidebar ── */
-  const SidebarLink = ({ to, icon: Icon, label, permission }: {
-    to: string; icon: React.ElementType; label: string; permission?: string;
+  const SidebarLink = ({ to, icon: Icon, label }: {
+    to: string; icon: React.ElementType; label: string;
   }) => {
-    const link = (
+    return (
       <NavLink
         to={to}
         onClick={() => { if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
@@ -63,7 +55,6 @@ export const POSLayout: React.FC<{ children?: React.ReactNode }> = ({ children }
         {!collapsed && <span className="font-semibold text-sm whitespace-nowrap overflow-hidden">{label}</span>}
       </NavLink>
     );
-    return permission ? <Can permission={permission}>{link}</Can> : link;
   };
 
   return (
@@ -78,8 +69,15 @@ export const POSLayout: React.FC<{ children?: React.ReactNode }> = ({ children }
 
       <aside className={`fixed top-0 right-0 h-full bg-slate-900 border-l border-white/5 flex flex-col p-4 shadow-2xl transition-all duration-300 z-50 ${isSidebarOpen ? "w-64 translate-x-0" : "w-64 translate-x-full lg:w-20 lg:translate-x-0"}`}>
         <div className={`mb-8 flex items-center gap-3 ${!isSidebarOpen ? "justify-center" : "px-4"}`}>
-          <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-red-900/20 shrink-0">02</div>
-          {isSidebarOpen && <h1 className="text-xl font-black text-white tracking-tight">RestoMaster</h1>}
+          <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-red-900/20 shrink-0">
+            <HeartHandshake size={24} />
+          </div>
+          {isSidebarOpen && (
+            <div>
+              <h1 className="text-xl font-black text-white tracking-tight">الضيافة</h1>
+              <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Hospitality</p>
+            </div>
+          )}
         </div>
 
         <button onClick={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -88,18 +86,16 @@ export const POSLayout: React.FC<{ children?: React.ReactNode }> = ({ children }
         </button>
 
         <nav className="flex-1 space-y-1.5 overflow-y-auto custom-scrollbar">
-          <SidebarLink to="/pos" icon={ShoppingCart} label="نقطة البيع (POS)" />
-          <SidebarLink to="/pos/orders" icon={ClipboardList} label="الطلبات النشطة" permission={PERMISSIONS.VIEW_ORDERS} />
-          <SidebarLink to="/pos/tables" icon={Grid2X2} label="إدارة الطاولات" />
-          <SidebarLink to="/shift" icon={Clock} label="إدارة الشفت" />
-          <SidebarLink to="/pos" icon={Receipt} label="التقارير المالية" permission={PERMISSIONS.VIEW_REPORTS} />
+          <SidebarLink to="/Hospitality" icon={BarChart3} label="المنيو" />
+          <SidebarLink to="/Hospitality/orders" icon={ClipboardList} label="الطلبات النشطة" />
+          <SidebarLink to="/Hospitality/tables" icon={CalendarCheck} label="إدارة الطاولات" />
         </nav>
 
         <div className="mt-auto border-t border-white/5 pt-4 space-y-2">
           <ThemeToggle compact={collapsed} />
           <div className={`px-4 py-2 transition-all duration-300 ${!isSidebarOpen && "lg:opacity-0 lg:w-0 lg:overflow-hidden"}`}>
             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest truncate">
-              {isAdmin ? "الإدارة العامة" : isBranchManager ? `مدير: ${branches.find(b => b.id === currentUser?.branchId)?.name}` : isDeptStaff ? "موظف قسم" : isAggregator ? "مجمع طلبات" : isFinance ? "قسم المالية" : isEmployee ? "موظف" : isCustomer ? "عميل" : "الكاشير"}
+              قسم الضيافة
             </p>
             <p className="text-sm font-black text-slate-100 truncate">{currentUser?.name}</p>
           </div>
@@ -118,8 +114,10 @@ export const POSLayout: React.FC<{ children?: React.ReactNode }> = ({ children }
               <Menu size={20} />
             </button>
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center text-white font-bold shadow-lg shadow-red-900/20">R</div>
-              <h1 className="text-lg font-black text-white tracking-tight">RestoMaster</h1>
+              <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center text-white font-bold shadow-lg shadow-red-900/20">
+                <HeartHandshake size={18} />
+              </div>
+              <h1 className="text-lg font-black text-white tracking-tight">الضيافة</h1>
             </div>
           </header>
           <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6">

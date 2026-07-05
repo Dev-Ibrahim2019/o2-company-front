@@ -114,24 +114,25 @@ export const useCart = () => {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // ── addToCart ─────────────────────────────────────────────────────────────
-  // ✅ الإصلاح: نتحقق إذا الصنف موجود → نزيد الكمية بدل صف جديد
+  // اذا الصنف موجود بالسلة → تزيد الكمية بدل صف جديد
   const addToCart = useCallback(
     (item: MenuItem, opts?: { quantity?: number; price?: number }) => {
       const qty = opts?.quantity ?? 1;
       const price = opts?.price ?? item.price;
 
       setCart((prev) => {
-        const existing = prev.find((c) => c.id === item.id);
-
-        if (existing) {
-          // الصنف موجود → زيادة الكمية فقط
-          return prev.map((c) =>
-            c.id === item.id ? { ...c, quantity: c.quantity + qty } : c,
-          );
+        const existingIdx = prev.findIndex((c) => c.id === item.id);
+        if (existingIdx >= 0) {
+          // الصنف موجود — زيد الكمية
+          const updated = [...prev];
+          updated[existingIdx] = {
+            ...updated[existingIdx],
+            quantity: updated[existingIdx].quantity + qty,
+          };
+          return updated;
         }
-
-        // صنف جديد → أضف صف
-        const uniqueId = String(item.id);
+        // صنف جديد — أضف صف جديد
+        const uniqueId = String(item.id) + '-' + Math.random().toString(36).substr(2, 9);
         return [
           ...prev,
           {
@@ -143,6 +144,7 @@ export const useCart = () => {
             price,
             quantity: qty,
             department_id: item.department_id,
+            notes: undefined,
           },
         ];
       });

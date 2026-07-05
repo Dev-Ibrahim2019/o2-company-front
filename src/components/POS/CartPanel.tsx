@@ -76,6 +76,7 @@ interface CartPanelProps {
     React.SetStateAction<{ [id: string]: string }>
   >;
   removeFromCart: (id: string) => void;
+  updateCartItem: (uniqueId: string, changes: Partial<{ quantity: number; name: string; price: number }>) => void;
   getItemCurrentPrice: (item: any) => number;
   setPosError: (err: string) => void;
   submitOrder: (
@@ -128,6 +129,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
   handleTotalChange,
   setEditingNames,
   removeFromCart,
+  updateCartItem,
   getItemCurrentPrice,
   setPosError,
   submitOrder,
@@ -144,6 +146,35 @@ export const CartPanel: React.FC<CartPanelProps> = ({
   const [selectedSearchItem, setSelectedSearchItem] = useState<SearchableItem | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+
+  // ── Keyboard shortcuts: +/- to adjust quantity of last focused item ──
+  const lastFocusedItemRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger when typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (currentCart.length === 0) return;
+
+      const targetItem = lastFocusedItemRef.current || currentCart[currentCart.length - 1]?.uniqueId;
+      if (!targetItem) return;
+
+      if (e.key === "+" || e.key === "=") {
+        e.preventDefault();
+        const item = currentCart.find(c => c.uniqueId === targetItem);
+        if (item) updateCartItem(targetItem, { quantity: item.quantity + 1 });
+      } else if (e.key === "-" || e.key === "_") {
+        e.preventDefault();
+        const item = currentCart.find(c => c.uniqueId === targetItem);
+        if (item && item.quantity > 1) {
+          updateCartItem(targetItem, { quantity: item.quantity - 1 });
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentCart, updateCartItem]);
 
   const filteredSearchItems = useMemo(() => {
     if (!inlineSearch || inlineSearch.length < 1) return [];
@@ -341,37 +372,87 @@ export const CartPanel: React.FC<CartPanelProps> = ({
 
       {/* 3. Invoice Items Table */}
       <div className="flex-1 overflow-y-auto custom-scrollbar min-h-[200px] lg:min-h-0">
-        {currentCart.length === 0 && !inlineSearch ? (
-          <div className="h-full min-h-[200px] flex flex-col items-center justify-center text-slate-700 space-y-6">
-            <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center shadow-inner mb-4">
-              <ShoppingCart size={32} strokeWidth={1.5} />
+        {currentCart.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-6 text-slate-700 gap-2">
+            <div className="w-14 h-14 bg-slate-800 rounded-full flex items-center justify-center shadow-inner">
+              <ShoppingCart size={24} strokeWidth={1.5} />
             </div>
             <p className="font-black text-lg">الفاتورة فارغة</p>
-            <button
+            {/* <button
               onClick={() => {
-                // Focus the search input to activate inline search
-                const searchInput = document.querySelector('input[placeholder="ابحث عن صنف..."]');
+                const searchInput = document.querySelector<HTMLInputElement>('input[placeholder="ابحث عن صنف..."]');
                 if (searchInput) {
                   searchInput.focus();
+                  searchInput.select();
                 }
               }}
-              className="w-48 h-12 bg-red-600 text-white font-black text-[10px] font-bold rounded-lg hover:bg-red-700 transition-all flex items-center justify-center gap-2"
+              className="px-4 py-2 bg-red-600 text-white font-black text-[10px] rounded-lg hover:bg-red-700 transition-all flex items-center gap-2"
             >
-              <Plus size={16} />
+              <Plus size={14} />
               <span>إضافة صنف</span>
-            </button>
+            </button> */}
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-right border-collapse min-w-[350px]">
-              <thead className="sticky top-0 bg-slate-900 z-10">
-                <tr className="border-b border-white/5">
-                  {["#", "الصنف", "السعر", "الكمية", "الإجمالي", ""].map(
-                    (h, i) => (
-                      <th
-                        key={i}
-                        className={`p-2 sm:p-3 text-[8px] sm:text-[10px] font-black text-slate-500 uppercase tracking-widest ${i === 4 ? "text-left" : i === 3 ? "text-center" : ""}`}
+        )}
+        <div className="overflow-x-auto">
+          <table className="w-full text-right border-collapse min-w-[350px]">
+            <thead className="sticky top-0 bg-slate-900 z-10">
+              <tr className="border-b border-white/5">
+                {["#", "الصنف", "السعر", "الكمية", "الإجمالي", ""].map(
+                  (h, i) => (
+                    <th
+                      key={i}
+                      className={`p-2 sm:p-3 text-[8px] sm:text-[10px] font-black text-slate-500 uppercase tracking-widest ${i === 4 ? "text-left" : i === 3 ? "text-center" : ""}`}
+                    >
+                      {h}
+                    </th>
+                  ),
+                )}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {currentCart.map((item, index) => (
+                <tr
+                  key={item.uniqueId}
+                  className="group hover:bg-white/5 transition-colors"
+                >
+                  <td className="p-2 sm:p-3 text-[8px] sm:text-[10px] font-black text-slate-600">
+                    {index + 1}
+                  </td>
+                  <td className="p-2 sm:p-3">
+                    <input
+                      type="text"
+                      value={
+                        editingNames[item.uniqueId] !== undefined
+                          ? editingNames[item.uniqueId]
+                          : item.name
+                      }
+                      onChange={(e) =>
+                        handleNameChange(item.uniqueId, e.target.value)
+                      }
+                      onBlur={() =>
+                        setEditingNames((prev) => {
+                          const next = { ...prev };
+                          delete next[item.uniqueId];
+                          return next;
+                        })
+                      }
+                      className="w-full bg-transparent text-[10px] sm:text-xs font-black text-white outline-none border-b border-transparent focus:border-red-500/30"
+                    />
+                  </td>
+                  <td className="p-2 sm:p-3 text-center text-[10px] sm:text-xs font-bold text-slate-400">
+                    {getItemCurrentPrice(item)}
+                  </td>
+                  <td className="p-2 sm:p-3">
+                    <div className="flex items-center justify-center gap-0.5">
+                      <button
+                        onClick={() => {
+                          if (item.quantity > 1) {
+                            updateCartItem(item.uniqueId, { quantity: item.quantity - 1 });
+                          }
+                        }}
+                        className="w-5 h-5 bg-slate-700 rounded text-[10px] font-bold text-white hover:bg-slate-600 flex items-center justify-center"
                       >
+<<<<<<< HEAD
                         {h}
                       </th>
                     ),
@@ -430,6 +511,10 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                       )}
                     </td>
                     <td className="p-2 sm:p-3">
+=======
+                        -
+                      </button>
+>>>>>>> faf331b59275f7255681c2e37e4da93bf8939ebd
                       <input
                         type="text"
                         value={
@@ -447,113 +532,121 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                         onBlur={(e) =>
                           handleQuantityBlur(item.uniqueId, e.target.value)
                         }
-                        className="w-10 sm:w-12 bg-transparent text-center text-[10px] sm:text-xs font-black text-white outline-none"
+                        className="w-8 bg-transparent text-center text-[10px] sm:text-xs font-black text-white outline-none"
                       />
-                    </td>
-                    <td className="p-2 sm:p-3 text-left">
+                      <button
+                        onClick={() => {
+                          updateCartItem(item.uniqueId, { quantity: item.quantity + 1 });
+                        }}
+                        className="w-5 h-5 bg-slate-700 rounded text-[10px] font-bold text-white hover:bg-slate-600 flex items-center justify-center"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </td>
+                  <td className="p-2 sm:p-3 text-left">
+                    <input
+                      type="text"
+                      value={
+                        Math.round(item.price * item.quantity * 100) / 100
+                      }
+                      onChange={(e) =>
+                        handleTotalChange(
+                          item.uniqueId,
+                          e.target.value,
+                          item.price,
+                        )
+                      }
+                      className="w-16 sm:w-20 bg-transparent text-left text-[10px] sm:text-xs font-black text-red-500 outline-none"
+                    />
+                  </td>
+                  <td className="p-2 sm:p-3 text-center">
+                    <button
+                      onClick={() => removeFromCart(item.uniqueId)}
+                      className="p-1.5 text-slate-600 hover:text-red-500 transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+
+              {/* Inline Search/Add Row — always visible */}
+              {addToCart && allItems.length > 0 && (
+                <tr className="bg-slate-800/30 border-t border-dashed border-white/10">
+                  <td className="p-2 text-center">
+                    <Plus size={12} className="text-emerald-500 mx-auto" />
+                  </td>
+                  <td className="p-2 relative" ref={searchRef}>
+                    <div className="relative">
                       <input
                         type="text"
-                        value={
-                          Math.round(item.price * item.quantity * 100) / 100
-                        }
-                        onChange={(e) =>
-                          handleTotalChange(
-                            item.uniqueId,
-                            e.target.value,
-                            item.price,
-                          )
-                        }
-                        className="w-16 sm:w-20 bg-transparent text-left text-[10px] sm:text-xs font-black text-red-500 outline-none"
-                      />
-                    </td>
-                    <td className="p-2 sm:p-3 text-center">
-                      <button
-                        onClick={() => removeFromCart(item.uniqueId)}
-                        className="p-1.5 text-slate-600 hover:text-red-500 transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-
-                {/* Inline Search/Add Row */}
-                {addToCart && allItems.length > 0 && (
-                  <tr className="bg-slate-800/30 border-t border-dashed border-white/10">
-                    <td className="p-2 text-center">
-                      <Plus size={12} className="text-emerald-500 mx-auto" />
-                    </td>
-                    <td className="p-2 relative" ref={searchRef}>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          value={inlineSearch}
-                          onChange={(e) => {
-                            setInlineSearch(e.target.value);
-                            setSelectedSearchItem(null);
-                            setShowDropdown(true);
-                          }}
-                          onFocus={() => {
-                            if (inlineSearch) setShowDropdown(true);
-                          }}
-                          onKeyDown={handleInlineKeyDown}
-                          placeholder="ابحث عن صنف..."
-                          className="w-full bg-transparent text-[10px] sm:text-xs font-bold text-white outline-none border-b border-emerald-500/30 focus:border-emerald-500 placeholder:text-slate-600 pr-5"
-                        />
-                        <Search size={10} className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-600" />
-                      </div>
-                      {/* Dropdown */}
-                      {showDropdown && filteredSearchItems.length > 0 && (
-                        <div className="absolute left-0 right-0 top-full mt-1 bg-slate-800 border border-white/10 rounded-xl shadow-2xl z-30 max-h-48 overflow-y-auto custom-scrollbar">
-                          {filteredSearchItems.map((item) => (
-                            <button
-                              key={item.id}
-                              onClick={() => handleSelectSearchItem(item)}
-                              className="w-full text-right px-3 py-2 hover:bg-white/5 transition-colors flex items-center justify-between gap-2"
-                            >
-                              <span className="text-[10px] font-black text-white truncate">
-                                {item.name_ar || item.name}
-                              </span>
-                              <span className="text-[9px] font-bold text-emerald-500 shrink-0">
-                                {item.price} ₪
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                    <td className="p-2 text-center text-[10px] font-bold text-slate-500">
-                      {selectedSearchItem ? selectedSearchItem.price : "—"}
-                    </td>
-                    <td className="p-2">
-                      <input
-                        type="number"
-                        value={inlineQty}
-                        onChange={(e) => setInlineQty(e.target.value)}
+                        value={inlineSearch}
+                        onChange={(e) => {
+                          setInlineSearch(e.target.value);
+                          setSelectedSearchItem(null);
+                          setShowDropdown(true);
+                        }}
+                        onFocus={() => {
+                          if (inlineSearch) setShowDropdown(true);
+                        }}
                         onKeyDown={handleInlineKeyDown}
-                        className="w-10 sm:w-12 bg-transparent text-center text-[10px] sm:text-xs font-black text-white outline-none border-b border-emerald-500/30 focus:border-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        placeholder="ابحث عن صنف..."
+                        className="w-full bg-transparent text-[10px] sm:text-xs font-bold text-white outline-none border-b border-emerald-500/30 focus:border-emerald-500 placeholder:text-slate-600 pr-5"
                       />
-                    </td>
-                    <td className="p-2 text-left text-[10px] font-bold text-slate-500">
-                      {selectedSearchItem
-                        ? (selectedSearchItem.price * (parseFloat(inlineQty) || 1)).toFixed(2)
-                        : "—"}
-                    </td>
-                    <td className="p-2 text-center">
-                      <button
-                        onClick={handleInlineAdd}
-                        disabled={!selectedSearchItem}
-                        className="p-1.5 text-emerald-500 hover:text-emerald-400 transition-colors disabled:opacity-30"
-                      >
-                        <Plus size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
+                      <Search size={10} className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-600" />
+                    </div>
+                    {/* Dropdown */}
+                    {showDropdown && filteredSearchItems.length > 0 && (
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-slate-800 border border-white/10 rounded-xl shadow-2xl z-30 max-h-48 overflow-y-auto custom-scrollbar">
+                        {filteredSearchItems.map((item) => (
+                          <button
+                            key={item.id}
+                            onClick={() => handleSelectSearchItem(item)}
+                            className="w-full text-right px-3 py-2 hover:bg-white/5 transition-colors flex items-center justify-between gap-2"
+                          >
+                            <span className="text-[10px] font-black text-white truncate">
+                              {item.name_ar || item.name}
+                            </span>
+                            <span className="text-[9px] font-bold text-emerald-500 shrink-0">
+                              {item.price} ₪
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td className="p-2 text-center text-[10px] font-bold text-slate-500">
+                    {selectedSearchItem ? selectedSearchItem.price : "—"}
+                  </td>
+                  <td className="p-2">
+                    <input
+                      type="number"
+                      value={inlineQty}
+                      onChange={(e) => setInlineQty(e.target.value)}
+                      onKeyDown={handleInlineKeyDown}
+                      className="w-10 sm:w-12 bg-transparent text-center text-[10px] sm:text-xs font-black text-white outline-none border-b border-emerald-500/30 focus:border-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                  </td>
+                  <td className="p-2 text-left text-[10px] font-bold text-slate-500">
+                    {selectedSearchItem
+                      ? (selectedSearchItem.price * (parseFloat(inlineQty) || 1)).toFixed(2)
+                      : "—"}
+                  </td>
+                  <td className="p-2 text-center">
+                    <button
+                      onClick={handleInlineAdd}
+                      disabled={!selectedSearchItem}
+                      className="p-1.5 text-emerald-500 hover:text-emerald-400 transition-colors disabled:opacity-30"
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* 4. Footer Summary & Actions */}

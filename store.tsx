@@ -1,29 +1,39 @@
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   Order, OrderType, OrderStatus, MenuItem, OrderItem, User, PaymentMethod,
   Transaction, SavedCard, Table, Shift, Branch, Department, JobTitle, JobType, Employee,
   TableStatus, FinancialTransaction, FinancialTransactionType,
   CustomerFeedback, StaffTask, TableAssignment, Customer, CustomerType, CustomerAddress,
-  EmployeeStatus, Attendance, WorkSchedule, ActivityLog,
+  EmployeeStatus, Attendance, WorkSchedule, ActivityLog, Hall,
   FiscalYear, ChartOfAccount, CostCenter, JournalEntry, Supplier, BankAccount, CashBox, AccountType
 } from './types';
 import { TABLES, MENU_ITEMS } from './constants';
+import api from './src/api/axios';
 
-interface AppContextType {
-  activeOrders: Order[];
+
+interface AppState {
+  // Auth
   currentUser: User | null;
-  currentCart: OrderItem[];
-  cartOrderType: OrderType;
-  userRole: 'CASHIER' | 'CUSTOMER' | 'WAITER' | 'ADMIN' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | 'HEAD_CHEF' | 'COOK' | 'EMPLOYEE' | null;
+  isLoggedIn: boolean;
+  login: (user: User) => void;
+  logout: () => void;
 
+  // User Role
+  userRole: string | null;
+
+  // Branches & Departments
   branches: Branch[];
   departments: Department[];
-  jobTitles: JobTitle[];
-  jobTypes: JobType[];
-  employees: Employee[];
+  setBranches: (branches: Branch[]) => void;
+  setDepartments: (departments: Department[]) => void;
+
+  // Menu Items
   menuItems: MenuItem[];
   customers: Customer[];
+  diningZones: Hall[];
+  tablesLoading: boolean;
+  fetchDiningZones: (branchId?: number) => Promise<void>;
 
   addBranch: (branch: Omit<Branch, 'id'>) => void;
   updateBranch: (id: string, branch: Partial<Branch>) => void;
@@ -42,116 +52,88 @@ interface AppContextType {
   deleteEmployee: (id: string) => void;
   addMenuItem: (item: Omit<MenuItem, 'id'>) => void;
   updateMenuItem: (id: string, item: Partial<MenuItem>) => void;
-  deleteMenuItem: (id: string) => void;
-  addCustomer: (customer: Omit<Customer, 'id' | 'createdAt' | 'points' | 'totalSpent' | 'ordersCount' | 'balance' | 'isBlocked' | 'addresses' | 'rating'>) => void;
-  updateCustomer: (id: string, customer: Partial<Customer>) => void;
-  deleteCustomer: (id: string) => void;
-  addCustomerAddress: (customerId: string, address: Omit<CustomerAddress, 'id'>) => void;
-  removeCustomerAddress: (customerId: string, addressId: string) => void;
-  toggleBlockCustomer: (id: string) => void;
-  adjustCustomerPoints: (id: string, points: number) => void;
-  adjustCustomerBalance: (id: string, amount: number) => void;
 
-  login: (name: string, role: 'CASHIER' | 'CUSTOMER' | 'WAITER' | 'ADMIN' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | 'HEAD_CHEF' | 'COOK' | 'EMPLOYEE', phone?: string, branchId?: string, departmentId?: string) => void;
-  logout: () => void;
-  addToCart: (item: MenuItem, customization?: any) => void;
-  removeFromCart: (uniqueId: string) => void;
-  updateCartQuantity: (uniqueId: string, delta: number) => void;
-  updateCartItem: (uniqueId: string, updates: Partial<OrderItem>) => void;
-  updateOrderItemStatus: (orderId: string, itemUniqueId: string, status: OrderStatus) => void;
-  cancelOrder: (orderId: string, reason: string) => void;
-  transferOrder: (orderId: string, targetTableId: string) => void;
-  mergeOrders: (sourceOrderId: string, targetOrderId: string) => void;
-  splitOrder: (orderId: string, itemsToSplit: { uniqueId: string, quantity: number }[]) => void;
-  refundOrder: (orderId: string, amount: number, items: { uniqueId: string, quantity: number }[]) => void;
-  submitOrder: (status: OrderStatus, paymentMethod?: PaymentMethod, discount?: number, customerDetails?: { name: string, phone: string, note?: string }) => void;
-  depositToWallet: (amount: number, bonus?: number) => void;
-  refundToWallet: (orderId: string) => void;
-  saveNewCard: (card: Omit<SavedCard, 'id'>) => void;
-  toggleFavorite: (itemId: string) => void;
-  setOrderType: (type: OrderType) => void;
-  reorder: (orderId: string) => void;
+  deleteMenuItem: (id: string) => void;
+
+  // Orders
+  orders: Order[];
+  activeOrders: Order[];
+  setOrders: (orders: Order[]) => void;
+  setActiveOrders: (orders: Order[]) => void;
+  addOrder: (order: Order) => void;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
 
+  // Tables
   tables: Table[];
+  setTables: (tables: Table[]) => void;
   selectedTable: Table | null;
   setSelectedTable: (table: Table | null) => void;
-  updateTableStatus: (tableId: string, status: TableStatus, extra?: Partial<Table>) => void;
+  updateTableStatus: (tableId: string, status: TableStatus, options?: { currentOrderId?: string; seatedAt?: Date }) => void;
   transferTable: (fromId: string, toId: string) => void;
   mergeTables: (tableIds: string[]) => void;
-  editingOrderId: string | null;
-  clearCart: () => void;
-  voidOrder: (orderId: string) => void;
-  completeOrder: (orderId: string, payment: { method: string | PaymentMethod }) => void;
-  loadOrderToPOS: (order: Order) => void;
-  confirmOrder: (orderId: string) => void;
-  deliverOrder: (orderId: string) => void;
-  assignShelfToOrder: (orderId: string, shelf: string) => void;
-  collectOrderItemByAggregator: (orderId: string, itemUniqueId: string) => void;
+  seatTable: (tableId: string, guests: number) => void;
+  loadOrderToPOS: (orderId: string) => void;
+  orderType: string;
+  setOrderType: (type: string) => void;
 
+  // Shifts
   currentShift: Shift | null;
-  shifts: Shift[];
-  openShift: (openingBalance: number, type: 'MORNING' | 'EVENING' | 'NIGHT') => void;
-  closeShift: (closingBalance: number) => void;
-  financialTransactions: FinancialTransaction[];
-  addFinancialTransaction: (tx: Omit<FinancialTransaction, 'id' | 'timestamp' | 'status'>) => void;
+  setCurrentShift: (shift: Shift | null) => void;
+  openShift: (shift: Shift) => void;
+  closeShift: () => void;
 
-  feedbacks: CustomerFeedback[];
-  addFeedback: (fb: Omit<CustomerFeedback, 'id' | 'timestamp' | 'status'>) => void;
-  updateFeedback: (id: string, fb: Partial<CustomerFeedback>) => void;
+  // Employees
+  employees: Employee[];
+  setEmployees: (employees: Employee[]) => void;
+  addEmployee: (employee: Employee) => void;
+  updateEmployee: (employee: Employee) => void;
+  deleteEmployee: (id: string) => void;
 
-  staffTasks: StaffTask[];
-  addTask: (task: Omit<StaffTask, 'id' | 'status'>) => void;
-  updateTask: (id: string, task: Partial<StaffTask>) => void;
+  // Job Titles
+  jobTitles: JobTitle[];
+  setJobTitles: (jobTitles: JobTitle[]) => void;
 
-  tableAssignments: TableAssignment[];
-  assignTable: (tableId: string, staffId: string) => void;
-  seatTable: (tableId: string, guestCount: number) => void;
+  // Customers
+  customers: Customer[];
+  setCustomers: (customers: Customer[]) => void;
+  addCustomer: (customer: Customer) => void;
+  updateCustomer: (customer: Customer) => void;
+  deleteCustomer: (id: string) => void;
+  adjustCustomerPoints: (customerId: string, points: number) => void;
+  adjustCustomerBalance: (customerId: string, amount: number) => void;
 
-  notifications: { id: string; message: string; time: Date; read: boolean }[];
-  addNotification: (message: string) => void;
-  markNotificationRead: (id: string) => void;
-
-  attendances: Attendance[];
-  workSchedules: WorkSchedule[];
-  activityLogs: ActivityLog[];
-
-  fiscalYears: FiscalYear[];
-  chartOfAccounts: ChartOfAccount[];
-  costCenters: CostCenter[];
-  journalEntries: JournalEntry[];
+  // Suppliers
   suppliers: Supplier[];
+  setSuppliers: (suppliers: Supplier[]) => void;
+  addSupplier: (supplier: Supplier) => void;
+  updateSupplier: (supplier: Supplier) => void;
+  deleteSupplier: (id: string) => void;
+
+  // Bank Accounts
   bankAccounts: BankAccount[];
-  cashBoxes: CashBox[];
+  setBankAccounts: (accounts: BankAccount[]) => void;
+  addBankAccount: (account: BankAccount) => void;
+  updateBankAccount: (account: BankAccount) => void;
+  deleteBankAccount: (id: string) => void;
 
-  addFiscalYear: (fy: Omit<FiscalYear, 'id'>) => void;
-  updateFiscalYear: (id: string, fy: Partial<FiscalYear>) => void;
-  addCOA: (coa: Omit<ChartOfAccount, 'id'>) => void;
-  updateCOA: (id: string, coa: Partial<ChartOfAccount>) => void;
-  deleteCOA: (id: string) => void;
-  addCostCenter: (cc: Omit<CostCenter, 'id'>) => void;
-  updateCostCenter: (id: string, cc: Partial<CostCenter>) => void;
-  addJournalEntry: (je: Omit<JournalEntry, 'id' | 'fiscalYearId' | 'createdBy'>) => void;
-  updateJournalEntry: (id: string, je: Partial<JournalEntry>) => void;
-  deleteJournalEntry: (id: string) => void;
-  addSupplier: (s: Omit<Supplier, 'id' | 'createdAt' | 'balance'>) => void;
-  updateSupplier: (id: string, s: Partial<Supplier>) => void;
-  addBankAccount: (ba: Omit<BankAccount, 'id' | 'balance'>) => void;
-  updateBankAccount: (id: string, ba: Partial<BankAccount>) => void;
-  addCashBox: (cb: Omit<CashBox, 'id' | 'balance'>) => void;
-  updateCashBox: (id: string, cb: Partial<CashBox>) => void;
+  // Financial Transactions
+  financialTransactions: FinancialTransaction[];
+  setFinancialTransactions: (transactions: FinancialTransaction[]) => void;
+  addFinancialTransaction: (transaction: FinancialTransaction) => void;
 
-  checkIn: (employeeId: string, note?: string) => void;
-  checkOut: (employeeId: string) => void;
-  recordAttendance: (attendance: Omit<Attendance, 'id'>) => void;
-  deleteAttendance: (id: string) => void;
-  addActivityLog: (employeeId: string, action: string, details?: any) => void;
-  updateWorkSchedule: (schedule: WorkSchedule) => void;
+  // Activity Logs
+  activityLogs: ActivityLog[];
+  setActivityLogs: (logs: ActivityLog[]) => void;
+  addActivityLog: (log: ActivityLog) => void;
+
+  // Notifications
+  notifications: { id: string; message: string; type: 'success' | 'error' | 'info' }[];
+  addNotification: (message: string, type?: 'success' | 'error' | 'info') => void;
+  removeNotification: (id: string) => void;
 }
 
-const AppContext = createContext<AppContextType | undefined>(undefined);
-
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+
   const [activeOrders, setActiveOrders] = useState<Order[]>([
     {
       id: 'o-1',
@@ -194,7 +176,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentShift, setCurrentShift] = useState<Shift | null>(null);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
-  const [tables, setTables] = useState<Table[]>(TABLES);
+  const [tables, setTables] = useState<Table[]>([]);
+  const [diningZones, setDiningZones] = useState<Hall[]>([]);
+  const [tablesLoading, setTablesLoading] = useState(true);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [financialTransactions, setFinancialTransactions] = useState<FinancialTransaction[]>([]);
 
@@ -953,6 +937,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setStaffTasks(prev => prev.map(t => t.id === id ? { ...t, ...task } : t));
   };
 
+  // ── جلب القاعات والطاولات من API ──
+  const fetchDiningZones = useCallback(async (branchId?: number) => {
+    setTablesLoading(true);
+    try {
+      const params = branchId ? `?branch_id=${branchId}` : '';
+      const { data: res } = await api.get(`/dining-zones${params}`);
+      const zones = res.data ?? res;
+
+      if (Array.isArray(zones)) {
+        const halls: Hall[] = [];
+        const allTables: Table[] = [];
+
+        zones.forEach((zone: any) => {
+          halls.push({
+            id: String(zone.id),
+            name: zone.name,
+            code: zone.code,
+            branch_id: zone.branch_id,
+            status: zone.status,
+          });
+
+          if (Array.isArray(zone.tables)) {
+            zone.tables.forEach((table: any, idx: number) => {
+              allTables.push({
+                id: String(table.id),
+                number: idx + 1,
+                label: table.table_number || `${zone.code}${idx + 1}`,
+                status: table.status || 'AVAILABLE',
+                capacity: table.capacity || 4,
+                hallId: String(zone.id),
+                qr_code: table.qr_code,
+                qr_url: table.qr_url,
+                position: { x: (idx % 10) * 120 + 50, y: Math.floor(idx / 10) * 120 + 50 },
+              });
+            });
+          }
+        });
+
+        setDiningZones(halls);
+        setTables(allTables);
+      }
+    } catch (err) {
+      console.error('فشل جلب القاعات:', err);
+    } finally {
+      setTablesLoading(false);
+    }
+  }, []);
+
+  // تحميل القاعات عند بدء التطبيق
+  useEffect(() => {
+    // لا نمرر branch_id — الـ backend يستخدم $user->branch_id من التوكن تلقائياً
+    // super-admin يشوف كل القاعات، غيره يشوف فرعه فقط
+    fetchDiningZones();
+  }, [fetchDiningZones]);
+
   const assignTable = (tableId: string, staffId: string) => {
     if (!currentShift) return;
     setTableAssignments(prev => {
@@ -1704,6 +1743,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       login, logout, addToCart, removeFromCart, updateCartQuantity, updateCartItem, updateOrderItemStatus, updateOrderStatus, cancelOrder, transferOrder, mergeOrders, splitOrder, refundOrder, submitOrder, depositToWallet, refundToWallet, saveNewCard, toggleFavorite, setOrderType,
       reorder,
       tables, selectedTable, setSelectedTable, updateTableStatus, transferTable, mergeTables, editingOrderId, clearCart, voidOrder, completeOrder, loadOrderToPOS, confirmOrder, deliverOrder, assignShelfToOrder, collectOrderItemByAggregator,
+      diningZones, tablesLoading, fetchDiningZones,
 
       fiscalYears, chartOfAccounts, costCenters, journalEntries, suppliers, bankAccounts, cashBoxes,
       addFiscalYear, updateFiscalYear, addCOA, updateCOA, deleteCOA, addCostCenter, updateCostCenter, addJournalEntry, updateJournalEntry, deleteJournalEntry,
@@ -1727,10 +1767,230 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       {children}
     </AppContext.Provider>
   );
+
 };
 
-export const useApp = () => {
-  const context = useContext(AppContext);
-  if (!context) throw new Error('useApp must be used within AppProvider');
-  return context;
-};
+export const useApp = create<AppState>()(
+  persist(
+    (set, get) => ({
+      // Auth
+      currentUser: null,
+      isLoggedIn: false,
+      userRole: null,
+      login: (user: User) => set({ currentUser: user, isLoggedIn: true, userRole: user.role }),
+      logout: () => set({ currentUser: null, isLoggedIn: false, userRole: null, currentShift: null }),
+
+      // Branches & Departments
+      branches: [],
+      departments: [],
+      setBranches: (branches) => set({ branches }),
+      setDepartments: (departments) => set({ departments }),
+
+      // Menu Items
+      menuItems: [],
+      setMenuItems: (menuItems) => set({ menuItems }),
+      addMenuItem: (item) => set((state) => ({ menuItems: [...state.menuItems, item] })),
+      updateMenuItem: (item) =>
+        set((state) => ({
+          menuItems: state.menuItems.map((i) => (i.id === item.id ? item : i)),
+        })),
+      deleteMenuItem: (id) =>
+        set((state) => ({
+          menuItems: state.menuItems.filter((i) => i.id !== id),
+        })),
+
+      // Orders
+      orders: [],
+      activeOrders: [],
+      setOrders: (orders) => set({ orders }),
+      setActiveOrders: (activeOrders) => set({ activeOrders }),
+      addOrder: (order) =>
+        set((state) => ({
+          orders: [...state.orders, order],
+          activeOrders: order.status === 'PENDING' || order.status === 'PREPARING' || order.status === 'IN_PROGRESS'
+            ? [...state.activeOrders, order]
+            : state.activeOrders,
+        })),
+      updateOrderStatus: (orderId, status) =>
+        set((state) => ({
+          orders: state.orders.map((o) => (o.id === orderId ? { ...o, status } : o)),
+          activeOrders:
+            status === 'COMPLETED' || status === 'CANCELED' || status === 'REFUNDED'
+              ? state.activeOrders.filter((o) => o.id !== orderId)
+              : state.activeOrders.map((o) => (o.id === orderId ? { ...o, status } : o)),
+        })),
+
+      // Tables
+      tables: TABLES,
+      setTables: (tables) => set({ tables }),
+      selectedTable: null,
+      setSelectedTable: (table) => set({ selectedTable: table }),
+      updateTableStatus: (tableId, status, options) =>
+        set((state) => ({
+          tables: state.tables.map((t) =>
+            t.id === tableId
+              ? { ...t, status, ...(options?.currentOrderId ? { currentOrderId: options.currentOrderId } : {}), ...(options?.seatedAt ? { seatedAt: options.seatedAt } : {}) }
+              : t
+          ),
+        })),
+      transferTable: (fromId, toId) =>
+        set((state) => {
+          const fromTable = state.tables.find((t) => t.id === fromId);
+          const toTable = state.tables.find((t) => t.id === toId);
+          if (!fromTable || !toTable) return state;
+          return {
+            tables: state.tables.map((t) => {
+              if (t.id === fromId) return { ...t, status: TableStatus.AVAILABLE, currentOrderId: undefined, seatedAt: undefined };
+              if (t.id === toId) return { ...t, status: fromTable.status, currentOrderId: fromTable.currentOrderId, seatedAt: fromTable.seatedAt };
+              return t;
+            }),
+          };
+        }),
+      mergeTables: (tableIds) => {
+        // Merge logic - mark tables as merged
+        set((state) => ({
+          tables: state.tables.map((t) =>
+            tableIds.includes(t.id) && t.id !== tableIds[0]
+              ? { ...t, mergedWithId: tableIds[0] }
+              : t
+          ),
+        }));
+      },
+      seatTable: (tableId, guests) =>
+        set((state) => ({
+          tables: state.tables.map((t) =>
+            t.id === tableId
+              ? { ...t, status: TableStatus.OCCUPIED, seatedAt: new Date() }
+              : t
+          ),
+        })),
+      loadOrderToPOS: (orderId) => {
+        // Load order to POS - this is mainly a navigation hint
+        console.debug("loadOrderToPOS", orderId);
+      },
+      orderType: "dine_in",
+      setOrderType: (type) => set({ orderType: type }),
+
+      // Shifts
+      currentShift: null,
+      setCurrentShift: (currentShift) => set({ currentShift }),
+      openShift: (shift) => set({ currentShift: shift }),
+      closeShift: () => set({ currentShift: null }),
+
+      // Employees
+      employees: [],
+      setEmployees: (employees) => set({ employees }),
+      addEmployee: (employee) =>
+        set((state) => ({ employees: [...state.employees, employee] })),
+      updateEmployee: (employee) =>
+        set((state) => ({
+          employees: state.employees.map((e) => (e.id === employee.id ? employee : e)),
+        })),
+      deleteEmployee: (id) =>
+        set((state) => ({
+          employees: state.employees.filter((e) => e.id !== id),
+        })),
+
+      // Job Titles
+      jobTitles: [],
+      setJobTitles: (jobTitles) => set({ jobTitles }),
+
+      // Customers
+      customers: [],
+      setCustomers: (customers) => set({ customers }),
+      addCustomer: (customer) =>
+        set((state) => ({ customers: [...state.customers, customer] })),
+      updateCustomer: (customer) =>
+        set((state) => ({
+          customers: state.customers.map((c) => (c.id === customer.id ? customer : c)),
+        })),
+      deleteCustomer: (id) =>
+        set((state) => ({
+          customers: state.customers.filter((c) => c.id !== id),
+        })),
+      adjustCustomerPoints: (customerId, points) =>
+        set((state) => ({
+          customers: state.customers.map((c) =>
+            c.id === customerId ? { ...c, points: c.points + points } : c
+          ),
+        })),
+      adjustCustomerBalance: (customerId, amount) =>
+        set((state) => ({
+          customers: state.customers.map((c) =>
+            c.id === customerId ? { ...c, balance: c.balance + amount } : c
+          ),
+        })),
+
+      // Suppliers
+      suppliers: [],
+      setSuppliers: (suppliers) => set({ suppliers }),
+      addSupplier: (supplier) =>
+        set((state) => ({ suppliers: [...state.suppliers, supplier] })),
+      updateSupplier: (supplier) =>
+        set((state) => ({
+          suppliers: state.suppliers.map((s) => (s.id === supplier.id ? supplier : s)),
+        })),
+      deleteSupplier: (id) =>
+        set((state) => ({
+          suppliers: state.suppliers.filter((s) => s.id !== id),
+        })),
+
+      // Bank Accounts
+      bankAccounts: [],
+      setBankAccounts: (bankAccounts) => set({ bankAccounts }),
+      addBankAccount: (account) =>
+        set((state) => ({ bankAccounts: [...state.bankAccounts, account] })),
+      updateBankAccount: (account) =>
+        set((state) => ({
+          bankAccounts: state.bankAccounts.map((a) => (a.id === account.id ? account : a)),
+        })),
+      deleteBankAccount: (id) =>
+        set((state) => ({
+          bankAccounts: state.bankAccounts.filter((a) => a.id !== id),
+        })),
+
+      // Financial Transactions
+      financialTransactions: [],
+      setFinancialTransactions: (financialTransactions) => set({ financialTransactions }),
+      addFinancialTransaction: (transaction) =>
+        set((state) => ({
+          financialTransactions: [...state.financialTransactions, transaction],
+        })),
+
+      // Activity Logs
+      activityLogs: [],
+      setActivityLogs: (activityLogs) => set({ activityLogs }),
+      addActivityLog: (log) =>
+        set((state) => ({
+          activityLogs: [...state.activityLogs, log],
+        })),
+
+      // Notifications
+      notifications: [],
+      addNotification: (message, type = 'info') => {
+        const id = Date.now().toString();
+        set((state) => ({
+          notifications: [...state.notifications, { id, message, type }],
+        }));
+        setTimeout(() => {
+          get().removeNotification(id);
+        }, 5000);
+      },
+      removeNotification: (id) =>
+        set((state) => ({
+          notifications: state.notifications.filter((n) => n.id !== id),
+        })),
+    }),
+    {
+      name: 'o2-company-storage',
+      partialize: (state) => ({
+        currentUser: state.currentUser,
+        isLoggedIn: state.isLoggedIn,
+        userRole: state.userRole,
+        currentShift: state.currentShift,
+        branches: state.branches,
+        departments: state.departments,
+      }),
+    }
+  )
+);

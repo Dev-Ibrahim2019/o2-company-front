@@ -30,6 +30,7 @@ import {
   Settings,
   UserCog,
   Archive,
+  Monitor,
 } from "lucide-react";
 
 /* ── Types ── */
@@ -81,6 +82,11 @@ const PERMISSION_GROUPS: { title: string; icon: React.ElementType; items: string
     icon: Settings,
     items: [PERMISSIONS.MANAGE_SETTINGS],
   },
+  {
+    title: "نقاط البيع وأجهزة الضيافة والقاعات",
+    icon: Monitor,
+    items: [PERMISSIONS.MANAGE_POS_REGISTERS, PERMISSIONS.ACCESS_POS_INTERFACE, PERMISSIONS.MANAGE_HOSPITALITY_DEVICES, PERMISSIONS.MANAGE_DINING_ZONES],
+  },
 ];
 
 const ROLE_LABELS: Record<string, string> = {
@@ -109,6 +115,10 @@ const PERMISSION_LABELS: Record<string, string> = {
   [PERMISSIONS.MANAGE_SUPPLIERS]: "إدارة الموردين",
   [PERMISSIONS.MANAGE_INVOICES]: "إدارة الفواتير",
   [PERMISSIONS.MANAGE_USERS]: "إدارة المستخدمين",
+  [PERMISSIONS.MANAGE_POS_REGISTERS]: "إدارة نقاط البيع",
+  [PERMISSIONS.MANAGE_HOSPITALITY_DEVICES]: "إدارة أجهزة الضيافة",
+  [PERMISSIONS.MANAGE_DINING_ZONES]: "إدارة القاعات والطاولات",
+  [PERMISSIONS.ACCESS_POS_INTERFACE]: "الوصول لواجهة الكاشير",
 };
 
 const RolesPermissionsPage: React.FC = () => {
