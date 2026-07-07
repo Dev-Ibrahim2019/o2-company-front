@@ -28,6 +28,7 @@ import { HospitalityTables } from "./components/Hospitality/Tables";
 import { FinancialInvoicesPage } from "./components/financial/FinancialInvoicesPage";
 import { FinancialInvoiceForm } from "./components/financial/FinancialInvoiceForm";
 import { SalesInvoiceListPage, SalesInvoiceFormPage } from "./components/sales-invoices";
+import { ToastContainer } from "./components/shared/Toast";
 import UsersManagementPage from "./pages/UsersManagementPage";
 import PosRegistersPage from "./pages/PosRegistersPage";
 import HospitalityDevicesPage from "./pages/HospitalityDevicesPage";
@@ -308,6 +309,7 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
+        <ToastContainer />
         <AppRoutes />
       </AuthProvider>
     </ThemeProvider>

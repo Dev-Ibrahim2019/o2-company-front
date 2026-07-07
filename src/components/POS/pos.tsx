@@ -18,6 +18,7 @@ import {
 } from "../../../types";
 import { AlertCircle, ShoppingCart, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "../shared/Toast";
 import { useDiscountCart } from "../../hooks/useDiscountCart";
 
 import { POSHeader } from "./POSHeader";
@@ -213,6 +214,21 @@ const handleActivationSuccess = (activatedInfo: any) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [manualTable, setManualTable] = useState("");
 
+  // Auto-dismiss error toast
+  useEffect(() => {
+    if (posError) {
+      toast.error(posError);
+      setPosError(null);
+    }
+  }, [posError]);
+
+  // Show submit errors from useCart as toast
+  useEffect(() => {
+    if (submitError) {
+      toast.error("فشل إرسال الطلب", submitError);
+    }
+  }, [submitError]);
+
   // ── Customer State ────────────────────────────────────────────────────────
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
@@ -370,15 +386,6 @@ const handleActivationSuccess = (activatedInfo: any) => {
       setActivePOSMode("menu");
     }
   }, [isHospitality]);
-
-  useEffect(() => {
-    if (posError || submitError) {
-      const msg = submitError || posError;
-      setPosError(msg);
-      const t = setTimeout(() => setPosError(null), 4000);
-      return () => clearTimeout(t);
-    }
-  }, [posError, submitError]);
 
   // ── Account data comes from real API via CustomerTab/SettlementPanel ──
   // No hardcoded mock account numbers.
@@ -844,7 +851,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
         forgetTableDraft(activeTable.id);
       }
       setEditingApiOrderId(null);
-      alert(`تم إرسال الفاتورة للطباعة للطاولة #${manualTable}`);
+      toast.success("تم إرسال الفاتورة للطباعة", `الطاولة #${manualTable}`);
     }
   };
 
@@ -1061,6 +1068,11 @@ const handleActivationSuccess = (activatedInfo: any) => {
     );
 
     if (result) {
+      if (isClosingOrder) {
+        toast.success("تم إغلاق الفاتورة بنجاح", `رقم الطلب: ${result.order_number || result.id}`);
+      } else {
+        toast.success("تم حفظ الطلب بنجاح", `رقم الطلب: ${result.order_number || result.id}`);
+      }
       if (activeTable) {
         if (isClosingOrder) {
           updateTableStatus(activeTable.id, TableStatus.AVAILABLE, {
@@ -1165,21 +1177,6 @@ const handleActivationSuccess = (activatedInfo: any) => {
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col lg:flex-row gap-4 h-full bg-slate-950 overflow-y-auto lg:overflow-hidden p-2 sm:p-4 lg:p-0 custom-scrollbar relative">
-      {/* Error Toast */}
-      <AnimatePresence>
-        {posError && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="absolute top-10 left-1/2 -translate-x-1/2 z-[200] bg-red-600 text-white px-8 py-4 rounded-2xl font-black shadow-2xl flex items-center gap-3 border border-red-500/50"
-          >
-            <AlertCircle size={20} />
-            {posError}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Submitting Overlay */}
       <AnimatePresence>
         {submitting && (

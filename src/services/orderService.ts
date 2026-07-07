@@ -465,11 +465,22 @@ export const orderService = {
     orderId: number,
     payload?: InvoicePayload,
   ): Promise<InvoiceFromApi> => {
-    const { data } = await api.post(
-      `/orders/${orderId}/invoice`,
-      payload ?? {},
-    );
-    return data.data as InvoiceFromApi;
+    const body = payload ?? {};
+    console.log(`[API] POST /orders/${orderId}/invoice`, JSON.stringify(body));
+    try {
+      const { data } = await api.post(
+        `/orders/${orderId}/invoice`,
+        body,
+      );
+      return data.data as InvoiceFromApi;
+    } catch (err: any) {
+      console.error(`[API] POST /orders/${orderId}/invoice FAILED`, {
+        status: err.response?.status,
+        data: err.response?.data,
+        message: err.message,
+      });
+      throw err;
+    }
   },
 
   getInvoices: async (params?: {
@@ -524,7 +535,7 @@ export const orderService = {
       "orderService.addPaymentToInvoice",
       payload as Record<string, unknown>,
     );
-    const { data } = await api.post(`/invoices/${invoiceId}/payments`, {
+    const paymentBody = {
       ...payload,
       method,
       payment_method: method,
@@ -534,7 +545,9 @@ export const orderService = {
       entity_id: payload.entity_id,
       subledger_type: payload.subledger_type,
       subledger_id: payload.subledger_id,
-    });
+    };
+    console.log(`[API] POST /invoices/${invoiceId}/payments`, JSON.stringify(paymentBody));
+    const { data } = await api.post(`/invoices/${invoiceId}/payments`, paymentBody);
 
     return data.data as InvoicePaymentResponse;
   },
