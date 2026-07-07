@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { supplierService, type Supplier, type SupplierStatement } from "../../../services/supplierService";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
-import FinancialStatementTable from "../shared/FinancialStatementTable";
+import EmployeeStatement from "../GL/EmployeeStatement";
 
 const COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#f97316", "#ef4444"];
 const money = (v: number) => v?.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "0.00";
@@ -273,12 +273,6 @@ const SupplierProfile: React.FC<{ supplierId: number; onBack: () => void }> = ({
     const [activeTab, setActiveTab] = useState<ProfileTab>("overview");
     const [loading, setLoading] = useState(true);
 
-    // Statement state
-    const [statement, setStatement] = useState<any>(null);
-    const [statementLoading, setStatementLoading] = useState(false);
-    const [from, setFrom] = useState(new Date(new Date().getFullYear(), 0, 1).toISOString().split("T")[0]);
-    const [to, setTo] = useState(new Date().toISOString().split("T")[0]);
-
     useEffect(() => { loadProfile(); }, [supplierId]);
 
     const loadProfile = async () => {
@@ -288,16 +282,6 @@ const SupplierProfile: React.FC<{ supplierId: number; onBack: () => void }> = ({
             setSupplier(res.data);
         } catch { } finally { setLoading(false); }
     };
-
-    const loadStatement = async () => {
-        setStatementLoading(true);
-        try {
-            const res = await supplierService.getStatement(supplierId, from, to);
-            setStatement(res.data.statement);
-        } catch { } finally { setStatementLoading(false); }
-    };
-
-    useEffect(() => { if (activeTab === "statement") loadStatement(); }, [activeTab, supplierId]);
 
     const tabs: { key: ProfileTab; label: string; icon: React.ElementType }[] = [
         { key: "overview", label: "نظرة عامة", icon: LayoutDashboard },
@@ -385,17 +369,12 @@ const SupplierProfile: React.FC<{ supplierId: number; onBack: () => void }> = ({
                         </div>
                     )}
 
-                    {/* Statement Tab — matching Customer experience */}
+                    {/* Statement Tab — الآن يستخدم EmployeeStatement المتطور بدلاً من FinancialStatementTable البسيط */}
                     {activeTab === "statement" && (
-                        <FinancialStatementTable
-                            statement={statement}
-                            loading={statementLoading}
-                            from={from}
-                            to={to}
-                            onFromChange={setFrom}
-                            onToChange={setTo}
-                            onSearch={loadStatement}
-                            isSupplier={true}
+                        <EmployeeStatement
+                            entityType="supplier"
+                            entityId={supplierId}
+                            entityName={s.name || `مورد #${supplierId}`}
                         />
                     )}
 
@@ -432,6 +411,8 @@ const SupplierProfile: React.FC<{ supplierId: number; onBack: () => void }> = ({
 const SupplierStatements: React.FC<{ onViewSupplier: (id: number) => void }> = ({ onViewSupplier }) => {
     const [suppliers, setSuppliers] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [selectedSupplier, setSelectedSupplier] = useState<any | null>(null);
+
     useEffect(() => {
         supplierService.list({ per_page: 200 }).then((res) => {
             const items = Array.isArray(res.data) ? res.data : res.data?.data || [];
@@ -439,12 +420,32 @@ const SupplierStatements: React.FC<{ onViewSupplier: (id: number) => void }> = (
         }).finally(() => setLoading(false));
     }, []);
 
+    const handleBack = () => setSelectedSupplier(null);
+
+    // إذا تم اختيار مورد، اعرض كشف الحساب المتطور (EmployeeStatement) مباشرة
+    if (selectedSupplier) {
+        return (
+            <div className="space-y-4">
+                <button onClick={handleBack}
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-800 border border-white/5 rounded-xl text-white text-xs font-bold hover:bg-slate-700 transition-all"
+                >
+                    <ChevronRight size={14} /> العودة للقائمة
+                </button>
+                <EmployeeStatement
+                    entityType="supplier"
+                    entityId={selectedSupplier.id}
+                    entityName={selectedSupplier.name}
+                />
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-4">
             {loading ? <div className="flex items-center justify-center h-64"><RefreshCw size={24} className="animate-spin text-slate-600" /></div> : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {suppliers.map((s) => (
-                        <button key={s.id} onClick={() => onViewSupplier(s.id)} className="flex items-center gap-3 p-4 bg-slate-800/50 border border-white/5 rounded-2xl hover:border-blue-500/30 transition-all group text-right">
+                        <button key={s.id} onClick={() => setSelectedSupplier(s)} className="flex items-center gap-3 p-4 bg-slate-800/50 border border-white/5 rounded-2xl hover:border-blue-500/30 transition-all group text-right">
                             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-600 to-rose-800 flex items-center justify-center text-white font-bold text-sm">{s.name?.charAt(0)}</div>
                             <div className="flex-1"><p className="text-sm font-bold text-white truncate">{s.name}</p><p className="text-[10px] text-slate-500">{s.code}</p></div>
                             <ChevronRight size={16} className="text-slate-600 group-hover:text-slate-400" />

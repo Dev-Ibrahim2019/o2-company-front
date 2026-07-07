@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+﻿import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Calendar, RefreshCw, Wallet, Activity, Printer, Search, FileText,
@@ -6,17 +6,20 @@ import {
     Tag, Package, ExternalLink,
 } from "lucide-react";
 import { financeService } from "../../../services/financeService";
-import { employeeService } from "../../../services/employeeService";
 import type {
-    StatementEntry, EmployeeStatementData, StatementType, StatementFilters, SaleItem,
+    StatementEntry, StatementType, StatementFilters, SaleItem,
 } from "../../../services/financeService";
 import { MOVEMENT_LABELS, MOVEMENT_COLORS, MOVEMENT_ICONS } from "../../../services/financeService";
+import { useAccountStatement } from "../../../hooks/useAccountStatement";
 import InvoiceDrawer from "./InvoiceDrawer";
 import { invoiceDetailsService } from "../../../services/invoiceDetailsService";
 
 interface EmployeeStatementProps {
-    employeeId: number;
-    employeeName: string;
+    entityType?: "employee" | "customer" | "supplier";
+    entityId?: number;
+    entityName?: string;
+    employeeId?: number;
+    employeeName?: string;
 }
 
 const money = (v: number | undefined | null) => {
@@ -30,45 +33,57 @@ const dateFmt = (d: string) => {
     } catch { return d; }
 };
 
-function extractLines(data: EmployeeStatementData) {
-    if (Array.isArray(data.all_lines)) {
-        return {
-            lines: data.all_lines,
-            closingBalance: data.totals?.closing_balance ?? 0,
-            openingBalance: data.totals?.opening_balance ?? 0,
-        };
-    }
-    const { accounts = {} } = data;
-    const combined = [
-        ...(accounts.advance?.lines ?? []),
-        ...(accounts.salary?.lines ?? []),
-        ...(accounts.loan?.lines ?? []),
-        ...(accounts.sales?.lines ?? []),
-    ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    return {
-        lines: combined,
-        closingBalance:
-            (accounts.advance?.closing_balance ?? 0) +
-            (accounts.salary?.closing_balance ?? 0) +
-            (accounts.loan?.closing_balance ?? 0) +
-            (accounts.sales?.closing_balance ?? 0),
-        openingBalance: 0,
-    };
-}
+type EntityType = "employee" | "customer" | "supplier";
 
-const TYPE_OPTIONS: { value: StatementType; label: string }[] = [
-    { value: "all", label: "الكل" },
-    { value: "sales", label: "المبيعات" },
-    { value: "advance", label: "السلف" },
-    { value: "payment", label: "الدفعات" },
-    { value: "salary", label: "الرواتب" },
-    { value: "loan", label: "القروض" },
-    { value: "journal", label: "القيود" },
-    { value: "return", label: "المرتجعات" },
-    { value: "purchase", label: "المشتريات" },
-    { value: "settlement", label: "التسويات" },
-];
+type MovementFilterOption = {
+    value: string;
+    label: string;
+    movementTypes: string[];
+};
 
+const TYPE_OPTIONS_BY_ENTITY: Record<EntityType, MovementFilterOption[]> = {
+    employee: [
+        { value: "all", label: "الكل", movementTypes: [] },
+        { value: "sales", label: "المبيعات", movementTypes: ["sales"] },
+        { value: "advance", label: "السلف", movementTypes: ["advance", "advance_repayment"] },
+        { value: "salary", label: "الرواتب", movementTypes: ["salary", "salary_payment"] },
+        { value: "loan", label: "القروض", movementTypes: ["loan", "loan_repayment"] },
+        { value: "payment", label: "الدفعات", movementTypes: ["payment"] },
+        { value: "journal", label: "القيود", movementTypes: ["journal", "adjustment", "settlement"] },
+        { value: "return", label: "المرتجعات", movementTypes: ["return", "sales_return"] },
+    ],
+    customer: [
+        { value: "all", label: "الكل", movementTypes: [] },
+        { value: "sales", label: "المبيعات", movementTypes: ["sales", "sale", "invoice", "customer_invoice"] },
+        { value: "receipts", label: "التحصيلات", movementTypes: ["receipt", "receipts", "collection", "customer_receipt", "customer_collection"] },
+        { value: "payments", label: "الدفعات", movementTypes: ["payment", "payments", "customer_payment"] },
+        { value: "returns", label: "المرتجعات", movementTypes: ["return", "returns", "sales_return", "customer_return"] },
+        { value: "credit_note", label: "إشعار دائن", movementTypes: ["credit_note", "customer_credit_note", "discount"] },
+        { value: "debit_note", label: "إشعار مدين", movementTypes: ["debit_note", "customer_debit_note"] },
+        { value: "journal", label: "القيود", movementTypes: ["journal", "adjustment", "settlement"] },
+    ],
+    supplier: [
+        { value: "all", label: "الكل", movementTypes: [] },
+        { value: "purchases", label: "المشتريات", movementTypes: ["purchase", "purchases", "bill", "supplier_bill"] },
+        { value: "payments", label: "الدفعات", movementTypes: ["payment", "payments", "supplier_payment"] },
+        { value: "returns", label: "المرتجعات", movementTypes: ["return", "returns", "purchase_return", "supplier_return"] },
+        { value: "credit_note", label: "إشعارات دائن", movementTypes: ["credit_note", "supplier_credit_note"] },
+        { value: "debit_note", label: "إشعارات مدين", movementTypes: ["debit_note", "supplier_debit_note"] },
+        { value: "journal", label: "القيود", movementTypes: ["journal", "adjustment", "settlement"] },
+    ],
+};
+
+const STATEMENT_TYPES = new Set<string>([
+    "all", "sales", "advance", "salary", "loan", "payment", "journal", "return",
+    "settlement", "purchase", "transfer", "adjustment", "opening", "closing",
+    "payments", "receipts", "returns", "purchases", "credit_note", "debit_note", "discount",
+]);
+
+const entityLabel = (type: EntityType) => {
+    if (type === "customer") return "عميل";
+    if (type === "supplier") return "مورد";
+    return "موظف";
+};
 const MovementBadge: React.FC<{ type?: string | null; label?: string | null }> = ({ type, label }) => {
     const mt = type || "other";
     const colors = MOVEMENT_COLORS[mt] || "text-slate-400 bg-slate-500/10 border-slate-500/20";
@@ -80,9 +95,10 @@ const MovementBadge: React.FC<{ type?: string | null; label?: string | null }> =
     );
 };
 
-/* ─── Inline expandable detail for detailed mode ─── */
+/* --- Inline expandable detail for detailed mode --- */
 const RowDetailPanel: React.FC<{ entry: StatementEntry; onOpenInvoice?: () => void }> = ({ entry, onOpenInvoice }) => {
     const isSale = entry.movement_type === "sales" || entry.type === "sale";
+    const isInvoiceMovement = isSale || Boolean(onOpenInvoice);
     const items: SaleItem[] = entry.items ?? [];
 
     return (
@@ -94,7 +110,7 @@ const RowDetailPanel: React.FC<{ entry: StatementEntry; onOpenInvoice?: () => vo
                 <InfoCell icon={Tag} label="المرجع" value={entry.reference} />
             </div>
 
-            {isSale && items.length > 0 && (
+            {isInvoiceMovement && items.length > 0 && (
                 <div className="rounded-xl border border-sky-500/20 overflow-hidden mb-3">
                     <div className="bg-sky-500/10 px-3 py-2 flex items-center justify-between">
                         <span className="text-[10px] font-black text-sky-400 flex items-center gap-1.5">
@@ -133,13 +149,13 @@ const RowDetailPanel: React.FC<{ entry: StatementEntry; onOpenInvoice?: () => vo
                 </div>
             )}
 
-            {isSale && items.length === 0 && onOpenInvoice && (
+            {isInvoiceMovement && items.length === 0 && onOpenInvoice && (
                 <button onClick={onOpenInvoice} className="w-full py-2.5 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs font-bold hover:bg-sky-500/20 transition-all flex items-center justify-center gap-2">
-                    <ExternalLink size={14} /> فتح تفاصيل الفاتورة الكاملة
+                    <ExternalLink size={14} /> فتح تفاصيل الفاتورة كاملة
                 </button>
             )}
 
-            {!isSale && (
+            {!isInvoiceMovement && (
                 <div className="rounded-xl bg-slate-900/60 border border-white/5 p-3">
                     <p className="text-[11px] text-slate-400 leading-relaxed">{entry.description || "—"}</p>
                     {entry.notes && <p className="text-[10px] text-slate-600 mt-2">{entry.notes}</p>}
@@ -159,7 +175,7 @@ const InfoCell: React.FC<{ icon: React.ElementType; label: string; value?: strin
     </div>
 );
 
-/* ─── Main Statement Table ─── */
+/* --- Main Statement Table --- */
 interface StatementTableProps {
     entries: StatementEntry[];
     openingBalance: number;
@@ -187,8 +203,13 @@ const StatementTable: React.FC<StatementTableProps> = ({ entries, openingBalance
     }), [filtered]);
 
     const toggleExpand = (idx: number, entry: StatementEntry) => {
+        const hasInvoiceLink = Boolean(
+            (entry as StatementEntry & { invoice_id?: number | null; document_id?: number | null }).invoice_id
+            || (entry as StatementEntry & { invoice_id?: number | null; document_id?: number | null }).document_id
+            || entry.source_id
+        );
         if (viewMode !== "detailed") {
-            if (entry.movement_type === "sales" || entry.type === "sale") onOpenInvoice(entry);
+            if (hasInvoiceLink) onOpenInvoice(entry);
             return;
         }
         setExpandedIdx(expandedIdx === idx ? null : idx);
@@ -255,7 +276,12 @@ const StatementTable: React.FC<StatementTableProps> = ({ entries, openingBalance
                         ) : filtered.map((entry, idx) => {
                             const isExpanded = expandedIdx === idx;
                             const isSale = entry.movement_type === "sales" || entry.type === "sale";
-                            const canExpand = viewMode === "detailed" || isSale;
+                            const hasInvoiceLink = Boolean(
+                                (entry as StatementEntry & { invoice_id?: number | null; document_id?: number | null }).invoice_id
+                                || (entry as StatementEntry & { invoice_id?: number | null; document_id?: number | null }).document_id
+                                || entry.source_id
+                            );
+                            const canExpand = viewMode === "detailed" || hasInvoiceLink;
 
                             return (
                                 <React.Fragment key={`${entry.transaction_number}-${idx}`}>
@@ -328,7 +354,7 @@ const StatementTable: React.FC<StatementTableProps> = ({ entries, openingBalance
                                                     >
                                                         <RowDetailPanel
                                                             entry={entry}
-                                                            onOpenInvoice={isSale ? () => onOpenInvoice(entry) : undefined}
+                                                            onOpenInvoice={hasInvoiceLink ? () => onOpenInvoice(entry) : undefined}
                                                         />
                                                     </motion.div>
                                                 </td>
@@ -374,88 +400,165 @@ const StatementTable: React.FC<StatementTableProps> = ({ entries, openingBalance
     );
 };
 
-/* ─── Sticky Summary Bar ─── */
+/* --- Sticky Summary Bar --- */
 const SummaryBar: React.FC<{
-    opening: number; closing: number; debit: number; credit: number;
-    outstanding?: number; netPayable?: number;
-}> = ({ opening, closing, debit, credit, outstanding, netPayable }) => (
+    closing: number;
+    entityType: EntityType;
+    movementTotals: Record<string, number>;
+    outstandingAdvance?: number;
+    outstandingLoan?: number;
+    accruedSalary?: number;
+    netPayable?: number;
+}> = ({ closing, entityType, movementTotals, outstandingAdvance, outstandingLoan, accruedSalary, netPayable }) => {
+    const summaryItems = entityType === "employee"
+        ? [
+            { label: "الرصيد الحالي", value: closing, color: "text-violet-400" },
+            { label: "السلف المستحقة", value: outstandingAdvance ?? movementTotals.advance ?? 0, color: "text-amber-400" },
+            { label: "القروض", value: outstandingLoan ?? movementTotals.loan ?? 0, color: "text-violet-400" },
+            { label: "الرواتب", value: accruedSalary ?? movementTotals.salary ?? 0, color: "text-emerald-400" },
+            { label: "صافي المستحق", value: netPayable ?? closing, color: "text-emerald-400" },
+        ]
+        : entityType === "customer"
+            ? [
+                { label: "الرصيد الحالي", value: closing, color: "text-violet-400" },
+                { label: "إجمالي المبيعات", value: movementTotals.sales ?? 0, color: "text-sky-400" },
+                { label: "إجمالي التحصيلات", value: movementTotals.receipts ?? 0, color: "text-blue-400" },
+                { label: "إجمالي المرتجعات", value: movementTotals.returns ?? 0, color: "text-pink-400" },
+                { label: "المستحق", value: closing, color: "text-emerald-400" },
+            ]
+            : [
+                { label: "الرصيد الحالي", value: closing, color: "text-violet-400" },
+                { label: "إجمالي المشتريات", value: movementTotals.purchases ?? 0, color: "text-sky-400" },
+                { label: "إجمالي الدفعات", value: movementTotals.payments ?? 0, color: "text-blue-400" },
+                { label: "إشعارات الخصم/الإضافة", value: (movementTotals.credit_note ?? 0) + (movementTotals.debit_note ?? 0), color: "text-amber-400" },
+                { label: "المستحق", value: closing, color: "text-emerald-400" },
+            ];
+
+    return (
     <div className="sticky top-0 z-30 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 p-3 bg-slate-950/95 backdrop-blur-md border border-white/10 rounded-2xl shadow-lg print:static print:bg-white print:border-gray-200">
-        {[
-            { label: "افتتاحي", value: opening, color: "text-blue-400" },
-            { label: "مدين", value: debit, color: "text-emerald-400" },
-            { label: "دائن", value: credit, color: "text-rose-400" },
-            { label: "ختامي", value: closing, color: "text-violet-400" },
-            ...(outstanding !== undefined ? [{ label: "سلف قائمة", value: outstanding, color: "text-amber-400" }] : []),
-            ...(netPayable !== undefined ? [{ label: "صافي مستحق", value: netPayable, color: "text-emerald-400" }] : []),
-        ].map((item) => (
+        {summaryItems.map((item) => (
             <div key={item.label} className="text-center px-2 py-1.5 rounded-xl bg-white/[0.03] border border-white/5 print:border-gray-200">
                 <p className="text-[9px] text-slate-500 font-bold mb-0.5 print:text-gray-500">{item.label}</p>
                 <p className={`text-sm font-black font-mono ${item.color} print:text-gray-900`}>₪{money(item.value)}</p>
             </div>
         ))}
     </div>
-);
+    );
+};
 
-/* ─── Main Component ─── */
-const EmployeeStatement: React.FC<EmployeeStatementProps> = ({ employeeId, employeeName }) => {
+/* --- Main Component --- */
+const EmployeeStatement: React.FC<EmployeeStatementProps> = ({
+    entityType: entityTypeProp = "employee",
+    entityId,
+    entityName,
+    employeeId,
+    employeeName,
+}) => {
     const today = new Date();
     const defaultFrom = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split("T")[0];
     const defaultTo = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split("T")[0];
 
+    const resolvedEntityType = entityTypeProp;
+    const resolvedEntityId = entityId ?? employeeId ?? null;
+    const resolvedEntityName = entityName ?? employeeName ?? "";
+    const typeOptions = TYPE_OPTIONS_BY_ENTITY[resolvedEntityType];
+
     const [fromDate, setFromDate] = useState(defaultFrom);
     const [toDate, setToDate] = useState(defaultTo);
-    const [statementType, setStatementType] = useState<StatementType>("all");
+    const [statementType, setStatementType] = useState("all");
     const [viewMode, setViewMode] = useState<"simple" | "detailed">("simple");
     const [searchQuery, setSearchQuery] = useState("");
     const [amountFrom, setAmountFrom] = useState("");
     const [amountTo, setAmountTo] = useState("");
 
-    const [lines, setLines] = useState<StatementEntry[]>([]);
-    const [openingBalance, setOpeningBalance] = useState(0);
-    const [closingBalance, setClosingBalance] = useState(0);
-    const [rawData, setRawData] = useState<EmployeeStatementData | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-
     const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
     const [invoiceIds, setInvoiceIds] = useState<number[]>([]);
     const [currentInvoiceIdx, setCurrentInvoiceIdx] = useState(-1);
+
+    useEffect(() => {
+        setStatementType("all");
+    }, [resolvedEntityType]);
+
+    const extraFilters = useMemo<Omit<StatementFilters, "from" | "to" | "type">>(() => ({
+        mode: viewMode === "detailed" ? "detailed" : "simple",
+        search: searchQuery || undefined,
+        amount_from: amountFrom ? Number(amountFrom) : undefined,
+        amount_to: amountTo ? Number(amountTo) : undefined,
+        limit: 500,
+    }), [viewMode, searchQuery, amountFrom, amountTo]);
+
+    const apiStatementType = STATEMENT_TYPES.has(statementType)
+        ? statementType as StatementType
+        : "all";
+
+    const {
+        lines: accountLines,
+        openingBalance,
+        closingBalance,
+        outstandingAdvance,
+        accruedSalary,
+        netPayable,
+        isLoading,
+        error,
+        refetch,
+    } = useAccountStatement(
+        resolvedEntityType,
+        resolvedEntityId,
+        fromDate,
+        toDate,
+        apiStatementType,
+        extraFilters,
+    );
+
+    const selectedTypeOption = typeOptions.find((option) => option.value === statementType) ?? typeOptions[0];
+
+    const lines = useMemo(() => {
+        const movementTypes = selectedTypeOption.movementTypes;
+        const query = searchQuery.trim().toLowerCase();
+        const minAmount = amountFrom ? Number(amountFrom) : null;
+        const maxAmount = amountTo ? Number(amountTo) : null;
+
+        return accountLines.filter((entry) => {
+            const movementType = (entry.movement_type || entry.type || "other").toLowerCase();
+            if (movementTypes.length > 0 && !movementTypes.includes(movementType)) return false;
+
+            if (query) {
+                const haystack = [
+                    entry.transaction_number,
+                    entry.description,
+                    entry.movement_label,
+                    entry.document_type,
+                    entry.branch_name,
+                    entry.reference,
+                    entry.account_name,
+                    entry.transaction_source,
+                ].filter(Boolean).join(" ").toLowerCase();
+                if (!haystack.includes(query)) return false;
+            }
+
+            const amount = Math.max(Number(entry.debit) || 0, Number(entry.credit) || 0);
+            if (minAmount !== null && amount < minAmount) return false;
+            if (maxAmount !== null && amount > maxAmount) return false;
+            return true;
+        });
+    }, [accountLines, selectedTypeOption, searchQuery, amountFrom, amountTo]);
 
     const totals = useMemo(() => ({
         debit: lines.reduce((s, e) => s + (e.debit || 0), 0),
         credit: lines.reduce((s, e) => s + (e.credit || 0), 0),
     }), [lines]);
 
-    const fetchStatement = useCallback(async () => {
-        if (!fromDate || !toDate) return;
-        setIsLoading(true);
-        setError(null);
-        try {
-            const filters: StatementFilters = {
-                from: fromDate, to: toDate, type: statementType,
-                mode: viewMode === "detailed" ? "detailed" : "simple",
-                search: searchQuery || undefined,
-                amount_from: amountFrom ? Number(amountFrom) : undefined,
-                amount_to: amountTo ? Number(amountTo) : undefined,
-                limit: 500,
-            };
-            const response = await financeService.getEmployeeStatement(employeeId, filters);
-            if (!response.success) { setError(response.message || "فشل جلب كشف الحساب"); return; }
-            const data = response.data as EmployeeStatementData;
-            setRawData(data);
-            const extracted = extractLines(data);
-            setLines(extracted.lines);
-            setClosingBalance(extracted.closingBalance);
-            setOpeningBalance(extracted.openingBalance);
-        } catch (err: any) {
-            setError(err?.response?.data?.message || err?.message || "حدث خطأ");
-        } finally {
-            setIsLoading(false);
+    const movementTotals = useMemo(() => {
+        const sums: Record<string, number> = {};
+        for (const entry of accountLines) {
+            const movementType = (entry.movement_type || entry.type || "other").toLowerCase();
+            const amount = Math.max(Number(entry.debit) || 0, Number(entry.credit) || 0);
+            sums[movementType] = (sums[movementType] || 0) + amount;
+            const group = typeOptions.find((option) => option.movementTypes.includes(movementType));
+            if (group) sums[group.value] = (sums[group.value] || 0) + amount;
         }
-    }, [employeeId, fromDate, toDate, statementType, viewMode, searchQuery, amountFrom, amountTo]);
-
-    useEffect(() => { fetchStatement(); }, [fetchStatement]);
-
+        return sums;
+    }, [accountLines, typeOptions]);
     useEffect(() => {
         const orderIds = lines
             .filter((e) => e.movement_type === "sales" || e.source_type?.includes("Order"))
@@ -470,7 +573,20 @@ const EmployeeStatement: React.FC<EmployeeStatementProps> = ({ employeeId, emplo
     }, [lines]);
 
     const handleOpenInvoice = useCallback(async (entry: StatementEntry) => {
-        if (!entry.source_id) return;
+        const directInvoiceId = (entry as StatementEntry & { invoice_id?: number | null; document_id?: number | null }).invoice_id
+            ?? (entry as StatementEntry & { invoice_id?: number | null; document_id?: number | null }).document_id;
+        if (directInvoiceId) {
+            setSelectedInvoiceId(directInvoiceId);
+            const idx = invoiceIds.indexOf(directInvoiceId);
+            setCurrentInvoiceIdx(idx >= 0 ? idx : -1);
+            return;
+        }
+        if (!entry.source_id) {
+            if (resolvedEntityType === "supplier") {
+                window.alert("تفاصيل مستند المورد غير متاحة حالياً");
+            }
+            return;
+        }
         try {
             const result = await invoiceDetailsService.getInvoiceIdByOrder(entry.source_id);
             if (result?.invoice_id) {
@@ -479,29 +595,42 @@ const EmployeeStatement: React.FC<EmployeeStatementProps> = ({ employeeId, emplo
                 setCurrentInvoiceIdx(idx >= 0 ? idx : -1);
             }
         } catch { /* no invoice */ }
-    }, [invoiceIds]);
+    }, [invoiceIds, resolvedEntityType]);
 
     const handleDownloadPdf = async (style: "simple" | "detailed" = "detailed") => {
+        if (!resolvedEntityId) return;
         try {
-            const blob = await employeeService.getAccountStatementPdf(employeeId, fromDate, toDate, statementType, style);
+            const pdfType = STATEMENT_TYPES.has(statementType) ? statementType as StatementType : "all";
+            const blob = resolvedEntityType === "employee"
+                ? await financeService.getEmployeeStatementPdf(resolvedEntityId, fromDate, toDate, pdfType, style)
+                : resolvedEntityType === "customer"
+                    ? await financeService.getCustomerStatementPdf(resolvedEntityId, fromDate, toDate, pdfType, style)
+                    : await financeService.getSupplierStatementPdf(resolvedEntityId, fromDate, toDate, pdfType, style);
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `كشف_حساب_${employeeName}_${fromDate}_${toDate}.pdf`;
+            a.download = `statement_${resolvedEntityName}_${fromDate}_${toDate}.pdf`;
             a.click();
             window.URL.revokeObjectURL(url);
         } catch { /* ignore */ }
     };
 
     const handleExport = async (format: "csv" | "excel") => {
+        if (!resolvedEntityId) return;
         try {
-            const blob = await financeService.exportEmployeeStatement(employeeId, {
-                from: fromDate, to: toDate, type: statementType, mode: "detailed", search: searchQuery || undefined,
-            }, format);
+            const exportType = STATEMENT_TYPES.has(statementType) ? statementType as StatementType : "all";
+            const filters: StatementFilters = {
+                from: fromDate, to: toDate, type: exportType, mode: "detailed", search: searchQuery || undefined,
+            };
+            const blob = resolvedEntityType === "employee"
+                ? await financeService.exportEmployeeStatement(resolvedEntityId, filters, format)
+                : resolvedEntityType === "customer"
+                    ? await financeService.exportCustomerStatement(resolvedEntityId, filters, format)
+                    : await financeService.exportSupplierStatement(resolvedEntityId, filters, format);
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `كشف_${employeeName}_${fromDate}_${toDate}.${format === "excel" ? "xls" : "csv"}`;
+            a.download = `statement_${resolvedEntityName}_${fromDate}_${toDate}.${format === "excel" ? "xls" : "csv"}`;
             a.click();
             window.URL.revokeObjectURL(url);
         } catch { /* ignore */ }
@@ -509,16 +638,16 @@ const EmployeeStatement: React.FC<EmployeeStatementProps> = ({ employeeId, emplo
 
     return (
         <div className="space-y-4 print:space-y-2" dir="rtl">
-            {/* ── Letterhead Header ── */}
+            {/* -- Letterhead Header -- */}
             <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-blue-950/30 border border-white/10 rounded-2xl overflow-hidden print:border-gray-300 print:bg-white">
                 <div className="px-5 py-4 border-b border-white/5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 print:border-gray-200">
                     <div className="flex items-center gap-4">
                         <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center shadow-lg print:bg-blue-700">
-                            <span className="text-white font-black text-lg">{employeeName.charAt(0)}</span>
+                            <span className="text-white font-black text-lg">{resolvedEntityName.charAt(0)}</span>
                         </div>
                         <div>
-                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest print:text-gray-500">كشف حساب موظف</p>
-                            <h2 className="text-xl font-black text-white print:text-gray-900">{employeeName}</h2>
+                            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest print:text-gray-500">كشف حساب {entityLabel(resolvedEntityType)}</p>
+                            <h2 className="text-xl font-black text-white print:text-gray-900">{resolvedEntityName}</h2>
                             <p className="text-[11px] text-slate-400 mt-0.5 print:text-gray-600">
                                 <Calendar size={10} className="inline ml-1" />
                                 {dateFmt(fromDate)} — {dateFmt(toDate)}
@@ -549,7 +678,7 @@ const EmployeeStatement: React.FC<EmployeeStatementProps> = ({ employeeId, emplo
 
                     <select value={statementType} onChange={(e) => setStatementType(e.target.value as StatementType)}
                         className="bg-slate-900 border border-white/10 rounded-lg px-3 py-1.5 text-[11px] text-white outline-none focus:border-blue-500/50">
-                        {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        {typeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
 
                     <div className="relative">
@@ -559,7 +688,7 @@ const EmployeeStatement: React.FC<EmployeeStatementProps> = ({ employeeId, emplo
                     </div>
 
                     <div className="mr-auto flex items-center gap-1.5">
-                        <button onClick={fetchStatement} disabled={isLoading} title="تحديث"
+                        <button onClick={refetch} disabled={isLoading} title="تحديث"
                             className="p-2 rounded-lg bg-blue-600/20 border border-blue-500/30 text-blue-400 hover:bg-blue-600 hover:text-white transition-all disabled:opacity-50">
                             <RefreshCw size={13} className={isLoading ? "animate-spin" : ""} />
                         </button>
@@ -583,7 +712,7 @@ const EmployeeStatement: React.FC<EmployeeStatementProps> = ({ employeeId, emplo
                 </div>
             </div>
 
-            {/* ── Loading / Error ── */}
+            {/* -- Loading / Error -- */}
             {isLoading ? (
                 <div className="space-y-3">
                     <div className="h-16 bg-slate-800/40 rounded-2xl animate-pulse" />
@@ -599,17 +728,17 @@ const EmployeeStatement: React.FC<EmployeeStatementProps> = ({ employeeId, emplo
                 <>
                     {/* Sticky summary */}
                     <SummaryBar
-                        opening={openingBalance}
                         closing={closingBalance}
-                        debit={totals.debit}
-                        credit={totals.credit}
-                        outstanding={rawData?.outstanding_advance}
-                        netPayable={rawData?.net_payable}
+                        entityType={resolvedEntityType}
+                        movementTotals={movementTotals}
+                        outstandingAdvance={outstandingAdvance}
+                        accruedSalary={accruedSalary}
+                        netPayable={netPayable}
                     />
 
                     {/* Movement type quick filters */}
                     <div className="flex flex-wrap gap-1.5 print:hidden">
-                        {TYPE_OPTIONS.map((opt) => (
+                        {typeOptions.map((opt) => (
                             <button key={opt.value} onClick={() => setStatementType(opt.value)}
                                 className={`px-3 py-1 rounded-full text-[10px] font-black border transition-all ${statementType === opt.value
                                     ? "bg-blue-600 border-blue-500 text-white shadow-md"
@@ -631,7 +760,7 @@ const EmployeeStatement: React.FC<EmployeeStatementProps> = ({ employeeId, emplo
 
                     {/* Footer note */}
                     <p className="text-[10px] text-slate-600 text-center print:text-gray-500">
-                        كشف حساب {employeeName} · {dateFmt(fromDate)} — {dateFmt(toDate)} · {lines.length} حركة · الرصيد ₪{money(closingBalance)}
+                        كشف حساب {resolvedEntityName} · {dateFmt(fromDate)} — {dateFmt(toDate)} · {lines.length} حركة · الرصيد ₪{money(closingBalance)}
                     </p>
                 </>
             )}
