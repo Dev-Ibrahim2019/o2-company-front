@@ -509,7 +509,7 @@ export const JournalView: React.FC<JournalViewProps> = ({
               {visibleEntries.map((trx: any, index: number) => {
                 const transactionNumber = trx.transaction_number ?? trx.reference ?? trx.id;
                 const normalizedStatus = String(trx.status ?? "").toUpperCase();
-                const statusLabel = trx.status_label ?? (normalizedStatus === "POSTED" ? "ظ…ظڈط±ط­ظژظ‘ظ„ط©" : "ظ…ط³ظˆط¯ط©");
+        const statusLabel = trx.status_label ?? (normalizedStatus === "POSTED" ? "مرحلة" : "مسودة");
                 const lineTotals = (trx.lines ?? []).reduce(
                   (totals: { debit: number; credit: number }, line: any) => ({
                     debit: totals.debit + (line.debit || 0),

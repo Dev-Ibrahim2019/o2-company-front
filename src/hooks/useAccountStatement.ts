@@ -11,6 +11,7 @@ interface UseAccountStatementResult {
   closingBalance: number;
   openingBalance: number;
   outstandingAdvance?: number;
+  outstandingLoan?: number;
   accruedSalary?: number;
   netPayable?: number;
   isLoading: boolean;
@@ -55,13 +56,14 @@ export const useAccountStatement = (
   entityId: number | null,
   from: string,
   to: string,
-  employeeStatementType: StatementType = "all",
+  statementType: StatementType = "all",
   extraFilters: Omit<StatementFilters, "from" | "to" | "type"> = {},
 ): UseAccountStatementResult => {
   const [lines, setLines] = useState<StatementEntry[]>([]);
   const [closingBalance, setClosingBalance] = useState<number>(0);
   const [openingBalance, setOpeningBalance] = useState<number>(0);
   const [outstandingAdvance, setOutstandingAdvance] = useState<number | undefined>();
+  const [outstandingLoan, setOutstandingLoan] = useState<number | undefined>();
   const [accruedSalary, setAccruedSalary] = useState<number | undefined>();
   const [netPayable, setNetPayable] = useState<number | undefined>();
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -91,14 +93,20 @@ export const useAccountStatement = (
         response = await financeService.getEmployeeStatement(entityId, {
           from,
           to,
-          type: employeeStatementType,
+          type: statementType,
           mode: "simple",
           ...extraFilters,
         });
       } else if (entityType === "customer") {
-        response = await financeService.getCustomerStatement(entityId, from, to);
+        response = await financeService.getCustomerStatement(entityId, from, to, {
+          ...extraFilters,
+          type: statementType,
+        });
       } else {
-        response = await financeService.getSupplierStatement(entityId, from, to);
+        response = await financeService.getSupplierStatement(entityId, from, to, {
+          ...extraFilters,
+          type: statementType,
+        });
       }
 
       if (controller.signal.aborted) return;
@@ -116,6 +124,7 @@ export const useAccountStatement = (
         setClosingBalance(extracted.closingBalance);
         setOpeningBalance(extracted.openingBalance);
         setOutstandingAdvance(data.outstanding_advance);
+        setOutstandingLoan(data.outstanding_loan);
         setAccruedSalary(data.accrued_salary);
         setNetPayable(data.net_payable);
       } else {
@@ -134,7 +143,7 @@ export const useAccountStatement = (
     } finally {
       if (!controller.signal.aborted) setIsLoading(false);
     }
-  }, [entityType, entityId, from, to, employeeStatementType]);
+  }, [entityType, entityId, from, to, statementType, extraFilters]);
 
   useEffect(() => {
     fetchStatement();
@@ -146,6 +155,7 @@ export const useAccountStatement = (
     closingBalance,
     openingBalance,
     outstandingAdvance,
+    outstandingLoan,
     accruedSalary,
     netPayable,
     isLoading,

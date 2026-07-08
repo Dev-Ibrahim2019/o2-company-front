@@ -9,8 +9,10 @@ import {
 import { salesInvoiceService } from "../../services/salesInvoiceService";
 import { useApp } from "../../../store";
 import { useAuth } from "../../auth/AuthContext";
+import { toast } from "../shared/Toast";
 import { InvoiceFilterModal, emptyFilters } from "../administration/InvoiceFilterModal";
 import type { InvoiceFilters } from "../administration/InvoiceFilterModal";
+import { ConfirmModal, type ConfirmVariant } from "../shared/ConfirmModal";
 import type { SalesInvoice } from "../../types/salesInvoice";
 import {
   SALES_INVOICE_STATUS_LABELS,
@@ -68,6 +70,51 @@ export const SalesInvoiceListPage = ({ onOpenForm }: Props) => {
   const [posLastPage, setPosLastPage] = useState(1);
   const [posTotal, setPosTotal] = useState(0);
   const [syncingId, setSyncingId] = useState<number | null>(null);
+
+  // ── Confirm Modal ──
+  const [confirmModal, setConfirmModal] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    variant: ConfirmVariant;
+    loading: boolean;
+    confirmLabel: string;
+    onConfirm: () => void;
+  }>({
+    open: false,
+    title: "",
+    message: "",
+    variant: "danger",
+    loading: false,
+    confirmLabel: "تأكيد",
+    onConfirm: () => {},
+  });
+
+  const openConfirm = (opts: {
+    title: string;
+    message: string;
+    variant?: ConfirmVariant;
+    confirmLabel?: string;
+    onConfirm: () => void;
+  }) => {
+    setConfirmModal({
+      open: true,
+      title: opts.title,
+      message: opts.message,
+      variant: opts.variant ?? "danger",
+      loading: false,
+      confirmLabel: opts.confirmLabel ?? "تأكيد",
+      onConfirm: opts.onConfirm,
+    });
+  };
+
+  const closeConfirm = () => {
+    setConfirmModal((prev) => ({ ...prev, open: false, loading: false }));
+  };
+
+  const setConfirmLoading = (loading: boolean) => {
+    setConfirmModal((prev) => ({ ...prev, loading }));
+  };
 
   // Effective selected count on current tab (only specific statuses support bulk approve)
   const approvableSelected = useMemo(
@@ -145,36 +192,66 @@ export const SalesInvoiceListPage = ({ onOpenForm }: Props) => {
   useEffect(() => { fetchStats(); }, [fetchStats]);
 
   const handleApprove = async (id: number) => {
-    if (!confirm("هل تريد تعميد الفاتورة؟ سيتم إنشاء القيود المحاسبية.")) return;
-    try {
-      await salesInvoiceService.approve(id);
-      fetchData();
-      fetchStats();
-    } catch (err: any) {
-      alert(err?.response?.data?.message || "فشل التعميد");
-    }
+    openConfirm({
+      title: "تعميد الفاتورة",
+      message: "هل تريد تعميد الفاتورة؟ سيتم إنشاء القيود المحاسبية.",
+      variant: "success",
+      onConfirm: async () => {
+        setConfirmLoading(true);
+        try {
+          await salesInvoiceService.approve(id);
+          closeConfirm();
+          toast.success("تم التعميد بنجاح", "تم تعميد الفاتورة وإنشاء القيود المحاسبية");
+          fetchData();
+          fetchStats();
+        } catch (err: any) {
+          setConfirmLoading(false);
+          toast.error("فشل التعميد", err?.response?.data?.message || "حدث خطأ أثناء تعميد الفاتورة");
+        }
+      },
+    });
   };
 
   const handleCancel = async (id: number) => {
-    if (!confirm("هل تريد إلغاء الفاتورة؟ سيتم عكس القيود المحاسبية.")) return;
-    try {
-      await salesInvoiceService.cancel(id);
-      fetchData();
-      fetchStats();
-    } catch (err: any) {
-      alert(err?.response?.data?.message || "فشل الإلغاء");
-    }
+    openConfirm({
+      title: "إلغاء الفاتورة",
+      message: "هل تريد إلغاء الفاتورة؟ سيتم عكس القيود المحاسبية.",
+      variant: "warning",
+      onConfirm: async () => {
+        setConfirmLoading(true);
+        try {
+          await salesInvoiceService.cancel(id);
+          closeConfirm();
+          toast.success("تم الإلغاء بنجاح", "تم إلغاء الفاتورة وعكس القيود المحاسبية");
+          fetchData();
+          fetchStats();
+        } catch (err: any) {
+          setConfirmLoading(false);
+          toast.error("فشل الإلغاء", err?.response?.data?.message || "حدث خطأ أثناء إلغاء الفاتورة");
+        }
+      },
+    });
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("هل تريد حذف الفاتورة نهائياً؟")) return;
-    try {
-      await salesInvoiceService.delete(id);
-      fetchData();
-      fetchStats();
-    } catch (err: any) {
-      alert(err?.response?.data?.message || "فشل الحذف");
-    }
+    openConfirm({
+      title: "حذف الفاتورة",
+      message: "هل تريد حذف الفاتورة نهائياً؟ هذا الإجراء لا يمكن التراجع عنه.",
+      variant: "danger",
+      onConfirm: async () => {
+        setConfirmLoading(true);
+        try {
+          await salesInvoiceService.delete(id);
+          closeConfirm();
+          toast.success("تم الحذف بنجاح", "تم حذف الفاتورة نهائياً");
+          fetchData();
+          fetchStats();
+        } catch (err: any) {
+          setConfirmLoading(false);
+          toast.error("فشل الحذف", err?.response?.data?.message || "حدث خطأ أثناء حذف الفاتورة");
+        }
+      },
+    });
   };
 
   // ── Selection helpers ──
@@ -200,24 +277,43 @@ export const SalesInvoiceListPage = ({ onOpenForm }: Props) => {
 
   const handleBulkApprove = async () => {
     if (approvableSelected.length === 0) {
-      alert("لم تختر أي فاتورة بانتظار التعميد");
+      toast.warning("لا توجد فواتير مؤهلة", "لم تختر أي فاتورة بانتظار التعميد");
       return;
     }
-    if (!confirm(`هل تريد تعميد ${approvableSelected.length} فاتورة دفعة واحدة؟`)) return;
-    setBulkApproving(true);
-    try {
-      const result: any = await salesInvoiceService.bulkApprove(approvableSelected.map((i) => i.id));
-      const approved = result?.approved ?? 0;
-      const skipped = result?.skipped ?? 0;
-      alert(`تم تعميد ${approved} فاتورة${skipped > 0 ? ` (تم تخطي ${skipped})` : ""}`);
-      setSelectedIds(new Set());
-      fetchData();
-      fetchStats();
-    } catch (err: any) {
-      alert(err?.response?.data?.message || "فشل التعميد المجمّع");
-    } finally {
-      setBulkApproving(false);
-    }
+    openConfirm({
+      title: "تعميد مجمّع",
+      message: `هل تريد تعميد ${approvableSelected.length} فاتورة دفعة واحدة؟`,
+      variant: "success",
+      onConfirm: async () => {
+        setConfirmLoading(true);
+        setBulkApproving(true);
+        try {
+          const result: any = await salesInvoiceService.bulkApprove(approvableSelected.map((i) => i.id));
+          const approved = result?.approved ?? 0;
+          const skipped = result?.skipped ?? 0;
+          closeConfirm();
+          if (skipped > 0) {
+            toast.warning(
+              `تم تعميد ${approved} فاتورة`,
+              `تم تخطي ${skipped} فاتورة غير مؤهلة`,
+            );
+          } else {
+            toast.success(
+              `تم تعميد ${approved} فاتورة`,
+              "تم تعميد جميع الفواتير المحددة بنجاح",
+            );
+          }
+          setSelectedIds(new Set());
+          fetchData();
+          fetchStats();
+        } catch (err: any) {
+          setConfirmLoading(false);
+          toast.error("فشل التعميد المجمّع", err?.response?.data?.message || "حدث خطأ أثناء تعميد الفواتير");
+        } finally {
+          setBulkApproving(false);
+        }
+      },
+    });
   };
 
   const selectedRows = useMemo(
@@ -230,70 +326,117 @@ export const SalesInvoiceListPage = ({ onOpenForm }: Props) => {
       (r) => Number(r.paid_amount) > 0 && !postedInvoiceIds.includes(r.id),
     );
     if (payables.length === 0) {
-      alert("لم تختر أي فاتورة مدفوعة غير مرحّلة");
+      toast.warning("لا توجد فواتير مؤهلة", "لم تختر أي فاتورة مدفوعة غير مرحّلة");
       return;
     }
-    if (!confirm(`هل تريد ترحيل ${payables.length} فاتورة دفعة واحدة؟`)) return;
-    setBulkPosting(true);
-    try {
-      const result: any = await salesInvoiceService.bulkPost(payables.map((i) => i.id));
-      const posted = result?.posted ?? payables.length;
-      const skipped = result?.skipped ?? 0;
-      setPostedInvoiceIds((prev) => [...new Set([...prev, ...payables.map((i) => i.id)])]);
-      alert(`تم ترحيل ${posted} فاتورة${skipped > 0 ? ` (تم تخطي ${skipped})` : ""}`);
-      setSelectedIds(new Set());
-    } catch (err: any) {
-      alert(err?.response?.data?.message || "فشل الترحيل المجمّع");
-    } finally {
-      setBulkPosting(false);
-    }
+    openConfirm({
+      title: "ترحيل مجمّع",
+      message: `هل تريد ترحيل ${payables.length} فاتورة دفعة واحدة؟`,
+      variant: "warning",
+      onConfirm: async () => {
+        setConfirmLoading(true);
+        setBulkPosting(true);
+        try {
+          const result: any = await salesInvoiceService.bulkPost(payables.map((i) => i.id));
+          const posted = result?.posted ?? payables.length;
+          const skipped = result?.skipped ?? 0;
+          setPostedInvoiceIds((prev) => [...new Set([...prev, ...payables.map((i) => i.id)])]);
+          closeConfirm();
+          if (skipped > 0) {
+            toast.warning(
+              `تم ترحيل ${posted} فاتورة`,
+              `تم تخطي ${skipped} فاتورة غير مؤهلة`,
+            );
+          } else {
+            toast.success(
+              `تم ترحيل ${posted} فاتورة`,
+              "تم ترحيل جميع الفواتير المحاسبية بنجاح",
+            );
+          }
+          setSelectedIds(new Set());
+        } catch (err: any) {
+          setConfirmLoading(false);
+          toast.error("فشل الترحيل المجمّع", err?.response?.data?.message || "حدث خطأ أثناء ترحيل الفواتير");
+        } finally {
+          setBulkPosting(false);
+        }
+      },
+    });
   };
 
   const handleGroupInvoices = async () => {
     if (selectedRows.length < 2) {
-      alert("اختر فاتورتين على الأقل لتجميعهما");
+      toast.warning("عدد غير كافٍ", "اختر فاتورتين على الأقل لتجميعهما");
       return;
     }
     const totals = selectedRows.reduce((sum, r) => sum + Number(r.total || 0), 0);
     const customers = [...new Set(selectedRows.map((r) => r.customer_name || "عميل"))];
-    if (!confirm(`تجميع ${selectedRows.length} فاتورة\nالإجمالي: ${formatCurrency(totals)}\nالعملاء: ${customers.join(", ")}\n\nهل تريد المتابعة؟`)) return;
-    setBulkGrouping(true);
-    try {
-      await salesInvoiceService.bulkApprove(selectedRows.map((i) => i.id));
-      alert("تم تجميع الفواتير بنجاح");
-      setSelectedIds(new Set());
-      fetchData();
-      fetchStats();
-    } catch (err: any) {
-      alert(err?.response?.data?.message || "فشل تجميع الفواتير");
-    } finally {
-      setBulkGrouping(false);
-    }
+    openConfirm({
+      title: "تجميع الفواتير",
+      message: `تجميع ${selectedRows.length} فاتورة\nالإجمالي: ${formatCurrency(totals)}\nالعملاء: ${customers.join(", ")}\n\nهل تريد المتابعة؟`,
+      variant: "info",
+      confirmLabel: "تجميع",
+      onConfirm: async () => {
+        setConfirmLoading(true);
+        setBulkGrouping(true);
+        try {
+          await salesInvoiceService.bulkApprove(selectedRows.map((i) => i.id));
+          closeConfirm();
+          toast.success(
+            `تم تجميع ${selectedRows.length} فاتورة`,
+            `الإجمالي: ${formatCurrency(totals)}`,
+          );
+          setSelectedIds(new Set());
+          fetchData();
+          fetchStats();
+        } catch (err: any) {
+          setConfirmLoading(false);
+          toast.error("فشل تجميع الفواتير", err?.response?.data?.message || "حدث خطأ أثناء تجميع الفواتير");
+        } finally {
+          setBulkGrouping(false);
+        }
+      },
+    });
   };
 
   const handleSyncPos = async (posInvoiceId: number) => {
     setSyncingId(posInvoiceId);
     try {
       await salesInvoiceService.syncPosInvoice(posInvoiceId);
+      toast.success("تمت المزامنة", "تمت مزامنة فاتورة نقطة البيع بنجاح");
       fetchPosInvoices();
       fetchStats();
     } catch (err: any) {
-      alert(err?.response?.data?.message || "فشل المزامنة");
+      toast.error("فشل المزامنة", err?.response?.data?.message || "حدث خطأ أثناء مزامنة الفاتورة");
     } finally {
       setSyncingId(null);
     }
   };
 
   const handleSyncAllPos = async () => {
-    if (!confirm("هل تريد مزامنة جميع فواتير نقطة البيع غير المزامنة؟")) return;
-    try {
-      const result = await salesInvoiceService.syncPosEndOfDay({ branch_id: 0 });
-      alert(`تم مزامنة ${(result as any)?.synced || 0} فاتورة`);
-      fetchPosInvoices();
-      fetchStats();
-    } catch (err: any) {
-      alert(err?.response?.data?.message || "فشل المزامنة");
-    }
+    openConfirm({
+      title: "مزامنة فواتير نقطة البيع",
+      message: "هل تريد مزامنة جميع فواتير نقطة البيع غير المزامنة؟",
+      variant: "info",
+      onConfirm: async () => {
+        setConfirmLoading(true);
+        try {
+          const result = await salesInvoiceService.syncPosEndOfDay({ branch_id: 0 });
+          const synced = (result as any)?.synced || 0;
+          closeConfirm();
+          if (synced > 0) {
+            toast.success(`تمت مزامنة ${synced} فاتورة`, "تمت مزامنة جميع فواتير نقطة البيع");
+          } else {
+            toast.info("لا توجد فواتير", "لا توجد فواتير جديدة للمزامنة");
+          }
+          fetchPosInvoices();
+          fetchStats();
+        } catch (err: any) {
+          setConfirmLoading(false);
+          toast.error("فشل المزامنة", err?.response?.data?.message || "حدث خطأ أثناء مزامنة الفواتير");
+        }
+      },
+    });
   };
 
   const isPos = activeTab === "pos";
@@ -654,6 +797,19 @@ export const SalesInvoiceListPage = ({ onOpenForm }: Props) => {
           onClose={() => setShowFilters(false)}
         />
       )}
+
+      {/* Confirm Modal */}
+      <ConfirmModal
+        open={confirmModal.open}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        variant={confirmModal.variant}
+        loading={confirmModal.loading}
+        confirmLabel={confirmModal.confirmLabel}
+        cancelLabel="إلغاء"
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirm}
+      />
     </div>
   );
 };

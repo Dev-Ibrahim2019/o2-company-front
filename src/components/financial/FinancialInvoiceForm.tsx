@@ -164,7 +164,11 @@ export const FinancialInvoiceForm = ({ invoiceId, onBack, onSaved }: Props) => {
     setItemSearchResults([]);
   };
 
-  const addPayment = () => setPayments([...payments, { method: "cash", amount: 0 }]);
+  const addPayment = () => {
+    const defaultAmount = total > 0 ? Number((total - totalPaid).toFixed(2)) : 0.01;
+    const amountToUse = defaultAmount > 0 ? defaultAmount : 0.01;
+    setPayments([...payments, { method: "cash", amount: amountToUse }]);
+  };
   const removePayment = (idx: number) => setPayments(payments.filter((_, i) => i !== idx));
   const updatePayment = (idx: number, field: string, value: any) => {
     const updated = [...payments];
@@ -177,6 +181,11 @@ export const FinancialInvoiceForm = ({ invoiceId, onBack, onSaved }: Props) => {
     if (items.length === 0 || items.every(i => !i.item_name)) { alert("أضف صفاً واحداً على الأقل"); return; }
     setSaving(true);
     try {
+      // Validate payments amounts to satisfy backend minimum amount requirement (>= 0.01)
+      if (payments.length > 0) {
+        const invalid = payments.some(p => p.amount == null || Number(p.amount) < 0.01);
+        if (invalid) { alert("تأكد من أن كل دفعة لا تقل عن 0.01"); setSaving(false); return; }
+      }
       const data: FinancialInvoiceFormData = {
         type: invoiceType,
         entity_type: entityType || undefined,
@@ -443,7 +452,7 @@ export const FinancialInvoiceForm = ({ invoiceId, onBack, onSaved }: Props) => {
                     <select value={p.method} onChange={(e) => updatePayment(idx, "method", e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none w-32">
                       {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                     </select>
-                    <input type="number" value={p.amount || ""} onChange={(e) => updatePayment(idx, "amount", Number(e.target.value))} placeholder="المبلغ" className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" min="0" step="0.01" />
+                    <input type="number" value={p.amount || ""} onChange={(e) => updatePayment(idx, "amount", Number(e.target.value))} placeholder="المبلغ" className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" min="0.01" step="0.01" />
                     {(p.method === "credit_card" || p.method === "app") && (
                       <input type="text" value={p.reference_number || ""} onChange={(e) => updatePayment(idx, "reference_number", e.target.value)} placeholder="رقم المرجع" className="flex-1 border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
                     )}

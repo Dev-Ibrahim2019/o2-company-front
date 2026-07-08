@@ -35,6 +35,7 @@ export interface SaleItem {
 export interface StatementEntry {
   date: string;
   transaction_number: string;
+  document_number?: string | null;
   transaction_id?: number;
   reference: string | null;
   description: string | null;
@@ -55,9 +56,16 @@ export interface StatementEntry {
   movement_label?: string;
   document_type?: string;
   status?: string | null;
+  invoice_id?: number | null;
+  document_id?: number | null;
+  has_discounts?: boolean;
+  discount_amount?: number;
+  discount_percent?: number;
+  payments_data?: Array<Record<string, unknown>>;
+  journal_entries?: Array<Record<string, unknown>>;
 }
 
-export type MovementType = "sales" | "advance" | "salary" | "loan" | "payment" | "journal" | "return" | "settlement" | "advance_repayment" | "loan_repayment" | "salary_payment" | "adjustment" | "opening" | "other";
+export type MovementType = "sales" | "advance" | "salary" | "loan" | "payment" | "payments" | "receipt" | "receipts" | "journal" | "return" | "returns" | "settlement" | "advance_repayment" | "loan_repayment" | "salary_payment" | "adjustment" | "opening" | "purchase" | "purchases" | "credit_note" | "debit_note" | "discount" | "other";
 
 export type StatementType =
   | "all"
@@ -70,6 +78,13 @@ export type StatementType =
   | "return"
   | "settlement"
   | "purchase"
+  | "purchases"
+  | "payments"
+  | "receipts"
+  | "returns"
+  | "credit_note"
+  | "debit_note"
+  | "discount"
   | "transfer"
   | "adjustment"
   | "opening"
@@ -95,23 +110,31 @@ export interface StatementFilters {
 }
 
 export const MOVEMENT_LABELS: Record<string, string> = {
-  sales: "مبيعات موظف",
-  advance: "سلفة نقدية",
-  advance_repayment: "سداد سلفة",
-  salary: "خصم راتب",
-  salary_payment: "صرف راتب",
-  loan: "قرض",
-  loan_repayment: "سداد قرض",
-  payment: "دفعة",
-  journal: "قيد يدوي",
-  return: "مرتجع",
-  settlement: "تسوية",
-  purchase: "مشتريات",
-  transfer: "تحويل",
-  adjustment: "تسوية",
-  opening: "رصيد افتتاحي",
-  closing: "رصيد ختامي",
-  other: "أخرى",
+  sales: "\u0645\u0628\u064a\u0639\u0627\u062a",
+  advance: "\u0633\u0644\u0641\u0629 \u0646\u0642\u062f\u064a\u0629",
+  advance_repayment: "\u0633\u062f\u0627\u062f \u0633\u0644\u0641\u0629",
+  salary: "\u0627\u0633\u062a\u062d\u0642\u0627\u0642 \u0631\u0627\u062a\u0628",
+  salary_payment: "\u0635\u0631\u0641 \u0631\u0627\u062a\u0628",
+  loan: "\u0642\u0631\u0636",
+  loan_repayment: "\u0633\u062f\u0627\u062f \u0642\u0631\u0636",
+  payment: "\u062f\u0641\u0639\u0629",
+  payments: "\u062f\u0641\u0639\u0627\u062a",
+  receipt: "\u062a\u062d\u0635\u064a\u0644",
+  receipts: "\u062a\u062d\u0635\u064a\u0644\u0627\u062a",
+  journal: "\u0642\u064a\u062f \u064a\u0648\u0645\u064a\u0629",
+  return: "\u0645\u0631\u062a\u062c\u0639",
+  returns: "\u0645\u0631\u062a\u062c\u0639\u0627\u062a",
+  settlement: "\u062a\u0633\u0648\u064a\u0629",
+  purchase: "\u0645\u0634\u062a\u0631\u064a\u0627\u062a",
+  purchases: "\u0645\u0634\u062a\u0631\u064a\u0627\u062a",
+  transfer: "\u062a\u062d\u0648\u064a\u0644",
+  adjustment: "\u062a\u0633\u0648\u064a\u0629",
+  credit_note: "\u0625\u0634\u0639\u0627\u0631 \u062f\u0627\u0626\u0646",
+  debit_note: "\u0625\u0634\u0639\u0627\u0631 \u0645\u062f\u064a\u0646",
+  discount: "\u062e\u0635\u0645",
+  opening: "\u0631\u0635\u064a\u062f \u0627\u0641\u062a\u062a\u0627\u062d\u064a",
+  closing: "\u0631\u0635\u064a\u062f \u062e\u062a\u0627\u0645\u064a",
+  other: "\u0623\u062e\u0631\u0649",
 };
 
 export const MOVEMENT_COLORS: Record<string, string> = {
@@ -132,20 +155,29 @@ export const MOVEMENT_COLORS: Record<string, string> = {
 };
 
 export const MOVEMENT_ICONS: Record<string, string> = {
-  sales: "🛒",
-  advance: "💵",
-  advance_repayment: "💳",
-  salary: "💰",
-  salary_payment: "💰",
-  loan: "💵",
-  loan_repayment: "💳",
-  payment: "💳",
-  journal: "📘",
-  return: "↩",
-  settlement: "🔄",
-  adjustment: "🔄",
-  opening: "📂",
-  other: "❓",
+  sales: "\u2022",
+  advance: "\u2022",
+  advance_repayment: "\u2022",
+  salary: "\u2022",
+  salary_payment: "\u2022",
+  loan: "\u2022",
+  loan_repayment: "\u2022",
+  payment: "\u2022",
+  payments: "\u2022",
+  receipt: "\u2022",
+  receipts: "\u2022",
+  journal: "\u2022",
+  return: "\u2022",
+  returns: "\u2022",
+  settlement: "\u2022",
+  purchase: "\u2022",
+  purchases: "\u2022",
+  credit_note: "\u2022",
+  debit_note: "\u2022",
+  discount: "\u2022",
+  adjustment: "\u2022",
+  opening: "\u2022",
+  other: "\u2022",
 };
 
 export interface AccountStatementBlock {
@@ -407,6 +439,20 @@ export const financeService = {
     return res.data;
   },
 
+  getEmployeeStatementPdf: async (
+    employeeId: number,
+    from: string,
+    to: string,
+    type: StatementType = "all",
+    pdfStyle: "simple" | "detailed" = "detailed",
+  ): Promise<Blob> => {
+    const res = await api.get(`/employees/${employeeId}/account-statement/pdf`, {
+      params: { from, to, type, pdf_style: pdfStyle },
+      responseType: "blob",
+    });
+    return res.data;
+  },
+
   // GET /api/employees/{id}/loans
   getEmployeeLoans: async (employeeId: number): Promise<EmployeeLoan[]> => {
     const res = await api.get(`/employees/${employeeId}/loans`);
@@ -440,9 +486,36 @@ export const financeService = {
     customerId: number,
     from: string,
     to: string,
+    filters: Omit<StatementFilters, "from" | "to"> = {},
   ): Promise<ApiResponse<CustomerStatementResponse>> => {
     const res = await api.get(`/customers/${customerId}/statement`, {
-      params: { from, to },
+      params: { from, to, ...filters },
+    });
+    return res.data;
+  },
+
+  exportCustomerStatement: async (
+    customerId: number,
+    filters: StatementFilters,
+    format: "csv" | "excel" = "csv",
+  ): Promise<Blob> => {
+    const res = await api.get(`/customers/${customerId}/statement/export`, {
+      params: { ...filters, format },
+      responseType: "blob",
+    });
+    return res.data;
+  },
+
+  getCustomerStatementPdf: async (
+    customerId: number,
+    from: string,
+    to: string,
+    type: StatementType = "all",
+    pdfStyle: "simple" | "detailed" = "detailed",
+  ): Promise<Blob> => {
+    const res = await api.get(`/customers/${customerId}/statement/pdf`, {
+      params: { from, to, type, pdf_style: pdfStyle },
+      responseType: "blob",
     });
     return res.data;
   },
@@ -471,9 +544,36 @@ export const financeService = {
     supplierId: number,
     from: string,
     to: string,
+    filters: Omit<StatementFilters, "from" | "to"> = {},
   ): Promise<ApiResponse<SupplierStatementResponse>> => {
     const res = await api.get(`/suppliers/${supplierId}/statement`, {
-      params: { from, to },
+      params: { from, to, ...filters },
+    });
+    return res.data;
+  },
+
+  exportSupplierStatement: async (
+    supplierId: number,
+    filters: StatementFilters,
+    format: "csv" | "excel" = "csv",
+  ): Promise<Blob> => {
+    const res = await api.get(`/suppliers/${supplierId}/statement/export`, {
+      params: { ...filters, format },
+      responseType: "blob",
+    });
+    return res.data;
+  },
+
+  getSupplierStatementPdf: async (
+    supplierId: number,
+    from: string,
+    to: string,
+    type: StatementType = "all",
+    pdfStyle: "simple" | "detailed" = "detailed",
+  ): Promise<Blob> => {
+    const res = await api.get(`/suppliers/${supplierId}/statement/pdf`, {
+      params: { from, to, type, pdf_style: pdfStyle },
+      responseType: "blob",
     });
     return res.data;
   },

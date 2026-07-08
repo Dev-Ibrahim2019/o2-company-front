@@ -558,7 +558,7 @@ export const SalesInvoiceFormPage = ({ invoiceId, onBack, onSaved }: Props) => {
                       ))}
                     </select>
                     <input type="number" value={p.amount || ""} onChange={(e) => updatePayment(idx, "amount", Number(e.target.value))}
-                      placeholder="المبلغ" min="0" step="0.01"
+                      placeholder="المبلغ" min="0.01" step="0.01"
                       className="flex-1 bg-[var(--o2-surface-raised)] border border-[var(--o2-border)] rounded-lg px-3 py-2.5 text-sm text-[var(--o2-text)] placeholder:text-[var(--o2-muted)] focus:ring-2 focus:ring-[var(--o2-brand)] outline-none no-spinner" />
                     {(p.method === "credit_card" || p.method === "app") && (
                       <input type="text" value={p.reference_number || ""} onChange={(e) => updatePayment(idx, "reference_number", e.target.value)}
