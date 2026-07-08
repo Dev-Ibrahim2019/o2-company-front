@@ -358,7 +358,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
 
   useEffect(() => {
     if (selectedTable) {
-      setManualTable((selectedTable as any).number?.toString() ?? "");
+      setManualTable((selectedTable as any).table_number || ((selectedTable as any).number?.toString() ?? ""));
     } else {
       setManualTable("");
     }
@@ -588,7 +588,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
     loadCart(cloneCartItems(draft.items));
     setEditingApiOrderId(draft.editingApiOrderId);
     setCartOrderType(draft.orderType);
-    setManualTable(table.number.toString());
+    setManualTable(table.table_number || table.number.toString());
     setInvoiceNote(draft.invoiceNote);
     setDiscountValue(draft.discountValue);
     setDiscountType(draft.discountType);
@@ -603,7 +603,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
     loadCart(apiOrderToCartItems(order));
     setEditingApiOrderId(order.id);
     setCartOrderType(toPosOrderType(order.order_type));
-    setManualTable(order.table_number || table?.number.toString() || "");
+    setManualTable(table?.table_number || order.table_number || table?.number.toString() || "");
     setInvoiceNote(order.note ?? "");
     setDiscountValue(Number(order.discount_value || 0));
     setDiscountType(order.discount_type === "percent" ? "PERCENT" : "AMOUNT");
@@ -653,7 +653,13 @@ const handleActivationSuccess = (activatedInfo: any) => {
       return null;
     }
 
-    const table = tables.find((t) => t.number.toString() === tableNumber);
+    if (selectedTable && selectedTable.table_number?.toUpperCase() === tableNumber.toUpperCase()) {
+      return selectedTable;
+    }
+
+    const table = tables.find(
+      (t) => t.table_number?.toUpperCase() === tableNumber.toUpperCase() || t.number.toString() === tableNumber,
+    );
     if (!table) {
       setPosError("الطاولة المحددة غير موجودة");
       return null;
@@ -668,7 +674,8 @@ const handleActivationSuccess = (activatedInfo: any) => {
   };
 
   const loadApiOrderForTable = async (table: Table, clearWhenMissing = true) => {
-    const order = await orderService.getActiveByTableNumber(table.number, {
+    const tableNum = table.table_number || table.number.toString();
+    const order = await orderService.getActiveByTableNumber(tableNum, {
       branch_id: branchId || 0,
     });
 
@@ -716,8 +723,9 @@ const handleActivationSuccess = (activatedInfo: any) => {
   const handleTableInput = (val: string) => {
     setManualTable(val);
 
+    const normalized = normalizeTableNumber(val);
     const table = tables?.find(
-      (t: any) => t.number?.toString() === normalizeTableNumber(val),
+      (t: any) => t.table_number?.toUpperCase() === normalized?.toUpperCase() || t.number?.toString() === normalized,
     );
 
     if (!table) {
@@ -751,7 +759,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
     }
 
     setSelectedTable(table);
-    setManualTable(table.number.toString());
+    setManualTable(table.table_number || table.number.toString());
 
     setCartOrderType(OrderType.DINE_IN);
 
@@ -794,7 +802,15 @@ const handleActivationSuccess = (activatedInfo: any) => {
       return;
     }
 
-    if (isActiveTable || editingApiOrderId) {
+    // الطاولة مشغولة بس ما فيها طلب → افتح السلة فاضية
+    if (isActiveTable) {
+      setCartOrderType(OrderType.DINE_IN);
+      setManualTable(table.table_number || table.number.toString());
+      setIsCartOpen(true);
+      return;
+    }
+
+    if (editingApiOrderId) {
       clearLoadedApiOrder();
     }
   };
@@ -821,7 +837,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
         branch_id: branchId || 0,
         cashier_id: currentUser?.id ? Number(currentUser.id) : undefined,
         order_type: orderType,
-        table_number: activeTable?.number.toString(),
+        table_number: activeTable?.table_number || activeTable?.number.toString(),
         customer_name: customerName || undefined,
         customer_phone: customerPhone || undefined,
         note: invoiceNote || undefined,
@@ -1043,7 +1059,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
         branch_id: branchId,
         cashier_id: currentUser?.id ? Number(currentUser.id) : undefined,
         order_type: orderType,
-        table_number: activeTable?.number.toString(),
+        table_number: activeTable?.table_number || activeTable?.number.toString(),
         customer_name: meta.name || undefined,
         customer_phone: meta.phone || undefined,
         note: meta.note || undefined,

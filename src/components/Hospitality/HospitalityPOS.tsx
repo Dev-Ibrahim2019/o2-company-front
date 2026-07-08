@@ -331,7 +331,9 @@ export const HospitalityPOS: React.FC = () => {
 
   useEffect(() => {
     if (selectedTable) {
-      setManualTable((selectedTable as any).number?.toString() ?? "");
+      setManualTable((selectedTable as any).table_number || (selectedTable as any).number?.toString() || "");
+      // فتح السلة تلقائياً عند اختيار طاولة من قسم الطاولات
+      setIsCartOpen(true);
     } else {
       setManualTable("");
     }
@@ -479,7 +481,7 @@ export const HospitalityPOS: React.FC = () => {
     loadCart(cloneCartItems(draft.items));
     setEditingApiOrderId(draft.editingApiOrderId);
     setCartOrderType(draft.orderType);
-    setManualTable(table.number.toString());
+    setManualTable(table.table_number || table.number.toString());
     setInvoiceNote(draft.invoiceNote);
     setDiscountValue(draft.discountValue);
     setDiscountType(draft.discountType);
@@ -494,7 +496,7 @@ export const HospitalityPOS: React.FC = () => {
     loadCart(apiOrderToCartItems(order));
     setEditingApiOrderId(order.id);
     setCartOrderType(toPosOrderType(order.order_type));
-    setManualTable(order.table_number || table?.number.toString() || "");
+    setManualTable(table?.table_number || order.table_number || table?.number.toString() || "");
     setInvoiceNote(order.note ?? "");
     setDiscountValue(Number(order.discount_value || 0));
     setDiscountType(order.discount_type === "percent" ? "PERCENT" : "AMOUNT");
@@ -533,6 +535,9 @@ export const HospitalityPOS: React.FC = () => {
       forgetTableDraft(selectedTable.id);
     }
     clearLoadedApiOrder();
+    setSelectedTable(null);
+    setManualTable("");
+    setIsCartOpen(false);
   };
 
   const resolveActiveDineInTable = () => {
@@ -544,7 +549,13 @@ export const HospitalityPOS: React.FC = () => {
       return null;
     }
 
-    const table = tables.find((t) => t.number.toString() === tableNumber);
+    if (selectedTable && selectedTable.table_number?.toUpperCase() === tableNumber.toUpperCase()) {
+      return selectedTable;
+    }
+
+    const table = tables.find(
+      (t) => t.table_number?.toUpperCase() === tableNumber.toUpperCase() || t.number.toString() === tableNumber,
+    );
     if (!table) {
       setPosError("الطاولة المحددة غير موجودة");
       return null;
@@ -559,7 +570,7 @@ export const HospitalityPOS: React.FC = () => {
   };
 
   const loadApiOrderForTable = async (table: Table, clearWhenMissing = true) => {
-    const order = await orderService.getActiveByTableNumber(table.number, {
+    const order = await orderService.getActiveByTableNumber(table.table_number || table.number, {
       branch_id: branchId || 0,
     });
 
@@ -607,8 +618,11 @@ export const HospitalityPOS: React.FC = () => {
   const handleTableInput = (val: string) => {
     setManualTable(val);
 
+    const normalized = normalizeTableNumber(val);
     const table = tables?.find(
-      (t: any) => t.number?.toString() === normalizeTableNumber(val),
+      (t: any) =>
+        t.table_number?.toUpperCase() === normalized.toUpperCase() ||
+        t.number?.toString() === normalized,
     );
 
     if (!table) {
@@ -642,7 +656,7 @@ export const HospitalityPOS: React.FC = () => {
     }
 
     setSelectedTable(table);
-    setManualTable(table.number.toString());
+    setManualTable(table.table_number || table.number.toString());
 
     setCartOrderType(OrderType.DINE_IN);
 
@@ -685,7 +699,15 @@ export const HospitalityPOS: React.FC = () => {
       return;
     }
 
-    if (isActiveTable || editingApiOrderId) {
+    // الطاولة مشغولة بس ما فيها طلب → افتح السلة فاضية
+    if (isActiveTable) {
+      setCartOrderType(OrderType.DINE_IN);
+      setManualTable(table.table_number || table.number.toString());
+      setIsCartOpen(true);
+      return;
+    }
+
+    if (editingApiOrderId) {
       clearLoadedApiOrder();
     }
   };
@@ -711,7 +733,7 @@ export const HospitalityPOS: React.FC = () => {
         branch_id: branchId || 0,
         cashier_id: currentUser?.id ? Number(currentUser.id) : undefined,
         order_type: orderType,
-        table_number: activeTable?.number.toString(),
+        table_number: activeTable?.table_number || activeTable?.number.toString(),
         customer_name: customerName || undefined,
         customer_phone: customerPhone || undefined,
         note: invoiceNote || undefined,
@@ -747,13 +769,24 @@ export const HospitalityPOS: React.FC = () => {
 
   const handleQuickAddCustomer = () => {
     if (!quickCustomerName || !quickCustomerPhone) return;
-    addCustomer?.({
+    const newCustomer = {
+      id: 'c_' + Math.random().toString(36).substr(2, 9),
       name: quickCustomerName,
       phone: quickCustomerPhone,
       type: CustomerType.REGULAR,
       allowCredit: false,
       notes: "",
-    });
+      points: 0,
+      totalSpent: 0,
+      ordersCount: 0,
+      balance: 0,
+      isBlocked: false,
+      addresses: [],
+      rating: 5,
+      lastVisit: new Date(),
+      createdAt: new Date(),
+    };
+    addCustomer?.(newCustomer);
     setShowQuickAddCustomer(false);
     setQuickCustomerName("");
     setQuickCustomerPhone("");
@@ -883,10 +916,10 @@ export const HospitalityPOS: React.FC = () => {
 
     const result = await submitOrderApi(
       {
-        branch_id: branchId,
+        branch_id: branchId || 0,
         cashier_id: currentUser?.id ? Number(currentUser.id) : undefined,
         order_type: orderType,
-        table_number: activeTable?.number.toString(),
+        table_number: activeTable?.table_number || activeTable?.number.toString(),
         customer_name: meta.name || undefined,
         customer_phone: meta.phone || undefined,
         note: meta.note || undefined,
@@ -896,9 +929,9 @@ export const HospitalityPOS: React.FC = () => {
           ? normalizeApiPaymentMethod(selectedPaymentMethod)
           : undefined,
       },
-      shouldConfirm,
-      isClosingOrder ? (apiClosingPayments as any[]) : [],
-      isClosingOrder,
+      true,
+      [],
+      false,
       editingApiOrderId,
     );
 
@@ -929,6 +962,7 @@ export const HospitalityPOS: React.FC = () => {
       setPaymentMethod(PaymentMethod.CASH);
       setEditingApiOrderId(null);
       setShowCustomerModal(false);
+      setIsCartOpen(false);
     }
   };
 
@@ -964,6 +998,7 @@ export const HospitalityPOS: React.FC = () => {
     handleTotalChange,
     setEditingNames,
     removeFromCart,
+    updateCartItem,
     getItemCurrentPrice,
     setPosError,
     submitOrder,
@@ -971,6 +1006,7 @@ export const HospitalityPOS: React.FC = () => {
     customerPhone,
     setShowCustomerModal,
     handlePrintInvoice,
+    onCloseCart: clearActiveCart,
     allItems,
     addToCart,
   };

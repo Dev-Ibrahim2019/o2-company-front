@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useAppContext } from "../../../store";
 import { TableStatus, OrderType } from "../../../types";
 import type { Table } from "../../../types";
@@ -127,6 +127,8 @@ export const TablesView: React.FC<{
     setOrderType,
     diningZones,
     tablesLoading,
+    fetchDiningZones,
+    fetchTables,
   } = useAppContext();
 
   const HALLS = diningZones;
@@ -158,7 +160,35 @@ export const TablesView: React.FC<{
 
   const mapRef = useRef<HTMLDivElement>(null);
 
+  // تحديث تلقائي للطاولات فقط كل 10 ثواني
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchTables();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [fetchTables]);
+
+  useEffect(() => {
+    fetchDiningZones();
+  }, [fetchDiningZones]);
+
   const filteredTables = tables.filter((t) => t.hallId === selectedHallId);
+
+  const hallCodeById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const hall of HALLS) {
+      const code = (hall as any).code || hall.name;
+      map[hall.id] = code;
+    }
+    return map;
+  }, [HALLS]);
+
+  const getTableDisplayLabel = (table: Table): string => {
+    const hallCode = hallCodeById[table.hallId] || "";
+    const num = table.table_number || table.label || String(table.number);
+    if (num.toUpperCase().startsWith(hallCode.toUpperCase())) return num;
+    return `${hallCode}${num}`;
+  };
 
   const getStatusConfig = (status: TableStatus, isSelected: boolean = false) => {
     if (isSelected && status !== TableStatus.OCCUPIED) {
@@ -183,9 +213,9 @@ export const TablesView: React.FC<{
         };
       case TableStatus.PAYMENT_PENDING:
         return {
-          color: "bg-blue-600",
-          label: "مطبوعة",
-          border: "border-blue-700/20",
+          color: "bg-yellow-500",
+          label: "طلب الحساب",
+          border: "border-yellow-600/20",
         };
       case TableStatus.PAID:
         return {
@@ -204,6 +234,12 @@ export const TablesView: React.FC<{
           color: "bg-slate-500",
           label: "قيد التنظيف",
           border: "border-slate-600/20",
+        };
+      case TableStatus.HAS_ORDER:
+        return {
+          color: "bg-red-600 text-white font-medium animate-pulse-slow",
+          label: "عليها طلب 🔥",
+          border: "border-red-700/40",
         };
       default:
         return {
@@ -226,7 +262,7 @@ export const TablesView: React.FC<{
     return activeOrders.find((o) => o.id === table.currentOrderId);
   };
 
-  const calculateSittingTime = (seatedAt?: Date) => {
+  const calculateSittingTime = (seatedAt?: string | Date) => {
     if (!seatedAt) return "0 دقيقة";
     const diff = Math.floor(
       (new Date().getTime() - new Date(seatedAt).getTime()) / 60000,
@@ -244,7 +280,7 @@ export const TablesView: React.FC<{
 
     try {
       const order = await orderService.getActiveByTableNumber(
-        table.number,
+        table.table_number || table.number,
         getBranchFilter(currentUser),
       );
       setActiveApiOrder(order);
@@ -458,7 +494,7 @@ export const TablesView: React.FC<{
                       : ""
                   } ${table.mergedWithId ? "opacity-60 border-dashed" : ""} ${config.color} ${config.border} text-white shadow-xl`}
                 >
-                  <span className="text-2xl font-black">{table.label || table.number}</span>
+                  <span className="text-2xl font-black">{getTableDisplayLabel(table)}</span>
                   <div className="flex flex-col items-center gap-1">
                     {table.status === TableStatus.PAID && (
                       <span className="text-[8px] font-black bg-white text-emerald-600 px-2 py-0.5 rounded-full shadow-sm animate-pulse">
@@ -531,7 +567,7 @@ export const TablesView: React.FC<{
                       className="font-black"
                       style={{ fontSize: `${18 * zoom}px` }}
                     >
-                      {table.label || table.number}
+                      {getTableDisplayLabel(table)}
                     </span>
                     {table.status === TableStatus.PAID && (
                       <span
@@ -627,14 +663,12 @@ export const TablesView: React.FC<{
                 <button
                   onClick={() => {
                     const table = tables.find((t) => t.id === seatingTableId);
+                    if (!table) return;
+                    setSelectedTable(table);
                     seatTable(seatingTableId, guestCount);
                     setOrderType(OrderType.DINE_IN);
                     setSeatingTableId(null);
-                    if (table) {
-                      setTimeout(() => {
-                        onSelect?.(table);
-                      }, 100);
-                    }
+                    onSelect?.(table);
                   }}
                   className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-emerald-900/20 active:scale-95 transition-all"
                 >
@@ -665,7 +699,7 @@ export const TablesView: React.FC<{
               >
                 <div className="space-y-1">
                   <h3 className="text-3xl font-black">
-                    طاولة {activePopupTable.label || activePopupTable.number}
+                    طاولة {getTableDisplayLabel(activePopupTable)}
                   </h3>
                   <div className="flex items-center gap-2 text-sm font-bold opacity-80">
                     <Info size={16} />{" "}
@@ -991,35 +1025,48 @@ export const TablesView: React.FC<{
                             لا توجد طلبات مسجلة لهذه الطاولة بعد
                           </p>
                         </div>
-                        <button
-                          onClick={() => {
-                            setSelectedTable(activePopupTable);
-                            setOrderType(OrderType.DINE_IN);
-                            setTimeout(() => {
-                              onSelect?.(activePopupTable);
-                            }, 100);
-                          }}
-                          className="w-full bg-red-600 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-red-900/20 flex items-center justify-center gap-2"
-                        >
-                          <Plus size={18} /> إضافة طلب جديد
-                        </button>
+                      <button
+                        onClick={() => {
+                          setSelectedTable(activePopupTable);
+                          setOrderType(OrderType.DINE_IN);
+                          setTimeout(() => {
+                            onSelect?.(activePopupTable);
+                          }, 100);
+                          setShowPopup(null);
+                        }}
+                        className="w-full bg-red-600 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-red-900/20 flex items-center justify-center gap-2"
+                      >
+                        <Plus size={18} /> إضافة طلب جديد
+                      </button>
+                      <p className="text-[10px] font-bold text-slate-500 text-center mt-2">
+                        سيتم فتح المنيو تلقائياً لاختيار الأصناف
+                      </p>
                       </div>
                     )}
 
                     <div className="grid grid-cols-3 gap-3">
                       <button
                         onClick={() => {
-                          if (activePopupTable.status !== TableStatus.PAID) {
-                            alert("لا يمكن تفريغ الطاولة قبل دفع الحساب");
+                          // السماح بالتفريغ إذا كانت مدفوعة أو مشغولة بدون طلب
+                          if (activePopupTable.status === TableStatus.PAID || 
+                              (activePopupTable.status === TableStatus.OCCUPIED && !activePopupTable.currentOrderId)) {
+                            updateTableStatus(
+                              activePopupTable.id,
+                              TableStatus.AVAILABLE,
+                            );
+                          } else if (activePopupTable.status !== TableStatus.PAID) {
+                            alert("لا يمكن تفريغ الطاولة، يوجد طلب نشط عليها");
                             return;
+                          } else {
+                            updateTableStatus(
+                              activePopupTable.id,
+                              TableStatus.CLEANING,
+                            );
                           }
-                          updateTableStatus(
-                            activePopupTable.id,
-                            TableStatus.CLEANING,
-                          );
                         }}
                         className={`flex flex-col items-center gap-2 p-4 rounded-2xl border border-white/5 transition-all ${
-                          activePopupTable.status === TableStatus.PAID
+                          activePopupTable.status === TableStatus.PAID ||
+                          (activePopupTable.status === TableStatus.OCCUPIED && !activePopupTable.currentOrderId)
                             ? "bg-slate-800 hover:bg-slate-700"
                             : "bg-slate-900 opacity-50 cursor-not-allowed"
                         }`}

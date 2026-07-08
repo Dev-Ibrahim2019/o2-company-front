@@ -339,7 +339,9 @@ export interface User {
     | "FINANCE"
     | "ADMIN"
     | "HEAD_CHEF"
-    | "COOK";
+    | "COOK"
+    | "MANAGER"
+    | "EMPLOYEE";
   branchId?: string;
   departmentId?: string;
   points: number;
@@ -351,6 +353,7 @@ export interface User {
   transactions: Transaction[];
   savedCards: SavedCard[];
   commissionRate?: number;
+  linkedAccountId?: string;
 }
 
 export enum AccountType {
@@ -447,6 +450,7 @@ export enum TableStatus {
   PAID = "PAID",
   RESERVED = "RESERVED",
   CLEANING = "CLEANING",
+  HAS_ORDER = "HAS_ORDER",
 }
 
 export interface Hall {
@@ -461,6 +465,7 @@ export interface Hall {
 export interface Table {
   id: string;
   number: number;
+  table_number: string;
   label?: string;
   status: TableStatus;
   capacity: number;

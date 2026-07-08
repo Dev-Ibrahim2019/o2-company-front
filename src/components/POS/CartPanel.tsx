@@ -90,6 +90,7 @@ interface CartPanelProps {
   customerPhone: string;
   setShowCustomerModal: (show: boolean) => void;
   handlePrintInvoice?: () => void;
+  onCloseCart?: () => void;
   allItems?: SearchableItem[];
   addToCart?: (item: any, opts?: { quantity?: number; price?: number }) => void;
 }
@@ -138,6 +139,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
   setShowCustomerModal,
   handlePrintInvoice,
   allItems = [],
+  onCloseCart,
   addToCart,
 }) => {
   // ── Inline Search State ──────────────────────────────────────────────────
@@ -233,11 +235,21 @@ export const CartPanel: React.FC<CartPanelProps> = ({
             </h3>
           </div>
           <div className="flex items-center gap-1.5">
+            {/* زر تصغير السلة (minimize) - يظهر في جميع الشاشات */}
             <button
               onClick={() => setIsCartOpen(false)}
-              className="lg:hidden p-1.5 text-slate-500 hover:text-white transition-colors"
+              className="p-1.5 text-slate-500 hover:text-white transition-colors"
+              title="تصغير"
             >
-              <Plus className="rotate-45" size={20} />
+              <span className="text-lg font-black leading-none">−</span>
+            </button>
+            {/* زر إغلاق السلة (close) - يغلق الطاولة ويلغي الطلب */}
+            <button
+              onClick={() => onCloseCart?.()}
+              className="lg:hidden p-1.5 text-slate-500 hover:text-red-400 transition-colors"
+              title="إغلاق الطاولة"
+            >
+              <span className="text-lg font-black leading-none">×</span>
             </button>
             {!isHospitality && (
               <div className="flex bg-slate-800 p-1 rounded-lg overflow-x-auto scrollbar-hide">
@@ -590,59 +602,20 @@ export const CartPanel: React.FC<CartPanelProps> = ({
 
       {/* 4. Footer Summary & Actions */}
       <div className="p-3 sm:p-4 bg-slate-950 border-t border-white/10 space-y-2">
-        <div className="grid grid-cols-2 gap-2">
-          {/* Invoice Note */}
-          <div className="bg-slate-900 px-3 py-1.5 rounded-xl border border-white/5 flex flex-col gap-0.5">
-            <div className="flex items-center gap-1 text-slate-500 shrink-0">
-              <FileText size={10} />
-              <span className="text-[8px] font-black uppercase tracking-widest">
-                الملاحظة
-              </span>
-            </div>
-            <textarea
-              value={invoiceNote}
-              onChange={(e) => setInvoiceNote(e.target.value)}
-              placeholder="..."
-              className="w-full bg-transparent text-[9px] sm:text-[10px] font-black outline-none text-white placeholder:text-slate-700 h-6 sm:h-8 resize-none"
-            />
+        {/* Invoice Note - full width */}
+        <div className="bg-slate-900 px-3 py-1.5 rounded-xl border border-white/5 flex flex-col gap-0.5">
+          <div className="flex items-center gap-1 text-slate-500 shrink-0">
+            <FileText size={10} />
+            <span className="text-[8px] font-black uppercase tracking-widest">
+              الملاحظة
+            </span>
           </div>
-
-          {/* Discount */}
-          <div className="bg-slate-900 px-3 py-1.5 rounded-xl border border-white/5 flex flex-col gap-0.5">
-            <div className="flex items-center justify-between gap-1 text-slate-500 shrink-0">
-              <div className="flex items-center gap-1">
-                <Tag size={10} />
-                <span className="text-[8px] font-black uppercase tracking-widest">
-                  خصم إضافي
-                </span>
-              </div>
-              <div className="flex bg-slate-800 rounded-lg p-0.5">
-                <button
-                  onClick={() => setDiscountType("AMOUNT")}
-                  className={`px-1.5 py-0.5 rounded-md text-[7px] font-black transition-all ${discountType === "AMOUNT" ? "bg-red-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-300"}`}
-                >
-                  ₪
-                </button>
-                <button
-                  onClick={() => setDiscountType("PERCENT")}
-                  className={`px-1.5 py-0.5 rounded-md text-[7px] font-black transition-all ${discountType === "PERCENT" ? "bg-red-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-300"}`}
-                >
-                  %
-                </button>
-              </div>
-            </div>
-            <input
-              type="text"
-              value={editingDiscount}
-              onChange={(e) => {
-                setEditingDiscount(e.target.value);
-                setDiscountValue(parseFloat(e.target.value) || 0);
-              }}
-              onBlur={() => setEditingDiscount(discountValue.toString())}
-              placeholder="0.00"
-              className="w-full bg-transparent text-[9px] sm:text-[10px] font-black outline-none text-white placeholder:text-slate-700"
-            />
-          </div>
+          <textarea
+            value={invoiceNote}
+            onChange={(e) => setInvoiceNote(e.target.value)}
+            placeholder="..."
+            className="w-full bg-transparent text-[9px] sm:text-[10px] font-black outline-none text-white placeholder:text-slate-700 h-6 sm:h-8 resize-none"
+          />
         </div>
         {/* Action Buttons */}
         <div className={`grid ${isHospitality ? "grid-cols-1" : "grid-cols-3"} gap-2 pt-1`}>

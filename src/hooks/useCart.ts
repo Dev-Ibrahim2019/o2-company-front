@@ -258,11 +258,13 @@ export const useCart = () => {
         // ═══════════════════════════════════════════════════
         // PHASE 2: إرسال للمطبخ (اختياري)
         // ═══════════════════════════════════════════════════
-        if (shouldConfirm && order.status === "pending") {
+        // نأكد الطلب إذا كان pending سواء أردنا confirm أو createInvoice
+        // لأن الباكند يتطلب tickets موجودة قبل إنشاء الفاتورة
+        if ((shouldConfirm || createInvoice) && order.status === "pending") {
           try {
             order = await orderService.confirm(order.id);
           } catch (error) {
-            if (!createInvoice || !isCloseUpdateStateError(error)) {
+            if (!isCloseUpdateStateError(error)) {
               throw error;
             }
             order = await orderService.getOne(order.id);

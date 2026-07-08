@@ -1,5 +1,5 @@
 
-import React, { createContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useEffect, useCallback, useContext } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import {
@@ -12,8 +12,6 @@ import {
 } from './types';
 import { TABLES, MENU_ITEMS } from './constants';
 import api from './src/api/axios';
-
-const AppContext = createContext<any>(null as any);
 
 interface AppState {
   // Auth
@@ -36,6 +34,7 @@ interface AppState {
   diningZones: Hall[];
   tablesLoading: boolean;
   fetchDiningZones: (branchId?: number) => Promise<void>;
+  fetchTables: (branchId?: number) => Promise<void>;
 
   addBranch: (branch: Omit<Branch, 'id'>) => void;
   updateBranch: (id: string, branch: Partial<Branch>) => void;
@@ -171,7 +170,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   ]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [userRole, setUserRole] = useState<'CASHIER' | 'CUSTOMER' | 'WAITER' | 'ADMIN' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | null>(null);
+  const [userRole, setUserRole] = useState<'CASHIER' | 'CUSTOMER' | 'WAITER' | 'ADMIN' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | 'HEAD_CHEF' | 'COOK' | 'EMPLOYEE' | 'MANAGER' | null>(null);
   const [currentCart, setCurrentCart] = useState<OrderItem[]>([]);
   const [cartOrderType, setCartOrderType] = useState<OrderType>(OrderType.TAKEAWAY);
   const [currentShift, setCurrentShift] = useState<Shift | null>(null);
@@ -488,7 +487,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       hireDate: new Date('2024-01-01'),
       salary: 3000,
       status: EmployeeStatus.ACTIVE,
-      role: 'EMPLOYEE',
+      role: 'CASHIER',
       jobTitleId: 'jt2',
       departmentId: 'd-shawarma',
       branchId: 'b1',
@@ -789,7 +788,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCustomers(prev => prev.map(c => c.id === id ? { ...c, balance: c.balance + amount } : c));
   };
 
-  const login = (name: string, role: 'CASHIER' | 'CUSTOMER' | 'WAITER' | 'ADMIN' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | 'HEAD_CHEF' | 'COOK' | 'EMPLOYEE', phone: string = '', branchId: string = 'b1', departmentId?: string) => {
+  const login = (name: string, role: 'CASHIER' | 'CUSTOMER' | 'WAITER' | 'ADMIN' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | 'HEAD_CHEF' | 'COOK' | 'EMPLOYEE' | 'MANAGER', phone: string = '', branchId: string = 'b1', departmentId?: string) => {
     setUserRole(role);
 
     // Try to find matching employee for richer profile
@@ -938,12 +937,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setStaffTasks(prev => prev.map(t => t.id === id ? { ...t, ...task } : t));
   };
 
-  // ── جلب القاعات والطاولات من API ──
+  // ── جلب القاعات والطاولات من API الموحد (للكاشير/الضيافة/المحاسب/المدير) ──
   const fetchDiningZones = useCallback(async (branchId?: number) => {
     setTablesLoading(true);
     try {
-      const params = branchId ? `?branch_id=${branchId}` : '';
-      const { data: res } = await api.get(`/dining-zones${params}`);
+      const params: Record<string, any> = {};
+      if (branchId) params.branch_id = branchId;
+      const { data: res } = await api.get('/tables', { params });
       const zones = res.data ?? res;
 
       if (Array.isArray(zones)) {
@@ -960,17 +960,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           });
 
           if (Array.isArray(zone.tables)) {
-            zone.tables.forEach((table: any, idx: number) => {
+            zone.tables.forEach((table: any) => {
+              const order = table.current_order;
               allTables.push({
                 id: String(table.id),
-                number: idx + 1,
-                label: table.table_number || `${zone.code}${idx + 1}`,
+                number: table.number || parseInt(String(table.id)),
+                table_number: table.table_number || `${zone.code}${table.number || ''}`,
+                label: table.table_number || `${zone.code}${table.number || ''}`,
                 status: table.status || 'AVAILABLE',
                 capacity: table.capacity || 4,
                 hallId: String(zone.id),
                 qr_code: table.qr_code,
                 qr_url: table.qr_url,
-                position: { x: (idx % 10) * 120 + 50, y: Math.floor(idx / 10) * 120 + 50 },
+                    seatedAt: table.seated_at,
+                customer_count: table.customer_count,
+                current_order_id: table.current_order_id,
+                current_order: order ? {
+                  id: order.id,
+                  order_number: order.order_number,
+                  status: order.status,
+                  total: order.total,
+                  customer_name: order.customer_name,
+                } : null,
+                position: { x: (parseInt(table.id) % 10) * 120 + 50, y: Math.floor(parseInt(table.id) / 10) * 120 + 50 },
               });
             });
           }
@@ -983,6 +995,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.error('فشل جلب القاعات:', err);
     } finally {
       setTablesLoading(false);
+    }
+  }, []);
+
+  const fetchTables = useCallback(async (branchId?: number) => {
+    try {
+      const params: Record<string, any> = {};
+      if (branchId) params.branch_id = branchId;
+      const { data: res } = await api.get('/tables', { params });
+      const zones = res.data ?? res;
+
+      if (Array.isArray(zones)) {
+        const allTables: Table[] = [];
+
+        zones.forEach((zone: any) => {
+          if (Array.isArray(zone.tables)) {
+            zone.tables.forEach((table: any) => {
+              const order = table.current_order;
+              allTables.push({
+                id: String(table.id),
+                number: table.number || parseInt(String(table.id)),
+                table_number: table.table_number || `${zone.code}${table.number || ''}`,
+                label: table.table_number || `${zone.code}${table.number || ''}`,
+                status: table.status || 'AVAILABLE',
+                capacity: table.capacity || 4,
+                hallId: String(zone.id),
+                qr_code: table.qr_code,
+                qr_url: table.qr_url,
+                    seatedAt: table.seated_at,
+                    guestCount: table.customer_count,
+                    currentOrderId: table.current_order_id,
+                current_order: order ? {
+                  id: order.id,
+                  order_number: order.order_number,
+                  status: order.status,
+                  total: order.total,
+                  customer_name: order.customer_name,
+                } : null,
+                position: { x: (parseInt(table.id) % 10) * 120 + 50, y: Math.floor(parseInt(table.id) / 10) * 120 + 50 },
+              });
+            });
+          }
+        });
+
+        setTables(allTables);
+      }
+    } catch (error) {
+      console.error('Failed to fetch tables:', error);
     }
   }, []);
 
@@ -1001,35 +1060,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const seatTable = (tableId: string, guestCount: number) => {
-    setTables(prev => {
-      // Find the table and its merged group
-      const table = prev.find(t => t.id === tableId);
-      if (!table) return prev;
+  const seatTable = async (tableId: string, guestCount: number) => {
+    try {
+      await api.post(`/tables/${tableId}/seat`, { customer_count: guestCount });
+      setTables(prev => {
+        // Find the table and its merged group
+        const table = prev.find(t => t.id === tableId);
+        if (!table) return prev;
 
-      // Determine the master table ID (the one that's not merged with another, or itself if it's the master)
-      const masterId = table.mergedWithId || tableId;
+        // Determine the master table ID (the one that's not merged with another, or itself if it's the master)
+        const masterId = table.mergedWithId || tableId;
 
-      // Get all tables in the merged group
-      const mergedTableIds = prev
-        .filter(t => t.id === masterId || t.mergedWithId === masterId)
-        .map(t => t.id);
+        // Get all tables in the merged group
+        const mergedTableIds = prev
+          .filter(t => t.id === masterId || t.mergedWithId === masterId)
+          .map(t => t.id);
 
-      return prev.map(t => {
-        if (mergedTableIds.includes(t.id)) {
-          // For the master table, set the guest count
-          // For other tables in the group, set guest count to 0 (they share the master's count)
-          return {
-            ...t,
-            status: TableStatus.OCCUPIED,
-            seatedAt: new Date(),
-            guestCount: t.id === masterId ? guestCount : 0,
-            currentOrderId: undefined // Clear any existing order when seating
-          };
-        }
-        return t;
+        return prev.map(t => {
+          if (mergedTableIds.includes(t.id)) {
+            // For the master table, set the guest count
+            // For other tables in the group, set guest count to 0 (they share the master's count)
+            return {
+              ...t,
+              status: TableStatus.OCCUPIED,
+              seatedAt: new Date(),
+              guestCount: t.id === masterId ? guestCount : 0,
+              currentOrderId: undefined // Clear any existing order when seating
+            };
+          }
+          return t;
+        });
       });
-    });
+    } catch (error) {
+      console.error('Failed to seat table:', error);
+    }
   };
 
   const depositToWallet = (amount: number, bonus: number = 0) => {
@@ -1069,74 +1133,79 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
-  const updateTableStatus = (tableId: string, status: TableStatus, extra?: Partial<Table>) => {
-    setTables(prev => {
-      const tableToUpdate = prev.find(t => t.id === tableId);
-      if (!tableToUpdate) return prev;
+  const updateTableStatus = async (tableId: string, status: TableStatus, extra?: Partial<Table>) => {
+    try {
+      await api.put(`/tables/${tableId}/status`, { status });
+      setTables(prev => {
+        const tableToUpdate = prev.find(t => t.id === tableId);
+        if (!tableToUpdate) return prev;
 
-      // Handle merged table groups for all status changes
-      const masterId = tableToUpdate.mergedWithId || tableToUpdate.id;
-      const isInMergedGroup = !!tableToUpdate.mergedWithId;
-      const masterTable = prev.find(t => t.id === masterId);
+        // Handle merged table groups for all status changes
+        const masterId = tableToUpdate.mergedWithId || tableToUpdate.id;
+        const isInMergedGroup = !!tableToUpdate.mergedWithId;
+        const masterTable = prev.find(t => t.id === masterId);
 
-      // Get all tables in the merged group
-      const mergedTableIds = prev
-        .filter(t => t.id === masterId || t.mergedWithId === masterId)
-        .map(t => t.id);
+        // Get all tables in the merged group
+        const mergedTableIds = prev
+          .filter(t => t.id === masterId || t.mergedWithId === masterId)
+          .map(t => t.id);
 
-      // Special handling for when we're setting a table to OCCUPIED
-      if (status === TableStatus.OCCUPIED) {
-        // When occupying a table, we need to occupy the entire merged group
+        // Special handling for when we're setting a table to OCCUPIED
+        if (status === TableStatus.OCCUPIED) {
+          // When occupying a table, we need to occupy the entire merged group
+          return prev.map(t => {
+            if (mergedTableIds.includes(t.id)) {
+              // Only the master table gets the order ID and extra properties
+              const isMaster = t.id === masterId;
+              return {
+                ...t,
+                status: TableStatus.OCCUPIED,
+                ...(isMaster && extra), // Only master gets extra properties
+                currentOrderId: isMaster ? (extra?.currentOrderId ?? tableToUpdate.currentOrderId) : undefined,
+                guestCount: isMaster ? (extra?.guestCount ?? tableToUpdate.guestCount) : 0,
+                seatedAt: isMaster ? (extra?.seatedAt ?? tableToUpdate.seatedAt) : undefined
+              };
+            }
+            return t;
+          });
+        }
+
+        // Handle clearing operations (AVAILABLE, CLEANING, PAID, PAYMENT_PENDING)
+        if (status === TableStatus.AVAILABLE || status === TableStatus.CLEANING || status === TableStatus.PAID || status === TableStatus.PAYMENT_PENDING) {
+          return prev.map(t => {
+            if (mergedTableIds.includes(t.id)) {
+              const isClearing = status === TableStatus.AVAILABLE || status === TableStatus.CLEANING;
+              return {
+                ...t,
+                status,
+                currentOrderId: isClearing ? undefined : (t.currentOrderId || extra?.currentOrderId),
+                seatedAt: isClearing ? undefined : (t.seatedAt || extra?.seatedAt),
+                guestCount: isClearing ? undefined : (t.guestCount || extra?.guestCount),
+                mergedWithId: isClearing ? undefined : t.mergedWithId,
+                reservationName: isClearing ? undefined : t.reservationName,
+                reservationTime: isClearing ? undefined : t.reservationTime,
+                ...(isClearing ? {} : extra) // Only preserve extra for non-clearing operations
+              };
+            }
+            return t;
+          });
+        }
+
+        // For other status changes (RESERVED, etc.), apply to the whole group
         return prev.map(t => {
           if (mergedTableIds.includes(t.id)) {
-            // Only the master table gets the order ID and extra properties
-            const isMaster = t.id === masterId;
-            return {
-              ...t,
-              status: TableStatus.OCCUPIED,
-              ...(isMaster && extra), // Only master gets extra properties
-              currentOrderId: isMaster ? (extra?.currentOrderId ?? tableToUpdate.currentOrderId) : undefined,
-              guestCount: isMaster ? (extra?.guestCount ?? tableToUpdate.guestCount) : 0,
-              seatedAt: isMaster ? (extra?.seatedAt ?? tableToUpdate.seatedAt) : undefined
-            };
-          }
-          return t;
-        });
-      }
-
-      // Handle clearing operations (AVAILABLE, CLEANING, PAID, PAYMENT_PENDING)
-      if (status === TableStatus.AVAILABLE || status === TableStatus.CLEANING || status === TableStatus.PAID || status === TableStatus.PAYMENT_PENDING) {
-        return prev.map(t => {
-          if (mergedTableIds.includes(t.id)) {
-            const isClearing = status === TableStatus.AVAILABLE || status === TableStatus.CLEANING;
             return {
               ...t,
               status,
-              currentOrderId: isClearing ? undefined : (t.currentOrderId || extra?.currentOrderId),
-              seatedAt: isClearing ? undefined : (t.seatedAt || extra?.seatedAt),
-              guestCount: isClearing ? undefined : (t.guestCount || extra?.guestCount),
-              mergedWithId: isClearing ? undefined : t.mergedWithId,
-              reservationName: isClearing ? undefined : t.reservationName,
-              reservationTime: isClearing ? undefined : t.reservationTime,
-              ...(isClearing ? {} : extra) // Only preserve extra for non-clearing operations
+              ...extra
             };
           }
           return t;
         });
-      }
-
-      // For other status changes (RESERVED, etc.), apply to the whole group
-      return prev.map(t => {
-        if (mergedTableIds.includes(t.id)) {
-          return {
-            ...t,
-            status,
-            ...extra
-          };
-        }
-        return t;
       });
-    });
+    } catch (error) {
+      console.error('Failed to update table status:', error);
+    }
   };
 
   const transferTable = (fromId: string, toId: string) => {
@@ -1558,7 +1627,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           guestCount: undefined,
         });
       } else {
-        updateTableStatus(selectedTable.id, TableStatus.OCCUPIED, {
+        updateTableStatus(selectedTable.id, TableStatus.HAS_ORDER, {
           currentOrderId: orderId,
           seatedAt: selectedTable.seatedAt || new Date()
         });
@@ -1744,7 +1813,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       login, logout, addToCart, removeFromCart, updateCartQuantity, updateCartItem, updateOrderItemStatus, updateOrderStatus, cancelOrder, transferOrder, mergeOrders, splitOrder, refundOrder, submitOrder, depositToWallet, refundToWallet, saveNewCard, toggleFavorite, setOrderType,
       reorder,
       tables, selectedTable, setSelectedTable, updateTableStatus, transferTable, mergeTables, editingOrderId, clearCart, voidOrder, completeOrder, loadOrderToPOS, confirmOrder, deliverOrder, assignShelfToOrder, collectOrderItemByAggregator,
-      diningZones, tablesLoading, fetchDiningZones,
+      diningZones, tablesLoading, fetchDiningZones, fetchTables,
 
       fiscalYears, chartOfAccounts, costCenters, journalEntries, suppliers, bankAccounts, cashBoxes,
       addFiscalYear, updateFiscalYear, addCOA, updateCOA, deleteCOA, addCostCenter, updateCostCenter, addJournalEntry, updateJournalEntry, deleteJournalEntry,
@@ -1804,12 +1873,108 @@ export const useApp = create<AppState>()(
       fetchDiningZones: async (branchId?: number) => {
         try {
           set({ tablesLoading: true });
-          const params = branchId ? { branch_id: branchId } : {};
-          const response = await api.get('/dining-zones', { params });
-          set({ diningZones: response.data.data || response.data, tablesLoading: false });
+          const params: Record<string, any> = {};
+          if (branchId) params.branch_id = branchId;
+          const response = await api.get('/tables', { params });
+          const zones = response.data?.data ?? response.data;
+          
+          if (Array.isArray(zones)) {
+            const halls: Hall[] = [];
+            const allTables: Table[] = [];
+            
+            zones.forEach((zone: any) => {
+              halls.push({
+                id: String(zone.id),
+                name: zone.name,
+                code: zone.code,
+                branch_id: zone.branch_id,
+                status: zone.status,
+              });
+              
+              if (Array.isArray(zone.tables)) {
+                zone.tables.forEach((table: any) => {
+                  const order = table.current_order;
+                  allTables.push({
+                    id: String(table.id),
+                    number: table.number || parseInt(String(table.id)),
+                    table_number: table.table_number || `${zone.code}${table.number || ''}`,
+                    label: table.table_number || `${zone.code}${table.number || ''}`,
+                    status: table.status || 'AVAILABLE',
+                    capacity: table.capacity || 4,
+                    hallId: String(zone.id),
+                    qr_code: table.qr_code,
+                    qr_url: table.qr_url,
+                    seated_at: table.seated_at,
+                    customer_count: table.customer_count,
+                    current_order_id: table.current_order_id,
+                    current_order: order ? {
+                      id: order.id,
+                      order_number: order.order_number,
+                      status: order.status,
+                      total: order.total,
+                      customer_name: order.customer_name,
+                    } : null,
+                    position: { x: (parseInt(table.id) % 10) * 120 + 50, y: Math.floor(parseInt(table.id) / 10) * 120 + 50 },
+                  });
+                });
+              }
+            });
+            
+            set({ diningZones: halls, tables: allTables as any, tablesLoading: false });
+          } else {
+            set({ tablesLoading: false });
+          }
         } catch (error) {
           console.error('Failed to fetch dining zones:', error);
           set({ tablesLoading: false });
+        }
+      },
+
+      // تحديث الطاولات فقط - يدمج البيانات الجديدة مع الموجودة (تحديث خفيف)
+      fetchTables: async (branchId?: number) => {
+        try {
+          const params: Record<string, any> = {};
+          if (branchId) params.branch_id = branchId;
+          const response = await api.get('/tables', { params });
+          const zones = response.data?.data ?? response.data;
+          
+          if (Array.isArray(zones)) {
+            const updates: Record<string, Partial<Table>> = {};
+            
+            zones.forEach((zone: any) => {
+              if (Array.isArray(zone.tables)) {
+                zone.tables.forEach((table: any) => {
+                  const order = table.current_order;
+                  updates[String(table.id)] = {
+                    status: table.status || 'AVAILABLE',
+                    seated_at: table.seated_at,
+                    customer_count: table.customer_count,
+                    current_order_id: table.current_order_id,
+                    current_order: order ? {
+                      id: order.id,
+                      order_number: order.order_number,
+                      status: order.status,
+                      total: order.total,
+                      customer_name: order.customer_name,
+                    } : null,
+                  };
+                });
+              }
+            });
+            
+            // دمج التحديثات مع الطاولات الموجودة (تحديث الحقول المتغيرة فقط)
+            set((state) => ({
+              tables: state.tables.map((t) => {
+                const update = updates[t.id];
+                if (update) {
+                  return { ...t, ...update };
+                }
+                return t;
+              }),
+            }));
+          }
+        } catch (error) {
+          console.error('Failed to fetch tables:', error);
         }
       },
 
@@ -1839,14 +2004,20 @@ export const useApp = create<AppState>()(
       setTables: (tables) => set({ tables }),
       selectedTable: null,
       setSelectedTable: (table) => set({ selectedTable: table }),
-      updateTableStatus: (tableId, status, options) =>
-        set((state) => ({
-          tables: state.tables.map((t) =>
-            t.id === tableId
-              ? { ...t, status, ...(options?.currentOrderId ? { currentOrderId: options.currentOrderId } : {}), ...(options?.seatedAt ? { seatedAt: options.seatedAt } : {}) }
-              : t
+      updateTableStatus: async (tableId, status, options) => {
+        try {
+          await api.put(`/tables/${tableId}/status`, { status });
+          set((state) => ({
+            tables: state.tables.map((t) =>
+              t.id === tableId
+                ? { ...t, status, ...(options?.currentOrderId ? { currentOrderId: options.currentOrderId } : {}), ...(options?.seatedAt ? { seatedAt: options.seatedAt } : {}) }
+                : t
           ),
-        })),
+        }));
+        } catch (error) {
+          console.error('Failed to update table status:', error);
+        }
+      },
       transferTable: (fromId, toId) =>
         set((state) => {
           const fromTable = state.tables.find((t) => t.id === fromId);
@@ -1870,14 +2041,20 @@ export const useApp = create<AppState>()(
           ),
         }));
       },
-      seatTable: (tableId, guests) =>
-        set((state) => ({
-          tables: state.tables.map((t) =>
-            t.id === tableId
-              ? { ...t, status: TableStatus.OCCUPIED, seatedAt: new Date() }
-              : t
-          ),
-        })),
+      seatTable: async (tableId, guests) => {
+        try {
+          await api.post(`/tables/${tableId}/seat`, { customer_count: guests });
+          set((state) => ({
+            tables: state.tables.map((t) =>
+              t.id === tableId
+                ? { ...t, status: TableStatus.OCCUPIED, seatedAt: new Date() }
+                : t
+            ),
+          }));
+        } catch (error) {
+          console.error('Failed to seat table:', error);
+        }
+      },
       loadOrderToPOS: (orderId) => {
         // Load order to POS - this is mainly a navigation hint
         console.debug("loadOrderToPOS", orderId);

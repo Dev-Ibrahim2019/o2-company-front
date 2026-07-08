@@ -2,7 +2,8 @@
  * Hospitality/Tables.tsx — صفحة إدارة الطاولات لقسم الضيافة
  * تصميم متجاوب للجوال: 4 طاولات في الصف
  */
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useApp } from "../../../store";
 import { TableStatus, OrderType } from "../../../types";
 import type { Table } from "../../../types";
@@ -131,7 +132,19 @@ export const HospitalityTables: React.FC<{
     setOrderType,
     diningZones,
     tablesLoading,
+    fetchDiningZones,
+    fetchTables,
   } = useApp();
+
+  const navigate = useNavigate();
+
+  const handleNavigateToPOS = (table: Table) => {
+    if (onSelect) {
+      onSelect(table);
+    } else {
+      navigate("/Hospitality");
+    }
+  };
 
   const HALLS = diningZones;
 
@@ -172,7 +185,39 @@ export const HospitalityTables: React.FC<{
 
   const mapRef = useRef<HTMLDivElement>(null);
 
+  // جلب القاعات والطاولات عند تحميل المكون (مثل الكاشير)
+  useEffect(() => {
+    fetchDiningZones();
+  }, [fetchDiningZones]);
+
+  // تحديث تلقائي للطاولات فقط كل 10 ثواني (بدون إعادة تحميل الصفحة)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchTables();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [fetchTables]);
+
   const filteredTables = tables.filter((t) => t.hallId === selectedHallId);
+
+  // Build a lookup: hallId -> hall code (e.g., "A", "B")
+  const hallCodeById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const hall of HALLS) {
+      const code = (hall as any).code || hall.name;
+      map[hall.id] = code;
+    }
+    return map;
+  }, [HALLS]);
+
+  // Compute display label for a table: e.g. "A3", "B2"
+  const getTableDisplayLabel = (table: Table): string => {
+    const hallCode = hallCodeById[table.hallId] || "";
+    const num = table.table_number || table.label || String(table.number);
+    // If num already starts with the hall code, don't double it
+    if (num.toUpperCase().startsWith(hallCode.toUpperCase())) return num;
+    return `${hallCode}${num}`;
+  };
 
   const getStatusConfig = (status: TableStatus, isSelected: boolean = false) => {
     if (isSelected && status !== TableStatus.OCCUPIED) {
@@ -197,9 +242,9 @@ export const HospitalityTables: React.FC<{
         };
       case TableStatus.PAYMENT_PENDING:
         return {
-          color: "bg-blue-600",
-          label: "مطبوعة",
-          border: "border-blue-700/20",
+          color: "bg-yellow-500",
+          label: "طلب الحساب",
+          border: "border-yellow-600/20",
         };
       case TableStatus.PAID:
         return {
@@ -218,6 +263,12 @@ export const HospitalityTables: React.FC<{
           color: "bg-slate-500",
           label: "قيد التنظيف",
           border: "border-slate-600/20",
+        };
+      case TableStatus.HAS_ORDER:
+        return {
+          color: "bg-red-600 text-white font-medium animate-pulse-slow",
+          label: "عليها طلب 🔥",
+          border: "border-red-700/40",
         };
       default:
         return {
@@ -240,7 +291,7 @@ export const HospitalityTables: React.FC<{
     return activeOrders.find((o) => o.id === table.currentOrderId);
   };
 
-  const calculateSittingTime = (seatedAt?: Date) => {
+  const calculateSittingTime = (seatedAt?: string | Date) => {
     if (!seatedAt) return "0 دقيقة";
     const diff = Math.floor(
       (new Date().getTime() - new Date(seatedAt).getTime()) / 60000,
@@ -258,7 +309,7 @@ export const HospitalityTables: React.FC<{
 
     try {
       const order = await orderService.getActiveByTableNumber(
-        table.number,
+        table.table_number || table.number,
         getBranchFilter(currentUser),
       );
       setActiveApiOrder(order);
@@ -284,7 +335,7 @@ export const HospitalityTables: React.FC<{
     if (mode === "pos") {
       setSelectedTable(table);
       setOrderType(OrderType.DINE_IN);
-      onSelect?.(table);
+      handleNavigateToPOS(table);
       return;
     }
 
@@ -469,18 +520,18 @@ export const HospitalityTables: React.FC<{
               const config = getStatusConfig(table.status, selectedTable?.id === table.id);
               const order = getTableOrder(table.id);
               return (
-                <motion.button
-                  key={table.id}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => handleTableClick(table)}
-                  className={`relative aspect-square rounded-xl sm:rounded-3xl border-2 p-2 sm:p-3 md:p-4 flex flex-col items-center justify-center gap-1 sm:gap-2 transition-all ${
-                    mergeMode.includes(table.id)
-                      ? "ring-2 sm:ring-4 ring-blue-600 ring-offset-2 sm:ring-offset-4 ring-offset-slate-950"
-                      : ""
-                  } ${table.mergedWithId ? "opacity-60 border-dashed" : ""} ${config.color} ${config.border} text-white shadow-lg sm:shadow-xl`}
-                >
-                  <span className="text-sm sm:text-lg md:text-2xl font-black">{table.label || table.number}</span>
+                  <motion.button
+                    key={table.id}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => handleTableClick(table)}
+                    className={`relative aspect-square rounded-xl sm:rounded-3xl border-2 p-2 sm:p-3 md:p-4 flex flex-col items-center justify-center gap-1 sm:gap-2 transition-all ${
+                      mergeMode.includes(table.id)
+                        ? "ring-2 sm:ring-4 ring-blue-600 ring-offset-2 sm:ring-offset-4 ring-offset-slate-950"
+                        : ""
+                    } ${table.mergedWithId ? "opacity-60 border-dashed" : ""} ${config.color} ${config.border} text-white shadow-lg sm:shadow-xl`}
+                  >
+                    <span className="text-sm sm:text-lg md:text-2xl font-black">{getTableDisplayLabel(table)}</span>
                   <div className="flex flex-col items-center gap-0.5 sm:gap-1">
                     {table.status === TableStatus.PAID && (
                       <span className="text-[6px] sm:text-[8px] font-black bg-white text-emerald-600 px-1 sm:px-2 py-0.5 rounded-full shadow-sm animate-pulse">
@@ -510,9 +561,8 @@ export const HospitalityTables: React.FC<{
                   </div>
                   {table.status === TableStatus.OCCUPIED && (
                     <div className="absolute top-1 right-1 sm:top-2 sm:right-2 flex items-center gap-0.5 text-[6px] sm:text-[8px] font-black bg-black/40 px-1 sm:px-1.5 py-0.5 rounded-full">
-                      <Clock size={6} className="sm:hidden" />
-                      <Clock size={8} className="hidden sm:block" />
-                      <span className="hidden sm:inline">{calculateSittingTime(table.seatedAt)}</span>
+                      <Clock size={6} />
+                      <span>{calculateSittingTime((table as any).seated_at || table.seatedAt)}</span>
                     </div>
                   )}
                 </motion.button>
@@ -555,7 +605,7 @@ export const HospitalityTables: React.FC<{
                       className="font-black"
                       style={{ fontSize: `${18 * zoom}px` }}
                     >
-                      {table.label || table.number}
+                      {getTableDisplayLabel(table)}
                     </span>
                     {table.status === TableStatus.PAID && (
                       <span
@@ -652,18 +702,18 @@ export const HospitalityTables: React.FC<{
                 <button
                   onClick={() => {
                     const table = tables.find((t) => t.id === seatingTableId);
+                    if (!table) return;
+                    setSelectedTable(table);
                     seatTable(seatingTableId, guestCount);
                     setOrderType(OrderType.DINE_IN);
                     setSeatingTableId(null);
-                    if (table) {
-                      setTimeout(() => {
-                        onSelect?.(table);
-                      }, 100);
+                    if (onSelect) {
+                      onSelect(table);
                     }
                   }}
                   className="w-full bg-emerald-600 text-white py-3 sm:py-4 rounded-xl sm:rounded-2xl font-black text-xs sm:text-sm shadow-lg shadow-emerald-900/20 active:scale-95 transition-all"
                 >
-                  تسكين الطاولة وبدء الوقت
+                  تسكين الطاولة
                 </button>
                 <button
                   onClick={() => setSeatingTableId(null)}
@@ -690,7 +740,7 @@ export const HospitalityTables: React.FC<{
               >
                 <div className="space-y-0.5 sm:space-y-1">
                   <h3 className="text-xl sm:text-3xl font-black">
-                    طاولة {activePopupTable.label || activePopupTable.number}
+                    طاولة {getTableDisplayLabel(activePopupTable)}
                   </h3>
                   <div className="flex items-center gap-2 text-xs sm:text-sm font-bold opacity-80">
                     <Info size={14} className="sm:hidden" />
@@ -820,7 +870,7 @@ export const HospitalityTables: React.FC<{
                               </span>
                             </div>
                             <p className="text-[10px] font-black text-white">
-                              {activePopupApiOrder.table_number || activePopupTable.number}
+                              {getTableDisplayLabel(activePopupTable)}
                             </p>
                           </div>
                           <div className="bg-slate-900/60 rounded-2xl border border-white/5 p-3">
@@ -940,7 +990,7 @@ export const HospitalityTables: React.FC<{
                             setSelectedTable(activePopupTable);
                             setOrderType(OrderType.DINE_IN);
                             setShowPopup(null);
-                            onSelect?.(activePopupTable);
+                            handleNavigateToPOS(activePopupTable);
                           }}
                           className="w-full bg-red-600 text-white py-3 rounded-xl font-black text-xs shadow-lg shadow-red-900/20 flex items-center justify-center gap-2"
                         >
@@ -963,10 +1013,10 @@ export const HospitalityTables: React.FC<{
                           </div>
                           <button
                             onClick={() => {
-                              loadOrderToPOS(activePopupOrder);
+                              loadOrderToPOS(activePopupOrder.id);
                               setOrderType(OrderType.DINE_IN);
                               setTimeout(() => {
-                                onSelect?.(activePopupTable);
+                                handleNavigateToPOS(activePopupTable);
                               }, 100);
                             }}
                             className="bg-red-600 text-white px-6 py-3 rounded-2xl font-black text-sm shadow-lg shadow-red-900/20 flex items-center gap-2"
@@ -1001,7 +1051,7 @@ export const HospitalityTables: React.FC<{
                                 setSelectedTable(activePopupTable);
                                 setOrderType(OrderType.DINE_IN);
                                 setTimeout(() => {
-                                  onSelect?.(activePopupTable);
+                                  handleNavigateToPOS(activePopupTable);
                                 }, 100);
                               }}
                               className="w-full bg-blue-600 text-white py-3 rounded-xl font-black text-xs shadow-lg shadow-blue-900/20 flex items-center justify-center gap-2"
@@ -1018,35 +1068,44 @@ export const HospitalityTables: React.FC<{
                             لا توجد طلبات مسجلة لهذه الطاولة بعد
                           </p>
                         </div>
-                        <button
-                          onClick={() => {
-                            setSelectedTable(activePopupTable);
-                            setOrderType(OrderType.DINE_IN);
-                            setTimeout(() => {
-                              onSelect?.(activePopupTable);
-                            }, 100);
-                          }}
-                          className="w-full bg-red-600 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-red-900/20 flex items-center justify-center gap-2"
-                        >
-                          <Plus size={18} /> إضافة طلب جديد
-                        </button>
+                      <button
+                        onClick={() => {
+                          setSelectedTable(activePopupTable);
+                          setOrderType(OrderType.DINE_IN);
+                          setShowPopup(null);
+                          setTimeout(() => {
+                            handleNavigateToPOS(activePopupTable);
+                          }, 100);
+                        }}
+                        className="w-full bg-red-600 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-red-900/20 flex items-center justify-center gap-2"
+                      >
+                        <Plus size={18} /> إضافة طلب جديد
+                      </button>
+                      <p className="text-[10px] font-bold text-slate-500 text-center mt-2">
+                        سيتم فتح المنيو تلقائياً لاختيار الأصناف
+                      </p>
                       </div>
                     )}
 
                     <div className="grid grid-cols-3 gap-2 sm:gap-3">
                       <button
                         onClick={() => {
-                          if (activePopupTable.status !== TableStatus.PAID) {
-                            alert("لا يمكن تفريغ الطاولة قبل دفع الحساب");
+                          // السماح بالتفريغ إذا كانت مدفوعة أو مشغولة بدون طلب
+                          const canClear = activePopupTable.status === TableStatus.PAID || 
+                              (activePopupTable.status === TableStatus.OCCUPIED && !activePopupTable.currentOrderId);
+                          if (canClear) {
+                            updateTableStatus(
+                              activePopupTable.id,
+                              TableStatus.AVAILABLE,
+                            );
+                          } else {
+                            alert("لا يمكن تفريغ الطاولة، يوجد طلب نشط عليها");
                             return;
                           }
-                          updateTableStatus(
-                            activePopupTable.id,
-                            TableStatus.CLEANING,
-                          );
                         }}
                         className={`flex flex-col items-center gap-1 sm:gap-2 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-white/5 transition-all ${
-                          activePopupTable.status === TableStatus.PAID
+                          activePopupTable.status === TableStatus.PAID ||
+                          (activePopupTable.status === TableStatus.OCCUPIED && !activePopupTable.currentOrderId)
                             ? "bg-slate-800 hover:bg-slate-700"
                             : "bg-slate-900 opacity-50 cursor-not-allowed"
                         }`}
@@ -1140,7 +1199,7 @@ export const HospitalityTables: React.FC<{
                                 {
                                   reservationName: name,
                                   reservationTime: time,
-                                },
+                                } as any,
                               );
                               setShowPopup(null);
                             }
