@@ -34,6 +34,7 @@ import {
   User,
   Phone,
   Hash,
+  CheckCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -63,6 +64,8 @@ const getApiOrderStatusLabel = (status: OrderFromApi["status"]) => {
   switch (status) {
     case "pending":
       return "محفوظ";
+    case "pending_confirmation":
+      return "بانتظار التأكيد";
     case "confirmed":
       return "مؤكد";
     case "in_progress":
@@ -220,7 +223,7 @@ export const HospitalityTables: React.FC<{
   };
 
   const getStatusConfig = (status: TableStatus, isSelected: boolean = false) => {
-    if (isSelected && status !== TableStatus.OCCUPIED) {
+    if (isSelected && status !== TableStatus.OCCUPIED && status !== TableStatus.PENDING_CONFIRMATION) {
       return {
         color: "bg-red-600 border-red-700/20 text-white",
         label: "نشطة",
@@ -269,6 +272,12 @@ export const HospitalityTables: React.FC<{
           color: "bg-red-600 text-white font-medium animate-pulse-slow",
           label: "عليها طلب 🔥",
           border: "border-red-700/40",
+        };
+      case TableStatus.PENDING_CONFIRMATION:
+        return {
+          color: "bg-orange-500 text-white font-medium animate-pulse",
+          label: "بانتظار التأكيد 🟡",
+          border: "border-orange-600/40",
         };
       default:
         return {
@@ -362,6 +371,11 @@ export const HospitalityTables: React.FC<{
       table.status === TableStatus.OCCUPIED ||
       table.status === TableStatus.PAYMENT_PENDING
     ) {
+      void openOccupiedTableOrder(table);
+      return;
+    }
+
+    if (table.status === TableStatus.PENDING_CONFIRMATION) {
       void openOccupiedTableOrder(table);
       return;
     }
@@ -970,7 +984,45 @@ export const HospitalityTables: React.FC<{
                           </p>
                         )}
 
-                        {activePopupApiOrder.status !== "paid" && (
+                        {activePopupApiOrder.status === "pending_confirmation" && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                const res = await fetch(
+                                  `${import.meta.env.VITE_API_URL || "/api"}/orders/${activePopupApiOrder.id}/confirm-customer`,
+                                  {
+                                    method: "POST",
+                                    headers: {
+                                      "Content-Type": "application/json",
+                                      Authorization: `Bearer ${localStorage.getItem("token")}`,
+                                    },
+                                  }
+                                );
+                                const data = await res.json();
+                                if (data.success) {
+                                  setActiveApiOrder({
+                                    ...activePopupApiOrder,
+                                    status: "pending",
+                                  });
+                                  updateTableStatus(
+                                    activePopupTable.id,
+                                    TableStatus.HAS_ORDER,
+                                    { currentOrderId: String(activePopupApiOrder.id) }
+                                  );
+                                } else {
+                                  alert(data.message || "فشل تأكيد الطلب");
+                                }
+                              } catch {
+                                alert("حدث خطأ أثناء تأكيد الطلب");
+                              }
+                            }}
+                            className="w-full bg-emerald-600 text-white py-3 rounded-xl font-black text-xs shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2"
+                          >
+                            <CheckCircle size={16} /> تأكيد الطلب
+                          </button>
+                        )}
+
+                        {activePopupApiOrder.status !== "paid" && activePopupApiOrder.status !== "pending_confirmation" && (
                           <button
                             onClick={() =>
                               updateTableStatus(

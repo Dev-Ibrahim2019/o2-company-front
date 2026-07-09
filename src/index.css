@@ -5,6 +5,9 @@
   --color-brand: #a30000;
   --color-brand-dark: #7a0000;
   --color-brand-soft: rgba(163, 0, 0, 0.12);
+  --color-gold: #c8a44e;
+  --color-gold-dark: #a8883a;
+  --color-gold-soft: rgba(200, 164, 78, 0.12);
   --shadow-card: 0 18px 45px rgba(0, 0, 0, 0.28);
 }
 
@@ -15,6 +18,10 @@
   --o2-brand-soft: rgba(163, 0, 0, 0.12);
   --o2-brand-ring: rgba(163, 0, 0, 0.35);
   --o2-brand-text: #ff6b6b;
+  --o2-gold: #c8a44e;
+  --o2-gold-hover: #a8883a;
+  --o2-gold-soft: rgba(200, 164, 78, 0.12);
+  --o2-gold-text: #d4b86a;
   --o2-bg: #0b0f12;
   --o2-surface: #161b22;
   --o2-surface-raised: #1d242d;
@@ -23,6 +30,8 @@
   --o2-muted: #8b949e;
   --o2-border: #30363d;
   --o2-card-shadow: 0 18px 45px rgba(0, 0, 0, 0.28);
+  --o2-gradient-warm: linear-gradient(135deg, #a30000 0%, #c8a44e 100%);
+  --o2-gradient-surface: linear-gradient(180deg, var(--o2-surface) 0%, var(--o2-bg) 100%);
 }
 
 :root[data-theme="light"],
@@ -37,6 +46,12 @@
   --o2-border: #e1e4e8;
   --o2-card-shadow: 0 16px 38px rgba(15, 23, 42, 0.08);
   --o2-brand-text: #a30000;
+  --o2-gold: #9a7a2e;
+  --o2-gold-hover: #7d6224;
+  --o2-gold-soft: rgba(154, 122, 46, 0.1);
+  --o2-gold-text: #9a7a2e;
+  --o2-gradient-warm: linear-gradient(135deg, #a30000 0%, #c8a44e 100%);
+  --o2-gradient-surface: linear-gradient(180deg, var(--o2-surface) 0%, var(--o2-bg) 100%);
 }
 
 *,
@@ -457,4 +472,54 @@ body {
 
 .rounded-full {
   border-radius: 9999px !important;
+}
+
+/* Gold accent utilities */
+.text-gold {
+  color: var(--o2-gold) !important;
+}
+
+.bg-gold {
+  background-color: var(--o2-gold) !important;
+}
+
+.bg-gold\/10 {
+  background-color: var(--o2-gold-soft) !important;
+}
+
+.bg-gold\/15 {
+  background-color: color-mix(in srgb, var(--o2-gold) 15%, transparent) !important;
+}
+
+.border-gold\/30 {
+  border-color: color-mix(in srgb, var(--o2-gold) 30%, transparent) !important;
+}
+
+.hover\:border-gold\/50:hover {
+  border-color: color-mix(in srgb, var(--o2-gold) 50%, transparent) !important;
+}
+
+/* Customer page card depth */
+.card-elevated {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 8px 24px rgba(0, 0, 0, 0.04);
+}
+
+.card-elevated-lg {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 16px 40px rgba(0, 0, 0, 0.06);
+}
+
+/* Warm gradient backgrounds for customer pages */
+.bg-warm-gradient {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--o2-brand) 8%, transparent) 0%, color-mix(in srgb, var(--o2-gold) 6%, transparent) 100%);
+}
+
+.bg-warm-gradient-strong {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--o2-brand) 15%, transparent) 0%, color-mix(in srgb, var(--o2-gold) 10%, transparent) 100%);
+}
+
+/* Glass effect for bottom nav */
+.glass-surface {
+  background: color-mix(in srgb, var(--o2-surface) 85%, transparent);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
 }

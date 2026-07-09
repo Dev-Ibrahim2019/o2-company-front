@@ -451,6 +451,7 @@ export enum TableStatus {
   RESERVED = "RESERVED",
   CLEANING = "CLEANING",
   HAS_ORDER = "HAS_ORDER",
+  PENDING_CONFIRMATION = "PENDING_CONFIRMATION",
 }
 
 export interface Hall {

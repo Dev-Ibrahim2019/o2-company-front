@@ -33,6 +33,12 @@ import UsersManagementPage from "./pages/UsersManagementPage";
 import PosRegistersPage from "./pages/PosRegistersPage";
 import HospitalityDevicesPage from "./pages/HospitalityDevicesPage";
 import DiningZonesPage from "./pages/DiningZonesPage";
+import DiningTablesDashboard from "./components/administration/DiningTablesDashboard";
+import MenuPage from "./pages/customer/MenuPage";
+import { CartProvider } from "./components/customer/cart-provider";
+import CartPage from "./pages/customer/CartPage";
+import TablePage from "./pages/customer/TablePage";
+import { CustomerTableProvider } from "./components/customer/CustomerTableProvider";
 import RolesPermissionsPage from "./pages/RolesPermissionsPage";
 import DepartmentsPage from "./components/administration/DepartmentsPage";
 import { ThemeProvider } from "./theme";
@@ -202,6 +208,24 @@ function AppRoutes() {
       <Route path="/login" element={<Login />} />
       <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
+     {/* ══════════════════════════════════════════════════════════════
+    * مسارات طلبات الطاولات عبر الـ QR Code (عامة للزبائن بدون تسجيل دخول)
+    * ══════════════════════════════════════════════════════════════ */}
+    <Route 
+      path="/customer/:qrCode" 
+      element={
+        <CustomerTableProvider>
+          <Outlet />
+        </CustomerTableProvider>
+      }
+    >
+      {/* الصفحة الرئيسية للطاولة عند مسح الـ QR مباشرة */}
+      <Route index element={<TablePage />} /> 
+
+      <Route path="menu" element={<MenuPage />} />
+      <Route path="cart" element={<CartPage />} />
+    </Route>
+
       {/* ── مسارات محمية (تحتاج تسجيل دخول فقط) ── */}
       <Route element={<ProtectedRoute><Outlet /></ProtectedRoute>}>
 
@@ -241,6 +265,7 @@ function AppRoutes() {
               <Route path="pos-registers" element={<PosRegistersPage />} />
               <Route path="hospitality-devices" element={<HospitalityDevicesPage />} />
               <Route path="dining-zones" element={<DiningZonesPage />} />
+              <Route path="dining-dashboard" element={<DiningTablesDashboard />} />
               <Route path="pos" element={<AdminPOSWrapper />} />
             </Route>
           </Route>

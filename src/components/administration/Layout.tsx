@@ -59,6 +59,7 @@ const NAV = [
   { to: "/admin/pos-registers", icon: Monitor, label: "نقاط البيع", permission: PERMISSIONS.MANAGE_POS_REGISTERS },
   { to: "/admin/hospitality-devices", icon: HeartHandshake, label: "أجهزة الضيافة", permission: PERMISSIONS.MANAGE_HOSPITALITY_DEVICES },
   { to: "/admin/dining-zones", icon: Grid3X3, label: "القاعات والطاولات", permission: PERMISSIONS.MANAGE_DINING_ZONES },
+  { to: "/admin/dining-dashboard", icon: LayoutDashboard, label: "لوحة إدارة الطاولات", permission: PERMISSIONS.MANAGE_DINING_ZONES },
   { to: "/admin/pos", icon: Monitor, label: "واجهة الكاشير", permission: PERMISSIONS.ACCESS_POS_INTERFACE },
 ];
 
@@ -211,6 +212,7 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({ children
           <SidebarLink to="/admin/pos-registers" icon={Monitor} label="نقاط البيع" permission={PERMISSIONS.MANAGE_POS_REGISTERS} />
           <SidebarLink to="/admin/hospitality-devices" icon={HeartHandshake} label="أجهزة الضيافة" permission={PERMISSIONS.MANAGE_HOSPITALITY_DEVICES} />
           <SidebarLink to="/admin/dining-zones" icon={Grid3X3} label="القاعات والطاولات" permission={PERMISSIONS.MANAGE_DINING_ZONES} />
+          <SidebarLink to="/admin/dining-dashboard" icon={LayoutDashboard} label="لوحة إدارة الطاولات" permission={PERMISSIONS.MANAGE_DINING_ZONES} />
           <SidebarLink to="/admin/pos" icon={Monitor} label="واجهة الكاشير" permission={PERMISSIONS.ACCESS_POS_INTERFACE} />
         </nav>
 
