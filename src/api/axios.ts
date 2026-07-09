@@ -7,13 +7,27 @@
  * - يُحوّل إلى /activate عند الخطأ 403 من POS Security
  */
 import axios from "axios";
-import { clearAuthData } from "../auth/authStorage";
+import { clearAuthData, getRoles } from "../auth/authStorage";
+import { ROLES } from "../auth/permissions";
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "/api",
   headers: { "Content-Type": "application/json" },
   withCredentials: true,
 });
+
+/* ══════════════════════════════════════════════════════════════
+ *  Helper — هل المستخدم من الأنواع التي تتجاوز فحص POS device_uuid؟
+ * ══════════════════════════════════════════════════════════════ */
+function isBypassUser(): boolean {
+  const roles = getRoles();
+  return (
+    roles.includes(ROLES.CALL_CENTER) ||
+    roles.includes(ROLES.SUPER_ADMIN) ||
+    roles.includes(ROLES.ACCOUNTANT) ||
+    roles.includes(ROLES.BRANCH_MANAGER)
+  );
+}
 
 /* ══════════════════════════════════════════════════════════════
  *  Request Interceptor — حقن التوكن + device_uuid تلقائياً
@@ -26,15 +40,19 @@ api.interceptors.request.use((config) => {
   }
 
   // 2️⃣ 🛡️ حقن معرّف الجهاز (device_uuid) في الهيدر — دعم مزدوج (POS + ضيافة)
-  // ي优先 يرسل hospitality_device_uuid إذا كان موجوداً (لأنه أكثر تحديداً)
-  // وإلا يرسل pos_device_uuid
-  const hospitalityUuid = localStorage.getItem("hospitality_device_uuid");
-  const posUuid = localStorage.getItem("pos_device_uuid");
+  // ⚠️ لا نرسل X-Device-UUID مع طلب /login أبداً، لأن الكاشير قد يكون لديه
+  //    device_uuid قديم في localStorage من جلسة سابقة، مما يسبب 403
+  //    "أنت لا تنتمي لهذا الفرع" عند محاولة تسجيل الدخول من مستخدم بفرع مختلف.
+  const isLoginRequest = config.url?.includes('/login');
+  if (!isLoginRequest && !isBypassUser()) {
+    const hospitalityUuid = localStorage.getItem("hospitality_device_uuid");
+    const posUuid = localStorage.getItem("pos_device_uuid");
 
-  if (hospitalityUuid) {
-    config.headers["X-Device-UUID"] = hospitalityUuid;
-  } else if (posUuid) {
-    config.headers["X-Device-UUID"] = posUuid;
+    if (hospitalityUuid) {
+      config.headers["X-Device-UUID"] = hospitalityUuid;
+    } else if (posUuid) {
+      config.headers["X-Device-UUID"] = posUuid;
+    }
   }
 
   return config;
@@ -57,6 +75,11 @@ api.interceptors.response.use(
     // 2️⃣ 🛡️ الحماية الذكية لأخطاء الـ 403 (مهم جداً!)
     if (error.response?.status === 403) {
       
+      // ✅ مستخدمي الكول سنتر والإدارة يتجاوزون كل فحص POS device
+      if (isBypassUser()) {
+        return Promise.reject(error);
+      }
+
       // الفحص السحري: هل الخطأ قادم من محاولة تسجيل الدخول (Login)؟
       const isLoginRequest = error.config.url?.includes('/login');
 

@@ -38,6 +38,7 @@ interface CartPanelProps {
   isCartOpen: boolean;
   setIsCartOpen: (open: boolean) => void;
   isHospitality: boolean;
+  isCallCenterMode?: boolean;
   cartOrderType: OrderType;
   setOrderType: (type: OrderType) => void;
   currentCart: CartItem[];
@@ -98,6 +99,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
   isCartOpen,
   setIsCartOpen,
   isHospitality,
+  isCallCenterMode = false,
   cartOrderType,
   setOrderType,
   currentCart,
@@ -239,7 +241,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
             >
               <Plus className="rotate-45" size={20} />
             </button>
-            {!isHospitality && (
+            {!isHospitality && !isCallCenterMode && (
               <div className="flex bg-slate-800 p-1 rounded-lg overflow-x-auto scrollbar-hide">
                 {[OrderType.DINE_IN, OrderType.TAKEAWAY].map((type) => (
                   <button

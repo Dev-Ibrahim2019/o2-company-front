@@ -35,6 +35,7 @@ export const ROLES = {
 
   /** موظف القسم — عرض طلبات القسم فقط */
   DEPT_STAFF: "dept-staff",
+  CALL_CENTER: "call-center",
 } as const;
 
 /** نوع يمثل جميع قيم الأدوار الممكنة */
@@ -64,6 +65,7 @@ export const PERMISSIONS = {
   MANAGE_ACCOUNTING: "manage-accounting",
 
   // ── الطلبات ──
+  CREATE_ORDERS: "create-orders",
   MANAGE_ORDERS: "manage-orders",
   VIEW_ORDERS: "view-orders",
 
@@ -78,6 +80,8 @@ export const PERMISSIONS = {
   VIEW_ARCHIVE: "view-archive",
 
   // ── العملاء ──
+  VIEW_CUSTOMERS: "view-customers",
+  CREATE_CUSTOMERS: "create-customers",
   MANAGE_CUSTOMERS: "manage-customers",
 
   // ── الموردين ──
@@ -85,6 +89,10 @@ export const PERMISSIONS = {
 
   // ── الفواتير ──
   MANAGE_INVOICES: "manage-invoices",
+  CLOSE_INVOICES: "close-invoices",
+  ADD_PAYMENTS: "add-payments",
+  MANAGE_PAYMENTS: "manage-payments",
+  POST_JOURNAL: "post-journal",
 
   // ── إدارة المستخدمين ──
   MANAGE_USERS: "manage-users",
@@ -99,6 +107,8 @@ export const PERMISSIONS = {
   MANAGE_DINING_ZONES: "manage-dining-zones",
 
   // ── واجهة الكاشير ──
+  ACCESS_POS: "access-pos",
+  VIEW_MENU: "view-menu",
   ACCESS_POS_INTERFACE: "access-pos-interface",
   // ── الخصومات ──
   MANAGE_DISCOUNTS: "manage-discounts",
@@ -163,10 +173,17 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   ],
 
   [ROLES.CASHIER]: [
+    PERMISSIONS.ACCESS_POS,
+    PERMISSIONS.ACCESS_POS_INTERFACE,
+    PERMISSIONS.VIEW_MENU,
+    PERMISSIONS.CREATE_ORDERS,
     PERMISSIONS.VIEW_ORDERS,
     PERMISSIONS.MANAGE_ORDERS,
     PERMISSIONS.MANAGE_CUSTOMERS,
     PERMISSIONS.MANAGE_INVOICES,
+    PERMISSIONS.CLOSE_INVOICES,
+    PERMISSIONS.ADD_PAYMENTS,
+    PERMISSIONS.MANAGE_PAYMENTS,
   ],
 
   [ROLES.HOSPITALITY]: [
@@ -176,4 +193,19 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   ],
 
   [ROLES.DEPT_STAFF]: [PERMISSIONS.VIEW_ORDERS],
+
+  [ROLES.CALL_CENTER]: [
+    PERMISSIONS.ACCESS_POS,
+    PERMISSIONS.ACCESS_POS_INTERFACE,
+    PERMISSIONS.VIEW_MENU,
+    PERMISSIONS.CREATE_ORDERS,
+    PERMISSIONS.VIEW_ORDERS,
+    PERMISSIONS.VIEW_CUSTOMERS,
+    PERMISSIONS.CREATE_CUSTOMERS,
+    PERMISSIONS.MANAGE_ORDERS,
+    PERMISSIONS.MANAGE_INVOICES,
+    PERMISSIONS.CLOSE_INVOICES,
+    PERMISSIONS.ADD_PAYMENTS,
+    PERMISSIONS.MANAGE_PAYMENTS,
+  ],
 };

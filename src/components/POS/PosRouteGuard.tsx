@@ -13,6 +13,8 @@ import React, { useState, useEffect } from "react";
 import { Navigate } from "react-router-dom";
 import api from "../../api/axios";
 import { Loader2 } from "lucide-react";
+import { getRoles } from "../../auth/authStorage";
+import { ROLES } from "../../auth/permissions";
 
 interface Props {
   children: React.ReactNode;
@@ -26,6 +28,19 @@ const PosRouteGuard: React.FC<Props> = ({ children }) => {
 
     const checkDevice = async () => {
       try {
+        // 0. هل المستخدم من الكول سنتر أو الإدارة؟ → تجاوز فحص الجهاز
+        const roles = getRoles();
+        const isBypassUser =
+          roles.includes(ROLES.CALL_CENTER) ||
+          roles.includes(ROLES.SUPER_ADMIN) ||
+          roles.includes(ROLES.ACCOUNTANT) ||
+          roles.includes(ROLES.BRANCH_MANAGER);
+
+        if (isBypassUser) {
+          if (!cancelled) setStatus("valid");
+          return;
+        }
+
         // 1. هل يوجد device_uuid مخزن؟
         const deviceUuid = localStorage.getItem("device_uuid");
         if (!deviceUuid) {

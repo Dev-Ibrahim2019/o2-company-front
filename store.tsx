@@ -1,5 +1,5 @@
 
-import React, { createContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import {
@@ -130,7 +130,6 @@ interface AppState {
   removeNotification: (id: string) => void;
 }
 
-const AppContext = createContext<any>(null);
 export const useAppContext = () => useContext(AppContext);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -171,7 +170,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   ]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [userRole, setUserRole] = useState<'CASHIER' | 'CUSTOMER' | 'WAITER' | 'ADMIN' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | null>(null);
+  const [userRole, setUserRole] = useState<'CASHIER' | 'CUSTOMER' | 'WAITER' | 'ADMIN' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | 'CALL_CENTER' | null>(null);
   const [currentCart, setCurrentCart] = useState<OrderItem[]>([]);
   const [cartOrderType, setCartOrderType] = useState<OrderType>(OrderType.TAKEAWAY);
   const [currentShift, setCurrentShift] = useState<Shift | null>(null);
@@ -789,7 +788,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCustomers(prev => prev.map(c => c.id === id ? { ...c, balance: c.balance + amount } : c));
   };
 
-  const login = (name: string, role: 'CASHIER' | 'CUSTOMER' | 'WAITER' | 'ADMIN' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | 'HEAD_CHEF' | 'COOK' | 'EMPLOYEE', phone: string = '', branchId: string = 'b1', departmentId?: string) => {
+  const login = (name: string, role: 'CASHIER' | 'CUSTOMER' | 'WAITER' | 'ADMIN' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | 'CALL_CENTER' | 'HEAD_CHEF' | 'COOK' | 'EMPLOYEE', phone: string = '', branchId: string = 'b1', departmentId?: string) => {
     setUserRole(role);
 
     // Try to find matching employee for richer profile
@@ -800,7 +799,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       name: existingEmp?.name || name,
       phone: existingEmp?.phone || phone,
       role: existingEmp?.role || (role === 'ADMIN' ? 'ADMIN' : role === 'BRANCH_MANAGER' ? 'BRANCH_MANAGER' : role),
-      branchId: existingEmp?.branchId || ((role === 'BRANCH_MANAGER' || role === 'DEPARTMENT_STAFF' || role === 'ORDER_AGGREGATOR' || role === 'FINANCE') ? branchId : undefined),
+      branchId: existingEmp?.branchId || ((role === 'BRANCH_MANAGER' || role === 'DEPARTMENT_STAFF' || role === 'ORDER_AGGREGATOR' || role === 'FINANCE' || role === 'CALL_CENTER') ? branchId : undefined),
       departmentId: existingEmp?.departmentId || (role === 'DEPARTMENT_STAFF' ? departmentId : undefined),
       points: 120, balance: 1500.0, tier: 'GOLD', vouchers: [], favorites: ['1', '3'], addresses: [], savedCards: [], transactions: [],
       linkedAccountId: existingEmp?.nationalId === '123456789' ? 'coa1401' : 'coa1301'

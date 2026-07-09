@@ -26,6 +26,7 @@ const API_ROLE_TO_STORE_ROLE: Record<string, string> = {
   "branch-manager": "BRANCH_MANAGER",
   "accountant": "FINANCE",
   "cashier": "CASHIER",
+  "call-center": "CALL_CENTER",
   "hospitality": "HOSPITALITY",
   "dept-staff": "DEPARTMENT_STAFF",
 };

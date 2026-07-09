@@ -47,6 +47,7 @@ import type { Order, Table } from "../../../types";
 import { getDeviceUUIDSecurely } from "../../utils/posSecurity";
 import POSActivationPage from "./POSActivationPage";
 import { PERMISSIONS, ROLES } from "../../auth/permissions";
+import { useAuth } from "../../auth";
 
 
 const MONEY_EPSILON = 0.01;
@@ -125,6 +126,7 @@ export const POS: React.FC<{
   initialMode?: "tables" | "menu" | "info" | "customer";
 }> = ({ onViewTables, initialMode = "tables" }) => {
 
+  const { user: authUser } = useAuth();
   const [searchParams] = useSearchParams();
   const [deviceUuid, setDeviceUuid] = useState<string | null>(null);
   const [posInfo, setPosInfo] = useState<any>(null);
@@ -174,13 +176,17 @@ const handleActivationSuccess = (activatedInfo: any) => {
   } = useApp();
 
   const isHospitality = userRole === "HOSPITALITY";
+  const isCallCenterMode =
+    authUser?.roles?.includes(ROLES.CALL_CENTER) ||
+    userRole === "CALL_CENTER" ||
+    userRole === ROLES.CALL_CENTER;
 
   // ── Branch ID ─────────────────────────────────────────────────────────────
   // نأخذه من currentUser — إذا ما في فرع، يستخدم null
   // (MenuController سيرفض الطلب لغير super-admin بدون فرع)
 
   const branchId: number | undefined =
-  posInfo?.branch_id ?? (currentUser as any)?.branch_id ?? undefined;
+  posInfo?.branch_id ?? (currentUser as any)?.branch_id ?? authUser?.branch_id ?? undefined;
 
   // ── Menu from API ─────────────────────────────────────────────────────────
   const {
@@ -386,6 +392,13 @@ const handleActivationSuccess = (activatedInfo: any) => {
       setActivePOSMode("menu");
     }
   }, [isHospitality]);
+
+  useEffect(() => {
+    if (isCallCenterMode) {
+      setCartOrderType(OrderType.TAKEAWAY);
+      setActivePOSMode("menu");
+    }
+  }, [isCallCenterMode]);
 
   // ── Account data comes from real API via CustomerTab/SettlementPanel ──
   // No hardcoded mock account numbers.
@@ -1108,6 +1121,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
     isCartOpen,
     setIsCartOpen,
     isHospitality,
+    isCallCenterMode,
     cartOrderType,
     setOrderType,
     currentCart: enrichedCart,
@@ -1150,6 +1164,25 @@ const handleActivationSuccess = (activatedInfo: any) => {
     allItems,
     addToCart,
   };
+
+  // ── POS Activation Bypass Logic (MUST be before all early returns for hook order stability) ──
+  const adminRoles = [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BRANCH_MANAGER];
+  const hasPosInterfaceAccess = Boolean(
+    isCallCenterMode || (userRole && adminRoles.includes(userRole as any)),
+  );
+
+  useEffect(() => {
+    if (!deviceUuid && !posInfo) {
+      if (hasPosInterfaceAccess) {
+        setPosInfo({
+          code: isCallCenterMode ? 'CALLCENTER' : 'ADMIN',
+          name: isCallCenterMode ? 'واجهة الكول سنتر' : 'واجهة الإدارة',
+          branch_id: isCallCenterMode ? authUser?.branch_id ?? (currentUser as any)?.branch_id ?? null : null,
+        });
+      }
+    }
+  }, [deviceUuid, posInfo, hasPosInterfaceAccess, isCallCenterMode, authUser, currentUser]);
+
   // 1. إذا كان النظام ما زال يفحص هوية المتصفح
   if (checkingSecurity) {
     return (
@@ -1161,18 +1194,18 @@ const handleActivationSuccess = (activatedInfo: any) => {
   }
 
   // 2. إذا لم يجد بصمة مفعلة أو كود مسجل، يحجب الكاشير ويعرض شاشة التفعيل
-  //    لكن إذا كان المستخدم من لوحة الإدارة (يملك صلاحية ACCESS_POS_INTERFACE) يتجاوز التفعيل
-  const adminRoles = [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BRANCH_MANAGER];
-  const hasPosInterfaceAccess = userRole && adminRoles.includes(userRole as any);
+  if (!deviceUuid && !posInfo && !hasPosInterfaceAccess) {
+    return <POSActivationPage onActivationSuccess={handleActivationSuccess} />;
+  }
   
-  if (!deviceUuid || !posInfo) {
-    if (hasPosInterfaceAccess) {
-      // المستخدم من لوحة الإدارة — يسمح له بالدخول بدون تفعيل جهاز
-      // استخدم بيانات وهمية لـ posInfo لتجنب الأخطاء
-      setPosInfo({ code: 'ADMIN', name: 'واجهة الإدارة', branch_id: null });
-    } else {
-      return <POSActivationPage onActivationSuccess={handleActivationSuccess} />;
-    }
+  // 3. Still show loading if deviceUuid is null but posInfo was set for admin bypass
+  if (!deviceUuid && !posInfo) {
+    return (
+      <div className="fixed inset-0 flex flex-col items-center justify-center bg-slate-950 text-white" dir="rtl">
+        <Loader2 size={40} className="text-red-500 animate-spin mb-4" />
+        <p className="text-sm font-bold text-slate-400">جاري التحقق من الهوية الرقمية لجهاز نقطة البيع...</p>
+      </div>
+    );
   }
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -1200,6 +1233,15 @@ const handleActivationSuccess = (activatedInfo: any) => {
       <div
         className={`flex-1 flex flex-col min-w-0 h-full ${isCartOpen ? "hidden lg:flex" : "flex"}`}
       >
+        {isCallCenterMode && (
+          <div className="mb-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-amber-100">
+            <div className="text-sm font-black">وضع الكول سنتر — إنشاء وإدارة الطلبات</div>
+            <div className="text-[11px] font-bold text-amber-200/80 mt-1">
+              يمكنك إنشاء الطلبات والدفع وإغلاق الفواتير بشكل كامل
+            </div>
+          </div>
+        )}
+
         {isHospitality ? (
           <HospitalityPOSHeader
             editingOrderId={currentEditingOrderId}
@@ -1212,6 +1254,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
           <POSHeader
             editingOrderId={currentEditingOrderId}
             isHospitality={isHospitality}
+            isCallCenterMode={isCallCenterMode}
             activePOSMode={activePOSMode}
             setActivePOSMode={setActivePOSMode}
             searchQuery={searchQuery}
@@ -1269,6 +1312,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
               removePayment={removePayment}
               updatePaymentAmount={updatePaymentAmount}
               updatePaymentReference={updatePaymentReference}
+              hidePaymentActions={false}
             />
           )}
         </div>

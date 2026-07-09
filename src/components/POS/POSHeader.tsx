@@ -4,6 +4,7 @@ import { Search } from 'lucide-react';
 interface POSHeaderProps {
   editingOrderId: string | null;
   isHospitality: boolean;
+  isCallCenterMode?: boolean;
   activePOSMode: 'tables' | 'menu' | 'info' | 'customer';
   setActivePOSMode: (mode: 'tables' | 'menu' | 'info' | 'customer') => void;
   searchQuery: string;
@@ -20,7 +21,7 @@ interface POSHeaderProps {
 }
 
 export const POSHeader: React.FC<POSHeaderProps> = ({
-  editingOrderId, isHospitality, activePOSMode, setActivePOSMode,
+  editingOrderId, isHospitality, isCallCenterMode = false, activePOSMode, setActivePOSMode,
   searchQuery, setSearchQuery, quickId, quickQty, quickTotal,
   handleQuickIdChange, handleQuickQtyChange, handleQuickTotalChange,
   handleQuickAdd, handleKeyDown, clearCart,
@@ -81,7 +82,9 @@ export const POSHeader: React.FC<POSHeaderProps> = ({
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
         {!isHospitality && (
           <div className="flex flex-wrap bg-slate-800 p-1 rounded-xl shrink-0 border border-white/5 shadow-inner">
-            {(['tables', 'menu', 'info', 'customer'] as const).map((mode) => (
+            {(['tables', 'menu', 'info', 'customer'] as const)
+              .filter(mode => !(isCallCenterMode && mode === 'tables'))
+              .map((mode) => (
               <button
                 key={mode}
                 onClick={() => setActivePOSMode(mode)}

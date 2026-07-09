@@ -26,7 +26,8 @@ import {
 
 export const POSLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const { currentUser, userRole, branches } = useApp();
-  const { logout: authLogout } = useAuth();
+  const { user: authUser, logout: authLogout } = useAuth();
+  const isCallCenter = authUser?.roles?.includes('call-center') || userRole === 'CALL_CENTER';
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);
 
   useEffect(() => {
@@ -90,7 +91,7 @@ export const POSLayout: React.FC<{ children?: React.ReactNode }> = ({ children }
         <nav className="flex-1 space-y-1.5 overflow-y-auto custom-scrollbar">
           <SidebarLink to="/pos" icon={ShoppingCart} label="نقطة البيع (POS)" />
           <SidebarLink to="/pos/orders" icon={ClipboardList} label="الطلبات النشطة" permission={PERMISSIONS.VIEW_ORDERS} />
-          <SidebarLink to="/pos/tables" icon={Grid2X2} label="إدارة الطاولات" />
+          {!isCallCenter && <SidebarLink to="/pos/tables" icon={Grid2X2} label="إدارة الطاولات" />}
           <SidebarLink to="/shift" icon={Clock} label="إدارة الشفت" />
           <SidebarLink to="/pos" icon={Receipt} label="التقارير المالية" permission={PERMISSIONS.VIEW_REPORTS} />
         </nav>

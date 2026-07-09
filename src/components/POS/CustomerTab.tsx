@@ -50,6 +50,7 @@ interface CustomerTabProps {
   removePayment: (index: number) => void;
   updatePaymentAmount: (index: number, val: string) => void;
   updatePaymentReference: (index: number, val: string) => void;
+  hidePaymentActions?: boolean;
 }
 
 export const CustomerTab: React.FC<CustomerTabProps> = ({
@@ -57,6 +58,7 @@ export const CustomerTab: React.FC<CustomerTabProps> = ({
   selectedCustomer, accountType, setAccountType, accountNumber, setAccountNumber,
   setShowSearchModal, customers, suppliers, employees, isHospitality, total, payments, addPayment, removePayment,
   updatePaymentAmount, updatePaymentReference,
+  hidePaymentActions = false,
 }) => {
   const [showAccountSuggestions, setShowAccountSuggestions] = useState(false);
   const [entityResults, setEntityResults] = useState<EntityResult[]>([]);
@@ -398,7 +400,7 @@ export const CustomerTab: React.FC<CustomerTabProps> = ({
           )}
         </div>
 
-        {!isHospitality && (
+        {!isHospitality && !hidePaymentActions && (
           <div className="space-y-6 pt-6 border-t border-white/5 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex flex-col gap-4">
               <div className="flex items-end justify-between gap-4">
