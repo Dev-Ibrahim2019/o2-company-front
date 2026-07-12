@@ -36,6 +36,7 @@ import {
   Monitor,
   HeartHandshake,
   Grid3X3,
+  Activity,
 } from "lucide-react";
 
 /* ── روابط التنقل ── */
@@ -185,6 +186,7 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({ children
 
           {/* إدارة الموظفين */}
           <SidebarLink to="/admin/employees" icon={Users2} label="إدارة الموظفين" permission={PERMISSIONS.MANAGE_EMPLOYEES} />
+          <SidebarLink to="/admin/operations" icon={Activity} label="لوحة العمليات" permission={PERMISSIONS.VIEW_ORDERS} />
 
           {/* المحاسبة والمالية */}
           <SidebarGroup icon={BookOpen} label="المحاسبة والمالية" groupKey="accounting" permission={PERMISSIONS.VIEW_ACCOUNTING}>

@@ -112,6 +112,10 @@ export const PERMISSIONS = {
   ACCESS_POS_INTERFACE: "access-pos-interface",
   // ── الخصومات ──
   MANAGE_DISCOUNTS: "manage-discounts",
+
+  // ── الكول سنتر ──
+  ACCESS_CALL_CENTER: "access-call-center",
+  MANAGE_CALL_CENTER: "manage-call-center",
 } as const;
 
 /** نوع يمثل جميع قيم الصلاحيات الممكنة */
@@ -145,6 +149,8 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     PERMISSIONS.MANAGE_SUPPLIERS,
     PERMISSIONS.MANAGE_INVOICES,
     PERMISSIONS.MANAGE_DISCOUNTS,
+    PERMISSIONS.ACCESS_CALL_CENTER,
+    PERMISSIONS.MANAGE_CALL_CENTER,
   ],
 
   [ROLES.BRANCH_MANAGER]: [
@@ -207,5 +213,7 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     PERMISSIONS.CLOSE_INVOICES,
     PERMISSIONS.ADD_PAYMENTS,
     PERMISSIONS.MANAGE_PAYMENTS,
+    PERMISSIONS.ACCESS_CALL_CENTER,
+    PERMISSIONS.MANAGE_CALL_CENTER,
   ],
 };

@@ -49,7 +49,11 @@ const EmployeeTable = ({ employees, departments, onEdit, onDelete, onSelect }: P
                                     </div>
                                 </div>
                             </td>
-                            <td className="p-4 text-sm text-slate-300">{emp.role}</td>
+                            <td className="p-4">
+                                <p className="text-sm text-slate-300">{emp.job_title?.name || emp.jobTitle?.name || emp.role}</p>
+                                {emp.operational_role && <span className="mt-1 inline-flex rounded-md bg-cyan-500/10 px-2 py-0.5 text-[9px] font-bold text-cyan-300">{emp.operational_role}</span>}
+                                {emp.is_operations_enabled && <span className="mr-1 inline-flex rounded-md bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold text-emerald-300">عمليات</span>}
+                            </td>
                             <td className="p-4 text-sm text-slate-300">{dept?.name || "---"}</td>
                             <td className="p-4 text-sm text-slate-400 font-mono">{emp.phone}</td>
                             <td className="p-4 text-sm text-slate-400">

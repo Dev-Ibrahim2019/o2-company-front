@@ -18,6 +18,14 @@ const TAB_LABELS: Record<TabKey, string> = {
     LOGS: 'سجل النشاطات',
 };
 
+const operationalRoleLabel: Record<string, string> = {
+    call_center_agent: 'موظف كول سنتر', assembler: 'مجمع طلبات', delivery_driver: 'دليفري',
+    manager: 'مدير', cashier: 'كاشير', other: 'أخرى',
+};
+const vehicleTypeLabel: Record<string, string> = {
+    bicycle: 'دراجة هوائية', electric_bike: 'دراجة كهربائية', motorcycle: 'موتوسيكل', external: 'دليفري خارجي',
+};
+
 // ── Overview ─────────────────────────────────────────────────────────────────
 
 const OverviewTab: React.FC<{ emp: EmployeeFromApi }> = ({ emp }) => (
@@ -63,6 +71,10 @@ const OverviewTab: React.FC<{ emp: EmployeeFromApi }> = ({ emp }) => (
                 </h4>
                 {[
                     { label: 'الدور في النظام', value: emp.role },
+                    { label: 'المسمى الوظيفي', value: emp.job_title?.name || emp.jobTitle?.name || '---' },
+                    { label: 'مفعّل للعمليات', value: emp.is_operations_enabled ? 'نعم' : 'لا' },
+                    { label: 'الدور التشغيلي', value: emp.operational_role ? operationalRoleLabel[emp.operational_role] : '---' },
+                    ...(emp.operational_role === 'delivery_driver' ? [{ label: 'نوع المركبة', value: emp.vehicle_type ? vehicleTypeLabel[emp.vehicle_type] : '---' }] : []),
                     { label: 'اسم المستخدم', value: emp.username || '---' },
                     { label: 'تاريخ التوظيف', value: emp.hireDate ? new Date(emp.hireDate).toLocaleDateString('ar-SA') : '---' },
                     { label: 'الراتب', value: emp.salary ? `${Number(emp.salary).toLocaleString('ar-SA')} ر.س` : '---' },

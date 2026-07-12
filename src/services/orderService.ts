@@ -4,8 +4,13 @@ import api from "../api/axios";
 import type { Transaction as AccountingTransaction } from "./accountingService";
 
 // ── أنواع ─────────────────────────────────────────────────────────────────────
-export type OrderType = "dine_in" | "takeaway";
+export type OrderType = "dine_in" | "takeaway" | "delivery";
 export type OrderStatus =
+  | "PENDING_PAYMENT"
+  | "PREPARATION"
+  | "OUT_FOR_DELIVERY"
+  | "DELIVERED"
+  | "CANCELLED"
   | "pending"
   | "confirmed"
   | "in_progress"
@@ -13,8 +18,30 @@ export type OrderStatus =
   | "served"
   | "paid"
   | "cancelled";
+export type OrderLifecycleStatus =
+  | "PENDING_PAYMENT"
+  | "PREPARATION"
+  | "OUT_FOR_DELIVERY"
+  | "DELIVERED"
+  | "CANCELLED";
 export type PaymentMethod = "cash" | "card" | "wallet" | "bank" | "account";
 export type DiscountType = "amount" | "percent";
+
+export interface AvailableDeliveryDriver {
+  id: number;
+  name: string;
+  phone?: string | null;
+  branch_id?: number | null;
+  branch?: { id: number; name: string } | null;
+  operational_role: "delivery_driver";
+  vehicle_type: "bicycle" | "electric_bike" | "motorcycle" | "external";
+  calculated_status: "available" | "busy" | "unknown";
+  same_branch?: boolean;
+  active_orders_count: number;
+  today_delivered_orders_count: number;
+  average_delivery_minutes?: number | null;
+  cash_expected?: number | null;
+}
 
 const normalizeMoney = (value: number) =>
   Math.round((Number(value) || 0) * 100) / 100;
@@ -22,7 +49,12 @@ const normalizeMoney = (value: number) =>
 const normalizeTableNumber = (value: string | number | null | undefined) =>
   String(value ?? "").trim();
 
-const CLOSED_ORDER_STATUSES = new Set<OrderStatus>(["paid", "cancelled"]);
+const CLOSED_ORDER_STATUSES = new Set<OrderStatus>([
+  "DELIVERED",
+  "CANCELLED",
+  "paid",
+  "cancelled",
+]);
 
 type ApiErrorLike = {
   response?: {
@@ -319,6 +351,13 @@ export interface OrderItemFromApi {
   tax_rate?: number;
   tax_amount?: number;
   department?: { id: number; name: string; color: string; icon: string };
+  item_prepared_at?: string | null;
+  prepared_duration_seconds?: number | null;
+}
+
+export interface ConfirmOrderPaymentPayload extends PayOrderPayload {
+  transaction_id: string;
+  paid_at?: string;
 }
 
 export interface TicketItemFromApi {
@@ -360,6 +399,10 @@ export interface OrderFromApi {
   table_number: string | null;
   customer_name: string | null;
   customer_phone: string | null;
+  customer_mobile?: string | null;
+  customer_address_id?: number | null;
+  delivery_address_snapshot?: Record<string, unknown> | string | null;
+  customer_notes?: string | null;
   note: string | null;
   subtotal: number;
   discount_value: number;
@@ -375,6 +418,20 @@ export interface OrderFromApi {
   payment_method: PaymentMethod | null;
   reference_number: string | null;
   paid_at: string | null;
+  assembled_at?: string | null;
+  assembly_started_at?: string | null;
+  assembler_id?: number | null;
+  assembled_by?: number | null;
+  assembly_duration_seconds?: number | null;
+  assembler?: { id: number; name: string } | null;
+  assembled_by_employee?: { id: number; name: string } | null;
+  delivered_at?: string | null;
+  delivery_started_at?: string | null;
+  delivery_employee_name?: string | null;
+  driver_id?: number | string | null;
+  driver?: { id: number; name: string; phone?: string | null; vehicle_type?: string | null; branch?: { id: number; name: string } | null } | null;
+  transaction_id?: string | null;
+  payment_status?: "PENDING" | "PAID" | string | null;
   items: OrderItemFromApi[];
   tickets: ProductionTicketFromApi[];
   payments?: InvoicePaymentResponse[];
@@ -382,6 +439,46 @@ export interface OrderFromApi {
   created_at: string;
   updated_at: string;
 }
+
+/** Maps the current backend vocabulary to the canonical operational lifecycle. */
+export const getOrderLifecycleStatus = (
+  order: Pick<OrderFromApi, "status" | "paid_at" | "assembled_at" | "delivered_at">,
+): OrderLifecycleStatus => {
+  if (["CANCELLED", "cancelled"].includes(order.status)) return "CANCELLED";
+  if (order.status === "DELIVERED") return "DELIVERED";
+  if (order.status === "OUT_FOR_DELIVERY") return "OUT_FOR_DELIVERY";
+  if (order.status === "PREPARATION") return "PREPARATION";
+  if (order.status === "PENDING_PAYMENT") return "PENDING_PAYMENT";
+  if (order.delivered_at || ["served", "paid"].includes(order.status)) return "DELIVERED";
+  if (order.assembled_at || order.status === "ready") return "OUT_FOR_DELIVERY";
+  if (order.paid_at || ["confirmed", "in_progress"].includes(order.status)) return "PREPARATION";
+  return "PENDING_PAYMENT";
+};
+
+const isUndispatchedOrderError = (error: unknown) => {
+  const message = getApiErrorMessage(error).toLowerCase();
+  return (
+    message.includes("confirm") ||
+    message.includes("غير مقس") ||
+    message.includes("not split") ||
+    message.includes("production ticket")
+  );
+};
+
+export const calculateTotalLeadTime = (
+  order: Pick<OrderFromApi, "created_at" | "delivered_at">,
+): number | null => {
+  if (!order.delivered_at) return null;
+  const created = Date.parse(order.created_at);
+  const delivered = Date.parse(order.delivered_at);
+  return Number.isFinite(created) && Number.isFinite(delivered)
+    ? Math.max(0, delivered - created)
+    : null;
+};
+
+const assertLifecycle = (order: OrderFromApi, expected: OrderLifecycleStatus, message: string) => {
+  if (getOrderLifecycleStatus(order) !== expected) throw new Error(message);
+};
 
 // ── الخدمة الرئيسية ───────────────────────────────────────────────────────────
 
@@ -593,6 +690,17 @@ export const orderService = {
         note: payload.note,
       });
     } catch (error) {
+      if (isUndispatchedOrderError(error)) {
+        await orderService.confirm(orderId);
+        invoice = await orderService.createInvoiceFromOrder(orderId, {
+          customer_name: payload.customer_name,
+          customer_phone: payload.customer_phone,
+          customer_id: payload.customer_id,
+          employee_id: payload.employee_id,
+          supplier_id: payload.supplier_id,
+          note: payload.note,
+        });
+      } else {
       if (!isExistingInvoiceError(error)) {
         throw error;
       }
@@ -604,6 +712,7 @@ export const orderService = {
         throw error;
       }
       invoice = existingInvoice;
+      }
     }
 
     const normalizedPayments = payload.payments
@@ -693,7 +802,6 @@ export const orderService = {
       try {
         const { data } = await api.put(`/orders/${orderId}`, {
           payment_method: primaryPaymentMethod,
-          status: "paid",
         });
         refreshedOrder = data.data as OrderFromApi;
       } catch {
@@ -767,6 +875,110 @@ export const orderService = {
       ],
     });
     return data.data?.order || data.data;
+  },
+
+  confirmPayment: async (
+    id: number,
+    payload: ConfirmOrderPaymentPayload,
+  ): Promise<OrderFromApi> => {
+    const order = await orderService.getOne(id);
+    assertLifecycle(order, "PENDING_PAYMENT", "يمكن تأكيد الدفع فقط للطلبات المحفوظة بانتظار الدفع");
+    const transactionId = payload.transaction_id.trim();
+    if (!transactionId) throw new Error("الرقم المرجعي لعملية الدفع مطلوب");
+
+    const body = {
+      ...payload,
+      transaction_id: transactionId,
+      reference_number: transactionId,
+      payment_status: "PAID",
+      paid_at: payload.paid_at ?? new Date().toISOString(),
+    };
+    try {
+      const { data } = await api.put(`/orders/${id}/confirm-payment`, body);
+      return (data.data?.order || data.data) as OrderFromApi;
+    } catch (error) {
+      const status = (error as { response?: { status?: number } }).response?.status;
+      if (status !== 404 && status !== 405) throw error;
+      // Legacy backends may not expose /confirm-payment yet. Keep the order in
+      // the preparation path (confirmed) and pass the payment metadata along;
+      // using /pay here would incorrectly close the operational order.
+      const { data } = await api.post(`/orders/${id}/confirm`, body);
+      return (data.data?.order || data.data) as OrderFromApi;
+    }
+  },
+
+  markItemPrepared: async (
+    orderId: number,
+    itemId: number,
+    payload: { item_prepared_at?: string; duration_seconds?: number },
+  ): Promise<OrderFromApi> => {
+    const { data } = await api.post(
+      `/orders/${orderId}/items/${itemId}/prepared`,
+      payload,
+    );
+    return (data.data?.order || data.data) as OrderFromApi;
+  },
+
+  markAssembled: async (
+    orderId: number,
+    payload: { assembled_at?: string },
+  ): Promise<OrderFromApi> => {
+    const order = await orderService.getOne(orderId);
+    assertLifecycle(order, "PREPARATION", "لا يمكن تسليم الطلب للدليفري قبل تأكيد الدفع والتحضير");
+    if (!order.items.length || order.items.some((item) => !item.item_prepared_at)) {
+      throw new Error("يجب تحديد جميع أصناف الطلب كجاهزة قبل التسليم للدليفري");
+    }
+    const { data } = await api.post(`/orders/${orderId}/assembled`, payload);
+    return (data.data?.order || data.data) as OrderFromApi;
+  },
+
+  getActiveAssemblers: async (branchId?: number): Promise<Array<{ id: number; name: string; phone?: string; branch_id?: number | null }>> => {
+    const { data } = await api.get('/operations/assemblers', { params: branchId ? { branch_id: branchId } : undefined });
+    return (data.data ?? data) as Array<{ id: number; name: string; phone?: string; branch_id?: number | null }>;
+  },
+
+  startAssembly: async (orderId: number, assemblerId: number, notes?: string): Promise<OrderFromApi> => {
+    const { data } = await api.patch(`/operations/orders/${orderId}/assembly/start`, { assembler_id: assemblerId, notes });
+    return (data.data?.order || data.data) as OrderFromApi;
+  },
+
+  completeAssembly: async (orderId: number, assemblerId: number, notes?: string): Promise<OrderFromApi> => {
+    const { data } = await api.patch(`/operations/orders/${orderId}/assembly/complete`, { assembler_id: assemblerId, notes });
+    return (data.data?.order || data.data) as OrderFromApi;
+  },
+
+  getOrderExecutionEvents: async (orderId: number): Promise<Array<Record<string, unknown>>> => {
+    const { data } = await api.get(`/operations/orders/${orderId}/events`);
+    return (data.data ?? data) as Array<Record<string, unknown>>;
+  },
+
+  getAvailableDeliveryDrivers: async (params?: { branch_id?: number; order_id?: number; include_busy?: boolean }): Promise<AvailableDeliveryDriver[]> => {
+    const { data } = await api.get('/operations/delivery/available', { params });
+    return (data.data ?? data) as AvailableDeliveryDriver[];
+  },
+
+  assignDeliveryDriver: async (orderId: number, driverId: number, notes?: string): Promise<OrderFromApi> => {
+    const { data } = await api.patch(`/operations/orders/${orderId}/assign-delivery`, { driver_id: driverId, notes });
+    return (data.data?.order || data.data) as OrderFromApi;
+  },
+
+  markDelivered: async (
+    orderId: number,
+    payload: { delivered_at?: string; offline_recorded_at?: string },
+  ): Promise<OrderFromApi> => {
+    const order = await orderService.getOne(orderId);
+    assertLifecycle(order, "OUT_FOR_DELIVERY", "لا يمكن إغلاق الطلب قبل تسليمه لموظف الدليفري");
+    const { data } = await api.put(`/orders/${orderId}/complete`, payload);
+    return (data.data?.order || data.data) as OrderFromApi;
+  },
+
+  syncOfflineDeliveries: async (
+    deliveries: Array<{ order_id: number; delivered_at: string; recorded_locally_at: string }>,
+  ): Promise<OrderFromApi[]> => {
+    const { data } = await api.post("/orders/offline-deliveries/sync", {
+      deliveries,
+    });
+    return (data.data?.orders || data.data || []) as OrderFromApi[];
   },
 
   transferClosedOrderToSales: async (
@@ -867,8 +1079,20 @@ export const orderService = {
   },
 
   void: async (id: number, reason: string): Promise<OrderFromApi> => {
-    const { data } = await api.post(`/orders/${id}/void`, { reason });
-    return data.data as OrderFromApi;
+    const cleanReason = reason.trim();
+    if (!cleanReason) throw new Error("سبب إلغاء الطلب مطلوب");
+    try {
+      const { data } = await api.post(`/orders/${id}/void`, { reason: cleanReason });
+      return (data.data?.order || data.data) as OrderFromApi;
+    } catch (error) {
+      const status = (error as { response?: { status?: number } }).response?.status;
+      if (status !== 404 && status !== 405) throw error;
+      const { data } = await api.post(`/orders/${id}/cancel`, {
+        reason: cleanReason,
+        cancellation_reason: cleanReason,
+      });
+      return (data.data?.order || data.data) as OrderFromApi;
+    }
   },
 
   delete: async (id: number): Promise<void> => {

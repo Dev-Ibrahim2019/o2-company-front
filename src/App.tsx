@@ -20,12 +20,18 @@ import { POS } from "./components/POS/pos";
 import AdminPOSWrapper from "./components/POS/AdminPOSWrapper";
 import { TablesView } from "./components/POS/Tables";
 import { OrdersView } from "./components/POS/Orders";
+import { AssemblerDashboard } from "./components/POS/AssemblerDashboard";
+import { OperationsDashboard } from "./components/operations/OperationsDashboard";
 import { ShiftView } from "./components/POS/Shift";
 import { HospitalityLayout } from "./components/Hospitality/Layout";
 import { HospitalityPOS } from "./components/Hospitality/HospitalityPOS";
 import { HospitalityOrders } from "./components/Hospitality/HospitalityOrders";
 import { HospitalityTables } from "./components/Hospitality/Tables";
 import { FinancialInvoicesPage } from "./components/financial/FinancialInvoicesPage";
+import { CustomerManagementDashboard } from "./components/CallCenter/CustomerManagementDashboard";
+import { ComplaintsManagement } from "./components/CallCenter/ComplaintsManagement";
+import { CallCenterEmployees } from "./components/CallCenter/CallCenterEmployees";
+import { OccasionsPage as CallCenterOccasionsPage } from "./components/CallCenter/OccasionsPage";
 import { FinancialInvoiceForm } from "./components/financial/FinancialInvoiceForm";
 import { SalesInvoiceListPage, SalesInvoiceFormPage } from "./components/sales-invoices";
 import { ToastContainer } from "./components/shared/Toast";
@@ -220,6 +226,7 @@ function AppRoutes() {
               <Route path="item-tree" element={<FinanceView />} />
               <Route path="items-index" element={<FinanceView />} />
               <Route path="orders" element={<FinanceView />} />
+              <Route path="operations" element={<OperationsDashboard />} />
               <Route path="sales" element={<FinanceView />} />
               <Route path="customers" element={<FinanceView />} />
               <Route path="suppliers" element={<FinanceView />} />
@@ -255,7 +262,13 @@ function AppRoutes() {
             <Route path="/pos">
               <Route index element={<POS onViewTables={() => { }} />} />
               <Route path="orders" element={<OrdersView />} />
+              <Route path="assembler" element={<AssemblerDashboard />} />
               <Route path="tables" element={<TablesView />} />
+              <Route path="call-center/pos" element={<POS onViewTables={() => { }} />} />
+              <Route path="call-center/customers" element={<CustomerManagementDashboard />} />
+              <Route path="call-center/complaints" element={<ComplaintsManagement />} />
+              <Route path="call-center/employees" element={<CallCenterEmployees />} />
+              <Route path="call-center/occasions" element={<CallCenterOccasionsPage />} />
             </Route>
           </Route>
         </Route>

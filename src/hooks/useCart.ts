@@ -41,11 +41,20 @@ export interface PaymentEntry {
 export interface SubmitOrderPayload {
   branch_id: number;
   cashier_id?: number;
-  order_type: "dine_in" | "takeaway";
+  order_type: "dine_in" | "takeaway" | "delivery";
+  source?: "pos" | "call_center";
+  call_center_agent_id?: number;
   table_number?: string;
   customer_name?: string;
   customer_phone?: string;
+  customer_mobile?: string;
   customer_id?: number;
+  customer_address_id?: number;
+  delivery_address_snapshot?: string;
+  customer_notes?: string;
+  delivery_notes?: string;
+  call_notes?: string;
+  needs_attention?: boolean;
   employee_id?: number;
   supplier_id?: number;
   note?: string;
@@ -132,7 +141,8 @@ export const useCart = () => {
           return updated;
         }
         // صنف جديد — أضف صف جديد
-        const uniqueId = String(item.id) + '-' + Math.random().toString(36).substr(2, 9);
+        const uniqueId =
+          String(item.id) + "-" + Math.random().toString(36).substr(2, 9);
         return [
           ...prev,
           {
@@ -258,7 +268,10 @@ export const useCart = () => {
         // ═══════════════════════════════════════════════════
         // PHASE 2: إرسال للمطبخ (اختياري)
         // ═══════════════════════════════════════════════════
-        if (shouldConfirm && order.status === "pending") {
+        if (
+          shouldConfirm &&
+          (order.status === "pending" || order.status === "PENDING_PAYMENT")
+        ) {
           try {
             order = await orderService.confirm(order.id);
           } catch (error) {

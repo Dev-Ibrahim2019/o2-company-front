@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { X, Save, Loader2 } from 'lucide-react';
-import type { EmployeeFromApi, EmployeePayload } from '../../../../services/employeeService';
+import type { EmployeeFromApi, EmployeePayload, OperationalRole, VehicleType } from '../../../../services/employeeService';
 import type { JobTitle } from '../../../../services/jobTitleService';
 import { ROLES, STATUSES } from '../utils';
 
@@ -20,13 +20,23 @@ const inputCls =
     ' placeholder-slate-600 focus:outline-none focus:border-red-500/50 transition-colors';
 const labelCls = 'block text-[11px] font-bold text-slate-500 mb-1.5 uppercase tracking-wider';
 const errorCls = 'text-red-400 text-xs mt-1';
+const operationalRoles: Array<{ value: OperationalRole; label: string }> = [
+    { value: 'call_center_agent', label: 'موظف كول سنتر' }, { value: 'assembler', label: 'مجمع طلبات' },
+    { value: 'delivery_driver', label: 'دليفري' }, { value: 'manager', label: 'مدير' },
+    { value: 'cashier', label: 'كاشير' }, { value: 'other', label: 'أخرى' },
+];
+const vehicleTypes: Array<{ value: VehicleType; label: string }> = [
+    { value: 'bicycle', label: 'دراجة هوائية' }, { value: 'electric_bike', label: 'دراجة كهربائية' },
+    { value: 'motorcycle', label: 'موتوسيكل' }, { value: 'external', label: 'دليفري خارجي' },
+];
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 const EmployeeModal = ({ employee, departments, branches, jobTitles, onSave, onClose }: Props) => {
     const isEditing = !!employee;
 
-    const [form, setForm] = useState<EmployeePayload & { jobTitleId?: string }>({
+    const [operationalRoleEdited, setOperationalRoleEdited] = useState(Boolean(employee?.operational_role));
+    const [form, setForm] = useState<EmployeePayload>({
         name: employee?.name ?? '',
         phone: employee?.phone ?? '',
         email: employee?.email ?? '',
@@ -35,7 +45,8 @@ const EmployeeModal = ({ employee, departments, branches, jobTitles, onSave, onC
         dob: employee?.dob ?? '',
         branch_id: employee?.branch_id ?? (branches[0]?.id ?? 0),
         department_id: employee?.department_id ?? (departments[0]?.id ?? 0),
-        jobTitleId: employee?.jobTitleId ?? '',      // ← مسمى وظيفي
+        job_title_id: employee?.job_title_id ?? employee?.job_title?.id ?? (employee?.jobTitleId && /^\d+$/.test(employee.jobTitleId) ? Number(employee.jobTitleId) : null),
+        jobTitleId: employee?.jobTitleId ?? (employee?.job_title_id ? String(employee.job_title_id) : ''),
         hireDate: employee?.hireDate ?? new Date().toISOString().split('T')[0],
         salary: employee?.salary ?? undefined,
         role: employee?.role ?? 'EMPLOYEE',
@@ -45,6 +56,9 @@ const EmployeeModal = ({ employee, departments, branches, jobTitles, onSave, onC
         pin: '',
         permissions: employee?.permissions ?? [],
         notes: employee?.notes ?? '',
+        operational_role: employee?.operational_role,
+        is_operations_enabled: employee?.is_operations_enabled ?? false,
+        vehicle_type: employee?.vehicle_type,
     });
 
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -55,8 +69,26 @@ const EmployeeModal = ({ employee, departments, branches, jobTitles, onSave, onC
         setErrors(prev => ({ ...prev, [key]: '' }));
     };
 
-    // عند اختيار Job Title — نملأ الدور تلقائياً إذا أردنا ربطهما
-    // حالياً نتركهما منفصلين لمرونة أكبر
+    const setJobTitle = (value: string) => {
+        const id = value ? Number(value) : null;
+        const title = jobTitles.find(item => item.id === id);
+        setForm(prev => ({
+            ...prev,
+            job_title_id: id,
+            jobTitleId: value,
+            operational_role: !operationalRoleEdited && title?.default_operational_role
+                ? title.default_operational_role
+                : prev.operational_role,
+            vehicle_type: (!operationalRoleEdited && title?.default_operational_role !== 'delivery_driver')
+                ? undefined
+                : prev.vehicle_type,
+        }));
+    };
+
+    const setOperationalRole = (role: OperationalRole | undefined) => {
+        setOperationalRoleEdited(true);
+        setForm(prev => ({ ...prev, operational_role: role, vehicle_type: role === 'delivery_driver' ? prev.vehicle_type : undefined }));
+    };
 
     const validate = (): boolean => {
         const e: Record<string, string> = {};
@@ -65,6 +97,7 @@ const EmployeeModal = ({ employee, departments, branches, jobTitles, onSave, onC
         if (!form.branch_id) e.branch_id = 'الفرع مطلوب';
         if (!form.department_id) e.department_id = 'القسم مطلوب';
         if (!form.hireDate) e.hireDate = 'تاريخ التوظيف مطلوب';
+        if (form.is_operations_enabled && form.operational_role === 'delivery_driver' && !form.vehicle_type) e.vehicle_type = 'نوع المركبة مطلوب للدليفري';
         setErrors(e);
         return Object.keys(e).length === 0;
     };
@@ -142,8 +175,8 @@ const EmployeeModal = ({ employee, departments, branches, jobTitles, onSave, onC
                         <div>
                             <label className={labelCls}>المسمى الوظيفي (Job Title)</label>
                             <select
-                                value={(form as any).jobTitleId ?? ''}
-                                onChange={e => set('jobTitleId', e.target.value)}
+                                value={form.job_title_id ?? ''}
+                                onChange={e => setJobTitle(e.target.value)}
                                 className={inputCls}
                             >
                                 <option value="">— بدون مسمى —</option>
@@ -157,6 +190,17 @@ const EmployeeModal = ({ employee, departments, branches, jobTitles, onSave, onC
                             <select value={form.role} onChange={e => set('role', e.target.value)} className={inputCls}>
                                 {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                             </select>
+                        </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-cyan-500/15 bg-cyan-500/5 p-4 space-y-4">
+                        <label className="flex items-center justify-between gap-3 cursor-pointer">
+                            <span><span className="block text-sm font-bold text-white">تفعيل الموظف للعمليات</span><span className="text-[10px] text-slate-500">يسمح باستخدامه لاحقاً في تشغيل الطلبات</span></span>
+                            <input type="checkbox" checked={Boolean(form.is_operations_enabled)} onChange={e => set('is_operations_enabled', e.target.checked)} className="h-5 w-5 accent-cyan-500" />
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div><label className={labelCls}>الدور التشغيلي</label><select value={form.operational_role ?? ''} onChange={e => setOperationalRole(e.target.value ? e.target.value as OperationalRole : undefined)} className={inputCls}><option value="">— بدون دور تشغيلي —</option>{operationalRoles.map(role => <option key={role.value} value={role.value}>{role.label}</option>)}</select></div>
+                            {form.operational_role === 'delivery_driver' && <div><label className={labelCls}>نوع المركبة {form.is_operations_enabled ? '*' : ''}</label><select value={form.vehicle_type ?? ''} onChange={e => set('vehicle_type', e.target.value ? e.target.value as VehicleType : undefined)} className={inputCls}><option value="">— اختر المركبة —</option>{vehicleTypes.map(vehicle => <option key={vehicle.value} value={vehicle.value}>{vehicle.label}</option>)}</select>{errors.vehicle_type && <p className={errorCls}>{errors.vehicle_type}</p>}</div>}
                         </div>
                     </div>
 

@@ -6,7 +6,7 @@
 // 3. submitOrder يرسل للـ API فعلياً
 // 4. getItemCurrentPrice تقرأ item.price مباشرة (جاي من pivot الفرع)
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useApp } from "../../../store";
 import {
@@ -16,7 +16,7 @@ import {
   CustomerType,
   TableStatus,
 } from "../../../types";
-import { AlertCircle, ShoppingCart, Loader2 } from "lucide-react";
+import { AlertCircle, ShoppingCart, Loader2, AlertTriangle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "../shared/Toast";
 import { useDiscountCart } from "../../hooks/useDiscountCart";
@@ -48,6 +48,10 @@ import { getDeviceUUIDSecurely } from "../../utils/posSecurity";
 import POSActivationPage from "./POSActivationPage";
 import { PERMISSIONS, ROLES } from "../../auth/permissions";
 import { useAuth } from "../../auth";
+import { useCustomerSearch, useCustomerProfile } from "../../hooks/useCallCenter";
+import { callCenterService } from "../../services/callCenterService";
+import { CustomerPhoneSearch } from "../CallCenter/CustomerPhoneSearch";
+import { QuickCustomerForm } from "../CallCenter/QuickCustomerForm";
 
 
 const MONEY_EPSILON = 0.01;
@@ -152,13 +156,13 @@ export const POS: React.FC<{
     checkDeviceSecurity();
   }, []);
 
-// دالة يتم استدعاؤها لتحديث الحالة فور إدخال كود التفعيل بنجاح
-const handleActivationSuccess = (activatedInfo: any) => {
-  getDeviceUUIDSecurely().then((uuid) => {
-    setDeviceUuid(uuid);
-    setPosInfo(activatedInfo);
-  });
-};
+  // دالة يتم استدعاؤها لتحديث الحالة فور إدخال كود التفعيل بنجاح
+  const handleActivationSuccess = (activatedInfo: any) => {
+    getDeviceUUIDSecurely().then((uuid) => {
+      setDeviceUuid(uuid);
+      setPosInfo(activatedInfo);
+    });
+  };
 
   // ── Store (للحالات القديمة غير المنقولة بعد) ──────────────────────────────
   const {
@@ -186,7 +190,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
   // (MenuController سيرفض الطلب لغير super-admin بدون فرع)
 
   const branchId: number | undefined =
-  posInfo?.branch_id ?? (currentUser as any)?.branch_id ?? authUser?.branch_id ?? undefined;
+    posInfo?.branch_id ?? (currentUser as any)?.branch_id ?? authUser?.branch_id ?? undefined;
 
   // ── Menu from API ─────────────────────────────────────────────────────────
   const {
@@ -240,11 +244,20 @@ const handleActivationSuccess = (activatedInfo: any) => {
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [showQuickAddCustomer, setShowQuickAddCustomer] = useState(false);
+  const [showQuickCustomerForm, setShowQuickCustomerForm] = useState(false);
   const [quickCustomerName, setQuickCustomerName] = useState("");
   const [quickCustomerPhone, setQuickCustomerPhone] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [customerMobile, setCustomerMobile] = useState("");
+  const [customerAddressId, setCustomerAddressId] = useState<number | undefined>();
+  const [deliveryAddressSnapshot, setDeliveryAddressSnapshot] = useState<string | null>(null);
+  const [customerOrderNotes, setCustomerOrderNotes] = useState("");
   const [showCustomerModal, setShowCustomerModal] = useState(false);
+
+  // ── Call Center Customer Search ──
+  const { query: ccSearchQuery, results: ccSearchResults, loading: ccSearchLoading, setQuery: ccSetSearch, clear: ccClearSearch } = useCustomerSearch();
+  const { profile: ccProfile, alerts: ccAlerts, loading: ccProfileLoading, loadProfile: ccLoadProfile, clear: ccClearProfile } = useCustomerProfile();
 
   // ── Invoice State ─────────────────────────────────────────────────────────
   const [invoiceNote, setInvoiceNote] = useState("");
@@ -269,6 +282,9 @@ const handleActivationSuccess = (activatedInfo: any) => {
   const [quickId, setQuickId] = useState("");
   const [quickQty, setQuickQty] = useState("");
   const [quickTotal, setQuickTotal] = useState("");
+  const customerPhoneSearchRef = useRef<HTMLInputElement | null>(null);
+  const quickIdInputRef = useRef<HTMLInputElement | null>(null);
+  const menuSearchInputRef = useRef<HTMLInputElement | null>(null);
 
   // ── Cart Editing State ────────────────────────────────────────────────────
   const [editingQty, setEditingQty] = useState<{ [id: string]: string }>({});
@@ -400,6 +416,15 @@ const handleActivationSuccess = (activatedInfo: any) => {
     }
   }, [isCallCenterMode]);
 
+  useEffect(() => {
+    if (!isCallCenterMode || checkingSecurity || (!deviceUuid && !posInfo)) return;
+    const focusTimer = window.setTimeout(() => {
+      customerPhoneSearchRef.current?.focus();
+      customerPhoneSearchRef.current?.select();
+    }, 100);
+    return () => window.clearTimeout(focusTimer);
+  }, [isCallCenterMode, checkingSecurity, deviceUuid, posInfo]);
+
   // ── Account data comes from real API via CustomerTab/SettlementPanel ──
   // No hardcoded mock account numbers.
   // ── Derived ───────────────────────────────────────────────────────────────
@@ -507,6 +532,14 @@ const handleActivationSuccess = (activatedInfo: any) => {
     opts?: { quantity?: number; price?: number },
   ) => {
     addToCartRaw(item, opts);
+  };
+
+  const focusQuickItemInput = () => {
+    window.setTimeout(() => {
+      const input = quickIdInputRef.current ?? menuSearchInputRef.current;
+      input?.focus();
+      input?.select();
+    }, 0);
   };
 
   // معرفة entityType من accountType الحالي
@@ -629,6 +662,26 @@ const handleActivationSuccess = (activatedInfo: any) => {
     setDiscountType(order.discount_type === "percent" ? "PERCENT" : "AMOUNT");
     setCustomerName(order.customer_name ?? "");
     setCustomerPhone(order.customer_phone ?? "");
+    setCustomerMobile(order.customer_mobile ?? "");
+    setCustomerAddressId(order.customer_address_id ?? undefined);
+    setDeliveryAddressSnapshot(
+      typeof order.delivery_address_snapshot === "string"
+        ? order.delivery_address_snapshot
+        : order.delivery_address_snapshot
+          ? JSON.stringify(order.delivery_address_snapshot)
+          : null,
+    );
+    setCustomerOrderNotes(order.customer_notes ?? "");
+    setSelectedCustomer(
+      order.customer_id
+        ? {
+            id: order.customer_id,
+            name: order.customer_name ?? "",
+            phone: order.customer_phone ?? "",
+            mobile: order.customer_mobile ?? "",
+          }
+        : null,
+    );
 
     const apiPayments = order.payments ?? [];
     setPayments(
@@ -835,7 +888,11 @@ const handleActivationSuccess = (activatedInfo: any) => {
 
     // Submit the order as PENDING so it is saved to the backend
     const orderType =
-      cartOrderType === OrderType.DINE_IN ? "dine_in" : "takeaway";
+      cartOrderType === OrderType.DINE_IN
+        ? "dine_in"
+        : cartOrderType === OrderType.DELIVERY
+          ? "delivery"
+          : "takeaway";
     const result = await submitOrderApi(
       {
         branch_id: branchId || 0,
@@ -844,12 +901,16 @@ const handleActivationSuccess = (activatedInfo: any) => {
         table_number: activeTable?.number.toString(),
         customer_name: customerName || undefined,
         customer_phone: customerPhone || undefined,
+        customer_mobile: customerMobile || undefined,
+        customer_address_id: customerAddressId || undefined,
+        delivery_address_snapshot: deliveryAddressSnapshot || undefined,
+        customer_notes: customerOrderNotes || undefined,
         note: invoiceNote || undefined,
         discount_value: discountValue || undefined,
         discount_type: discountType === "PERCENT" ? "percent" : "amount",
         ...getPricingContext(),
       },
-      true, // confirm order
+      false, // save only; payment confirmation is the only kitchen dispatch trigger
       [],
       false, // do not close/create invoice yet
       editingApiOrderId,
@@ -864,30 +925,148 @@ const handleActivationSuccess = (activatedInfo: any) => {
         forgetTableDraft(activeTable.id);
       }
       setEditingApiOrderId(null);
-      toast.success("تم إرسال الفاتورة للطباعة", `الطاولة #${manualTable}`);
+      toast.success("تم حفظ الفاتورة بانتظار الدفع", `رقم الطلب: ${result.order_number || result.id}`);
     }
   };
 
   const handleSelectCustomer = (customer: any) => {
     setSelectedCustomer(customer);
     setCustomerName(customer.name);
-    setCustomerPhone(customer.phone);
+    setCustomerPhone(customer.phone || "");
+    setCustomerMobile(customer.mobile || "");
     setShowSearchModal(false);
     setCustomerSearchQuery("");
+    if (isCallCenterMode) {
+      ccClearProfile();
+      ccLoadProfile(customer.id);
+      // Use the explicitly selected drawer address; otherwise load the default.
+      if (customer.selectedAddress) {
+        handleSelectCustomerAddress(customer.selectedAddress);
+      } else callCenterService.getCustomerAddresses(customer.id).then(res => {
+        const addresses = res.data ?? [];
+        const defaultAddr = addresses.find((a: any) => a.is_default) || addresses[0];
+        if (defaultAddr) {
+          setCustomerAddressId(defaultAddr.id);
+          setDeliveryAddressSnapshot(JSON.stringify({
+            label: defaultAddr.label,
+            city: defaultAddr.city,
+            area: defaultAddr.area,
+            street: defaultAddr.street,
+            building_no: defaultAddr.building_no,
+            floor: defaultAddr.floor,
+            apartment: defaultAddr.apartment,
+            delivery_notes: defaultAddr.delivery_notes,
+          }));
+        }
+      }).catch(() => { });
+      // Load important notes
+      callCenterService.getCustomerImportantNotes(customer.id).then(res => {
+        const notes = res.data ?? [];
+        if (notes.length > 0) {
+          setCustomerOrderNotes(notes.map((n: any) => n.content).join("\n"));
+        }
+      }).catch(() => { });
+    }
+    // If adopting a previous order, add its items to cart with current prices
+    if (customer.lastOrder && customer.lastOrder.items) {
+      const adoptedItems = customer.lastOrder.items
+        .filter((item: any) => item.item_id)
+        .map((item: any) => ({
+          uniqueId: `adopted-${Date.now()}-${item.item_id}`,
+          itemId: String(item.item_id),
+          id: Number(item.item_id),
+          name: item.item_name_ar || item.item_name,
+          name_ar: item.item_name_ar || item.item_name,
+          price: Number(item.price || 0),
+          quantity: Number(item.quantity || 0),
+          notes: item.notes ?? undefined,
+          department_id: item.department_id || 0,
+        }));
+      if (adoptedItems.length > 0) {
+        loadCart(adoptedItems);
+        toast.success(`تم اعتماد الطلب السابق (${adoptedItems.length} صنف)`);
+      }
+    }
+    window.setTimeout(() => menuSearchInputRef.current?.focus(), 0);
   };
 
-  const handleQuickAddCustomer = () => {
+  const handleSelectCustomerAddress = (address: any) => {
+    setCustomerAddressId(address.id);
+    setDeliveryAddressSnapshot(JSON.stringify({
+      label: address.label, city: address.city, area: address.area,
+      district: address.district, street: address.street,
+      building_no: address.building_no, floor: address.floor,
+      apartment: address.apartment, delivery_notes: address.delivery_notes,
+    }));
+    window.setTimeout(() => menuSearchInputRef.current?.focus(), 0);
+  };
+
+  const handleRepeatCustomerOrder = (order: any) => {
+    // اعتماد الطلب السابق مباشرة إلى الفاتورة النشطة
+    // دون الحاجة لتغيير العميل المحدد - فقط نسخ الأصناف مع الكميات والأسعار
+    if (order && order.items) {
+      const adoptedItems = order.items
+        .filter((item: any) => item.item_id)
+        .map((item: any) => ({
+          uniqueId: `adopted-${Date.now()}-${item.item_id}`,
+          itemId: String(item.item_id),
+          id: Number(item.item_id),
+          name: item.item_name_ar || item.item_name,
+          name_ar: item.item_name_ar || item.item_name,
+          price: Number(item.price || 0),
+          quantity: Number(item.quantity || 0),
+          notes: item.notes ?? undefined,
+          department_id: item.department_id || 0,
+        }));
+      if (adoptedItems.length > 0) {
+        // استخدام loadCart لتحميل الأصناف مباشرة إلى السلة النشطة
+        // هذا يحافظ على الفاتورة الحالية ولا يفقد الكاشير بياناته
+        loadCart(adoptedItems);
+        setIsCartOpen(true);
+        toast.success(`تم اعتماد الطلب السابق (${adoptedItems.length} صنف)`);
+      }
+    }
+  };
+
+  const handleQuickAddCustomer = async () => {
     if (!quickCustomerName || !quickCustomerPhone) return;
+    if (isCallCenterMode) {
+      try {
+        const res = await callCenterService.createCustomer({ name: quickCustomerName, phone: quickCustomerPhone });
+        const newCustomer = res.data;
+        addCustomer?.({
+          name: newCustomer.name,
+          phone: newCustomer.phone,
+          type: CustomerType.REGULAR,
+          allowCredit: false,
+          notes: "",
+        });
+        handleSelectCustomer(newCustomer);
+      } catch { /* ignore */ }
+    } else {
+      addCustomer?.({
+        name: quickCustomerName,
+        phone: quickCustomerPhone,
+        type: CustomerType.REGULAR,
+        allowCredit: false,
+        notes: "",
+      });
+    }
+    setShowQuickAddCustomer(false);
+    setQuickCustomerName("");
+    setQuickCustomerPhone("");
+  };
+
+  const handleQuickCustomerCreated = (customer: any) => {
     addCustomer?.({
-      name: quickCustomerName,
-      phone: quickCustomerPhone,
+      name: customer.name,
+      phone: customer.phone,
       type: CustomerType.REGULAR,
       allowCredit: false,
       notes: "",
     });
-    setShowQuickAddCustomer(false);
-    setQuickCustomerName("");
-    setQuickCustomerPhone("");
+    handleSelectCustomer(customer);
+    toast.success("تم إنشاء العميل", customer.name);
   };
 
   // ── Quick Add ─────────────────────────────────────────────────────────────
@@ -921,17 +1100,64 @@ const handleActivationSuccess = (activatedInfo: any) => {
     const item = findByCode(quickId);
     if (!item) {
       setPosError("الصنف غير موجود في منيو هذا الفرع");
+      focusQuickItemInput();
       return;
     }
     addToCart(item, { quantity: parseFloat(quickQty) || 1, price: item.price });
     setQuickId("");
     setQuickQty("");
     setQuickTotal("");
+    focusQuickItemInput();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") handleQuickAdd();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleQuickAdd();
+    }
   };
+
+  useEffect(() => {
+    if (!isCallCenterMode) return;
+
+    const isTypingTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      return (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target.isContentEditable
+      );
+    };
+
+    const handleCallCenterShortcut = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+
+      if (e.key === "F2") {
+        e.preventDefault();
+        setActivePOSMode("menu");
+        focusQuickItemInput();
+        return;
+      }
+
+      if (e.key === "F4") {
+        e.preventDefault();
+        setActivePOSMode("customer");
+        window.setTimeout(() => {
+          customerPhoneSearchRef.current?.focus();
+          customerPhoneSearchRef.current?.select();
+        }, 0);
+        return;
+      }
+
+      if (e.key === "Enter" && !isTypingTarget(e.target) && quickId.trim()) {
+        e.preventDefault();
+        handleQuickAdd();
+      }
+    };
+
+    window.addEventListener("keydown", handleCallCenterShortcut);
+    return () => window.removeEventListener("keydown", handleCallCenterShortcut);
+  }, [isCallCenterMode, quickId, quickQty, quickTotal, findByCode]);
 
   // ── Cart Handlers ─────────────────────────────────────────────────────────
   const handleNameChange = (uniqueId: string, newName: string) => {
@@ -981,11 +1207,17 @@ const handleActivationSuccess = (activatedInfo: any) => {
       return;
     }
 
-    const orderType =
-      cartOrderType === OrderType.DINE_IN ? "dine_in" : "takeaway";
+    const orderType = isCallCenterMode
+      ? "delivery"
+      : cartOrderType === OrderType.DINE_IN
+        ? "dine_in"
+        : "takeaway";
 
-    const shouldConfirm = status === OrderStatus.CONFIRMED || isHospitality; // الضيافة تأكد مباشرة
     const isClosingOrder = status === OrderStatus.DELIVERED;
+    const shouldConfirm =
+      status === OrderStatus.CONFIRMED ||
+      isHospitality ||
+      (isCallCenterMode && isClosingOrder);
     const selectedPayments = (paymentsArg ?? payments)
       .map((payment) => ({
         ...payment,
@@ -1062,10 +1294,15 @@ const handleActivationSuccess = (activatedInfo: any) => {
       {
         branch_id: branchId,
         cashier_id: currentUser?.id ? Number(currentUser.id) : undefined,
+        customer_id: selectedCustomer?.id ? Number(selectedCustomer.id) : undefined,
         order_type: orderType,
         table_number: activeTable?.number.toString(),
         customer_name: meta.name || undefined,
         customer_phone: meta.phone || undefined,
+        customer_mobile: customerMobile || undefined,
+        customer_address_id: customerAddressId || undefined,
+        delivery_address_snapshot: deliveryAddressSnapshot || undefined,
+        customer_notes: customerOrderNotes || undefined,
         note: meta.note || undefined,
         discount_value: discountValue || undefined,
         discount_type: discountType === "PERCENT" ? "percent" : "amount",
@@ -1146,6 +1383,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
     paymentMethod,
     editingOrderId: currentEditingOrderId,
     editingQty,
+    setEditingQty,
     editingNames,
     handleNameChange,
     handleQuantityChange,
@@ -1197,7 +1435,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
   if (!deviceUuid && !posInfo && !hasPosInterfaceAccess) {
     return <POSActivationPage onActivationSuccess={handleActivationSuccess} />;
   }
-  
+
   // 3. Still show loading if deviceUuid is null but posInfo was set for admin bypass
   if (!deviceUuid && !posInfo) {
     return (
@@ -1234,11 +1472,42 @@ const handleActivationSuccess = (activatedInfo: any) => {
         className={`flex-1 flex flex-col min-w-0 h-full ${isCartOpen ? "hidden lg:flex" : "flex"}`}
       >
         {isCallCenterMode && (
-          <div className="mb-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-amber-100">
-            <div className="text-sm font-black">وضع الكول سنتر — إنشاء وإدارة الطلبات</div>
-            <div className="text-[11px] font-bold text-amber-200/80 mt-1">
-              يمكنك إنشاء الطلبات والدفع وإغلاق الفواتير بشكل كامل
+          <div className="space-y-2 mb-3">
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-amber-100">
+              <div className="text-sm font-black">وضع الكول سنتر — طلب ودفع وتوصيل</div>
+              <div className="text-[11px] font-bold text-amber-200/80 mt-1">
+                يمكنك إغلاق الفاتورة وتسجيل الدفع كالكاشير. بعد الدفع ينتقل الطلب تلقائياً للتحضير، ثم التجميع والدليفري حتى تأكيد تسليمه للعميل.
+              </div>
             </div>
+            <CustomerPhoneSearch
+              onSelectCustomer={(customer) => handleSelectCustomer(customer)}
+              onQuickAdd={() => { setQuickCustomerName(""); setQuickCustomerPhone(""); setShowQuickAddCustomer(true); }}
+              externalInputRef={customerPhoneSearchRef}
+              searchResults={ccSearchResults}
+              searchLoading={ccSearchLoading}
+              searchQuery={ccSearchQuery}
+              onSearch={ccSetSearch}
+              onClear={() => { ccClearSearch(); ccClearProfile(); }}
+              customerAlerts={ccAlerts}
+              isCallCenterMode={true}
+              onSelectAddress={handleSelectCustomerAddress}
+              onRepeatOrder={handleRepeatCustomerOrder}
+              onApplyLoyaltyDiscount={(amount) => {
+                setDiscountType("AMOUNT");
+                setDiscountValue(Math.min(amount, afterEngineSubtotal));
+                toast.success("تم تطبيق خصم نقاط الولاء", `${Math.min(amount, afterEngineSubtotal).toFixed(2)} ₪`);
+              }}
+            />
+            {selectedCustomer && ccAlerts && ccAlerts.length > 0 && (
+              <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-2">
+                <AlertTriangle size={14} className="text-red-400 shrink-0" />
+                <span className="text-xs font-bold text-red-300">يحتاج اهتمام — هذا العميل لديه {ccAlerts.length} شكوى مفتوحة</span>
+                <button
+                  onClick={() => ccLoadProfile(selectedCustomer.id)}
+                  className="mr-auto text-[10px] font-bold text-red-400 hover:text-red-300 underline"
+                >عرض</button>
+              </div>
+            )}
           </div>
         )}
 
@@ -1259,9 +1528,11 @@ const handleActivationSuccess = (activatedInfo: any) => {
             setActivePOSMode={setActivePOSMode}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
+            searchInputRef={menuSearchInputRef}
             quickId={quickId}
             quickQty={quickQty}
             quickTotal={quickTotal}
+            quickIdInputRef={quickIdInputRef}
             handleQuickIdChange={handleQuickIdChange}
             handleQuickQtyChange={handleQuickQtyChange}
             handleQuickTotalChange={handleQuickTotalChange}
@@ -1346,15 +1617,24 @@ const handleActivationSuccess = (activatedInfo: any) => {
         }}
       />
 
-      <QuickAddCustomerModal
-        show={showQuickAddCustomer}
-        onClose={() => setShowQuickAddCustomer(false)}
-        quickCustomerName={quickCustomerName}
-        setQuickCustomerName={setQuickCustomerName}
-        quickCustomerPhone={quickCustomerPhone}
-        setQuickCustomerPhone={setQuickCustomerPhone}
-        handleQuickAddCustomer={handleQuickAddCustomer}
-      />
+      {isCallCenterMode ? (
+        showQuickAddCustomer && (
+          <QuickCustomerForm
+            onClose={() => setShowQuickAddCustomer(false)}
+            onCreated={handleQuickCustomerCreated}
+          />
+        )
+      ) : (
+        <QuickAddCustomerModal
+          show={showQuickAddCustomer}
+          onClose={() => setShowQuickAddCustomer(false)}
+          quickCustomerName={quickCustomerName}
+          setQuickCustomerName={setQuickCustomerName}
+          quickCustomerPhone={quickCustomerPhone}
+          setQuickCustomerPhone={setQuickCustomerPhone}
+          handleQuickAddCustomer={handleQuickAddCustomer}
+        />
+      )}
 
       <CloseInvoiceModal
         show={showCustomerModal}

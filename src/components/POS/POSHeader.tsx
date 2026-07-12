@@ -9,9 +9,11 @@ interface POSHeaderProps {
   setActivePOSMode: (mode: 'tables' | 'menu' | 'info' | 'customer') => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
+  searchInputRef?: React.RefObject<HTMLInputElement | null>;
   quickId: string;
   quickQty: string;
   quickTotal: string;
+  quickIdInputRef?: React.RefObject<HTMLInputElement | null>;
   handleQuickIdChange: (id: string) => void;
   handleQuickQtyChange: (qty: string) => void;
   handleQuickTotalChange: (total: string) => void;
@@ -22,7 +24,7 @@ interface POSHeaderProps {
 
 export const POSHeader: React.FC<POSHeaderProps> = ({
   editingOrderId, isHospitality, isCallCenterMode = false, activePOSMode, setActivePOSMode,
-  searchQuery, setSearchQuery, quickId, quickQty, quickTotal,
+  searchQuery, setSearchQuery, searchInputRef, quickId, quickQty, quickTotal, quickIdInputRef,
   handleQuickIdChange, handleQuickQtyChange, handleQuickTotalChange,
   handleQuickAdd, handleKeyDown, clearCart,
 }) => {
@@ -46,6 +48,7 @@ export const POSHeader: React.FC<POSHeaderProps> = ({
           <div className="flex flex-wrap items-center gap-1.5 flex-1 w-full">
             <span className="text-[9px] font-black text-slate-500 uppercase shrink-0">إضافة سريعة:</span>
             <input
+              ref={quickIdInputRef}
               type="text"
               placeholder="رقم الصنف"
               value={quickId}
@@ -71,6 +74,7 @@ export const POSHeader: React.FC<POSHeaderProps> = ({
             />
           </div>
           <button
+            type="button"
             onClick={handleQuickAdd}
             className="w-full sm:w-auto bg-red-600 text-white px-4 py-1.5 rounded-lg text-[10px] font-black hover:bg-red-700 transition-all shadow-lg shadow-red-900/20 active:scale-95 shrink-0"
           >
@@ -101,6 +105,7 @@ export const POSHeader: React.FC<POSHeaderProps> = ({
             <Search size={16} />
           </div>
           <input
+            ref={searchInputRef}
             type="text"
             placeholder="ابحث عن وجبة، رقم الصنف..."
             className="w-full pr-10 pl-3 py-2.5 bg-slate-800/40 border border-white/5 rounded-xl focus:ring-2 focus:ring-red-600/50 outline-none text-[10px] font-bold text-white placeholder-slate-600 transition-all"

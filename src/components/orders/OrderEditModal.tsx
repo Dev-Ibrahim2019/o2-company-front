@@ -172,6 +172,7 @@ export const OrderEditModal = ({
               >
                 <option value="dine_in">محلي</option>
                 <option value="takeaway">سفري</option>
+                <option value="delivery">دليفري</option>
               </select>
             </label>
             <label className="space-y-1">

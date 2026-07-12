@@ -9,6 +9,7 @@ import {
   FileText,
   Printer,
   Search,
+  X,
 } from "lucide-react";
 import { OrderType, OrderStatus, PaymentMethod } from "../../../types";
 
@@ -68,6 +69,9 @@ interface CartPanelProps {
   paymentMethod: PaymentMethod;
   editingOrderId: string | null;
   editingQty: { [id: string]: string };
+  setEditingQty: React.Dispatch<
+    React.SetStateAction<{ [id: string]: string }>
+  >;
   editingNames: { [id: string]: string };
   handleNameChange: (uniqueId: string, newName: string) => void;
   handleQuantityChange: (uniqueId: string, val: string, price: number) => void;
@@ -91,8 +95,10 @@ interface CartPanelProps {
   customerPhone: string;
   setShowCustomerModal: (show: boolean) => void;
   handlePrintInvoice?: () => void;
+  clearActiveCart?: () => void;
   allItems?: SearchableItem[];
   addToCart?: (item: any, opts?: { quantity?: number; price?: number }) => void;
+  onClose?: () => void;
 }
 
 export const CartPanel: React.FC<CartPanelProps> = ({
@@ -124,6 +130,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
   paymentMethod,
   editingOrderId,
   editingQty,
+  setEditingQty,
   editingNames,
   handleNameChange,
   handleQuantityChange,
@@ -139,6 +146,8 @@ export const CartPanel: React.FC<CartPanelProps> = ({
   customerPhone,
   setShowCustomerModal,
   handlePrintInvoice,
+  clearActiveCart,
+  onClose,
   allItems = [],
   addToCart,
 }) => {
@@ -206,6 +215,17 @@ export const CartPanel: React.FC<CartPanelProps> = ({
     setSelectedSearchItem(item);
     setInlineSearch(item.name_ar || item.name);
     setShowDropdown(false);
+  };
+
+  const adjustItemQuantity = (uniqueId: string, nextQuantity: number) => {
+    lastFocusedItemRef.current = uniqueId;
+    setEditingQty((prev) => {
+      if (prev[uniqueId] === undefined) return prev;
+      const next = { ...prev };
+      delete next[uniqueId];
+      return next;
+    });
+    updateCartItem(uniqueId, { quantity: Math.max(1, nextQuantity) });
   };
 
   const handleInlineAdd = () => {
@@ -416,6 +436,12 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                 <tr
                   key={item.uniqueId}
                   className="group hover:bg-white/5 transition-colors"
+                  onFocus={() => {
+                    lastFocusedItemRef.current = item.uniqueId;
+                  }}
+                  onMouseEnter={() => {
+                    lastFocusedItemRef.current = item.uniqueId;
+                  }}
                 >
                   <td className="p-2 sm:p-3 text-[8px] sm:text-[10px] font-black text-slate-600">
                     {index + 1}
@@ -447,11 +473,8 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                   <td className="p-2 sm:p-3">
                     <div className="flex items-center justify-center gap-0.5">
                       <button
-                        onClick={() => {
-                          if (item.quantity > 1) {
-                            updateCartItem(item.uniqueId, { quantity: item.quantity - 1 });
-                          }
-                        }}
+                        type="button"
+                        onClick={() => adjustItemQuantity(item.uniqueId, item.quantity - 1)}
                         className="w-5 h-5 bg-slate-700 rounded text-[10px] font-bold text-white hover:bg-slate-600 flex items-center justify-center"
                       >
                         -
@@ -470,15 +493,23 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                             item.price,
                           )
                         }
+                        onKeyDown={(e) => {
+                          if (e.key === "+" || e.key === "=") {
+                            e.preventDefault();
+                            adjustItemQuantity(item.uniqueId, item.quantity + 1);
+                          } else if (e.key === "-" || e.key === "_") {
+                            e.preventDefault();
+                            adjustItemQuantity(item.uniqueId, item.quantity - 1);
+                          }
+                        }}
                         onBlur={(e) =>
                           handleQuantityBlur(item.uniqueId, e.target.value)
                         }
                         className="w-8 bg-transparent text-center text-[10px] sm:text-xs font-black text-white outline-none"
                       />
                       <button
-                        onClick={() => {
-                          updateCartItem(item.uniqueId, { quantity: item.quantity + 1 });
-                        }}
+                        type="button"
+                        onClick={() => adjustItemQuantity(item.uniqueId, item.quantity + 1)}
                         className="w-5 h-5 bg-slate-700 rounded text-[10px] font-bold text-white hover:bg-slate-600 flex items-center justify-center"
                       >
                         +
@@ -518,8 +549,8 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                   <td className="p-2 text-center">
                     <Plus size={12} className="text-emerald-500 mx-auto" />
                   </td>
-                  <td className="p-2 relative" ref={searchRef}>
-                    <div className="relative">
+                  <td className="p-2 relative">
+                    <div ref={searchRef} className="relative">
                       <input
                         type="text"
                         value={inlineSearch}
@@ -647,7 +678,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
           </div>
         </div>
         {/* Action Buttons */}
-        <div className={`grid ${isHospitality ? "grid-cols-1" : "grid-cols-3"} gap-2 pt-1`}>
+        <div className={`grid ${isHospitality ? "grid-cols-1" : isCallCenterMode ? "grid-cols-2" : "grid-cols-4"} gap-2 pt-1`}>
           {isHospitality ? (
             <button
               onClick={() => {
@@ -695,7 +726,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                 className="py-2.5 sm:py-3 bg-slate-800 text-white rounded-xl font-black text-[9px] sm:text-[10px] flex items-center justify-center gap-1.5 hover:bg-slate-700 disabled:opacity-30 transition-all active:scale-95"
               >
                 <Save size={14} />
-                حفظ
+                حفظ الفاتورة
               </button>
               {/* Print Invoice Button */}
               <button
@@ -712,30 +743,21 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                     setPosError("يرجى إدخال رقم الطاولة أولاً");
                     return;
                   }
-                  if (
-                    !customerName ||
-                    (customerName === "صندوق مبيعات" &&
-                      paymentMethod !== PaymentMethod.CASH)
-                  ) {
+                  if (!customerName || (customerName === "صندوق مبيعات" && paymentMethod !== PaymentMethod.CASH)) {
                     setShowCustomerModal(true);
                     return;
                   }
-                  submitOrder(
-                    OrderStatus.DELIVERED,
-                    paymentMethod,
-                    calculatedDiscount,
-                    {
-                      name: customerName,
-                      phone: customerPhone,
-                      note: invoiceNote,
-                    },
-                  );
+                  submitOrder(OrderStatus.DELIVERED, paymentMethod, calculatedDiscount, {
+                    name: customerName,
+                    phone: customerPhone,
+                    note: invoiceNote,
+                  });
                 }}
                 disabled={currentCart.length === 0}
                 className="py-2.5 sm:py-3 bg-red-600 text-white rounded-xl font-black text-[9px] sm:text-[10px] flex items-center justify-center gap-1.5 hover:bg-red-700 shadow-xl shadow-red-900/20 disabled:opacity-30 transition-all active:scale-95"
               >
                 <CheckCircle size={14} />
-                إغلاق
+                إغلاق الفاتورة
               </button>
             </>
           )}

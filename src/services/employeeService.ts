@@ -3,6 +3,39 @@
 
 import api from "../api/axios";
 
+export type OperationalRole =
+  | "call_center_agent"
+  | "assembler"
+  | "delivery_driver"
+  | "manager"
+  | "cashier"
+  | "other";
+
+export type VehicleType = "bicycle" | "electric_bike" | "motorcycle" | "external";
+
+export interface EmployeePerformance {
+  status?: string;
+  calls_today?: number;
+  answered_calls?: number;
+  missed_calls?: number;
+  average_handle_time_minutes?: number;
+  orders_today?: number;
+  completed_orders?: number;
+  average_assembly_minutes?: number;
+  active_order_number?: string | number;
+  active_trip_number?: string | number;
+  trip_started_at?: string;
+  expected_delivery_at?: string;
+  delivery_delay_minutes?: number;
+  on_time_percentage?: number;
+  cash_collected?: number;
+  cash_expected?: number;
+  cash_variance?: number;
+  current_location?: string;
+  alert?: string;
+  [key: string]: unknown;
+}
+
 export interface EmployeeFromApi {
   id: number;
   name: string;
@@ -15,6 +48,7 @@ export interface EmployeeFromApi {
   image?: string;
   branch_id: number;
   department_id: number;
+  job_title_id?: number | null;
   jobTitleId?: string;
   typeId?: string;
   managerId?: string;
@@ -37,7 +71,12 @@ export interface EmployeeFromApi {
   outstanding_advance?: number;
   accrued_salary?: number;
   net_payable?: number;
-  job_title?: { id: number; name: string };
+  job_title?: { id: number; name: string; name_ar?: string; name_en?: string; default_operational_role?: OperationalRole; requires_vehicle?: boolean };
+  jobTitle?: { id: number; name: string; default_operational_role?: OperationalRole; requires_vehicle?: boolean };
+  operational_role?: OperationalRole;
+  is_operations_enabled?: boolean;
+  vehicle_type?: VehicleType;
+  performance?: EmployeePerformance | string | null;
 }
 
 export interface EmployeeFilters {
@@ -49,6 +88,31 @@ export interface EmployeeFilters {
   month?: number;
   year?: number;
 }
+
+export type EmployeePayload = {
+  name: string;
+  phone: string;
+  email?: string;
+  address?: string;
+  nationalId?: string;
+  dob?: string;
+  branch_id: number;
+  department_id: number;
+  job_title_id?: number | null;
+  jobTitleId?: string;
+  hireDate: string;
+  salary?: number;
+  role: string;
+  status: string;
+  employeeId?: string;
+  username?: string;
+  pin?: string;
+  permissions?: string[];
+  notes?: string;
+  operational_role?: OperationalRole;
+  is_operations_enabled?: boolean;
+  vehicle_type?: VehicleType;
+};
 
 export interface EmployeeStatementLine {
   id?: number;
@@ -199,12 +263,12 @@ export const employeeService = {
     return data.data;
   },
 
-  create: async (payload: any): Promise<EmployeeFromApi> => {
+  create: async (payload: EmployeePayload): Promise<EmployeeFromApi> => {
     const { data } = await api.post("/employees", payload);
     return data.data;
   },
 
-  update: async (id: number, payload: any): Promise<EmployeeFromApi> => {
+  update: async (id: number, payload: Partial<EmployeePayload>): Promise<EmployeeFromApi> => {
     const { data } = await api.put(`/employees/${id}`, payload);
     return data.data;
   },

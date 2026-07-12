@@ -1,16 +1,28 @@
 // src/services/jobTitleService.ts
 import api from "../api/axios";
+import type { OperationalRole } from "./employeeService";
 
 export interface JobTitle {
     id: number;
     name: string;
     description?: string;
+    name_ar?: string;
+    name_en?: string;
+    department_id?: number | null;
+    department?: { id: number; name: string };
+    default_operational_role?: OperationalRole;
+    requires_vehicle?: boolean;
     is_active?: boolean;
 }
 
 export interface JobTitlePayload {
     name: string;
     description?: string;
+    name_ar?: string;
+    name_en?: string;
+    department_id?: number | null;
+    default_operational_role?: OperationalRole;
+    requires_vehicle?: boolean;
     is_active?: boolean;
 }
 

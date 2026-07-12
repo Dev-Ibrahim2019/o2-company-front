@@ -22,6 +22,12 @@ import {
   Menu,
   Receipt,
   HeartHandshake,
+  Users,
+  User,
+  AlertTriangle,
+  Phone,
+  Calendar,
+  PackageCheck,
 } from "lucide-react";
 
 export const POSLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
@@ -89,11 +95,29 @@ export const POSLayout: React.FC<{ children?: React.ReactNode }> = ({ children }
         </button>
 
         <nav className="flex-1 space-y-1.5 overflow-y-auto custom-scrollbar">
-          <SidebarLink to="/pos" icon={ShoppingCart} label="نقطة البيع (POS)" />
-          <SidebarLink to="/pos/orders" icon={ClipboardList} label="الطلبات النشطة" permission={PERMISSIONS.VIEW_ORDERS} />
-          {!isCallCenter && <SidebarLink to="/pos/tables" icon={Grid2X2} label="إدارة الطاولات" />}
-          <SidebarLink to="/shift" icon={Clock} label="إدارة الشفت" />
-          <SidebarLink to="/pos" icon={Receipt} label="التقارير المالية" permission={PERMISSIONS.VIEW_REPORTS} />
+          {isCallCenter ? (
+            <>
+              <div className="px-4 py-1.5">
+                <p className="text-[10px] font-black text-amber-500 uppercase tracking-wider">☎ الكول سنتر</p>
+              </div>
+              <SidebarLink to="/pos/call-center/pos" icon={Phone} label="نقطة البيع / إنشاء طلب" />
+              <SidebarLink to="/pos/orders" icon={ClipboardList} label="الطلبات النشطة" permission={PERMISSIONS.VIEW_ORDERS} />
+              <SidebarLink to="/pos/call-center/customers" icon={Users} label="إدارة العملاء" permission={PERMISSIONS.ACCESS_CALL_CENTER} />
+              <SidebarLink to="/pos/call-center/employees" icon={User} label="إدارة الموظفين" permission={PERMISSIONS.ACCESS_CALL_CENTER} />
+              <SidebarLink to="/pos/call-center/complaints" icon={AlertTriangle} label="الشكاوى والمتابعة" permission={PERMISSIONS.ACCESS_CALL_CENTER} />
+              <SidebarLink to="/pos/call-center/occasions" icon={Calendar} label="المناسبات" permission={PERMISSIONS.ACCESS_CALL_CENTER} />
+              <SidebarLink to="/shift" icon={Clock} label="إدارة الشفت" />
+            </>
+          ) : (
+            <>
+              <SidebarLink to="/pos" icon={ShoppingCart} label="نقطة البيع (POS)" />
+              <SidebarLink to="/pos/orders" icon={ClipboardList} label="الطلبات النشطة" permission={PERMISSIONS.VIEW_ORDERS} />
+              <SidebarLink to="/pos/tables" icon={Grid2X2} label="إدارة الطاولات" />
+              <SidebarLink to="/shift" icon={Clock} label="إدارة الشفت" />
+              <SidebarLink to="/pos" icon={Receipt} label="التقارير المالية" permission={PERMISSIONS.VIEW_REPORTS} />
+            </>
+          )}
+          <SidebarLink to="/pos/assembler" icon={PackageCheck} label="مجمّع الطلبات" permission={PERMISSIONS.VIEW_ORDERS} />
         </nav>
 
         <div className="mt-auto border-t border-white/5 pt-4 space-y-2">
