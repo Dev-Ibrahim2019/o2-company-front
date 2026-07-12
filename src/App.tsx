@@ -31,6 +31,7 @@ import { SalesInvoiceListPage, SalesInvoiceFormPage } from "./components/sales-i
 import { ToastContainer } from "./components/shared/Toast";
 import UsersManagementPage from "./pages/UsersManagementPage";
 import PosRegistersPage from "./pages/PosRegistersPage";
+import { PrintersManagement } from "./components/administration/printers-management";
 import HospitalityDevicesPage from "./pages/HospitalityDevicesPage";
 import DiningZonesPage from "./pages/DiningZonesPage";
 import DiningTablesDashboard from "./components/administration/DiningTablesDashboard";
@@ -254,8 +255,8 @@ function AppRoutes() {
               <Route path="orgstructure" element={<FinanceView />} />
               <Route path="financial-invoices" element={<FinanceView />} />
               <Route path="sales-invoices" element={<SalesInvoicesView />} />
-              <Route path="discounts" element={<FinanceView />} />
-
+              <Route path="discounts" element={<FinanceView />} /> 
+              <Route path="printers" element={<PrintersManagement />} />
               <Route path="accounting">
                 <Route index element={<Navigate to="dashboard" replace />} />
                 <Route path=":tab" element={<AccountingView />} />

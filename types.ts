@@ -576,3 +576,55 @@ export interface ActivityLog {
   timestamp: Date;
   details?: any;
 }
+
+// ── Print Router Types ──────────────────────────────────────────────────────
+
+export type PrinterTypeValue = 'CASHIER' | 'KITCHEN' | 'BAR' | 'OTHER';
+
+export interface Printer {
+  id: number;
+  name: string;
+  ip_address: string;
+  port: string;
+  type: PrinterTypeValue;
+  branch_id: number;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type PrintRouteScope = 'CATEGORY' | 'ITEM';
+
+export interface PrintRoute {
+  id: number;
+  branch_id: number;
+  user_id: number | null;
+  pos_register_id: number | null;
+  hospitality_device_id: number | null;
+  category_id: number | null;
+  item_id: number | null;
+  printer_id: number;
+  scope: PrintRouteScope; // computed by backend accessor
+  action_type: string; // KOT أو BILL
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+  // Relations (from API)
+  printer?: Printer;
+  user?: { id: number; name: string };
+  posRegister?: { id: number; name: string; code: string };
+  hospitalityDevice?: { id: number; name: string; code: string };
+  category?: { id: number; name: string };
+  item?: { id: number; name: string };
+}
+
+export interface PrintRouteFormData {
+  scope: PrintRouteScope;
+  user_id?: number | null;
+  pos_register_id?: number | null;
+  hospitality_device_id?: number | null;
+  category_id?: number | null;
+  item_id?: number | null;
+  printer_id: number;
+  action_type?: string;
+}

@@ -36,6 +36,7 @@ import {
   Monitor,
   HeartHandshake,
   Grid3X3,
+  Printer,
 } from "lucide-react";
 
 /* ── روابط التنقل ── */
@@ -58,6 +59,7 @@ const NAV = [
   { to: "/admin/orgstructure", icon: Building2, label: "الهيكل التنظيمي", permission: PERMISSIONS.MANAGE_EMPLOYEES },
   { to: "/admin/pos-registers", icon: Monitor, label: "نقاط البيع", permission: PERMISSIONS.MANAGE_POS_REGISTERS },
   { to: "/admin/hospitality-devices", icon: HeartHandshake, label: "أجهزة الضيافة", permission: PERMISSIONS.MANAGE_HOSPITALITY_DEVICES },
+  { to: "/admin/printers", icon: Printer, label: "أجهزة الطابعات"},
   { to: "/admin/dining-zones", icon: Grid3X3, label: "القاعات والطاولات", permission: PERMISSIONS.MANAGE_DINING_ZONES },
   { to: "/admin/dining-dashboard", icon: LayoutDashboard, label: "لوحة إدارة الطاولات", permission: PERMISSIONS.MANAGE_DINING_ZONES },
   { to: "/admin/pos", icon: Monitor, label: "واجهة الكاشير", permission: PERMISSIONS.ACCESS_POS_INTERFACE },
@@ -211,6 +213,7 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({ children
           <SidebarLink to="/admin/permissions" icon={Shield} label="الأدوار والصلاحيات" permission={PERMISSIONS.MANAGE_USERS} />
           <SidebarLink to="/admin/pos-registers" icon={Monitor} label="نقاط البيع" permission={PERMISSIONS.MANAGE_POS_REGISTERS} />
           <SidebarLink to="/admin/hospitality-devices" icon={HeartHandshake} label="أجهزة الضيافة" permission={PERMISSIONS.MANAGE_HOSPITALITY_DEVICES} />
+          <SidebarLink to="/admin/printers" icon={Printer} label="أجهزة الطباعة" />
           <SidebarLink to="/admin/dining-zones" icon={Grid3X3} label="القاعات والطاولات" permission={PERMISSIONS.MANAGE_DINING_ZONES} />
           <SidebarLink to="/admin/dining-dashboard" icon={LayoutDashboard} label="لوحة إدارة الطاولات" permission={PERMISSIONS.MANAGE_DINING_ZONES} />
           <SidebarLink to="/admin/pos" icon={Monitor} label="واجهة الكاشير" permission={PERMISSIONS.ACCESS_POS_INTERFACE} />

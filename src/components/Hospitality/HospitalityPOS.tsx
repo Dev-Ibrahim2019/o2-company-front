@@ -8,7 +8,7 @@
 // - دائماً يبدأ بعرض المنيو
 
 import React, { useState, useEffect, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useApp } from "../../../store";
 import {
   OrderType,
@@ -43,6 +43,8 @@ import type { Order, Table } from "../../../types";
 import { getDeviceUUIDSecurely } from "../../utils/hospitalitySecurity";
 import HospitalityActivationPage from "./HospitalityActivationPage";
 import { ROLES } from "../../auth/permissions";
+import api from "../../api/axios";
+import { toast } from "../shared/Toast";
 
 
 const MONEY_EPSILON = 0.01;
@@ -118,6 +120,7 @@ const normalizeTableNumber = (value: string | number | null | undefined) =>
 
 export const HospitalityPOS: React.FC = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [deviceUuid, setDeviceUuid] = useState<string | null>(null);
   const [posInfo, setPosInfo] = useState<any>(null);
   const [checkingSecurity, setCheckingSecurity] = useState(true);
@@ -193,6 +196,7 @@ export const HospitalityPOS: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [manualTable, setManualTable] = useState("");
+  const [isPrinting, setIsPrinting] = useState(false);
 
   // ── Customer State ────────────────────────────────────────────────────────
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
@@ -755,7 +759,18 @@ export const HospitalityPOS: React.FC = () => {
         forgetTableDraft(activeTable.id);
       }
       setEditingApiOrderId(null);
-      alert(`تم إرسال الفاتورة للطباعة للطاولة #${manualTable}`);
+
+      // Call print-invoice API
+      setIsPrinting(true);
+      try {
+        await api.post(`/orders/${result.id}/print-invoice`);
+        toast.success("تم إرسال الفاتورة إلى الطابعة بنجاح 🖨️", `الطاولة #${manualTable}`);
+      } catch (printErr: any) {
+        const msg = printErr.response?.data?.message || "فشل إرسال الفاتورة للطابعة";
+        toast.error("خطأ في الطباعة", msg);
+      } finally {
+        setIsPrinting(false);
+      }
     }
   };
 
@@ -976,7 +991,7 @@ export const HospitalityPOS: React.FC = () => {
     currentCart,
     manualTable,
     handleTableInput,
-    onViewTables: () => {},
+    onViewTables: () => navigate("/Hospitality/tables"),
     subtotal,
     calculatedDiscount,
     discountType,
@@ -1006,6 +1021,7 @@ export const HospitalityPOS: React.FC = () => {
     customerPhone,
     setShowCustomerModal,
     handlePrintInvoice,
+    isPrinting,
     onCloseCart: clearActiveCart,
     allItems,
     addToCart,

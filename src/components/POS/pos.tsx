@@ -47,6 +47,7 @@ import type { Order, Table } from "../../../types";
 import { getDeviceUUIDSecurely } from "../../utils/posSecurity";
 import POSActivationPage from "./POSActivationPage";
 import { PERMISSIONS, ROLES } from "../../auth/permissions";
+import api from "../../api/axios";
 
 
 const MONEY_EPSILON = 0.01;
@@ -213,6 +214,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [manualTable, setManualTable] = useState("");
+  const [isPrinting, setIsPrinting] = useState(false);
 
   // Auto-dismiss error toast
   useEffect(() => {
@@ -822,54 +824,25 @@ const handleActivationSuccess = (activatedInfo: any) => {
     }
   };
 
-  const handlePrintInvoice = async () => {
-    if (currentCart.length === 0) {
-      setPosError("السلة فارغة");
-      return;
-    }
-    if (cartOrderType === OrderType.DINE_IN && !manualTable) {
-      setPosError("يرجى إدخال رقم الطاولة أولاً");
-      return;
-    }
+const handlePrintInvoice = async (orderId: number | string) => {
+  if (!orderId || isPrinting) return;
 
-    const activeTable =
-      cartOrderType === OrderType.DINE_IN ? resolveActiveDineInTable() : null;
-    if (cartOrderType === OrderType.DINE_IN && !activeTable) return;
+  setIsPrinting(true); // استخدام الدالة المعرفة مسبقاً في ملفك
+  try {
+    // إرسال طلب الفحص للباك إند
+    const response = await api.post(`/orders/${orderId}/print-invoice`);
 
-    // Submit the order as PENDING so it is saved to the backend
-    const orderType =
-      cartOrderType === OrderType.DINE_IN ? "dine_in" : "takeaway";
-    const result = await submitOrderApi(
-      {
-        branch_id: branchId || 0,
-        cashier_id: currentUser?.id ? Number(currentUser.id) : undefined,
-        order_type: orderType,
-        table_number: activeTable?.table_number || activeTable?.number.toString(),
-        customer_name: customerName || undefined,
-        customer_phone: customerPhone || undefined,
-        note: invoiceNote || undefined,
-        discount_value: discountValue || undefined,
-        discount_type: discountType === "PERCENT" ? "percent" : "amount",
-        ...getPricingContext(),
-      },
-      true, // confirm order
-      [],
-      false, // do not close/create invoice yet
-      editingApiOrderId,
-    );
-
-    if (result) {
-      if (activeTable) {
-        updateTableStatus(activeTable.id, TableStatus.OCCUPIED, {
-          currentOrderId: String(result.id),
-        });
-        setSelectedTable(activeTable);
-        forgetTableDraft(activeTable.id);
-      }
-      setEditingApiOrderId(null);
-      toast.success("تم إرسال الفاتورة للطباعة", `الطاولة #${manualTable}`);
+    if (response.data && response.data.success) {
+      toast.success(response.data.message || "تم الاتصال بالمسار بنجاح!");
     }
-  };
+  } catch (error: any) {
+    console.error("Print Error:", error);
+    const errorMsg = error.response?.data?.message || "فشلت العملية، تحقق من الشبكة";
+    toast.error(errorMsg);
+  } finally {
+    setIsPrinting(false);
+  }
+};
 
   const handleSelectCustomer = (customer: any) => {
     setSelectedCustomer(customer);
@@ -1163,6 +1136,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
     customerPhone,
     setShowCustomerModal,
     handlePrintInvoice,
+    isPrinting,
     allItems,
     addToCart,
   };

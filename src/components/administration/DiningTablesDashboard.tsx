@@ -763,32 +763,54 @@ const EditHallModal: React.FC<EditHallModalProps> = ({ open, onClose, hall, onSu
  * ══════════════════════════════════════════════════════════════ */
 
 const QrModal: React.FC<{ table: DiningTableExt; onClose: () => void }> = ({ table, onClose }) => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
     <motion.div
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="bg-slate-900 border border-white/[0.08] rounded-2xl shadow-2xl p-6 w-80 text-center"
+      initial={{ opacity: 0, scale: 0.95, y: 20 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      className="bg-slate-900 border border-white/10 rounded-3xl w-full max-w-sm p-6 space-y-5 shadow-2xl text-center"
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold text-white">رمز QR</h3>
-        <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-white/[0.05] text-slate-400 hover:text-white">
-          <X size={16} />
-        </button>
+      <div className="w-16 h-16 mx-auto bg-blue-600/20 rounded-full flex items-center justify-center border border-blue-600/30">
+        <QrCode size={32} className="text-blue-400" />
       </div>
-      <div className="bg-white rounded-xl p-4 mb-4">
-        {table.qr_url ? (
-          <img src={table.qr_url} alt={`QR ${table.table_number}`} className="w-48 h-48 mx-auto" />
-        ) : table.qr_code ? (
-          <img src={`data:image/svg+xml;base64,${table.qr_code}`} alt={`QR ${table.table_number}`} className="w-48 h-48 mx-auto" />
-        ) : (
-          <div className="w-48 h-48 flex items-center justify-center text-slate-400">
-            <QrCode size={64} />
-          </div>
-        )}
+
+      <div>
+        <h2 className="text-lg font-black text-white">QR Code</h2>
+        <p className="text-sm text-slate-400 mt-1">
+          الطاولة: <span className="text-slate-200 font-bold">{table.table_number}</span>
+        </p>
       </div>
-      <p className="text-sm font-bold text-white">{table.table_number}</p>
-      <p className="text-xs text-slate-400 mt-1">امسح الكود لعرض القائمة</p>
+
+      <div className="bg-white rounded-2xl p-4 mx-auto w-48 h-48 flex items-center justify-center">
+        <img
+          src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(table.qr_url)}`}
+          alt={`QR ${table.table_number}`}
+          className="w-full h-full"
+        />
+      </div>
+
+      <div className="bg-slate-800 rounded-xl p-3">
+        <p className="text-xs text-slate-500 font-bold mb-1">رابط QR</p>
+        <p className="text-xs text-slate-300 font-mono break-all">{table.qr_url}</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="bg-slate-800 rounded-xl p-2">
+          <p className="text-slate-500 font-bold">السعة</p>
+          <p className="text-white font-black">{table.capacity} أشخاص</p>
+        </div>
+        <div className="bg-slate-800 rounded-xl p-2">
+          <p className="text-slate-500 font-bold">الحالة</p>
+          <p className="text-white font-black">{table.status}</p>
+        </div>
+      </div>
+
+      <button
+        onClick={onClose}
+        className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-colors"
+      >
+        إغلاق
+      </button>
     </motion.div>
   </div>
 );
@@ -852,12 +874,18 @@ const DiningTablesDashboard: React.FC = () => {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  /* ── Add Hall ───────────────────────────────────────────── */
+  /* ── Add Hall + Tables ────────────────────────────────────── */
   const handleAddHall = async (data: { branch_id: number; name: string; code: string; tables_count: number; tables_capacity: number }) => {
     setSubmitting(true);
     try {
-      await api.post("/admin/dining-zones", data);
-      setSuccess("تم إنشاء القاعة بنجاح");
+      await api.post("/admin/dining-zones", {
+        branch_id: data.branch_id,
+        name: data.name,
+        code: data.code,
+        tables_count: data.tables_count,
+        tables_capacity: data.tables_capacity,
+      });
+      setSuccess("تم إنشاء القاعة والطاولات بنجاح");
       await fetchAll();
     } catch (err: any) {
       throw err;
