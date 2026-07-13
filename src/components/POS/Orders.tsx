@@ -58,6 +58,8 @@ const getStatusColor = (status: ApiOrderStatus) => {
   switch (status) {
     case "pending":
       return "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
+    case "pending_confirmation":
+      return "bg-purple-500/10 text-purple-400 border-purple-500/20";
     case "confirmed":
       return "bg-blue-500/10 text-blue-400 border-blue-500/20";
     case "in_progress":
@@ -79,6 +81,8 @@ const getStatusDotColor = (status: ApiOrderStatus) => {
   switch (status) {
     case "pending":
       return "bg-yellow-400";
+    case "pending_confirmation":
+      return "bg-purple-400";
     case "confirmed":
       return "bg-blue-400";
     case "in_progress":
@@ -100,6 +104,8 @@ const getStatusLabel = (status: ApiOrderStatus) => {
   switch (status) {
     case "pending":
       return "محفوظ";
+    case "pending_confirmation":
+      return "بانتظار التأكيد";
     case "confirmed":
       return "مرسل للأقسام";
     case "in_progress":

@@ -35,6 +35,7 @@ import {
   Phone,
   Hash,
   CheckCircle,
+  Send,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -1019,6 +1020,46 @@ export const HospitalityTables: React.FC<{
                             className="w-full bg-emerald-600 text-white py-3 rounded-xl font-black text-xs shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2"
                           >
                             <CheckCircle size={16} /> تأكيد الطلب
+                          </button>
+                        )}
+
+                        {/* زر ترحيل العناصر الجديدة — يظهر عندما الطلب مؤكد لكن فيه عناصر جديدة بانتظار الترحيل */}
+                        {activePopupApiOrder.status !== "pending_confirmation" &&
+                          activePopupApiOrder.status !== "paid" &&
+                          activePopupApiOrder.status !== "cancelled" &&
+                          activePopupApiOrder.status !== "served" &&
+                          (activePopupApiOrder as any).has_unsent_items && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                const res = await fetch(
+                                  `${import.meta.env.VITE_API_URL || "/api"}/orders/${activePopupApiOrder.id}/confirm`,
+                                  {
+                                    method: "POST",
+                                    headers: {
+                                      "Content-Type": "application/json",
+                                      Authorization: `Bearer ${localStorage.getItem("token")}`,
+                                    },
+                                  }
+                                );
+                                const data = await res.json();
+                                if (data.success) {
+                                  setActiveApiOrder({
+                                    ...activePopupApiOrder,
+                                    status: "confirmed",
+                                    has_unsent_items: false,
+                                  });
+                                  alert("تم ترحيل العناصر الجديدة للأقسام");
+                                } else {
+                                  alert(data.message || "فشل ترحيل العناصر");
+                                }
+                              } catch {
+                                alert("حدث خطأ أثناء ترحيل العناصر");
+                              }
+                            }}
+                            className="w-full bg-amber-500 text-white py-3 rounded-xl font-black text-xs shadow-lg shadow-amber-900/20 flex items-center justify-center gap-2 animate-pulse"
+                          >
+                            <Send size={16} /> ترحيل العناصر الجديدة
                           </button>
                         )}
 

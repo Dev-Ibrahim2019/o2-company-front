@@ -7,6 +7,7 @@ import type { Transaction as AccountingTransaction } from "./accountingService";
 export type OrderType = "dine_in" | "takeaway";
 export type OrderStatus =
   | "pending"
+  | "pending_confirmation"
   | "confirmed"
   | "in_progress"
   | "ready"
@@ -379,6 +380,7 @@ export interface OrderFromApi {
   tickets: ProductionTicketFromApi[];
   payments?: InvoicePaymentResponse[];
   cashier?: { id: number; name: string };
+  has_unsent_items?: boolean;
   created_at: string;
   updated_at: string;
 }
