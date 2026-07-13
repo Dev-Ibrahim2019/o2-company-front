@@ -1002,7 +1002,7 @@ export const HospitalityTables: React.FC<{
                                 if (data.success) {
                                   setActiveApiOrder({
                                     ...activePopupApiOrder,
-                                    status: "pending",
+                                    status: "confirmed",
                                   });
                                   updateTableStatus(
                                     activePopupTable.id,

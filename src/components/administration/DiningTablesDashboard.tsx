@@ -93,7 +93,7 @@ type TableFilter = "ALL" | "AVAILABLE" | "OCCUPIED" | "RESERVED" | "PAYMENT_PEND
  *  Status Config
  * ══════════════════════════════════════════════════════════════ */
 
-const STATUS_CONFIG: Record<string, { label: string; labelAr: string; color: string; bg: string; border: string; dot: string }> = {
+const STATUS_CONFIG: Record<string, { label: string; labelAr: string; color: string; bg: string; border: string; dot: string; blink?: boolean }> = {
   AVAILABLE: { label: "Available", labelAr: "متاح", color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20", dot: "bg-emerald-400" },
   OCCUPIED: { label: "Occupied", labelAr: "مشغول", color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", dot: "bg-amber-400" },
   RESERVED: { label: "Reserved", labelAr: "محجوز", color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20", dot: "bg-blue-400" },
@@ -102,6 +102,7 @@ const STATUS_CONFIG: Record<string, { label: string; labelAr: string; color: str
   OUT_OF_SERVICE: { label: "Out of Service", labelAr: "خارج الخدمة", color: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/20", dot: "bg-red-400" },
   PAID: { label: "Paid", labelAr: "مدفوع", color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20", dot: "bg-emerald-400" },
   HAS_ORDER: { label: "Has Order", labelAr: "عليه طلب", color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", dot: "bg-amber-400" },
+  PENDING_CONFIRMATION: { label: "Pending", labelAr: "بانتظار التأكيد", color: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/50", dot: "bg-red-400", blink: true },
 };
 
 const STATUS_ORDER: TableFilter[] = ["ALL", "AVAILABLE", "OCCUPIED", "RESERVED", "PAYMENT_PENDING", "CLEANING", "OUT_OF_SERVICE"];
@@ -986,7 +987,13 @@ const DiningTablesDashboard: React.FC = () => {
 
   const selectedZoneTables = useMemo(() => {
     if (!selectedZone) return [];
-    let tables: (DiningTableExt & { zoneId: number })[] = selectedZone.tables.map((t) => ({ ...t, zoneId: selectedZone.id }));
+    let tables: (DiningTableExt & { zoneId: number; zoneName: string; zoneCode: string; branchId: number })[] = selectedZone.tables.map((t) => ({ 
+      ...t, 
+      zoneId: selectedZone.id,
+      zoneName: selectedZone.name,
+      zoneCode: selectedZone.code,
+      branchId: selectedZone.branch_id,
+    }));
     if (filterStatus !== "ALL") {
       tables = tables.filter((t) => t.status === filterStatus);
     }
@@ -1565,14 +1572,27 @@ const DiningTablesDashboard: React.FC = () => {
                           key={table.id}
                           layout
                           initial={{ opacity: 0, scale: 0.9 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.9 }}
-                          transition={{ delay: i * 0.02 }}
+                          animate={cfg.blink ? { 
+                            opacity: 1, 
+                            scale: 1,
+                            boxShadow: [
+                              "0 0 0 0 rgba(239, 68, 68, 0.7)",
+                              "0 0 0 12px rgba(239, 68, 68, 0)",
+                              "0 0 0 0 rgba(239, 68, 68, 0)",
+                            ],
+                          } : { opacity: 1, scale: 1 }}
+                          transition={cfg.blink ? {
+                            boxShadow: {
+                              duration: 1.5,
+                              repeat: Infinity,
+                              ease: "easeInOut",
+                            }
+                          } : { delay: i * 0.02 }}
                           onContextMenu={(e) => {
                             e.preventDefault();
                             setContextMenu({ x: e.clientX, y: e.clientY, type: "table", data: table });
                           }}
-                          className={`relative bg-slate-900/60 backdrop-blur-sm border rounded-2xl p-4 hover:border-white/[0.12] transition-all duration-300 group cursor-pointer ${cfg.border}`}
+                          className={`relative bg-slate-900/60 backdrop-blur-sm border rounded-2xl p-4 hover:border-white/[0.12] transition-all duration-300 group cursor-pointer ${cfg.border} ${cfg.blink ? 'animate-pulse border-red-500/70' : ''}`}
                         >
                           {/* Status dot */}
                           <div className="absolute top-3 right-3">

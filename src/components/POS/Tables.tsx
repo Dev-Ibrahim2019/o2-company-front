@@ -957,7 +957,7 @@ export const TablesView: React.FC<{
                                 if (data.success) {
                                   setActiveApiOrder({
                                     ...activePopupApiOrder,
-                                    status: "pending",
+                                    status: "confirmed",
                                   });
                                   updateTableStatus(
                                     activePopupTable.id,
