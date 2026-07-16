@@ -83,6 +83,7 @@ export const settlementService = {
   async settle(
     orderId: number,
     payments: PaymentEntryDto[],
+    callCenter = false,
   ): Promise<SettlementResult> {
     console.debug("settlementService.settle", {
       orderId,
@@ -95,7 +96,7 @@ export const settlementService = {
         amount: payment.amount,
       })),
     });
-    const response = await axios.post(`/orders/${orderId}/settle`, {
+    const response = await axios.post(`${callCenter ? "/call-center" : ""}/orders/${orderId}/settle`, {
       payments,
     });
     return response.data.data;
@@ -114,8 +115,8 @@ export const settlementService = {
    * Get all active payment methods with their linked accounts.
    * GET /payment-methods
    */
-  async getPaymentMethods(): Promise<PaymentMethodDto[]> {
-    const response = await axios.get("/payment-methods");
+  async getPaymentMethods(callCenter = false): Promise<PaymentMethodDto[]> {
+    const response = await axios.get(`${callCenter ? "/call-center" : ""}/payment-methods`);
     return response.data.data;
   },
 

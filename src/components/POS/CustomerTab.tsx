@@ -34,6 +34,9 @@ interface CustomerTabProps {
   setCustomerName: (name: string) => void;
   customerPhone: string;
   setCustomerPhone: (phone: string) => void;
+  customerAddress?: string;
+  setCustomerAddress?: (address: string) => void;
+  isCallCenterMode?: boolean;
   selectedCustomer: any;
   accountType: 'ACCOUNT' | 'SUPPLIER' | 'EMPLOYEE';
   setAccountType: (type: 'ACCOUNT' | 'SUPPLIER' | 'EMPLOYEE') => void;
@@ -55,6 +58,7 @@ interface CustomerTabProps {
 
 export const CustomerTab: React.FC<CustomerTabProps> = ({
   customerName, setCustomerName, customerPhone, setCustomerPhone,
+  customerAddress = "", setCustomerAddress, isCallCenterMode = false,
   selectedCustomer, accountType, setAccountType, accountNumber, setAccountNumber,
   setShowSearchModal, customers, suppliers, employees, isHospitality, total, payments, addPayment, removePayment,
   updatePaymentAmount, updatePaymentReference,
@@ -235,6 +239,20 @@ export const CustomerTab: React.FC<CustomerTabProps> = ({
                 className="w-full p-2.5 sm:p-3 bg-slate-800 border border-white/5 rounded-xl outline-none focus:ring-2 focus:ring-red-600 font-black text-[10px] sm:text-xs text-white transition-all"
               />
             </div>
+            {isCallCenterMode && (
+              <div className="space-y-1.5 sm:col-span-2">
+                <label htmlFor="invoice-customer-address" className="text-[9px] font-black text-slate-500 uppercase tracking-widest mr-2">عنوان التوصيل</label>
+                <input
+                  id="invoice-customer-address"
+                  type="text"
+                  value={customerAddress}
+                  onChange={(event) => setCustomerAddress?.(event.target.value)}
+                  placeholder="المدينة، المنطقة، الشارع، أقرب معلم"
+                  autoComplete="street-address"
+                  className="w-full p-2.5 sm:p-3 bg-slate-800 border border-white/5 rounded-xl outline-none focus:ring-2 focus:ring-red-600 font-black text-[10px] sm:text-xs text-white transition-all"
+                />
+              </div>
+            )}
           </div>
         </div>
 

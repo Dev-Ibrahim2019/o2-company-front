@@ -36,6 +36,7 @@ export const ROLES = {
   /** موظف القسم — عرض طلبات القسم فقط */
   DEPT_STAFF: "dept-staff",
   CALL_CENTER: "call-center",
+  ORDER_AGGREGATOR: "order-aggregator",
 } as const;
 
 /** نوع يمثل جميع قيم الأدوار الممكنة */

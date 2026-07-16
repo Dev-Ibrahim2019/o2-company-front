@@ -1,5 +1,19 @@
 import api from "../api/axios";
 
+const sanitizeCustomerAddress = (data: Record<string, unknown>) => {
+  const allowedFields = [
+    "label", "city", "area", "district", "street", "landmark",
+    "building_no", "floor", "apartment", "delivery_notes",
+    "is_default", "is_active",
+  ] as const;
+
+  return Object.fromEntries(
+    allowedFields
+      .filter((field) => data[field] !== undefined)
+      .map((field) => [field, data[field]]),
+  );
+};
+
 export interface CustomerSearchResult {
   id: number;
   name: string;
@@ -395,8 +409,53 @@ export const callCenterService = {
     delivery_notes?: string;
     branch_id?: number;
   }): Promise<ApiResponse<CustomerSearchResult & { addresses?: CustomerAddress[] }>> => {
-    const res = await api.post("/call-center/customers/quick-create", data);
-    return res.data;
+    try {
+      const res = await api.post("/call-center/customers/quick-create", data);
+      return res.data;
+    } catch (error: any) {
+      const message = String(error?.response?.data?.message || "");
+      if (!message.includes("42S22") || !message.includes("customer_addresses") || !message.includes("phone")) {
+        throw error;
+      }
+
+      const customerResponse = await api.post("/call-center/customers", {
+        name: data.name,
+        phone: data.phone,
+        mobile: data.mobile,
+        email: data.email,
+        category: data.category,
+        notes: data.notes,
+        birth_date: data.birth_date,
+        address: data.address,
+        city: data.city,
+        branch_id: data.branch_id,
+      });
+      const customer = customerResponse.data.data as CustomerSearchResult;
+      const hasAddress = Boolean(data.address || data.city || data.area || data.district || data.street);
+      let addresses: CustomerAddress[] = [];
+
+      if (hasAddress) {
+        const addressResponse = await api.post(
+          `/call-center/customers/${customer.id}/addresses`,
+          sanitizeCustomerAddress({
+            label: data.address_label || "المنزل",
+            city: data.city || data.area || data.district || "غير محدد",
+            area: data.area,
+            district: data.district,
+            street: data.street || data.address,
+            landmark: data.landmark,
+            building_no: data.building_no,
+            floor: data.floor,
+            apartment: data.apartment,
+            delivery_notes: data.delivery_notes,
+            is_default: true,
+          }),
+        );
+        addresses = [addressResponse.data.data];
+      }
+
+      return { data: { ...customer, addresses } };
+    }
   },
 
   getCustomerOccasions: async (customerId: number): Promise<ApiResponse<CustomerOccasion[]>> => {
@@ -471,10 +530,9 @@ export const callCenterService = {
     floor?: string;
     apartment?: string;
     delivery_notes?: string;
-    phone?: string;
     is_default?: boolean;
   }): Promise<ApiResponse<CustomerAddress>> => {
-    const res = await api.post(`/call-center/customers/${customerId}/addresses`, data);
+    const res = await api.post(`/call-center/customers/${customerId}/addresses`, sanitizeCustomerAddress(data));
     return res.data;
   },
 
@@ -489,11 +547,10 @@ export const callCenterService = {
     floor: string;
     apartment: string;
     delivery_notes: string;
-    phone: string;
     is_default: boolean;
     is_active: boolean;
   }>): Promise<ApiResponse<CustomerAddress>> => {
-    const res = await api.patch(`/call-center/customer-addresses/${addressId}`, data);
+    const res = await api.patch(`/call-center/customer-addresses/${addressId}`, sanitizeCustomerAddress(data));
     return res.data;
   },
 

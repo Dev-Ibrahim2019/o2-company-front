@@ -106,6 +106,27 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
     }
   };
 
+  const handleSelectAddress = (address: CustomerAddress) => {
+    if (profile && onSelectCustomer) {
+      onSelectCustomer({
+        id: profile.customer.id,
+        name: profile.customer.name,
+        phone: profile.customer.phone,
+        mobile: profile.customer.mobile,
+        code: profile.customer.code,
+        status: profile.customer.status,
+        category: profile.customer.category,
+        city: profile.customer.city,
+        address: profile.customer.address,
+        branch_id: profile.customer.branch_id,
+        selectedAddress: address,
+      } as CustomerSearchResult & { selectedAddress: CustomerAddress });
+    } else {
+      onSelectAddress?.(address);
+    }
+    onClose();
+  };
+
   if (selectedOrderId) {
     return <OrderDetailsDrawer orderId={selectedOrderId} onBack={() => setSelectedOrderId(null)} onClose={onClose} onReOrder={(onRepeatOrder || onSelectCustomer) ? (order: OrderDetail) => { if (onRepeatOrder) onRepeatOrder(order); else onSelectCustomer?.({ ...profile!.customer, lastOrder: order } as any); onClose(); } : undefined} />;
   }
@@ -130,11 +151,11 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
           </div>
           <div className="flex items-center gap-2">
             {onSelectCustomer && profile && (
-              <button onClick={handleSelect} className="p-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors" title="اختيار العميل للطلب">
+              <button onClick={handleSelect} aria-label="اختيار العميل للطلب" className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400">
                 <Check size={14} />
               </button>
             )}
-            <button onClick={onClose} className="p-1.5 hover:bg-white/5 rounded-lg transition-colors">
+            <button onClick={onClose} aria-label="إغلاق ملف العميل" className="p-2 hover:bg-white/5 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400">
               <X size={16} className="text-slate-400" />
             </button>
           </div>
@@ -189,11 +210,11 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
               </button>
             </div>
           ) : activeTab === "overview" && profile ? (
-            <OverviewTab profile={profile} />
+            <OverviewTab profile={profile} favorite={favorites[0]} />
           ) : activeTab === "orders" ? (
             <OrdersTab orders={orders} onSelectOrder={setSelectedOrderId} onRepeatOrder={onRepeatOrder ? (order) => { onRepeatOrder(order); onClose(); } : undefined} />
           ) : activeTab === "addresses" ? (
-            <AddressesTab customerId={customerId} onAddressSelect={onSelectAddress ? (addr) => { onSelectAddress(addr); onClose(); } : undefined} />
+            <AddressesTab customerId={customerId} onAddressSelect={onSelectCustomer || onSelectAddress ? handleSelectAddress : undefined} />
           ) : activeTab === "occasions" ? (
             <OccasionsTab customerId={customerId} />
           ) : activeTab === "loyalty" && profile ? (
@@ -206,27 +227,10 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
 };
 
 /* ─── Overview Tab ─── */
-const OverviewTab: React.FC<{ profile: CustomerProfile }> = ({ profile }) => {
+const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem }> = ({ profile, favorite }) => {
   const c = profile.customer;
 
-  // تحديد فئة العميل التسويقية
-  const getMarketingCategory = () => {
-    const totalSpent = profile.total_spent || 0;
-    const totalOrders = profile.total_orders || 0;
-    if (totalSpent > 5000 && totalOrders > 20) {
-      return { label: "عميل وفي VIP", color: "text-amber-400 bg-amber-500/10 border-amber-400/30", icon: Award };
-    }
-    if (totalSpent > 2000 && totalOrders > 10) {
-      return { label: "عميل مميز", color: "text-emerald-400 bg-emerald-500/10 border-emerald-400/30", icon: Star };
-    }
-    if (totalOrders > 5 && totalSpent > 500) {
-      return { label: "صائد عروض", color: "text-blue-400 bg-blue-500/10 border-blue-400/30", icon: TrendingUp };
-    }
-    return { label: "عميل جديد", color: "text-slate-400 bg-slate-500/10 border-slate-400/30", icon: User };
-  };
-
-  const marketingCat = getMarketingCategory();
-  const MarketingIcon = marketingCat.icon;
+  const categoryLabel = c.category || "غير مصنف";
 
   return (
     <div className="space-y-4">
@@ -240,9 +244,9 @@ const OverviewTab: React.FC<{ profile: CustomerProfile }> = ({ profile }) => {
             <h2 className="text-base font-black text-white">{c.name}</h2>
             <div className="flex items-center gap-2 mt-0.5">
               {statusBadge(c.status)}
-              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${marketingCat.color}`}>
-                <MarketingIcon size={10} className="inline ml-1" />
-                {marketingCat.label}
+              <span className="text-[11px] font-bold px-1.5 py-0.5 rounded border border-slate-500/30 bg-slate-500/10 text-slate-300">
+                <Star size={10} className="inline ml-1" />
+                {categoryLabel}
               </span>
             </div>
           </div>
@@ -259,13 +263,18 @@ const OverviewTab: React.FC<{ profile: CustomerProfile }> = ({ profile }) => {
         <div className="flex items-center gap-1.5"><Calendar size={11} /> {new Date(c.created_at).toLocaleDateString("ar-SA")}</div>
       </div>
 
+      {favorite && (
+        <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3">
+          <div className="flex items-center gap-2 text-[11px] font-black text-emerald-300"><Heart size={14} /> الطلب الأكثر تكراراً</div>
+          <p className="mt-1 text-sm font-black text-white">{favorite.item_name_ar || favorite.item_name}</p>
+          <p className="mt-0.5 text-[11px] text-emerald-200/70">طُلب {favorite.order_count} مرات • {favorite.total_quantity} قطعة</p>
+        </div>
+      )}
+
       {/* بطاقات الأداء السريعة */}
       <div>
-        <h4 className="text-[10px] font-black text-slate-500 mb-2 uppercase tracking-widest">إجمالي المشتريات والأداء</h4>
-        <div className="grid grid-cols-2 gap-2">
-          <StatCard label="إجمالي المشتريات" value={`${(profile.total_spent || 0).toFixed(2)} ₪`} icon={<TrendingUp size={14} />} />
-          <StatCard label="إجمالي الطلبات" value={String(profile.total_orders || 0)} icon={<ShoppingCart size={14} />} />
-          <StatCard label="متوسط الطلب" value={`${(profile.avg_order_value || 0).toFixed(2)} ₪`} icon={<Percent size={14} />} />
+        <h4 className="text-[10px] font-black text-slate-500 mb-2 uppercase tracking-widest">مؤشرات المتابعة</h4>
+        <div className="grid grid-cols-3 gap-2">
           <StatCard label="شكاوى مفتوحة" value={String(profile.open_complaints_count || 0)} icon={<AlertTriangle size={14} />} highlight={(profile.open_complaints_count || 0) > 0} />
           <StatCard label="طلبات ملغاة" value={String(profile.cancelled_orders_count || 0)} icon={<Ban size={14} />} highlight={(profile.cancelled_orders_count || 0) > 0} />
           <StatCard label="نقاط الولاء" value={String(profile.loyalty_points ?? c.loyalty_points ?? 0)} icon={<Star size={14} />} />
@@ -320,6 +329,15 @@ const OverviewTab: React.FC<{ profile: CustomerProfile }> = ({ profile }) => {
 
 /* ─── Orders Tab ─── */
 const OrdersTab: React.FC<{ orders: CustomerOrder[]; onSelectOrder: (id: number) => void; onRepeatOrder?: (order: OrderDetail) => void }> = ({ orders, onSelectOrder, onRepeatOrder }) => {
+  const [repeatId, setRepeatId] = useState<number | null>(null);
+  const [repeatErrorId, setRepeatErrorId] = useState<number | null>(null);
+  const repeat = async (id: number) => {
+    if (!onRepeatOrder) return;
+    setRepeatId(id); setRepeatErrorId(null);
+    try { const response = await callCenterService.getOrderDetails(id); onRepeatOrder(response.data); }
+    catch { setRepeatErrorId(id); }
+    finally { setRepeatId(null); }
+  };
   if (orders.length === 0) return <EmptyState icon={ShoppingCart} text="لا توجد طلبات سابقة" />;
   return (
     <div className="space-y-2">
@@ -338,14 +356,16 @@ const OrdersTab: React.FC<{ orders: CustomerOrder[]; onSelectOrder: (id: number)
             <button onClick={() => onSelectOrder(o.id)} className="flex-1 rounded-lg bg-slate-700 px-2 py-1.5 text-[11px] font-bold text-slate-200 hover:bg-slate-600">عرض التفاصيل</button>
             {onRepeatOrder && (
               <button
-                onClick={() => onRepeatOrder(o as OrderDetail)}
+                onClick={() => repeat(o.id)}
+                disabled={repeatId !== null}
                 className="flex-1 rounded-lg bg-emerald-600 px-2 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition-all active:scale-95 shadow-lg shadow-emerald-900/30"
               >
-                <Copy size={12} className="ml-1 inline" />
-                اعتماد وتكرار الطلب
+                {repeatId === o.id ? <Loader2 size={12} className="ml-1 inline animate-spin" /> : <Copy size={12} className="ml-1 inline" />}
+                {repeatId === o.id ? "جاري تحميل الطلب..." : "اعتماد وتكرار الطلب"}
               </button>
             )}
           </div>
+          {repeatErrorId === o.id && <p role="alert" className="mt-2 text-[11px] font-bold text-red-400">تعذر تحميل تفاصيل الطلب. حاول مرة أخرى.</p>}
         </div>
       ))}
     </div>
@@ -402,9 +422,36 @@ const ComplaintsTab: React.FC<{ complaints: CustomerComplaint[]; onSelectComplai
 const AddressesTab: React.FC<{ customerId: number; onAddressSelect?: (addr: CustomerAddress) => void }> = ({ customerId, onAddressSelect }) => {
   const [addresses, setAddresses] = useState<CustomerAddress[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [selectingId, setSelectingId] = useState<number | null>(null);
+  const [form, setForm] = useState({ label: "المنزل", city: "", area: "", street: "", building_no: "", floor: "", apartment: "", landmark: "", delivery_notes: "" });
   useEffect(() => {
     callCenterService.getCustomerAddresses(customerId).then(r => setAddresses(r.data ?? [])).catch(() => { }).finally(() => setLoading(false));
   }, [customerId]);
+  const createAddress = async () => {
+    if (!form.city.trim() && !form.area.trim() && !form.street.trim()) { setError("أدخل المدينة أو المنطقة أو الشارع على الأقل"); return; }
+    setSaving(true); setError("");
+    try { const response = await callCenterService.createCustomerAddress(customerId, form); setAddresses(current => [...current, response.data]); setShowForm(false); onAddressSelect?.(response.data); }
+    catch (requestError: any) { setError(requestError?.response?.data?.message || "تعذر حفظ العنوان"); }
+    finally { setSaving(false); }
+  };
+  const selectAddress = async (address: CustomerAddress) => {
+    setSelectingId(address.id);
+    setError("");
+    try {
+      await callCenterService.markAddressUsed(address.id);
+    } catch (requestError: any) {
+      const message = String(requestError?.response?.data?.message || "");
+      if (!message.includes("CustomerAddress") && !message.includes("does not exist")) {
+        setError(message || "تعذر تسجيل استخدام العنوان، وتم اعتماده للطلب الحالي");
+      }
+    } finally {
+      onAddressSelect?.(address);
+      setSelectingId(null);
+    }
+  };
   if (loading) return <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-red-500" /></div>;
   return (
     <div className="space-y-2">
@@ -417,8 +464,9 @@ const AddressesTab: React.FC<{ customerId: number; onAddressSelect?: (addr: Cust
               {a.is_default && <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">افتراضي</span>}
             </div>
             {onAddressSelect && (
-              <button onClick={() => onAddressSelect(a)} className="p-1 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors" title="اختيار هذا العنوان">
-                <Check size={12} />
+              <button disabled={selectingId !== null} onClick={() => selectAddress(a)} aria-label={`اختيار عنوان ${a.label}`} className="flex items-center gap-1.5 rounded-lg bg-red-600 px-2.5 py-2 text-white transition-colors hover:bg-red-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400">
+                {selectingId === a.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+                <span className="text-[10px] font-black">اعتماد</span>
               </button>
             )}
           </div>
@@ -434,6 +482,14 @@ const AddressesTab: React.FC<{ customerId: number; onAddressSelect?: (addr: Cust
           </div>
         </div>
       ))}
+      {error && !showForm && <p role="alert" className="text-xs font-bold text-red-400">{error}</p>}
+      {showForm ? <div className="space-y-3 rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3">
+        <div className="flex gap-2">{["المنزل", "العمل"].map(label => <button key={label} onClick={() => setForm(value => ({...value, label}))} className={`flex-1 rounded-lg py-2 text-xs font-bold ${form.label === label ? "bg-emerald-600 text-white" : "bg-slate-700 text-slate-300"}`}>{label}</button>)}</div>
+        <div className="grid grid-cols-2 gap-2">{([['city','المدينة'],['area','المنطقة'],['street','الشارع'],['building_no','المبنى'],['floor','الطابق'],['apartment','الشقة'],['landmark','أقرب معلم']] as const).map(([key,label]) => <label key={key} className="text-[11px] font-bold text-slate-400">{label}<input value={form[key]} onChange={e => setForm(value => ({...value, [key]: e.target.value}))} className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-2.5 py-2 text-xs text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500" /></label>)}</div>
+        <label className="block text-[11px] font-bold text-slate-400">ملاحظات التوصيل<textarea value={form.delivery_notes} onChange={e => setForm(value => ({...value, delivery_notes: e.target.value}))} className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-2.5 py-2 text-xs text-white" /></label>
+        {error && <p role="alert" className="text-xs font-bold text-red-400">{error}</p>}
+        <div className="flex gap-2"><button onClick={createAddress} disabled={saving} className="flex-1 rounded-lg bg-emerald-600 py-2.5 text-xs font-black text-white disabled:opacity-50">{saving ? "جاري الحفظ..." : "حفظ واختيار العنوان"}</button><button onClick={() => setShowForm(false)} disabled={saving} className="rounded-lg bg-slate-700 px-4 text-xs font-bold text-slate-300">إلغاء</button></div>
+      </div> : <button onClick={() => setShowForm(true)} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-600 py-3 text-xs font-black text-slate-300 hover:border-emerald-500 hover:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"><Plus size={15} /> إضافة عنوان جديد</button>}
     </div>
   );
 };
@@ -485,7 +541,7 @@ const OccasionsTab: React.FC<{ customerId: number }> = ({ customerId }) => {
             </div>
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-slate-400">{new Date(o.date).toLocaleDateString("ar-SA")}</span>
-              <button onClick={() => handleDelete(o.id)} className="p-1 hover:bg-red-500/10 rounded-lg text-slate-500 hover:text-red-400 transition-colors">
+              <button onClick={() => handleDelete(o.id)} aria-label={`حذف مناسبة ${o.title}`} className="p-2 hover:bg-red-500/10 rounded-lg text-slate-500 hover:text-red-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400">
                 <Trash2 size={12} />
               </button>
             </div>
@@ -528,27 +584,25 @@ const LoyaltyAndNotesTab: React.FC<{
   customerId: number;
   points: number;
   onApply?: (amount: number) => void;
-}> = ({ customerId, points, onApply }) => {
-  const discountValue = Math.max(0, points) / 10;
+}> = ({ customerId, points }) => {
   return (
     <div className="space-y-4">
       <section className="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-[10px] font-black text-amber-300">رصيد الولاء</p>
+            <p className="text-xs font-black text-amber-300">رصيد الولاء المسجل</p>
             <p className="mt-1 text-2xl font-black text-white">{points} نقطة</p>
-            <p className="mt-1 text-xs font-bold text-amber-100/70">تعادل {discountValue.toFixed(2)} ₪</p>
           </div>
           <Star size={30} className="text-amber-300" />
         </div>
         <button
           type="button"
-          disabled={!onApply || discountValue <= 0}
-          onClick={() => onApply?.(discountValue)}
-          className="mt-4 w-full rounded-xl bg-amber-400 py-2.5 text-xs font-black text-slate-950 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+          disabled
+          className="mt-4 w-full cursor-not-allowed rounded-xl bg-slate-700 py-2.5 text-xs font-black text-slate-400"
         >
-          تطبيق الخصم من النقاط
+          خصم النقاط غير متاح حتى ضبط سياسة التحويل
         </button>
+        <div className="mt-3 rounded-lg border border-amber-400/30 bg-slate-950/40 p-2.5 text-[11px] font-bold leading-5 text-amber-100"><AlertTriangle size={13} className="ml-1 inline" /> لا توجد حالياً سياسة تحويل نقاط معتمدة من الخادم، لذلك لن يُنشأ خصم ولن تُخصم نقاط. شحن المحفظة وسجل الاستبدال يحتاجان تفعيلهما من الخادم.</div>
       </section>
       <section>
         <h4 className="mb-2 text-xs font-black text-slate-300">الملاحظات الثابتة والتحذيرية</h4>

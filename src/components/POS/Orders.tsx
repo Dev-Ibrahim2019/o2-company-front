@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../../../store";
 import { useAuth } from "../../auth";
@@ -35,8 +35,13 @@ import {
   Timer,
   User,
   Wallet,
+  Truck,
+  MapPin,
+  Zap,
   X,
 } from "lucide-react";
+import type { AvailableDeliveryDriver } from "../../services/orderService";
+import { settlementService, type PaymentMethodDto } from "../../services/settlementService";
 
 type OrdersTab = "ACTIVE" | "CLOSED";
 type TypeFilter = ApiOrderType | "ALL";
@@ -111,8 +116,8 @@ const getOrderTimeState = (order: OrderFromApi) => {
   const elapsed = getElapsedMinutes(order);
   const activeCooking = ["confirmed", "in_progress"].includes(normalizeUiStatus(order.status));
 
-  if (activeCooking && elapsed >= 25) return "late";
-  if (activeCooking && elapsed >= 18) return "endingSoon";
+  if (activeCooking && elapsed >= 15) return "late";
+  if (activeCooking && elapsed >= 10) return "endingSoon";
   if (isUrgentOrder(order)) return "urgent";
   return "normal";
 };
@@ -328,7 +333,7 @@ const getLifecycleStatusDotColor = (status: ApiOrderStatus) => {
 const getLifecycleCardClassName = (order: OrderFromApi) => {
   const timeState = getOrderTimeState(order);
 
-  if (timeState === "late") return "border-red-500/70 bg-red-500/10 shadow-red-950/40 animate-pulse";
+  if (timeState === "late") return "border-red-500/70 bg-red-500/10 shadow-red-950/40";
   if (timeState === "endingSoon") return "border-amber-400/45 bg-amber-500/10 shadow-amber-950/30";
   if (timeState === "urgent") return "border-fuchsia-400/40 bg-fuchsia-500/10 shadow-fuchsia-950/30";
 
@@ -399,6 +404,21 @@ const getPaymentLabel = (method?: string | null) => {
 };
 
 const formatMoney = (value: number) => `${Number(value || 0).toFixed(2)} ₪`;
+const RATING_LABELS = ["سيئ", "ضعيف", "جيد", "جيد جداً", "ممتاز"];
+const StarRating = ({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) => (
+  <fieldset className="mt-5"><legend className="text-sm font-black text-slate-200">{label} — {RATING_LABELS[value - 1]}</legend>
+    <div role="radiogroup" aria-label={`تقييم ${label}`} className="mt-3 grid grid-cols-5 gap-2">
+      {RATING_LABELS.map((description, index) => { const rating = index + 1; const selected = value === rating; return <button key={rating} type="button" role="radio" aria-checked={selected} aria-label={`${description}، ${rating} من 5`} tabIndex={selected ? 0 : -1} onClick={() => onChange(rating)} onKeyDown={(event) => { if (!["ArrowRight","ArrowLeft","ArrowUp","ArrowDown"].includes(event.key)) return; event.preventDefault(); const next = Math.min(5, Math.max(1, rating + (["ArrowRight","ArrowUp"].includes(event.key) ? 1 : -1))); onChange(next); (event.currentTarget.parentElement?.children[next - 1] as HTMLElement | undefined)?.focus(); }} className={`min-h-20 rounded-2xl border p-2 focus:outline-none focus:ring-2 focus:ring-amber-300 ${selected ? "border-amber-200 bg-gradient-to-b from-amber-300 to-orange-500 text-slate-950 shadow-lg" : "border-white/10 bg-slate-950/70 text-slate-400"}`}><span aria-hidden="true" className="block text-2xl">★</span><span className="mt-2 block text-[10px] font-black leading-tight">{description}</span></button>; })}
+    </div>
+  </fieldset>
+);
+
+const formatDeliveryAddress = (snapshot: OrderFromApi["delivery_address_snapshot"]) => {
+  if (!snapshot) return "لا يوجد عنوان محفوظ";
+  if (typeof snapshot === "string") { try { return formatDeliveryAddress(JSON.parse(snapshot) as Record<string, unknown>); } catch { return snapshot; } }
+  const keys = ["label", "city", "area", "street", "building_no", "floor", "apartment", "landmark", "delivery_notes"];
+  return keys.map((key) => snapshot[key]).filter(Boolean).join("، ") || "لا يوجد عنوان محفوظ";
+};
 
 export const OrdersView = () => {
   const { currentShift, currentUser } = useApp();
@@ -419,11 +439,34 @@ export const OrdersView = () => {
   const [selectedOrder, setSelectedOrder] = useState<OrderFromApi | null>(null);
   const [paymentTarget, setPaymentTarget] = useState<OrderFromApi | null>(null);
   const [paymentReference, setPaymentReference] = useState("");
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodDto[]>([]);
+  const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<number | null>(null);
+  const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<OrderFromApi | null>(null);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [deliveryTarget, setDeliveryTarget] = useState<OrderFromApi | null>(null);
+  const [drivers, setDrivers] = useState<AvailableDeliveryDriver[]>([]);
+  const [selectedDriverId, setSelectedDriverId] = useState<number | null>(null);
+  const [deliveryError, setDeliveryError] = useState<string | null>(null);
+  const [deliveryDetailsTarget, setDeliveryDetailsTarget] = useState<OrderFromApi | null>(null);
+  const [deliveryConfirmTarget, setDeliveryConfirmTarget] = useState<OrderFromApi | null>(null);
+  const [performanceTarget, setPerformanceTarget] = useState<OrderFromApi | null>(null);
+  const [feedbackPanelTarget, setFeedbackPanelTarget] = useState<OrderFromApi | null>(null);
+  const [feedback, setFeedback] = useState({ food_rating: 5, delivery_rating: 5, speed_rating: 5, notes: "", contacted: true });
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const qualityDialogRef = useRef<HTMLElement | null>(null);
+  const qualityTriggerRef = useRef<HTMLElement | null>(null);
+  const [, setClockTick] = useState(0);
   const cancelReasonRef = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => { if (!deliveryDetailsTarget) return; const timer = window.setInterval(() => setClockTick((value) => value + 1), 30000); return () => window.clearInterval(timer); }, [deliveryDetailsTarget]);
+  useEffect(() => {
+    if (!performanceTarget && !feedbackPanelTarget) return;
+    qualityDialogRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { setPerformanceTarget(null); setFeedbackPanelTarget(null); qualityTriggerRef.current?.focus(); } };
+    window.addEventListener("keydown", onKeyDown); return () => window.removeEventListener("keydown", onKeyDown);
+  }, [performanceTarget, feedbackPanelTarget]);
 
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
@@ -471,17 +514,29 @@ export const OrdersView = () => {
     navigate(`${isCallCenter ? "/pos/call-center/pos" : "/pos"}?editOrderId=${order.id}`);
   };
 
-  const closeOrder = (order: OrderFromApi) => {
+  const closeOrder = async (order: OrderFromApi) => {
     if (isClosedOrder(order.status)) return;
     setPaymentTarget(order);
     setPaymentReference("");
     setPaymentError(null);
+    setPaymentMethodsLoading(true);
+    setSelectedPaymentMethodId(null);
+    try {
+      const methods = (await settlementService.getPaymentMethods(authUser?.roles?.includes(ROLES.CALL_CENTER))).filter((method) => method.is_active);
+      setPaymentMethods(methods);
+      if (!methods.length) setPaymentError("لا توجد طرق دفع فعالة مرتبطة بحسابات مالية");
+    } catch (e: unknown) {
+      setPaymentMethods([]);
+      setPaymentError((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "تعذر تحميل طرق الدفع والحسابات من الخادم");
+    } finally { setPaymentMethodsLoading(false); }
   };
 
   const confirmOrderPayment = async () => {
     if (!paymentTarget) return;
+    const selectedMethod = paymentMethods.find((method) => method.id === selectedPaymentMethodId);
+    if (!selectedMethod) { setPaymentError("اختر طريقة الدفع والصندوق أو الحساب المستلم"); return; }
     const transactionId = paymentReference.trim();
-    if (!transactionId) {
+    if (selectedMethod.type !== "cash" && !transactionId) {
       setPaymentError("الرقم المرجعي لعملية الدفع مطلوب");
       return;
     }
@@ -496,30 +551,9 @@ export const OrdersView = () => {
         received_subledger_type: null,
         received_subledger_id: null,
       });
-      if (authUser?.roles?.includes(ROLES.CALL_CENTER)) {
-        await orderService.closeOrderWithPayments(paymentTarget.id, {
-          customer_id: paymentTarget.customer_id,
-          customer_name: paymentTarget.customer_name ?? undefined,
-          customer_phone: paymentTarget.customer_phone ?? undefined,
-          note: paymentTarget.note ?? undefined,
-          payments: [
-            {
-              method: paymentTarget.payment_method ?? "cash",
-              amount: paymentTarget.total,
-              reference_number: transactionId,
-            },
-          ],
-        });
-      } else {
-        await orderService.confirmPayment(paymentTarget.id, {
-          payment_method: paymentTarget.payment_method ?? "cash",
-          amount: paymentTarget.total,
-          transaction_id: transactionId,
-          customer_name: paymentTarget.customer_name ?? undefined,
-          customer_phone: paymentTarget.customer_phone ?? undefined,
-          note: paymentTarget.note ?? undefined,
-        });
-      }
+      const result = await settlementService.settle(paymentTarget.id, [{ payment_method_id: selectedMethod.id, amount: paymentTarget.total, reference_number: transactionId || undefined }], authUser?.roles?.includes(ROLES.CALL_CENTER));
+      const settledStatus = result.order?.status as ApiOrderStatus | undefined;
+      if (settledStatus && ["PENDING_PAYMENT", "pending"].includes(settledStatus)) await orderService.confirm(paymentTarget.id);
       setPaymentTarget(null);
       await refreshOrders();
       setActiveTab("ACTIVE");
@@ -532,6 +566,35 @@ export const OrdersView = () => {
       setBusyOrderId(null);
     }
   };
+
+  const expediteOrder = async (order: OrderFromApi) => {
+    setActionError(null); setBusyOrderId(order.id);
+    try { await orderService.expedite(order.id, "استعجال من شاشة الطلبات النشطة"); await refreshOrders(); }
+    catch (e: unknown) { setActionError((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "تعذر إرسال إشارة الاستعجال؛ قد لا يدعم الخادم هذا المسار بعد."); }
+    finally { setBusyOrderId(null); }
+  };
+
+  const openDeliveryAssignment = async (order: OrderFromApi) => {
+    setDeliveryTarget(order); setDeliveryError(null); setSelectedDriverId(null); setDrivers([]);
+    try { setDrivers(await orderService.getAvailableDeliveryDrivers({ branch_id: order.branch_id, order_id: order.id })); }
+    catch (e: unknown) { setDeliveryError((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "تعذر تحميل موظفي الدليفري المتاحين"); }
+  };
+
+  const assignDriver = async () => {
+    if (!deliveryTarget || !selectedDriverId) { setDeliveryError("اختر موظف الدليفري المناسب"); return; }
+    setBusyOrderId(deliveryTarget.id);
+    try { await orderService.assignDeliveryDriver(deliveryTarget.id, selectedDriverId); setDeliveryTarget(null); await refreshOrders(); }
+    catch (e: unknown) { setDeliveryError((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "فشل تحويل الطلب للدليفري"); }
+    finally { setBusyOrderId(null); }
+  };
+
+  const submitFeedback = async () => {
+    const target = feedbackPanelTarget; if (!target) return; setBusyOrderId(target.id); setFeedbackError(null);
+    try { await orderService.submitCustomerExperience(target.id, feedback); setFeedbackPanelTarget(null); }
+    catch (e: unknown) { setFeedbackError((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "تعذر حفظ تقييم العميل؛ قد لا يدعم الخادم المسار بعد."); }
+    finally { setBusyOrderId(null); }
+  };
+  const openFeedback = (order: OrderFromApi, trigger: HTMLElement) => { qualityTriggerRef.current = trigger; setFeedback({ food_rating: 5, delivery_rating: 5, speed_rating: 5, notes: "", contacted: true }); setFeedbackError(null); setFeedbackPanelTarget(order); };
 
   const transferClosedOrder = async (order: OrderFromApi) => {
     if (order.status !== "paid" || transferredOrderIds.includes(order.id)) {
@@ -561,8 +624,10 @@ export const OrdersView = () => {
     try {
       await orderService.markDelivered(order.id, {
         delivered_at: new Date().toISOString(),
-      });
+      }, authUser?.roles?.includes(ROLES.CALL_CENTER));
       setSelectedOrder(null);
+      setDeliveryConfirmTarget(null);
+      setDeliveryDetailsTarget(null);
       await refreshOrders();
     } catch (e: unknown) {
       const message =
@@ -912,44 +977,34 @@ export const OrdersView = () => {
                             </p>
                           </div>
                         </div>
+                        <div className="mt-3" aria-label={`مؤشر زمن الطلب ${getElapsedMinutes(order)} من 15 دقيقة`}>
+                          <div className="mb-1 flex justify-between text-[8px] font-black text-slate-500"><span>زمن المرحلة</span><span>{getElapsedMinutes(order)} / 15 دقيقة</span></div>
+                          <div className="h-1.5 overflow-hidden rounded bg-slate-800"><div className={`h-full transition-all ${getElapsedMinutes(order) >= 15 ? "bg-red-500" : getElapsedMinutes(order) >= 10 ? "bg-amber-400" : "bg-blue-400"}`} style={{ width: `${Math.min(100, (getElapsedMinutes(order) / 15) * 100)}%` }} /></div>
+                        </div>
 
-                        <div className="mt-3 flex gap-2">
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              editOrderInPos(order);
-                            }}
-                            className="flex-1 rounded-xl border border-white/5 bg-slate-800 px-3 py-2 text-center text-[10px] font-black text-slate-200 hover:bg-slate-700"
-                          >
-                            تعديل
-                          </button>
-                          {["PENDING_PAYMENT", "pending"].includes(order.status) ? (
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          {["DELIVERED", "served", "paid"].includes(order.status) ? (<><button type="button" onClick={(event) => { event.stopPropagation(); qualityTriggerRef.current=event.currentTarget; setPerformanceTarget(order); }} className="min-h-10 rounded-xl bg-cyan-500/10 px-2 py-2 text-xs font-black text-cyan-200">تقرير الأداء والوقت</button><button type="button" onClick={(event) => { event.stopPropagation(); openFeedback(order,event.currentTarget); }} className="min-h-10 rounded-xl bg-emerald-600 px-2 py-2 text-xs font-black text-white">تقييم تجربة العميل</button></>) : ["PENDING_PAYMENT", "pending"].includes(order.status) ? (<>
+                            <button type="button" onClick={(event) => { event.stopPropagation(); editOrderInPos(order); }} className="rounded-xl border border-white/5 bg-slate-800 px-3 py-2 text-center text-[10px] font-black text-slate-200 hover:bg-slate-700">تعديل</button>
                             <button
                               type="button"
                               onClick={(event) => {
                                 event.stopPropagation();
-                                setPaymentTarget(order);
-                                setPaymentReference("");
-                                setPaymentError(null);
+                                void closeOrder(order);
                               }}
                               className="flex-1 rounded-xl bg-emerald-600 px-3 py-2 text-center text-[10px] font-black text-white hover:bg-emerald-700"
                             >
                               <CheckCircle2 size={14} />
                               تأكيد الدفع
                             </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                closeOrder(order);
-                              }}
-                              className="flex-1 rounded-xl bg-red-600 px-3 py-2 text-center text-[10px] font-black text-white hover:bg-red-700"
-                            >
-                              {busy ? "..." : "إغلاق"}
-                            </button>
-                          )}
+                          </>) : ["PREPARATION", "confirmed", "in_progress"].includes(order.status) ? (<>
+                            <button type="button" disabled={busy} onClick={(event) => { event.stopPropagation(); void expediteOrder(order); }} className="rounded-xl border border-amber-400/25 bg-amber-500/10 px-2 py-2 text-[10px] font-black text-amber-200 disabled:opacity-40"><Zap size={13} className="inline ml-1" />استعجال الطلب</button>
+                            {order.order_type === "delivery" ? <button type="button" onClick={(event) => { event.stopPropagation(); void openDeliveryAssignment(order); }} className="rounded-xl bg-violet-600 px-2 py-2 text-[10px] font-black text-white"><Truck size={13} className="inline ml-1" />تحويل للدليفري</button> : <span className="rounded-xl border border-white/5 px-2 py-2 text-center text-[9px] font-bold text-slate-500">طلب {getLifecycleOrderTypeLabel(order.order_type)}</span>}
+                          </>) : (["ready", "OUT_FOR_DELIVERY"].includes(order.status) && !order.driver_id && !order.driver) ? (
+                            <button type="button" onClick={(event) => { event.stopPropagation(); void openDeliveryAssignment(order); }} className="col-span-2 rounded-xl bg-violet-600 px-2 py-2 text-[10px] font-black text-white"><Truck size={13} className="inline ml-1" />اختيار كابتن الدليفري</button>
+                          ) : (<>
+                            <button type="button" onClick={(event) => { event.stopPropagation(); setDeliveryDetailsTarget(order); }} className="rounded-xl border border-yellow-400/20 bg-yellow-500/10 px-2 py-2 text-[10px] font-black text-yellow-200"><MapPin size={13} className="inline ml-1" />تفاصيل التوصيل</button>
+                            <button type="button" disabled={busy} onClick={(event) => { event.stopPropagation(); setDeliveryConfirmTarget(order); }} className="rounded-xl bg-emerald-600 px-2 py-2 text-[10px] font-black text-white disabled:opacity-40">تأكيد الاستلام</button>
+                          </>)}
                         </div>
                       </div>
                     );
@@ -1022,26 +1077,7 @@ export const OrdersView = () => {
                       <td className="p-4">
                         {activeTab === "ACTIVE" ? (
                           <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => editOrderInPos(order)}
-                              disabled={busy}
-                              className="px-3 py-2 rounded-xl bg-slate-800 border border-white/5 text-slate-300 hover:bg-slate-700 text-[10px] font-black flex items-center gap-1.5 disabled:opacity-40"
-                            >
-                              <Edit3 size={14} />
-                              تعديل
-                            </button>
-                            <button
-                              onClick={() => closeOrder(order)}
-                              disabled={busy}
-                              className="px-3 py-2 rounded-xl bg-red-600 text-white hover:bg-red-700 text-[10px] font-black flex items-center gap-1.5 disabled:opacity-40"
-                            >
-                              {busy ? (
-                                <Loader2 size={14} className="animate-spin" />
-                              ) : (
-                                <CheckCircle2 size={14} />
-                              )}
-                              إغلاق
-                            </button>
+                            {["PENDING_PAYMENT", "pending"].includes(order.status) ? <><button onClick={() => editOrderInPos(order)} className="rounded-xl bg-slate-800 px-3 py-2 text-[10px] font-black text-white">تعديل</button><button onClick={() => closeOrder(order)} className="rounded-xl bg-emerald-600 px-3 py-2 text-[10px] font-black text-white">تأكيد الدفع</button></> : ["PREPARATION", "confirmed", "in_progress"].includes(order.status) ? <><button disabled={busy} onClick={() => void expediteOrder(order)} className="rounded-xl bg-amber-500/10 px-3 py-2 text-[10px] font-black text-amber-200">استعجال</button>{order.order_type === "delivery" && <button onClick={() => void openDeliveryAssignment(order)} className="rounded-xl bg-violet-600 px-3 py-2 text-[10px] font-black text-white">للدليفري</button>}</> : (!order.driver_id && !order.driver) ? <button onClick={() => void openDeliveryAssignment(order)} className="rounded-xl bg-violet-600 px-3 py-2 text-[10px] font-black text-white">اختيار كابتن</button> : <><button onClick={() => setDeliveryDetailsTarget(order)} className="rounded-xl bg-yellow-500/10 px-3 py-2 text-[10px] font-black text-yellow-200">التفاصيل</button><button onClick={() => setDeliveryConfirmTarget(order)} className="rounded-xl bg-emerald-600 px-3 py-2 text-[10px] font-black text-white">استلام</button></>}
                           </div>
                         ) : (
                           <button
@@ -1230,7 +1266,7 @@ export const OrdersView = () => {
                 <div className="p-4 bg-slate-800/30 border-t border-white/5 flex gap-2">
                   {activeTab === "ACTIVE" ? (
                     <>
-                      <button
+                      {["PENDING_PAYMENT", "pending"].includes(order.status) && <button
                         onClick={(event) => {
                           event.stopPropagation();
                           editOrderInPos(order);
@@ -1240,14 +1276,12 @@ export const OrdersView = () => {
                       >
                         <Edit3 size={14} />
                         تعديل
-                      </button>
+                      </button>}
                       {["PENDING_PAYMENT", "pending"].includes(order.status) ? (
                         <button
                           onClick={(event) => {
                             event.stopPropagation();
-                            setPaymentTarget(order);
-                            setPaymentReference("");
-                            setPaymentError(null);
+                            void closeOrder(order);
                           }}
                           disabled={busy}
                           className="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl font-black text-[10px] hover:bg-emerald-700 flex items-center justify-center gap-1.5 transition-all shadow-lg shadow-emerald-900/20 active:scale-95 disabled:opacity-40"
@@ -1255,23 +1289,7 @@ export const OrdersView = () => {
                           <CheckCircle2 size={14} />
                           تأكيد الدفع
                         </button>
-                      ) : (
-                        <button
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            closeOrder(order);
-                          }}
-                          disabled={busy}
-                          className="flex-1 bg-red-600 text-white py-2.5 rounded-xl font-black text-[10px] hover:bg-red-700 flex items-center justify-center gap-1.5 transition-all shadow-lg shadow-red-900/20 active:scale-95 disabled:opacity-40"
-                        >
-                          {busy ? (
-                            <Loader2 size={14} className="animate-spin" />
-                          ) : (
-                            <CheckCircle2 size={14} />
-                          )}
-                          إغلاق
-                        </button>
-                      )}
+                      ) : ["PREPARATION", "confirmed", "in_progress"].includes(order.status) ? <><button onClick={(event) => { event.stopPropagation(); void expediteOrder(order); }} className="flex-1 rounded-xl bg-amber-500/10 py-2.5 text-[10px] font-black text-amber-200">استعجال</button>{order.order_type === "delivery" && <button onClick={(event) => { event.stopPropagation(); void openDeliveryAssignment(order); }} className="flex-1 rounded-xl bg-violet-600 py-2.5 text-[10px] font-black text-white">للدليفري</button>}</> : (!order.driver_id && !order.driver) ? <button onClick={(event) => { event.stopPropagation(); void openDeliveryAssignment(order); }} className="flex-1 rounded-xl bg-violet-600 py-2.5 text-[10px] font-black text-white">اختيار كابتن</button> : <><button onClick={(event) => { event.stopPropagation(); setDeliveryDetailsTarget(order); }} className="flex-1 rounded-xl bg-yellow-500/10 py-2.5 text-[10px] font-black text-yellow-200">تفاصيل التوصيل</button><button onClick={(event) => { event.stopPropagation(); setDeliveryConfirmTarget(order); }} className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-[10px] font-black text-white">تأكيد الاستلام</button></>}
                     </>
                   ) : (
                     <button
@@ -1444,7 +1462,7 @@ export const OrdersView = () => {
                     {formatMoney(selectedOrder.total)}
                   </span>
                 </div>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+                <div className="hidden" aria-hidden="true">
                   <button
                     type="button"
                     onClick={() => window.print()}
@@ -1493,6 +1511,21 @@ export const OrdersView = () => {
         </div>
       )}
 
+      {performanceTarget && (() => {
+        const minutes = (start?: string | null, end?: string | null) => { if (!start || !end) return null; const value = Math.floor((Date.parse(end) - Date.parse(start)) / 60000); return Number.isFinite(value) && value >= 0 ? value : null; };
+        const waiting = minutes(performanceTarget.created_at, performanceTarget.paid_at);
+        const latestTicketCompletion = performanceTarget.tickets?.map((t) => t.completed_at).filter((v): v is string => Boolean(v)).sort((a,b)=>Date.parse(b)-Date.parse(a))[0] ?? null;
+        const preparation = minutes(performanceTarget.assembly_started_at || performanceTarget.paid_at, performanceTarget.assembled_at || latestTicketCompletion);
+        const delivery = minutes(performanceTarget.delivery_started_at, performanceTarget.delivered_at);
+        const total = minutes(performanceTarget.created_at, performanceTarget.delivered_at);
+        const kitchenRating = preparation == null ? "غير متاح" : preparation <= 15 ? "ممتاز" : preparation <= 20 ? "مقبول" : "متأخر";
+        const steps=[["إنشاء الطلب",performanceTarget.created_at,null],["تأكيد الدفع",performanceTarget.paid_at,waiting],["اكتمال التحضير",performanceTarget.assembled_at||latestTicketCompletion,preparation],["خروج الدليفري",performanceTarget.delivery_started_at,null],["تسليم العميل",performanceTarget.delivered_at,delivery]] as const;
+        return <div className="fixed inset-0 z-[148] flex items-center justify-center bg-slate-950/85 p-4" onClick={() => {setPerformanceTarget(null);qualityTriggerRef.current?.focus();}}><section ref={qualityDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="performance-title" className="w-full max-w-2xl rounded-3xl border border-cyan-400/20 bg-slate-900 p-5 outline-none" onClick={(e) => e.stopPropagation()}><div className="flex justify-between"><div><p className="text-xs font-black text-cyan-300">رحلة الطلب الزمنية</p><h3 id="performance-title" className="text-xl font-black text-white">الطلب #{performanceTarget.order_number}</h3></div><button aria-label="إغلاق تقرير الأداء" onClick={() => {setPerformanceTarget(null);qualityTriggerRef.current?.focus();}} className="rounded-xl bg-slate-800 p-3 text-slate-400"><X size={18}/></button></div><ol className="mt-6 space-y-0">{steps.map(([label,time,duration],index)=><li key={label} className="relative flex gap-4 pb-5"><div className="flex flex-col items-center"><span className={`h-4 w-4 rounded-full border-4 ${time?'border-cyan-300 bg-cyan-500':'border-slate-600 bg-slate-800'}`}/>{index<steps.length-1&&<span className="h-full w-0.5 bg-slate-700"/>}</div><div className="pb-2"><p className="text-sm font-black text-white">{label}</p><p className="text-xs text-slate-400">{time?new Date(time).toLocaleString('ar-EG'):'غير متاح'}</p>{duration!=null&&<span className="mt-1 inline-block rounded-lg bg-cyan-500/10 px-2 py-1 text-xs font-black text-cyan-200">استغرقت {duration} دقيقة</span>}</div></li>)}</ol><div className="grid grid-cols-2 gap-2"><div className="rounded-xl bg-slate-950/60 p-3 text-sm font-black">إجمالي الرحلة: {total==null?'غير متاح':`${total} دقيقة`}</div><div className="rounded-xl bg-slate-950/60 p-3 text-sm font-black">المطبخ: <span className={preparation != null && preparation > 20 ? "text-red-300" : "text-emerald-300"}>{kitchenRating}</span></div></div></section></div>;
+      })()}
+
+
+      {feedbackPanelTarget && <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/85 p-4" onClick={() => setFeedbackPanelTarget(null)}><section ref={qualityDialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="rating-panel-title" className="w-full max-w-lg rounded-3xl border border-emerald-400/20 bg-slate-900 p-5 outline-none" onClick={(event) => event.stopPropagation()}><div className="flex justify-between"><h3 id="rating-panel-title" className="text-xl font-black text-white">تقييم تجربة العميل</h3><button type="button" aria-label="إغلاق استبيان التقييم" onClick={() => setFeedbackPanelTarget(null)} className="rounded-xl bg-slate-800 p-3 text-slate-400"><X size={18}/></button></div><StarRating label="الأكل" value={feedback.food_rating} onChange={(value) => setFeedback({...feedback,food_rating:value})}/><StarRating label="الدليفري" value={feedback.delivery_rating} onChange={(value) => setFeedback({...feedback,delivery_rating:value})}/><StarRating label="السرعة" value={feedback.speed_rating} onChange={(value) => setFeedback({...feedback,speed_rating:value})}/><label className="mt-5 flex gap-2 text-sm font-bold text-slate-300"><input type="checkbox" checked={feedback.contacted} onChange={(e)=>setFeedback({...feedback,contacted:e.target.checked})}/>تم التواصل مع العميل</label><textarea aria-label="ملاحظات التقييم" value={feedback.notes} onChange={(e)=>setFeedback({...feedback,notes:e.target.value})} placeholder="ملاحظات اختيارية" className="mt-4 w-full rounded-xl bg-slate-950 p-3 text-sm text-white"/>{feedbackError&&<p role="alert" className="mt-2 text-xs font-bold text-red-300">{feedbackError}</p>}<button disabled={busyOrderId===feedbackPanelTarget.id} onClick={()=>void submitFeedback()} className="mt-4 min-h-11 w-full rounded-xl bg-emerald-600 py-3 text-sm font-black text-white disabled:opacity-40">حفظ التقييم</button></section></div>}
+
       {paymentTarget && (
         <div className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm" onClick={() => setPaymentTarget(null)}>
           <section dir="rtl" className="w-full max-w-md rounded-3xl border border-blue-400/20 bg-slate-900 p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
@@ -1505,9 +1538,14 @@ export const OrdersView = () => {
               <button type="button" onClick={() => setPaymentTarget(null)} className="rounded-xl bg-slate-800 p-2 text-slate-400 hover:text-white"><X size={18} /></button>
             </div>
             <div className="mb-4 grid grid-cols-2 gap-2 rounded-2xl border border-white/5 bg-slate-950/60 p-3 text-xs font-bold">
-              <span className="text-slate-500">طريقة الدفع</span><span className="text-left text-white">{getPaymentLabel(paymentTarget.payment_method)}</span>
+              <span className="text-slate-500">وجهة الأموال</span><span className="text-left text-white">{currentShift ? "صندوق الشفت الحالي" : `فرع الطلب #${paymentTarget.branch_id}`}</span>
               <span className="text-slate-500">المبلغ</span><span className="text-left font-black text-blue-300">{formatMoney(paymentTarget.total)}</span>
             </div>
+            <label htmlFor="payment-method" className="mb-2 block text-xs font-black text-slate-300">طريقة الدفع</label>
+            <select id="payment-method" value={selectedPaymentMethodId ?? ""} disabled={paymentMethodsLoading} onChange={(event) => { setSelectedPaymentMethodId(Number(event.target.value)); setPaymentError(null); }} className="mb-4 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-blue-500 disabled:opacity-50">
+              <option value="">{paymentMethodsLoading ? "جاري تحميل الحسابات..." : "اختر الصندوق أو الحساب"}</option>
+              {paymentMethods.map((method) => <option key={method.id} value={method.id}>{method.name} — {method.account ? `${method.account.code} · ${method.account.name}` : "غير مرتبط بحساب"}</option>)}
+            </select>
             <label htmlFor="payment-reference" className="mb-2 block text-xs font-black text-slate-300">الرقم المرجعي للعملية</label>
             <input
               id="payment-reference"
@@ -1517,16 +1555,50 @@ export const OrdersView = () => {
               onKeyDown={(event) => { if (event.key === "Enter") void confirmOrderPayment(); }}
               aria-invalid={Boolean(paymentError)}
               aria-describedby={paymentError ? "payment-error" : undefined}
-              placeholder="مثال: TXN-2026-00125"
+              required={paymentMethods.find((method) => method.id === selectedPaymentMethodId)?.type !== "cash"}
+              placeholder={paymentMethods.find((method) => method.id === selectedPaymentMethodId)?.type === "cash" ? "اختياري للدفع النقدي" : "مطلوب لهذه الطريقة"}
               className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none focus:border-blue-500"
             />
             {paymentError && <p id="payment-error" role="alert" className="mt-2 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-200">{paymentError}</p>}
             <div className="mt-5 flex gap-2">
               <button type="button" onClick={() => setPaymentTarget(null)} className="flex-1 rounded-2xl border border-white/10 bg-slate-800 py-3 text-xs font-black text-slate-300 hover:bg-slate-700">تراجع</button>
-              <button type="button" onClick={() => void confirmOrderPayment()} disabled={busyOrderId === paymentTarget.id} className="flex-1 rounded-2xl bg-blue-600 py-3 text-xs font-black text-white hover:bg-blue-500 disabled:opacity-40">
+              <button type="button" onClick={() => void confirmOrderPayment()} disabled={busyOrderId === paymentTarget.id || !selectedPaymentMethodId || paymentMethodsLoading} className="flex-1 rounded-2xl bg-blue-600 py-3 text-xs font-black text-white hover:bg-blue-500 disabled:opacity-40">
                 {busyOrderId === paymentTarget.id ? "جار التأكيد..." : "تنفيذ وإرسال للمطبخ"}
               </button>
             </div>
+          </section>
+        </div>
+      )}
+
+      {deliveryDetailsTarget && (
+        <div className="fixed inset-0 z-[146] flex items-center justify-center bg-slate-950/85 p-4" onClick={() => setDeliveryDetailsTarget(null)}>
+          <section role="dialog" aria-modal="true" aria-labelledby="delivery-details-title" dir="rtl" className="w-full max-w-2xl rounded-3xl border border-yellow-400/20 bg-slate-900 p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-4 flex justify-between"><div><p className="text-[10px] font-black text-yellow-300">متابعة رحلة التوصيل</p><h3 id="delivery-details-title" className="text-lg font-black text-white">الطلب #{deliveryDetailsTarget.order_number}</h3></div><button aria-label="إغلاق" onClick={() => setDeliveryDetailsTarget(null)} className="rounded-xl bg-slate-800 p-2 text-slate-400"><X size={18} /></button></div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl bg-slate-950/60 p-4"><p className="text-[10px] font-black text-slate-500">العميل</p><p className="mt-1 font-black text-white">{deliveryDetailsTarget.customer_name || "غير محدد"}</p><p className="text-xs text-slate-300">{deliveryDetailsTarget.customer_mobile || deliveryDetailsTarget.customer_phone || "لا يوجد جوال"}</p></div>
+              <div className="rounded-2xl bg-slate-950/60 p-4"><p className="text-[10px] font-black text-slate-500">الكابتن</p><p className="mt-1 font-black text-white">{deliveryDetailsTarget.driver?.name || deliveryDetailsTarget.delivery_employee_name || "غير محدد"}</p><p className="text-xs text-slate-300">{deliveryDetailsTarget.driver?.phone || "لا يوجد جوال"} · {deliveryDetailsTarget.driver?.vehicle_type || "المركبة غير محددة"}</p></div>
+              <div className="sm:col-span-2 rounded-2xl border border-yellow-400/10 bg-yellow-500/5 p-4"><p className="text-[10px] font-black text-yellow-300">عنوان التوصيل</p><p className="mt-1 text-sm font-bold leading-6 text-white">{formatDeliveryAddress(deliveryDetailsTarget.delivery_address_snapshot)}</p></div>
+              <div className="rounded-2xl bg-slate-950/60 p-4"><p className="text-[10px] font-black text-slate-500">وقت الخروج</p><p className="mt-1 font-black text-white">{deliveryDetailsTarget.delivery_started_at ? new Date(deliveryDetailsTarget.delivery_started_at).toLocaleString("ar-EG") : "غير مسجل"}</p><p className="text-xs text-yellow-300">على الطريق: {deliveryDetailsTarget.delivery_started_at ? `${Math.max(0, Math.floor((Date.now() - new Date(deliveryDetailsTarget.delivery_started_at).getTime()) / 60000))} دقيقة` : "—"}</p></div>
+              <div className="rounded-2xl bg-slate-950/60 p-4"><p className="text-[10px] font-black text-slate-500">الوجبات الخارجة</p>{deliveryDetailsTarget.items.map((item) => <p key={item.id} className="mt-1 flex justify-between text-xs font-bold text-slate-200"><span>{item.item_name_ar || item.item_name}</span><span>× {item.quantity}</span></p>)}</div>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {deliveryConfirmTarget && (
+        <div className="fixed inset-0 z-[147] flex items-center justify-center bg-slate-950/85 p-4" onClick={() => setDeliveryConfirmTarget(null)}><section role="alertdialog" aria-modal="true" className="w-full max-w-md rounded-3xl border border-emerald-400/20 bg-slate-900 p-5" onClick={(event) => event.stopPropagation()}><h3 className="text-lg font-black text-white">تأكيد استلام العميل</h3><p className="mt-2 text-sm font-bold leading-6 text-slate-400">تأكد من التواصل مع الكابتن أو العميل قبل تسكير الطلب. سيُسجل الطلب كمُسلّم، بينما يبقى الترحيل المالي مسؤولية مسار التسوية في الخادم لمنع تكرار الدفع.</p><div className="mt-5 flex gap-2"><button onClick={() => setDeliveryConfirmTarget(null)} className="flex-1 rounded-2xl bg-slate-800 py-3 text-xs font-black text-slate-300">تراجع</button><button disabled={busyOrderId === deliveryConfirmTarget.id} onClick={() => void markDelivered(deliveryConfirmTarget)} className="flex-1 rounded-2xl bg-emerald-600 py-3 text-xs font-black text-white disabled:opacity-40">نعم، تم الاستلام</button></div></section></div>
+      )}
+
+      {deliveryTarget && (
+        <div className="fixed inset-0 z-[145] flex items-center justify-center bg-slate-950/85 p-4" onClick={() => setDeliveryTarget(null)}>
+          <section role="dialog" aria-modal="true" aria-labelledby="driver-dialog-title" dir="rtl" className="w-full max-w-lg rounded-3xl border border-violet-400/20 bg-slate-900 p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-4 flex items-start justify-between"><div><p className="text-[10px] font-black text-violet-300">توزيع الدليفري</p><h3 id="driver-dialog-title" className="text-lg font-black text-white">الطلب #{deliveryTarget.order_number}</h3></div><button aria-label="إغلاق" onClick={() => setDeliveryTarget(null)} className="rounded-xl bg-slate-800 p-2 text-slate-400"><X size={18} /></button></div>
+            <div className="max-h-72 space-y-2 overflow-y-auto">
+              {drivers.map((driver) => <button key={driver.id} type="button" onClick={() => setSelectedDriverId(driver.id)} className={`w-full rounded-2xl border p-3 text-right ${selectedDriverId === driver.id ? "border-violet-400 bg-violet-500/15" : "border-white/5 bg-slate-950/60"}`}><span className="block text-sm font-black text-white">{driver.name}</span><span className="mt-1 block text-[10px] font-bold text-slate-400">{driver.phone || "لا يوجد جوال"} · {driver.vehicle_type} · {driver.active_orders_count} طلب نشط</span></button>)}
+              {!deliveryError && drivers.length === 0 && <p className="rounded-2xl border border-dashed border-white/10 p-6 text-center text-xs text-slate-500">لا يوجد موظفو دليفري متاحون حالياً</p>}
+            </div>
+            {deliveryError && <p role="alert" className="mt-3 rounded-xl bg-red-500/10 p-3 text-xs font-bold text-red-200">{deliveryError}</p>}
+            <button type="button" disabled={!selectedDriverId || busyOrderId === deliveryTarget.id} onClick={() => void assignDriver()} className="mt-4 w-full rounded-2xl bg-violet-600 py-3 text-xs font-black text-white disabled:opacity-40">اعتماد وتحويل للدليفري</button>
           </section>
         </div>
       )}

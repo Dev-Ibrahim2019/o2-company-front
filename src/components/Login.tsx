@@ -29,6 +29,8 @@ const API_ROLE_TO_STORE_ROLE: Record<string, string> = {
   "call-center": "CALL_CENTER",
   "hospitality": "HOSPITALITY",
   "dept-staff": "DEPARTMENT_STAFF",
+  "order-aggregator": "ORDER_AGGREGATOR",
+  "assembler": "ORDER_AGGREGATOR",
 };
 
 export const Login: React.FC = () => {
@@ -67,6 +69,8 @@ export const Login: React.FC = () => {
       navigate("/admin/dashboard", { replace: true });
     } else if (primary === "hospitality") {
       navigate("/Hospitality", { replace: true });
+    } else if (primary === "order-aggregator" || primary === "assembler") {
+      navigate("/pos/assembler", { replace: true });
     } else {
       navigate("/pos", { replace: true });
     }
@@ -111,7 +115,10 @@ export const Login: React.FC = () => {
     else if (mode === "DEPARTMENT_STAFF")
       storeLogin(name, "DEPARTMENT_STAFF", "", selectedBranch, selectedDept);
     else if (mode === "ORDER_AGGREGATOR")
-      storeLogin(name, "ORDER_AGGREGATOR", "", selectedBranch);
+      {
+        storeLogin(name, "ORDER_AGGREGATOR", "", selectedBranch);
+        navigate("/pos/assembler", { replace: true });
+      }
     else if (mode === ("EMPLOYEE" as any)) storeLogin(name, "EMPLOYEE");
     else storeLogin(name, "CUSTOMER", phone);
   };

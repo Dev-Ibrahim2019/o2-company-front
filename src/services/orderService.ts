@@ -432,6 +432,9 @@ export interface OrderFromApi {
   driver?: { id: number; name: string; phone?: string | null; vehicle_type?: string | null; branch?: { id: number; name: string } | null } | null;
   transaction_id?: string | null;
   payment_status?: "PENDING" | "PAID" | string | null;
+  is_urgent?: boolean | number | null;
+  priority?: string | number | null;
+  expedited_at?: string | null;
   items: OrderItemFromApi[];
   tickets: ProductionTicketFromApi[];
   payments?: InvoicePaymentResponse[];
@@ -962,13 +965,28 @@ export const orderService = {
     return (data.data?.order || data.data) as OrderFromApi;
   },
 
+  expedite: async (orderId: number, notes?: string): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${orderId}/expedite`, { notes });
+    return (data.data?.order || data.data) as OrderFromApi;
+  },
+
+  submitCustomerExperience: async (orderId: number, payload: { food_rating: number; delivery_rating: number; speed_rating: number; notes?: string; contacted: boolean }): Promise<void> => {
+    await api.post(`/orders/${orderId}/customer-experience`, payload);
+  },
+
   markDelivered: async (
     orderId: number,
     payload: { delivered_at?: string; offline_recorded_at?: string },
+    callCenter = false,
   ): Promise<OrderFromApi> => {
     const order = await orderService.getOne(orderId);
     assertLifecycle(order, "OUT_FOR_DELIVERY", "لا يمكن إغلاق الطلب قبل تسليمه لموظف الدليفري");
-    const { data } = await api.put(`/orders/${orderId}/complete`, payload);
+    const { data } = await api.put(`${callCenter ? "/call-center" : ""}/orders/${orderId}/complete`, payload);
+    return (data.data?.order || data.data) as OrderFromApi;
+  },
+
+  markOrderDelivered: async (orderId: number, notes?: string): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${orderId}/delivered`, { notes });
     return (data.data?.order || data.data) as OrderFromApi;
   },
 

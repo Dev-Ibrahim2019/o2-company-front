@@ -59,6 +59,23 @@ const MONEY_EPSILON = 0.01;
 const roundMoney = (value: number) =>
   Math.round((Number(value) || 0) * 100) / 100;
 
+const normalizePhoneForMatch = (value: string) =>
+  (() => {
+    let digits = value.replace(/\D/g, "");
+    if (digits.startsWith("00970")) digits = digits.slice(5);
+    else if (digits.startsWith("970")) digits = digits.slice(3);
+    if (digits.startsWith("0")) digits = digits.slice(1);
+    return /^5\d{8}$/.test(digits) ? digits : "";
+  })();
+
+const formatCustomerAddress = (address: any) =>
+  [address?.city, address?.area || address?.district, address?.street || address?.address,
+    address?.building_no && `مبنى ${address.building_no}`, address?.landmark]
+    .filter(Boolean).join("، ");
+
+const normalizeAddressForMatch = (value: string) =>
+  value.replace(/[،,\s]+/g, " ").trim().toLocaleLowerCase("ar");
+
 const requiresPaymentReference = (method: PaymentMethod) =>
   method === PaymentMethod.WALLET ||
   method === PaymentMethod.QR ||
@@ -251,9 +268,14 @@ export const POS: React.FC<{
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerMobile, setCustomerMobile] = useState("");
   const [customerAddressId, setCustomerAddressId] = useState<number | undefined>();
+  const [selectedDeliveryAddress, setSelectedDeliveryAddress] = useState<any | null>(null);
   const [deliveryAddressSnapshot, setDeliveryAddressSnapshot] = useState<string | null>(null);
+  const [customerAddress, setCustomerAddress] = useState("");
   const [customerOrderNotes, setCustomerOrderNotes] = useState("");
   const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [resolvingCallCenterCustomer, setResolvingCallCenterCustomer] = useState(false);
+  const resolvingCallCenterCustomerRef = useRef(false);
+  const addressLoadRequestRef = useRef(0);
 
   // ── Call Center Customer Search ──
   const { query: ccSearchQuery, results: ccSearchResults, loading: ccSearchLoading, setQuery: ccSetSearch, clear: ccClearSearch } = useCustomerSearch();
@@ -671,6 +693,18 @@ export const POS: React.FC<{
           ? JSON.stringify(order.delivery_address_snapshot)
           : null,
     );
+    if (order.delivery_address_snapshot) {
+      try {
+        const snapshot = typeof order.delivery_address_snapshot === "string"
+          ? JSON.parse(order.delivery_address_snapshot)
+          : order.delivery_address_snapshot;
+        setCustomerAddress(formatCustomerAddress(snapshot));
+      } catch {
+        setCustomerAddress(String(order.delivery_address_snapshot));
+      }
+    } else {
+      setCustomerAddress("");
+    }
     setCustomerOrderNotes(order.customer_notes ?? "");
     setSelectedCustomer(
       order.customer_id
@@ -708,6 +742,12 @@ export const POS: React.FC<{
     setPaymentMethod(PaymentMethod.CASH);
     setCustomerName("");
     setCustomerPhone("");
+    setCustomerMobile("");
+    setCustomerAddress("");
+    setCustomerAddressId(undefined);
+    setSelectedDeliveryAddress(null);
+    setDeliveryAddressSnapshot(null);
+    setSelectedCustomer(null);
   };
 
   const clearActiveCart = () => {
@@ -872,7 +912,65 @@ export const POS: React.FC<{
     }
   };
 
+  const resolveCallCenterCustomerAndAddress = async (nameValue: string, phoneValue: string) => {
+    const name = nameValue.trim();
+    const phone = phoneValue.trim();
+    const address = customerAddress.trim();
+    if (!name || !phone) throw new Error("اسم الزبون ورقم الجوال مطلوبان لحفظ الفاتورة");
+    const canonicalPhone = normalizePhoneForMatch(phone);
+    if (!canonicalPhone) throw new Error("رقم الجوال غير صالح");
+    let customer = selectedCustomer;
+    let addressId = customerAddressId;
+    if (!customer?.id || normalizePhoneForMatch(customer.phone || customer.mobile || "") !== canonicalPhone) {
+      const searched = await callCenterService.searchCustomers(phone, 20);
+      customer = (searched.data ?? []).find((candidate: any) =>
+        normalizePhoneForMatch(candidate.phone || candidate.mobile || "") === canonicalPhone,
+      );
+      if (!customer) {
+        // Create the customer and address separately. The backend quick-create
+        // endpoint currently leaks `phone` into customer_addresses, whose table
+        // has no phone column, causing the whole transaction to fail.
+        const created = await callCenterService.createCustomer({
+          name,
+          phone,
+          branch_id: branchId,
+        });
+        customer = created.data;
+      } else addressId = undefined;
+      setSelectedCustomer(customer);
+      setCustomerName(customer.name || name);
+      setCustomerPhone(customer.phone || customer.mobile || phone);
+      ccSetSearch(phone);
+    }
+
+    if (customer?.id && address && !addressId) {
+      // customer_addresses.city is required by the current backend schema.
+      // The compact call-center form intentionally collects one full address,
+      // so use its first segment as the city/area fallback while preserving the
+      // complete value in street.
+      const inferredCity =
+        address
+          .split(/[-،,]/)
+          .map((part) => part.trim())
+          .find(Boolean) || "غير محدد";
+      const createdAddress = await callCenterService.createCustomerAddress(
+        Number(customer.id),
+        {
+          label: "التوصيل",
+          city: inferredCity,
+          street: address,
+          is_default: true,
+        },
+      );
+      addressId = createdAddress.data.id;
+      setCustomerAddressId(addressId);
+      setSelectedDeliveryAddress(createdAddress.data);
+    }
+    return { customer, addressId, addressSnapshot: address ? JSON.stringify({ address }) : deliveryAddressSnapshot };
+  };
+
   const handlePrintInvoice = async () => {
+    if (resolvingCallCenterCustomerRef.current || submitting) return;
     if (currentCart.length === 0) {
       setPosError("السلة فارغة");
       return;
@@ -893,17 +991,36 @@ export const POS: React.FC<{
         : cartOrderType === OrderType.DELIVERY
           ? "delivery"
           : "takeaway";
+    let resolvedCustomer = selectedCustomer;
+    let resolvedAddressId = customerAddressId;
+    let resolvedAddressSnapshot = deliveryAddressSnapshot;
+    if (isCallCenterMode) {
+      resolvingCallCenterCustomerRef.current = true;
+      setResolvingCallCenterCustomer(true);
+      try {
+        const resolved = await resolveCallCenterCustomerAndAddress(customerName, customerPhone);
+        resolvedCustomer = resolved.customer;
+        resolvedAddressId = resolved.addressId;
+        resolvedAddressSnapshot = resolved.addressSnapshot;
+      } catch (error: any) {
+        setPosError(error?.message || "تعذر إنشاء أو ربط العميل");
+        resolvingCallCenterCustomerRef.current = false;
+        setResolvingCallCenterCustomer(false);
+        return;
+      }
+    }
     const result = await submitOrderApi(
       {
         branch_id: branchId || 0,
         cashier_id: currentUser?.id ? Number(currentUser.id) : undefined,
+        customer_id: resolvedCustomer?.id ? Number(resolvedCustomer.id) : undefined,
         order_type: orderType,
         table_number: activeTable?.number.toString(),
         customer_name: customerName || undefined,
         customer_phone: customerPhone || undefined,
         customer_mobile: customerMobile || undefined,
-        customer_address_id: customerAddressId || undefined,
-        delivery_address_snapshot: deliveryAddressSnapshot || undefined,
+        customer_address_id: resolvedAddressId || undefined,
+        delivery_address_snapshot: resolvedAddressSnapshot || undefined,
         customer_notes: customerOrderNotes || undefined,
         note: invoiceNote || undefined,
         discount_value: discountValue || undefined,
@@ -915,6 +1032,8 @@ export const POS: React.FC<{
       false, // do not close/create invoice yet
       editingApiOrderId,
     );
+    resolvingCallCenterCustomerRef.current = false;
+    setResolvingCallCenterCustomer(false);
 
     if (result) {
       if (activeTable) {
@@ -930,6 +1049,10 @@ export const POS: React.FC<{
   };
 
   const handleSelectCustomer = (customer: any) => {
+    const addressRequestToken = ++addressLoadRequestRef.current;
+    setCustomerAddressId(undefined);
+    setSelectedDeliveryAddress(null);
+    setDeliveryAddressSnapshot(null);
     setSelectedCustomer(customer);
     setCustomerName(customer.name);
     setCustomerPhone(customer.phone || "");
@@ -943,10 +1066,13 @@ export const POS: React.FC<{
       if (customer.selectedAddress) {
         handleSelectCustomerAddress(customer.selectedAddress);
       } else callCenterService.getCustomerAddresses(customer.id).then(res => {
+        if (addressLoadRequestRef.current !== addressRequestToken) return;
         const addresses = res.data ?? [];
         const defaultAddr = addresses.find((a: any) => a.is_default) || addresses[0];
         if (defaultAddr) {
           setCustomerAddressId(defaultAddr.id);
+          setSelectedDeliveryAddress(defaultAddr);
+          setCustomerAddress(formatCustomerAddress(defaultAddr));
           setDeliveryAddressSnapshot(JSON.stringify({
             label: defaultAddr.label,
             city: defaultAddr.city,
@@ -991,7 +1117,10 @@ export const POS: React.FC<{
   };
 
   const handleSelectCustomerAddress = (address: any) => {
+    addressLoadRequestRef.current += 1;
     setCustomerAddressId(address.id);
+    setSelectedDeliveryAddress(address);
+    setCustomerAddress(formatCustomerAddress(address));
     setDeliveryAddressSnapshot(JSON.stringify({
       label: address.label, city: address.city, area: address.area,
       district: address.district, street: address.street,
@@ -1202,6 +1331,7 @@ export const POS: React.FC<{
     meta: { name: string; phone: string; note: string },
     paymentsArg?: any[],
   ) => {
+    if (submitting || resolvingCallCenterCustomerRef.current) return;
     if (currentCart.length === 0) {
       setPosError("السلة فارغة");
       return;
@@ -1212,6 +1342,35 @@ export const POS: React.FC<{
       : cartOrderType === OrderType.DINE_IN
         ? "dine_in"
         : "takeaway";
+
+    let orderCustomer = selectedCustomer;
+    let orderAddressId = customerAddressId;
+    let orderAddressSnapshot = deliveryAddressSnapshot;
+
+    if (isCallCenterMode) {
+      const address = customerAddress.trim();
+      if (status === OrderStatus.DELIVERED && !address) {
+        setPosError("أدخل عنوان التوصيل قبل إنهاء الطلب");
+        setActivePOSMode("customer");
+        return;
+      }
+      resolvingCallCenterCustomerRef.current = true;
+      setResolvingCallCenterCustomer(true);
+      try {
+        const resolved = await resolveCallCenterCustomerAndAddress(meta.name, meta.phone);
+        orderCustomer = resolved.customer;
+        orderAddressId = resolved.addressId;
+        orderAddressSnapshot = resolved.addressSnapshot;
+      } catch (error: any) {
+        const message = error?.response?.data?.message || error?.message || "تعذر إنشاء العميل";
+        toast.error("لم يتم حفظ الفاتورة", `تعذر إنشاء أو ربط العميل: ${message}`);
+        setPosError("تعذر إنشاء العميل. تحقق من البيانات وحاول مجدداً");
+        return;
+      } finally {
+        resolvingCallCenterCustomerRef.current = false;
+        setResolvingCallCenterCustomer(false);
+      }
+    }
 
     const isClosingOrder = status === OrderStatus.DELIVERED;
     const shouldConfirm =
@@ -1294,14 +1453,14 @@ export const POS: React.FC<{
       {
         branch_id: branchId,
         cashier_id: currentUser?.id ? Number(currentUser.id) : undefined,
-        customer_id: selectedCustomer?.id ? Number(selectedCustomer.id) : undefined,
+        customer_id: orderCustomer?.id ? Number(orderCustomer.id) : undefined,
         order_type: orderType,
         table_number: activeTable?.number.toString(),
         customer_name: meta.name || undefined,
         customer_phone: meta.phone || undefined,
         customer_mobile: customerMobile || undefined,
-        customer_address_id: customerAddressId || undefined,
-        delivery_address_snapshot: deliveryAddressSnapshot || undefined,
+        customer_address_id: orderAddressId || undefined,
+        delivery_address_snapshot: orderAddressSnapshot || undefined,
         customer_notes: customerOrderNotes || undefined,
         note: meta.note || undefined,
         discount_value: discountValue || undefined,
@@ -1495,7 +1654,7 @@ export const POS: React.FC<{
               onApplyLoyaltyDiscount={(amount) => {
                 setDiscountType("AMOUNT");
                 setDiscountValue(Math.min(amount, afterEngineSubtotal));
-                toast.success("تم تطبيق خصم نقاط الولاء", `${Math.min(amount, afterEngineSubtotal).toFixed(2)} ₪`);
+                toast.info("تم تحضير خصم مبدئي للطلب", "لم يتم خصم نقاط من رصيد العميل");
               }}
             />
             {selectedCustomer && ccAlerts && ccAlerts.length > 0 && (
@@ -1566,7 +1725,22 @@ export const POS: React.FC<{
               customerName={customerName}
               setCustomerName={setCustomerName}
               customerPhone={customerPhone}
-              setCustomerPhone={setCustomerPhone}
+              setCustomerPhone={(phone) => {
+                setCustomerPhone(phone);
+                if (phone !== (selectedCustomer?.phone || selectedCustomer?.mobile || "")) {
+                  setSelectedCustomer(null);
+                  setCustomerAddressId(undefined);
+                }
+              }}
+              customerAddress={customerAddress}
+              setCustomerAddress={(address) => {
+                addressLoadRequestRef.current += 1;
+                setCustomerAddress(address);
+                setCustomerAddressId(undefined);
+                setSelectedDeliveryAddress(null);
+                setDeliveryAddressSnapshot(address ? JSON.stringify({ address }) : null);
+              }}
+              isCallCenterMode={isCallCenterMode}
               selectedCustomer={selectedCustomer}
               accountType={accountType}
               setAccountType={setAccountType}

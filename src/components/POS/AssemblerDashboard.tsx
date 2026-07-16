@@ -11,9 +11,11 @@ import {
   X,
 } from "lucide-react";
 import { useOrders } from "../../hooks/useOrders";
-import { orderService } from "../../services/orderService";
+import { getOrderLifecycleStatus, orderService } from "../../services/orderService";
 import type { AvailableDeliveryDriver, OrderFromApi, OrderItemFromApi } from "../../services/orderService";
 import { toast } from "../shared/Toast";
+import { useAuth } from "../../auth";
+import { useApp } from "../../../store";
 
 type PreparedCache = Record<string, { preparedAt: string; durationSeconds: number }>;
 type AssembledCache = Record<string, { assembledAt: string; deliveryEmployeeName: string }>;
@@ -63,9 +65,12 @@ const getDepartmentName = (item: OrderItemFromApi) =>
 
 const getDeliveryIcon = (order: OrderFromApi) =>
   order.order_type === "delivery" ? <Bike size={16} /> : <Truck size={16} />;
+const isUrgent = (order: OrderFromApi) => Boolean(order.is_urgent || order.expedited_at || String(order.priority ?? "").toLowerCase().includes("urgent") || (order.note ?? "").toLowerCase().includes("مستعجل"));
 
 export const AssemblerDashboard = () => {
   const { orders, loading, error, refetch } = useOrders();
+  const { user: authUser } = useAuth();
+  const { currentUser } = useApp();
   const [, setNowTick] = useState(Date.now());
   const [preparedCache, setPreparedCache] = useState<PreparedCache>(() =>
     readJson(PREPARED_CACHE_KEY, {}),
@@ -83,7 +88,6 @@ export const AssemblerDashboard = () => {
   const [driversLoading, setDriversLoading] = useState(false);
   const [assigningDriverId, setAssigningDriverId] = useState<number | null>(null);
   const [assemblers, setAssemblers] = useState<Array<{ id: number; name: string; branch_id?: number | null }>>([]);
-  const [selectedAssemblers, setSelectedAssemblers] = useState<Record<number, string>>({});
 
   useEffect(() => {
     const interval = window.setInterval(() => setNowTick(Date.now()), 1000);
@@ -92,11 +96,25 @@ export const AssemblerDashboard = () => {
 
   useEffect(() => { orderService.getActiveAssemblers().then(setAssemblers).catch(() => setActionError('تعذر تحميل مجمعي الطلبات النشطين.')); }, []);
 
+  const currentAssemblerId = (order: OrderFromApi) => {
+    if (order.assembler_id) return Number(order.assembler_id);
+    const currentName = authUser?.name || currentUser?.name;
+    const matchedAssembler = assemblers.find((assembler) =>
+      (authUser?.id && assembler.id === authUser.id) ||
+      (currentName && assembler.name.trim() === currentName.trim()),
+    );
+    return Number(matchedAssembler?.id || authUser?.id || currentUser?.id || 0);
+  };
+
   const activeOrders = useMemo(
     () =>
       orders
-        .filter((order) => ["PREPARATION", "OUT_FOR_DELIVERY", "confirmed", "in_progress", "ready"].includes(order.status))
+        .filter((order) => {
+          const lifecycle = getOrderLifecycleStatus(order);
+          return lifecycle === "PREPARATION" || lifecycle === "OUT_FOR_DELIVERY";
+        })
         .sort((a, b) => {
+          if (isUrgent(a) !== isUrgent(b)) return isUrgent(a) ? -1 : 1;
           const aTime = Date.parse(getTimerStart(a));
           const bTime = Date.parse(getTimerStart(b));
           return aTime - bTime;
@@ -125,6 +143,12 @@ export const AssemblerDashboard = () => {
     const key = itemCacheKey(order.id, item.id);
     if (preparedCache[key] || item.item_prepared_at) return;
 
+    const assemblerId = currentAssemblerId(order);
+    if (!assemblerId) {
+      setActionError("تعذر ربط حسابك بموظف مجمّع طلبات نشط. تحقق من أن المستخدم الحالي مسجل كـ مجمّع طلبات.");
+      return;
+    }
+
     const preparedAt = new Date().toISOString();
     const durationSeconds = getSecondsBetween(getTimerStart(order), preparedAt);
     const nextCache = {
@@ -132,19 +156,27 @@ export const AssemblerDashboard = () => {
       [key]: { preparedAt, durationSeconds },
     };
 
-    setPreparedCache(nextCache);
-    writeJson(PREPARED_CACHE_KEY, nextCache);
     setBusyKey(key);
     setActionError(null);
 
     try {
+      if (!order.assembly_started_at) {
+        await orderService.startAssembly(order.id, assemblerId);
+      }
       await orderService.markItemPrepared(order.id, item.id, {
         item_prepared_at: preparedAt,
         duration_seconds: durationSeconds,
       });
+      setPreparedCache(nextCache);
+      writeJson(PREPARED_CACHE_KEY, nextCache);
+      toast.success("تم استلام الصنف", item.item_name_ar || item.item_name);
       await refetch();
-    } catch {
-      setActionError("تم حفظ استلام الصنف محليا لحين تجهيز مسار الحفظ في الباك إند.");
+    } catch (error: any) {
+      const response = error?.response?.data;
+      const message = response?.errors
+        ? Object.values(response.errors as Record<string, string[]>).flat()[0]
+        : response?.message;
+      setActionError(message || error?.message || "تعذر تسجيل استلام الصنف.");
     } finally {
       setBusyKey(null);
     }
@@ -156,8 +188,8 @@ export const AssemblerDashboard = () => {
       setActionError("يجب تحديد جميع أصناف الطلب كجاهزة قبل التسليم للدليفري.");
       return;
     }
-    const assemblerId=Number(order.assembler_id || selectedAssemblers[order.id]);
-    if(!assemblerId){setActionError('اختر مجمع طلبات نشطاً أولاً.');return;}
+    const assemblerId = currentAssemblerId(order);
+    if (!assemblerId) { setActionError('تعذر تحديد مستخدم مجمّع الطلبات الحالي.'); return; }
     const assembledAt = new Date().toISOString();
     const nextCache = {
       ...assembledCache,
@@ -178,8 +210,6 @@ export const AssemblerDashboard = () => {
       setBusyKey(null);
     }
   };
-
-  const startOrderAssembly=async(order:OrderFromApi)=>{const assemblerId=Number(selectedAssemblers[order.id]);if(!assemblerId){setActionError('اختر مجمع طلبات نشطاً أولاً.');return;}setBusyKey(`start:${order.id}`);setActionError(null);try{await orderService.startAssembly(order.id,assemblerId);toast.success('تم بدء التجميع',`الطلب #${order.order_number}`);await refetch();}catch(error){setActionError(error instanceof Error?error.message:'تعذر بدء التجميع.');}finally{setBusyKey(null);}};
 
   const loadAvailableDrivers = async (order: OrderFromApi) => {
     setDriversLoading(true); setActionError(null);
@@ -288,11 +318,12 @@ export const AssemblerDashboard = () => {
             return (
               <article
                 key={order.id}
-                className="overflow-hidden rounded-3xl border border-blue-400/20 bg-blue-500/10 shadow-2xl shadow-blue-950/20"
+                className={`overflow-hidden rounded-3xl border shadow-2xl ${isUrgent(order) ? "border-red-400/70 bg-red-500/10 shadow-red-950/30" : "border-blue-400/20 bg-blue-500/10 shadow-blue-950/20"}`}
               >
                 <div className="border-b border-white/10 bg-slate-900/70 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
+                      {isUrgent(order) && <span className="mb-2 inline-flex rounded-lg bg-red-500 px-2 py-1 text-[10px] font-black text-white">طلب مستعجل — أولوية قصوى</span>}
                       <p className="text-[10px] font-black text-slate-500">رقم الطلب</p>
                       <h2 className="mt-1 text-xl font-black">#{order.order_number}</h2>
                     </div>
@@ -330,7 +361,7 @@ export const AssemblerDashboard = () => {
                         <button
                           type="button"
                           onClick={() => markItemPrepared(order, item)}
-                          disabled={done || !assemblyStarted || assembled || Boolean(order.driver_id) || busyKey === key}
+                          disabled={done || assembled || Boolean(order.driver_id) || busyKey !== null}
                           className={`flex h-9 w-9 items-center justify-center rounded-xl border text-white ${
                             done
                               ? "border-emerald-400/30 bg-emerald-500"
@@ -370,7 +401,7 @@ export const AssemblerDashboard = () => {
                       <Bike size={16} /> استدعاء دليفري
                     </button>
                   ) : !assemblyStarted ? (
-                    <div className="space-y-2"><select value={selectedAssemblers[order.id]??''} onChange={e=>setSelectedAssemblers(prev=>({...prev,[order.id]:e.target.value}))} className="w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2.5 text-xs font-bold"><option value="">اختر مجمع الطلبات...</option>{assemblers.filter(a=>!order.branch_id||!a.branch_id||a.branch_id===order.branch_id).map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select>{assemblers.length===0&&<p className="text-[10px] font-bold text-amber-300">لا يوجد مجمع طلبات نشط ومفعل.</p>}<button type="button" onClick={()=>startOrderAssembly(order)} disabled={!selectedAssemblers[order.id]||busyKey===`start:${order.id}`} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 py-3 text-xs font-black hover:bg-blue-500 disabled:opacity-40">{busyKey===`start:${order.id}`?<Loader2 size={16} className="animate-spin"/>:<Clock3 size={16}/>}بدء التجميع</button></div>
+                    <div className="rounded-2xl border border-blue-400/20 bg-blue-500/10 px-3 py-3 text-center text-[11px] font-bold text-blue-200">ضع علامة على أول صنف مستلم لبدء التجميع تلقائياً باسم المستخدم الحالي.</div>
                   ) : (
                     <button type="button" onClick={() => markOrderAssembled(order)} disabled={!allPrepared || busyKey === `assembled:${order.id}`} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-yellow-500 py-3 text-xs font-black text-slate-950 hover:bg-yellow-400 disabled:cursor-not-allowed disabled:opacity-40">
                       {busyKey === `assembled:${order.id}` ? <Loader2 size={16} className="animate-spin" /> : <PackageCheck size={16} />}
