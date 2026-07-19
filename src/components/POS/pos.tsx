@@ -47,6 +47,7 @@ import type { Order, Table } from "../../../types";
 import { getDeviceUUIDSecurely } from "../../utils/posSecurity";
 import POSActivationPage from "./POSActivationPage";
 import { PERMISSIONS, ROLES } from "../../auth/permissions";
+import api from "../../api/axios";
 
 
 const MONEY_EPSILON = 0.01;
@@ -213,6 +214,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [manualTable, setManualTable] = useState("");
+  const [isPrinting, setIsPrinting] = useState(false);
 
   // Auto-dismiss error toast
   useEffect(() => {
@@ -374,7 +376,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
 
   useEffect(() => {
     if (selectedTable) {
-      setManualTable((selectedTable as any).number?.toString() ?? "");
+      setManualTable((selectedTable as any).table_number || ((selectedTable as any).number?.toString() ?? ""));
     } else {
       setManualTable("");
     }
@@ -599,7 +601,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
     loadCart(cloneCartItems(draft.items));
     setEditingApiOrderId(draft.editingApiOrderId);
     setCartOrderType(draft.orderType);
-    setManualTable(table.number.toString());
+    setManualTable(table.table_number || table.number.toString());
     setInvoiceNote(draft.invoiceNote);
     setDiscountValue(draft.discountValue);
     setDiscountType(draft.discountType);
@@ -614,7 +616,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
     loadCart(apiOrderToCartItems(order));
     setEditingApiOrderId(order.id);
     setCartOrderType(toPosOrderType(order.order_type));
-    setManualTable(order.table_number || table?.number.toString() || "");
+    setManualTable(table?.table_number || order.table_number || table?.number.toString() || "");
     setInvoiceNote(order.note ?? "");
     setDiscountValue(Number(order.discount_value || 0));
     setDiscountType(order.discount_type === "percent" ? "PERCENT" : "AMOUNT");
@@ -664,7 +666,13 @@ const handleActivationSuccess = (activatedInfo: any) => {
       return null;
     }
 
-    const table = tables.find((t) => t.number.toString() === tableNumber);
+    if (selectedTable && selectedTable.table_number?.toUpperCase() === tableNumber.toUpperCase()) {
+      return selectedTable;
+    }
+
+    const table = tables.find(
+      (t) => t.table_number?.toUpperCase() === tableNumber.toUpperCase() || t.number.toString() === tableNumber,
+    );
     if (!table) {
       setPosError("الطاولة المحددة غير موجودة");
       return null;
@@ -679,7 +687,8 @@ const handleActivationSuccess = (activatedInfo: any) => {
   };
 
   const loadApiOrderForTable = async (table: Table, clearWhenMissing = true) => {
-    const order = await orderService.getActiveByTableNumber(table.number, {
+    const tableNum = table.table_number || table.number.toString();
+    const order = await orderService.getActiveByTableNumber(tableNum, {
       branch_id: branchId || 0,
     });
 
@@ -727,8 +736,9 @@ const handleActivationSuccess = (activatedInfo: any) => {
   const handleTableInput = (val: string) => {
     setManualTable(val);
 
+    const normalized = normalizeTableNumber(val);
     const table = tables?.find(
-      (t: any) => t.number?.toString() === normalizeTableNumber(val),
+      (t: any) => t.table_number?.toUpperCase() === normalized?.toUpperCase() || t.number?.toString() === normalized,
     );
 
     if (!table) {
@@ -762,7 +772,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
     }
 
     setSelectedTable(table);
-    setManualTable(table.number.toString());
+    setManualTable(table.table_number || table.number.toString());
 
     setCartOrderType(OrderType.DINE_IN);
 
@@ -805,59 +815,38 @@ const handleActivationSuccess = (activatedInfo: any) => {
       return;
     }
 
-    if (isActiveTable || editingApiOrderId) {
+    // الطاولة مشغولة بس ما فيها طلب → افتح السلة فاضية
+    if (isActiveTable) {
+      setCartOrderType(OrderType.DINE_IN);
+      setManualTable(table.table_number || table.number.toString());
+      setIsCartOpen(true);
+      return;
+    }
+
+    if (editingApiOrderId) {
       clearLoadedApiOrder();
     }
   };
 
-  const handlePrintInvoice = async () => {
-    if (currentCart.length === 0) {
-      setPosError("السلة فارغة");
-      return;
-    }
-    if (cartOrderType === OrderType.DINE_IN && !manualTable) {
-      setPosError("يرجى إدخال رقم الطاولة أولاً");
-      return;
-    }
+const handlePrintInvoice = async (orderId: number | string) => {
+  if (!orderId || isPrinting) return;
 
-    const activeTable =
-      cartOrderType === OrderType.DINE_IN ? resolveActiveDineInTable() : null;
-    if (cartOrderType === OrderType.DINE_IN && !activeTable) return;
+  setIsPrinting(true); // استخدام الدالة المعرفة مسبقاً في ملفك
+  try {
+    // إرسال طلب الفحص للباك إند
+    const response = await api.post(`/orders/${orderId}/print-invoice`);
 
-    // Submit the order as PENDING so it is saved to the backend
-    const orderType =
-      cartOrderType === OrderType.DINE_IN ? "dine_in" : "takeaway";
-    const result = await submitOrderApi(
-      {
-        branch_id: branchId || 0,
-        cashier_id: currentUser?.id ? Number(currentUser.id) : undefined,
-        order_type: orderType,
-        table_number: activeTable?.number.toString(),
-        customer_name: customerName || undefined,
-        customer_phone: customerPhone || undefined,
-        note: invoiceNote || undefined,
-        discount_value: discountValue || undefined,
-        discount_type: discountType === "PERCENT" ? "percent" : "amount",
-        ...getPricingContext(),
-      },
-      true, // confirm order
-      [],
-      false, // do not close/create invoice yet
-      editingApiOrderId,
-    );
-
-    if (result) {
-      if (activeTable) {
-        updateTableStatus(activeTable.id, TableStatus.OCCUPIED, {
-          currentOrderId: String(result.id),
-        });
-        setSelectedTable(activeTable);
-        forgetTableDraft(activeTable.id);
-      }
-      setEditingApiOrderId(null);
-      toast.success("تم إرسال الفاتورة للطباعة", `الطاولة #${manualTable}`);
+    if (response.data && response.data.success) {
+      toast.success(response.data.message || "تم الاتصال بالمسار بنجاح!");
     }
-  };
+  } catch (error: any) {
+    console.error("Print Error:", error);
+    const errorMsg = error.response?.data?.message || "فشلت العملية، تحقق من الشبكة";
+    toast.error(errorMsg);
+  } finally {
+    setIsPrinting(false);
+  }
+};
 
   const handleSelectCustomer = (customer: any) => {
     setSelectedCustomer(customer);
@@ -1054,7 +1043,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
         branch_id: branchId,
         cashier_id: currentUser?.id ? Number(currentUser.id) : undefined,
         order_type: orderType,
-        table_number: activeTable?.number.toString(),
+        table_number: activeTable?.table_number || activeTable?.number.toString(),
         customer_name: meta.name || undefined,
         customer_phone: meta.phone || undefined,
         note: meta.note || undefined,
@@ -1151,6 +1140,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
     customerPhone,
     setShowCustomerModal,
     handlePrintInvoice,
+    isPrinting,
     allItems,
     addToCart,
   };

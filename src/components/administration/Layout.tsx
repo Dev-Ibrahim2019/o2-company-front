@@ -40,6 +40,7 @@ import {
   Radio,
   Phone,
   FileAudio,
+  Printer,
 } from "lucide-react";
 
 /* ── روابط التنقل ── */

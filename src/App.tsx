@@ -40,8 +40,15 @@ import {
 import { ToastContainer } from "./components/shared/Toast";
 import UsersManagementPage from "./pages/UsersManagementPage";
 import PosRegistersPage from "./pages/PosRegistersPage";
+import { PrintersManagement } from "./components/administration/printers-management";
 import HospitalityDevicesPage from "./pages/HospitalityDevicesPage";
 import DiningZonesPage from "./pages/DiningZonesPage";
+import DiningTablesDashboard from "./components/administration/DiningTablesDashboard";
+import MenuPage from "./pages/customer/MenuPage";
+import { CartProvider } from "./components/customer/cart-provider";
+import CartPage from "./pages/customer/CartPage";
+import TablePage from "./pages/customer/TablePage";
+import { CustomerTableProvider } from "./components/customer/CustomerTableProvider";
 import RolesPermissionsPage from "./pages/RolesPermissionsPage";
 import DepartmentsPage from "./components/administration/DepartmentsPage";
 import { ThemeProvider } from "./theme";
@@ -244,6 +251,24 @@ function AppRoutes() {
       {/* ── مسارات عامة ── */}
       <Route path="/freepbx/test" element={<FreePBXTestPage />} />
 
+     {/* ══════════════════════════════════════════════════════════════
+    * مسارات طلبات الطاولات عبر الـ QR Code (عامة للزبائن بدون تسجيل دخول)
+    * ══════════════════════════════════════════════════════════════ */}
+    <Route 
+      path="/customer/:qrCode" 
+      element={
+        <CustomerTableProvider>
+          <Outlet />
+        </CustomerTableProvider>
+      }
+    >
+      {/* الصفحة الرئيسية للطاولة عند مسح الـ QR مباشرة */}
+      <Route index element={<TablePage />} /> 
+
+      <Route path="menu" element={<MenuPage />} />
+      <Route path="cart" element={<CartPage />} />
+    </Route>
+
       {/* ── مسارات محمية (تحتاج تسجيل دخول فقط) ── */}
       <Route
         element={
@@ -295,11 +320,11 @@ function AppRoutes() {
               <Route path="extensions-test" element={<ExtensionsTestView />} />
               <Route path="pbx-extensions" element={<PbxExtensionsTestView />} />
               <Route path="pbx-recordings" element={<PbxRecordingsView />} />
-              <Route path="discounts" element={<FinanceView />} />
+              <Route path="discounts" element={<FinanceView />} /> 
               <Route path="shift-day-closing" element={<FinanceView />} />
               <Route path="shift-closings" element={<ShiftClosingsPage />} />
               <Route path="business-day" element={<BusinessDayClosingPage />} />
-
+              <Route path="printers" element={<PrintersManagement />} />
               <Route path="accounting">
                 <Route index element={<Navigate to="dashboard" replace />} />
                 <Route path=":tab" element={<AccountingView />} />
@@ -312,6 +337,7 @@ function AppRoutes() {
                 element={<HospitalityDevicesPage />}
               />
               <Route path="dining-zones" element={<DiningZonesPage />} />
+              <Route path="dining-dashboard" element={<DiningTablesDashboard />} />
               <Route path="pos" element={<AdminPOSWrapper />} />
             </Route>
           </Route>
