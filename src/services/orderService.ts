@@ -401,6 +401,8 @@ export interface OrderFromApi {
   customer_phone: string | null;
   customer_mobile?: string | null;
   customer_address_id?: number | null;
+  delivery_zone_id?: number | null;
+  delivery_fee?: number | null;
   delivery_address_snapshot?: Record<string, unknown> | string | null;
   customer_notes?: string | null;
   note: string | null;

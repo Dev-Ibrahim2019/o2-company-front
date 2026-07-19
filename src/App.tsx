@@ -22,6 +22,8 @@ import { TablesView } from "./components/POS/Tables";
 import { OrdersView } from "./components/POS/Orders";
 import { AssemblerDashboard } from "./components/POS/AssemblerDashboard";
 import { OperationsDashboard } from "./components/operations/OperationsDashboard";
+import { DeliveryManagementPage } from "./components/operations/DeliveryManagementPage";
+import { CancellationReviewPage } from "./components/operations/CancellationReviewPage";
 import { ShiftView } from "./components/POS/Shift";
 import { HospitalityLayout } from "./components/Hospitality/Layout";
 import { HospitalityPOS } from "./components/Hospitality/HospitalityPOS";
@@ -29,6 +31,7 @@ import { HospitalityOrders } from "./components/Hospitality/HospitalityOrders";
 import { HospitalityTables } from "./components/Hospitality/Tables";
 import { FinancialInvoicesPage } from "./components/financial/FinancialInvoicesPage";
 import { CustomerManagementDashboard } from "./components/CallCenter/CustomerManagementDashboard";
+import { CrmDirectoryPage } from "./components/CallCenter/CrmDirectoryPage";
 import { ComplaintsManagement } from "./components/CallCenter/ComplaintsManagement";
 import { CallCenterEmployees } from "./components/CallCenter/CallCenterEmployees";
 import { OccasionsPage as CallCenterOccasionsPage } from "./components/CallCenter/OccasionsPage";
@@ -228,8 +231,11 @@ function AppRoutes() {
               <Route path="items-index" element={<FinanceView />} />
               <Route path="orders" element={<FinanceView />} />
               <Route path="operations" element={<OperationsDashboard />} />
+              <Route path="delivery-management" element={<DeliveryManagementPage />} />
+              <Route path="cancellation-requests" element={<CancellationReviewPage />} />
               <Route path="sales" element={<FinanceView />} />
               <Route path="customers" element={<FinanceView />} />
+              <Route path="crm/customers" element={<CrmDirectoryPage />} />
               <Route path="suppliers" element={<FinanceView />} />
               <Route path="employees" element={<FinanceView />} />
               <Route path="reports" element={<FinanceView />} />

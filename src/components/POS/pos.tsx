@@ -50,8 +50,16 @@ import { PERMISSIONS, ROLES } from "../../auth/permissions";
 import { useAuth } from "../../auth";
 import { useCustomerSearch, useCustomerProfile } from "../../hooks/useCallCenter";
 import { callCenterService } from "../../services/callCenterService";
+import { deliveryPricingService, type DeliveryZoneOption } from "../../services/deliveryPricingService";
 import { CustomerPhoneSearch } from "../CallCenter/CustomerPhoneSearch";
 import { QuickCustomerForm } from "../CallCenter/QuickCustomerForm";
+import { QuickComplaintModal } from "../CallCenter/QuickComplaintModal";
+import {
+  buildCallCenterOrderMeta,
+  formatOccasionReminder,
+  getUpcomingOccasions,
+  type UpcomingOccasion,
+} from "../../utils/callCenterUtils";
 
 
 const MONEY_EPSILON = 0.01;
@@ -271,6 +279,11 @@ export const POS: React.FC<{
   const [selectedDeliveryAddress, setSelectedDeliveryAddress] = useState<any | null>(null);
   const [deliveryAddressSnapshot, setDeliveryAddressSnapshot] = useState<string | null>(null);
   const [customerAddress, setCustomerAddress] = useState("");
+  const [deliveryZones, setDeliveryZones] = useState<DeliveryZoneOption[]>([]);
+  const [deliveryZoneId, setDeliveryZoneId] = useState<number | undefined>();
+  const [deliveryFee, setDeliveryFee] = useState(0);
+  const [deliveryQuoteLoading, setDeliveryQuoteLoading] = useState(false);
+  const [deliveryEligible, setDeliveryEligible] = useState(true);
   const [customerOrderNotes, setCustomerOrderNotes] = useState("");
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [resolvingCallCenterCustomer, setResolvingCallCenterCustomer] = useState(false);
@@ -280,6 +293,13 @@ export const POS: React.FC<{
   // ── Call Center Customer Search ──
   const { query: ccSearchQuery, results: ccSearchResults, loading: ccSearchLoading, setQuery: ccSetSearch, clear: ccClearSearch } = useCustomerSearch();
   const { profile: ccProfile, alerts: ccAlerts, loading: ccProfileLoading, loadProfile: ccLoadProfile, clear: ccClearProfile } = useCustomerProfile();
+  const [showQuickComplaint, setShowQuickComplaint] = useState(false);
+  const [customerUpcomingOccasion, setCustomerUpcomingOccasion] = useState<UpcomingOccasion | null>(null);
+  const [customerLastOrderId, setCustomerLastOrderId] = useState<number | null>(null);
+  const callCenterOrderMeta = useMemo(
+    () => buildCallCenterOrderMeta(isCallCenterMode, authUser?.id),
+    [isCallCenterMode, authUser?.id],
+  );
 
   // ── Invoice State ─────────────────────────────────────────────────────────
   const [invoiceNote, setInvoiceNote] = useState("");
@@ -536,7 +556,45 @@ export const POS: React.FC<{
       ? (afterEngineSubtotal * discountValue) / 100
       : discountValue;
   const calculatedDiscount = roundMoney(engineDiscountTotal + manualDiscount);
-  const total = roundMoney(Math.max(0, displaySubtotal - calculatedDiscount));
+  const isDeliveryOrder = isCallCenterMode || cartOrderType === OrderType.DELIVERY;
+  const total = roundMoney(Math.max(0, displaySubtotal - calculatedDiscount) + (isDeliveryOrder ? deliveryFee : 0));
+
+  useEffect(() => {
+    if (!isDeliveryOrder || !branchId) {
+      setDeliveryZones([]);
+      setDeliveryZoneId(undefined);
+      setDeliveryFee(0);
+      setDeliveryEligible(true);
+      return;
+    }
+    deliveryPricingService.activeZones(branchId)
+      .then((zones) => setDeliveryZones(zones))
+      .catch(() => setDeliveryZones([]));
+  }, [isDeliveryOrder, branchId]);
+
+  useEffect(() => {
+    if (!isDeliveryOrder || !branchId || !deliveryZoneId) {
+      setDeliveryFee(0);
+      setDeliveryEligible(true);
+      return;
+    }
+    let active = true;
+    setDeliveryQuoteLoading(true);
+    deliveryPricingService.quote(branchId, deliveryZoneId, displaySubtotal)
+      .then((quote) => {
+        if (!active) return;
+        setDeliveryFee(roundMoney(Number(quote.fee) || 0));
+        setDeliveryEligible(Boolean(quote.eligible));
+      })
+      .catch(() => {
+        if (active) {
+          setDeliveryFee(0);
+          setDeliveryEligible(false);
+        }
+      })
+      .finally(() => { if (active) setDeliveryQuoteLoading(false); });
+    return () => { active = false; };
+  }, [isDeliveryOrder, branchId, deliveryZoneId, displaySubtotal]);
   const totalPaid = roundMoney(
     payments.reduce((sum, payment) => sum + payment.amount, 0),
   );
@@ -686,6 +744,8 @@ export const POS: React.FC<{
     setCustomerPhone(order.customer_phone ?? "");
     setCustomerMobile(order.customer_mobile ?? "");
     setCustomerAddressId(order.customer_address_id ?? undefined);
+    setDeliveryZoneId(order.delivery_zone_id ?? undefined);
+    setDeliveryFee(Number(order.delivery_fee) || 0);
     setDeliveryAddressSnapshot(
       typeof order.delivery_address_snapshot === "string"
         ? order.delivery_address_snapshot
@@ -747,6 +807,9 @@ export const POS: React.FC<{
     setCustomerAddressId(undefined);
     setSelectedDeliveryAddress(null);
     setDeliveryAddressSnapshot(null);
+    setDeliveryZoneId(undefined);
+    setDeliveryFee(0);
+    setDeliveryEligible(true);
     setSelectedCustomer(null);
   };
 
@@ -991,6 +1054,11 @@ export const POS: React.FC<{
         : cartOrderType === OrderType.DELIVERY
           ? "delivery"
           : "takeaway";
+    if (orderType === "delivery" && (!deliveryZoneId || !deliveryEligible || deliveryQuoteLoading)) {
+      setPosError(!deliveryZoneId ? "اختر منطقة التوصيل قبل حفظ الطلب" : "تعذر اعتماد رسوم التوصيل لهذه المنطقة والطلب");
+      setActivePOSMode("customer");
+      return;
+    }
     let resolvedCustomer = selectedCustomer;
     let resolvedAddressId = customerAddressId;
     let resolvedAddressSnapshot = deliveryAddressSnapshot;
@@ -1021,11 +1089,14 @@ export const POS: React.FC<{
         customer_mobile: customerMobile || undefined,
         customer_address_id: resolvedAddressId || undefined,
         delivery_address_snapshot: resolvedAddressSnapshot || undefined,
+        delivery_zone_id: orderType === "delivery" ? deliveryZoneId : undefined,
+        delivery_fee: orderType === "delivery" ? deliveryFee : 0,
         customer_notes: customerOrderNotes || undefined,
         note: invoiceNote || undefined,
         discount_value: discountValue || undefined,
         discount_type: discountType === "PERCENT" ? "percent" : "amount",
         ...getPricingContext(),
+        ...callCenterOrderMeta,
       },
       false, // save only; payment confirmation is the only kitchen dispatch trigger
       [],
@@ -1062,6 +1133,14 @@ export const POS: React.FC<{
     if (isCallCenterMode) {
       ccClearProfile();
       ccLoadProfile(customer.id);
+      setCustomerUpcomingOccasion(null);
+      setCustomerLastOrderId(null);
+      callCenterService.getCustomerOccasions(customer.id).then((res) => {
+        setCustomerUpcomingOccasion(getUpcomingOccasions(res.data ?? [], 30)[0] ?? null);
+      }).catch(() => setCustomerUpcomingOccasion(null));
+      callCenterService.getCustomerFullProfile(customer.id).then((res) => {
+        setCustomerLastOrderId(res.data?.orders?.[0]?.id ?? null);
+      }).catch(() => setCustomerLastOrderId(null));
       // Use the explicitly selected drawer address; otherwise load the default.
       if (customer.selectedAddress) {
         handleSelectCustomerAddress(customer.selectedAddress);
@@ -1343,6 +1422,12 @@ export const POS: React.FC<{
         ? "dine_in"
         : "takeaway";
 
+    if (orderType === "delivery" && (!deliveryZoneId || !deliveryEligible || deliveryQuoteLoading)) {
+      setPosError(!deliveryZoneId ? "اختر منطقة التوصيل قبل إنهاء الطلب" : "الطلب غير مؤهل للتوصيل إلى المنطقة المختارة");
+      setActivePOSMode("customer");
+      return;
+    }
+
     let orderCustomer = selectedCustomer;
     let orderAddressId = customerAddressId;
     let orderAddressSnapshot = deliveryAddressSnapshot;
@@ -1461,6 +1546,8 @@ export const POS: React.FC<{
         customer_mobile: customerMobile || undefined,
         customer_address_id: orderAddressId || undefined,
         delivery_address_snapshot: orderAddressSnapshot || undefined,
+        delivery_zone_id: orderType === "delivery" ? deliveryZoneId : undefined,
+        delivery_fee: orderType === "delivery" ? deliveryFee : 0,
         customer_notes: customerOrderNotes || undefined,
         note: meta.note || undefined,
         discount_value: discountValue || undefined,
@@ -1469,6 +1556,7 @@ export const POS: React.FC<{
         payment_method: isClosingOrder
           ? normalizeApiPaymentMethod(selectedPaymentMethod)
           : undefined,
+        ...callCenterOrderMeta,
       },
       shouldConfirm,
       isClosingOrder ? (apiClosingPayments as any[]) : [],
@@ -1646,7 +1734,12 @@ export const POS: React.FC<{
               searchLoading={ccSearchLoading}
               searchQuery={ccSearchQuery}
               onSearch={ccSetSearch}
-              onClear={() => { ccClearSearch(); ccClearProfile(); }}
+              onClear={() => {
+                ccClearSearch();
+                ccClearProfile();
+                setCustomerUpcomingOccasion(null);
+                setCustomerLastOrderId(null);
+              }}
               customerAlerts={ccAlerts}
               isCallCenterMode={true}
               onSelectAddress={handleSelectCustomerAddress}
@@ -1657,6 +1750,11 @@ export const POS: React.FC<{
                 toast.info("تم تحضير خصم مبدئي للطلب", "لم يتم خصم نقاط من رصيد العميل");
               }}
             />
+            {selectedCustomer && customerUpcomingOccasion && (
+              <div className="flex items-center gap-2 rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-2">
+                <span className="text-xs font-bold text-violet-200">{formatOccasionReminder(customerUpcomingOccasion)}</span>
+              </div>
+            )}
             {selectedCustomer && ccAlerts && ccAlerts.length > 0 && (
               <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-2">
                 <AlertTriangle size={14} className="text-red-400 shrink-0" />
@@ -1665,6 +1763,21 @@ export const POS: React.FC<{
                   onClick={() => ccLoadProfile(selectedCustomer.id)}
                   className="mr-auto text-[10px] font-bold text-red-400 hover:text-red-300 underline"
                 >عرض</button>
+              </div>
+            )}
+            {selectedCustomer && (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setShowQuickComplaint(true)}
+                  className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300 hover:bg-red-500/20"
+                >
+                  تقديم شكوى
+                </button>
+                {ccProfile?.loyalty_points ? (
+                  <span className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-200">
+                    نقاط الولاء: {ccProfile.loyalty_points.toLocaleString("ar-PS")}
+                  </span>
+                ) : null}
               </div>
             )}
           </div>
@@ -1702,6 +1815,31 @@ export const POS: React.FC<{
         )}
 
         <div className="flex-1 flex flex-col min-h-0">
+          {isDeliveryOrder && (
+            <div className="mx-1 mb-3 rounded-2xl border border-cyan-500/25 bg-cyan-500/10 p-3" dir="rtl">
+              <label className="mb-2 block text-xs font-black text-cyan-100">منطقة ورسوم التوصيل</label>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <select
+                  value={deliveryZoneId ?? ""}
+                  onChange={(event) => setDeliveryZoneId(event.target.value ? Number(event.target.value) : undefined)}
+                  className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
+                >
+                  <option value="">اختر منطقة التوصيل</option>
+                  {deliveryZones.map((zone) => (
+                    <option key={zone.id} value={zone.id}>
+                      {zone.name}{zone.area ? ` — ${zone.area}` : ""}
+                    </option>
+                  ))}
+                </select>
+                <div className="rounded-xl bg-slate-950/60 px-3 py-2 text-xs font-bold text-cyan-100">
+                  {deliveryQuoteLoading ? "جاري احتساب الرسم..." : `الرسم: ${deliveryFee.toFixed(2)} ₪`}
+                </div>
+              </div>
+              {!deliveryEligible && deliveryZoneId && (
+                <p className="mt-2 text-xs font-bold text-red-300">قيمة الطلب أقل من الحد الأدنى للمنطقة أو تعذر جلب التسعير.</p>
+              )}
+            </div>
+          )}
           {activePOSMode === "tables" ? (
             <TablesView mode="pos" onSelect={handleTableClick} />
           ) : activePOSMode === "menu" ? (
@@ -1825,6 +1963,16 @@ export const POS: React.FC<{
           )
         }
       />
+
+      {isCallCenterMode && showQuickComplaint && selectedCustomer && (
+        <QuickComplaintModal
+          customerId={selectedCustomer.id}
+          customerName={selectedCustomer.name}
+          orderId={editingApiOrderId ?? customerLastOrderId}
+          onClose={() => setShowQuickComplaint(false)}
+          onCreated={() => ccLoadProfile(selectedCustomer.id)}
+        />
+      )}
     </div>
   );
 };

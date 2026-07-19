@@ -51,6 +51,8 @@ export interface SubmitOrderPayload {
   customer_id?: number;
   customer_address_id?: number;
   delivery_address_snapshot?: string;
+  delivery_zone_id?: number;
+  delivery_fee?: number;
   customer_notes?: string;
   delivery_notes?: string;
   call_notes?: string;

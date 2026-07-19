@@ -1,5 +1,23 @@
 import api from "../api/axios";
 
+export type CustomerCategory = "regular" | "important" | "vip" | "new" | "inactive" | "follow_up" | "complaints";
+
+export const CUSTOMER_CATEGORY_LABELS: Record<CustomerCategory, string> = {
+  regular: "عميل عادي", important: "عميل مهم", vip: "VIP", new: "عميل جديد",
+  inactive: "عميل غير نشط", follow_up: "عميل يحتاج متابعة", complaints: "عميل لديه شكاوى",
+};
+
+/** Automatic classification thresholds are intentionally centralized here. */
+export const resolveCustomerCategory = (customer: Pick<CustomerSearchResult, "category"> & { created_at?: string }, monthlyOrders: number) => {
+  const stored = customer.category?.toLowerCase() as CustomerCategory | undefined;
+  if (stored && stored in CUSTOMER_CATEGORY_LABELS) return { category: stored, source: "manual" as const };
+  if (monthlyOrders > 8) return { category: "vip" as const, source: "automatic" as const };
+  if (monthlyOrders >= 4) return { category: "important" as const, source: "automatic" as const };
+  if (monthlyOrders >= 1) return { category: "regular" as const, source: "automatic" as const };
+  const recentlyCreated = customer.created_at && Date.now() - new Date(customer.created_at).getTime() <= 30 * 86400000;
+  return { category: recentlyCreated ? "new" as const : "inactive" as const, source: "automatic" as const };
+};
+
 const sanitizeCustomerAddress = (data: Record<string, unknown>) => {
   const allowedFields = [
     "label", "city", "area", "district", "street", "landmark",
@@ -93,6 +111,7 @@ export interface CustomerProfile {
   available_credit: number;
   is_over_limit: boolean;
   total_orders: number;
+  monthly_orders_count: number;
   total_spent: number;
   avg_order_value: number;
   first_order_at: string | null;
@@ -107,6 +126,7 @@ export interface CustomerOrder {
   id: number;
   order_number: string;
   status: string;
+  order_type?: string | null;
   total: number;
   subtotal: number;
   discount_amount: number;
@@ -130,6 +150,7 @@ export interface OrderDetail {
   id: number;
   order_number: string;
   status: string;
+  order_type?: string | null;
   subtotal: number;
   discount_value: number;
   discount_type: string | null;
@@ -248,15 +269,24 @@ export interface ApiResponse<T = any> {
   message: string;
   data: T;
 }
+export interface CustomerDirectoryPage { data: Array<Omit<CustomerSearchResult,'address'> & {orders_count:number;open_complaints_count:number;orders_max_created_at?:string|null;address?:CustomerAddress|null}>; current_page:number;last_page:number;per_page:number;total:number; }
 
 export const callCenterService = {
   searchCustomers: async (q: string, limit = 20): Promise<ApiResponse<CustomerSearchResult[]>> => {
     const res = await api.get("/call-center/customers/search", { params: { q, limit } });
     return res.data;
   },
+  getCustomerDirectory: async (params: Record<string, unknown>): Promise<ApiResponse<CustomerDirectoryPage>> => {
+    const res = await api.get('/call-center/customers/directory', { params }); return res.data;
+  },
 
   getCustomerProfile: async (customerId: number): Promise<ApiResponse<CustomerProfile>> => {
     const res = await api.get(`/call-center/customers/${customerId}/profile`);
+    return res.data;
+  },
+
+  updateCustomerClassification: async (customerId: number, category: CustomerCategory): Promise<ApiResponse<{ id: number; category: CustomerCategory }>> => {
+    const res = await api.patch(`/call-center/customers/${customerId}/classification`, { category });
     return res.data;
   },
 
@@ -315,10 +345,14 @@ export const callCenterService = {
 
   createCustomer: async (data: {
     name: string;
-    phone?: string;
+    phone: string;
     mobile?: string;
+    email?: string;
     address?: string;
     city?: string;
+    area?: string;
+    category?: CustomerCategory;
+    notes?: string;
     branch_id?: number;
   }): Promise<ApiResponse<CustomerSearchResult>> => {
     const res = await api.post("/call-center/customers", data);

@@ -3,6 +3,7 @@ import { Search, Phone, User, X, Loader2, Plus, AlertTriangle } from "lucide-rea
 import type { CustomerSearchResult, CustomerAlert } from "../../services/callCenterService";
 import { CustomerQuickPreview } from "./CustomerQuickPreview";
 import { CustomerProfileDrawer } from "./CustomerProfileDrawer";
+import { QuickComplaintModal } from "./QuickComplaintModal";
 import type { CustomerAddress, OrderDetail } from "../../services/callCenterService";
 
 interface Props {
@@ -40,6 +41,7 @@ export const CustomerPhoneSearch: React.FC<Props> = ({
   const [showResults, setShowResults] = useState(false);
   const [previewCustomer, setPreviewCustomer] = useState<CustomerSearchResult | null>(null);
   const [drawerCustomer, setDrawerCustomer] = useState<CustomerSearchResult | null>(null);
+  const [complaintContext, setComplaintContext] = useState<{ customer: CustomerSearchResult; orderId?: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
 
@@ -168,8 +170,20 @@ export const CustomerPhoneSearch: React.FC<Props> = ({
           onSelect={handleConfirmCustomer}
           onClose={handleClosePreview}
           onOpenFullProfile={setDrawerCustomer}
+          onRepeatOrder={(order) => {
+            setPreviewCustomer(null);
+            if (onRepeatOrder) onRepeatOrder(order);
+            else onSelectCustomer({ ...previewCustomer, lastOrder: order });
+          }}
+          onQuickComplaint={(customer, orderId) => setComplaintContext({ customer, orderId })}
         />
       )}
+      {complaintContext && <QuickComplaintModal
+        customerId={complaintContext.customer.id}
+        customerName={complaintContext.customer.name}
+        orderId={complaintContext.orderId}
+        onClose={() => setComplaintContext(null)}
+      />}
       <CustomerProfileDrawer
         isOpen={Boolean(drawerCustomer)}
         customerId={drawerCustomer?.id ?? 0}

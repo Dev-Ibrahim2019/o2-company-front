@@ -37,16 +37,19 @@ import {
   HeartHandshake,
   Grid3X3,
   Activity,
+  Truck,
 } from "lucide-react";
 
 /* ── روابط التنقل ── */
 const NAV = [
+  { to: "/admin/delivery-management", icon: Truck, label: "مسارات ورسوم التوصيل", permission: PERMISSIONS.MANAGE_ORDERS },
   { to: "/admin/dashboard", icon: LayoutDashboard, label: "لوحة المعلومات", exact: true },
   { to: "/admin/branches", icon: Building2, label: "إدارة الأفرع", permission: PERMISSIONS.MANAGE_BRANCHES },
   { to: "/admin/departments", icon: Layers, label: "إدارة الأقسام", permission: PERMISSIONS.MANAGE_DEPARTMENTS },
   { to: "/admin/item-tree", icon: ListTree, label: "شجرة الأصناف", permission: PERMISSIONS.MANAGE_ITEMS, indent: true },
   { to: "/admin/items-index", icon: Table2, label: "فهرس الأصناف", permission: PERMISSIONS.MANAGE_ITEMS, indent: true, group: "items" },
   { to: "/admin/employees", icon: Users2, label: "إدارة الموظفين", permission: PERMISSIONS.MANAGE_EMPLOYEES },
+  { to: "/admin/crm/customers", icon: HeartHandshake, label: "إدارة العملاء CRM", permission: PERMISSIONS.MANAGE_CUSTOMERS },
   { to: "/admin/accounting/dashboard", icon: LayoutDashboard, label: "الرئيسية المالية", permission: PERMISSIONS.VIEW_ACCOUNTING, indent: true, group: "accounting" },
   { to: "/admin/accounting/gl", icon: BookOpen, label: "المحاسبة العامة", permission: PERMISSIONS.MANAGE_ACCOUNTING, indent: true, group: "accounting" },
   { to: "/admin/sales-invoices", icon: ReceiptText, label: "فواتير المبيعات", permission: PERMISSIONS.MANAGE_INVOICES, indent: true, group: "accounting" },
