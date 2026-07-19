@@ -2,17 +2,22 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import {
-  Order, OrderType, OrderStatus, MenuItem, OrderItem, User, PaymentMethod,
+import type {
+  Order, MenuItem, OrderItem, User,
   Transaction, SavedCard, Table, Shift, Branch, Department, JobTitle, JobType, Employee,
-  TableStatus, FinancialTransaction, FinancialTransactionType,
-  CustomerFeedback, StaffTask, TableAssignment, Customer, CustomerType, CustomerAddress,
-  EmployeeStatus, Attendance, WorkSchedule, ActivityLog, Hall,
-  FiscalYear, ChartOfAccount, CostCenter, JournalEntry, Supplier, BankAccount, CashBox, AccountType,
+  FinancialTransaction,
+  CustomerFeedback, StaffTask, TableAssignment, Customer, CustomerAddress,
+  Attendance, WorkSchedule, ActivityLog, Hall,
+  FiscalYear, ChartOfAccount, CostCenter, JournalEntry, Supplier, BankAccount, CashBox,
   BlindDropSubmission, ReconciliationEntry, DayCloseState, BusinessDayState, DenominationEntry
+} from './types';
+import {
+  OrderType, OrderStatus, TableStatus, AccountType, CustomerType, EmployeeStatus, FinancialTransactionType, PaymentMethod
 } from './types';
 import { TABLES, MENU_ITEMS } from './constants';
 import api from './src/api/axios';
+
+export const AppContext = createContext<any>(null);
 
 interface AppState {
   // Auth
