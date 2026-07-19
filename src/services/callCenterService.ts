@@ -46,6 +46,7 @@ export interface CustomerSearchResult {
   loyalty_points?: number;
   branch?: { id: number; name: string } | null;
   lastOrder?: OrderDetail;
+  selectedAddress?: CustomerAddress;
 }
 
 export interface CustomerAddress {

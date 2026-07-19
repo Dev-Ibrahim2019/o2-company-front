@@ -84,6 +84,9 @@ const formatCustomerAddress = (address: any) =>
 const normalizeAddressForMatch = (value: string) =>
   value.replace(/[،,\s]+/g, " ").trim().toLocaleLowerCase("ar");
 
+const normalizeDeliveryZoneText = (value: unknown) =>
+  normalizeAddressForMatch(String(value ?? ""));
+
 const requiresPaymentReference = (method: PaymentMethod) =>
   method === PaymentMethod.WALLET ||
   method === PaymentMethod.QR ||
@@ -284,6 +287,7 @@ export const POS: React.FC<{
   const [deliveryFee, setDeliveryFee] = useState(0);
   const [deliveryQuoteLoading, setDeliveryQuoteLoading] = useState(false);
   const [deliveryEligible, setDeliveryEligible] = useState(true);
+  const [deliveryZoneNeedsSelection, setDeliveryZoneNeedsSelection] = useState(false);
   const [customerOrderNotes, setCustomerOrderNotes] = useState("");
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [resolvingCallCenterCustomer, setResolvingCallCenterCustomer] = useState(false);
@@ -595,6 +599,68 @@ export const POS: React.FC<{
       .finally(() => { if (active) setDeliveryQuoteLoading(false); });
     return () => { active = false; };
   }, [isDeliveryOrder, branchId, deliveryZoneId, displaySubtotal]);
+
+  // Resolve pricing from the adopted address because the delivery-zone control
+  // is intentionally no longer shown in the order-creation interface.
+  useEffect(() => {
+    if (!isDeliveryOrder || deliveryZones.length === 0) {
+      setDeliveryZoneNeedsSelection(false);
+      return;
+    }
+
+    if (deliveryZoneId) {
+      setDeliveryZoneNeedsSelection(false);
+      return;
+    }
+
+    if (deliveryZones.length === 1) {
+      setDeliveryZoneNeedsSelection(false);
+      setDeliveryZoneId(deliveryZones[0].id);
+      return;
+    }
+
+    const addressArea = normalizeDeliveryZoneText(
+      selectedDeliveryAddress?.area || selectedDeliveryAddress?.district,
+    );
+    const addressCity = normalizeDeliveryZoneText(selectedDeliveryAddress?.city);
+    const fullAddress = normalizeDeliveryZoneText(
+      customerAddress || formatCustomerAddress(selectedDeliveryAddress),
+    );
+    const uniquelyMatchingZone = (matches: DeliveryZoneOption[]) => {
+      if (matches.length === 1) {
+        setDeliveryZoneNeedsSelection(false);
+        setDeliveryZoneId(matches[0].id);
+      }
+      return matches.length === 1;
+    };
+
+    if (addressArea && uniquelyMatchingZone(deliveryZones.filter((zone) => {
+      const zoneArea = normalizeDeliveryZoneText(zone.area);
+      const zoneName = normalizeDeliveryZoneText(zone.name);
+      return zoneArea === addressArea || zoneName === addressArea;
+    }))) return;
+
+    if (fullAddress && uniquelyMatchingZone(deliveryZones.filter((zone) => {
+      const zoneArea = normalizeDeliveryZoneText(zone.area);
+      const zoneName = normalizeDeliveryZoneText(zone.name);
+      return Boolean(
+        (zoneArea && fullAddress.includes(zoneArea)) ||
+        (zoneName && fullAddress.includes(zoneName)),
+      );
+    }))) return;
+
+    if (addressCity && uniquelyMatchingZone(deliveryZones.filter(
+        (zone) => normalizeDeliveryZoneText(zone.city) === addressCity,
+      ))) return;
+
+    setDeliveryZoneNeedsSelection(Boolean(fullAddress));
+  }, [
+    isDeliveryOrder,
+    deliveryZoneId,
+    deliveryZones,
+    selectedDeliveryAddress,
+    customerAddress,
+  ]);
   const totalPaid = roundMoney(
     payments.reduce((sum, payment) => sum + payment.amount, 0),
   );
@@ -808,6 +874,7 @@ export const POS: React.FC<{
     setSelectedDeliveryAddress(null);
     setDeliveryAddressSnapshot(null);
     setDeliveryZoneId(undefined);
+    setDeliveryZoneNeedsSelection(false);
     setDeliveryFee(0);
     setDeliveryEligible(true);
     setSelectedCustomer(null);
@@ -1055,7 +1122,7 @@ export const POS: React.FC<{
           ? "delivery"
           : "takeaway";
     if (orderType === "delivery" && (!deliveryZoneId || !deliveryEligible || deliveryQuoteLoading)) {
-      setPosError(!deliveryZoneId ? "اختر منطقة التوصيل قبل حفظ الطلب" : "تعذر اعتماد رسوم التوصيل لهذه المنطقة والطلب");
+      setPosError(!deliveryZoneId ? "تعذر تحديد منطقة التوصيل تلقائياً من العنوان المعتمد. اختر أو حدّث عنوان العميل ثم حاول مجدداً" : "تعذر اعتماد رسوم التوصيل لهذه المنطقة والطلب");
       setActivePOSMode("customer");
       return;
     }
@@ -1124,9 +1191,11 @@ export const POS: React.FC<{
     setCustomerAddressId(undefined);
     setSelectedDeliveryAddress(null);
     setDeliveryAddressSnapshot(null);
+    setDeliveryZoneId(undefined);
+    setDeliveryZoneNeedsSelection(false);
     setSelectedCustomer(customer);
     setCustomerName(customer.name);
-    setCustomerPhone(customer.phone || "");
+    setCustomerPhone(customer.phone || customer.mobile || "");
     setCustomerMobile(customer.mobile || "");
     setShowSearchModal(false);
     setCustomerSearchQuery("");
@@ -1161,6 +1230,12 @@ export const POS: React.FC<{
             floor: defaultAddr.floor,
             apartment: defaultAddr.apartment,
             delivery_notes: defaultAddr.delivery_notes,
+          }));
+        } else if (customer.address) {
+          setCustomerAddress(customer.address);
+          setDeliveryAddressSnapshot(JSON.stringify({
+            city: customer.city,
+            street: customer.address,
           }));
         }
       }).catch(() => { });
@@ -1197,6 +1272,8 @@ export const POS: React.FC<{
 
   const handleSelectCustomerAddress = (address: any) => {
     addressLoadRequestRef.current += 1;
+    setDeliveryZoneId(undefined);
+    setDeliveryZoneNeedsSelection(false);
     setCustomerAddressId(address.id);
     setSelectedDeliveryAddress(address);
     setCustomerAddress(formatCustomerAddress(address));
@@ -1423,7 +1500,7 @@ export const POS: React.FC<{
         : "takeaway";
 
     if (orderType === "delivery" && (!deliveryZoneId || !deliveryEligible || deliveryQuoteLoading)) {
-      setPosError(!deliveryZoneId ? "اختر منطقة التوصيل قبل إنهاء الطلب" : "الطلب غير مؤهل للتوصيل إلى المنطقة المختارة");
+      setPosError(!deliveryZoneId ? "تعذر تحديد منطقة التوصيل تلقائياً من العنوان المعتمد. اختر أو حدّث عنوان العميل ثم حاول مجدداً" : "الطلب غير مؤهل للتوصيل إلى المنطقة المختارة");
       setActivePOSMode("customer");
       return;
     }
@@ -1720,12 +1797,6 @@ export const POS: React.FC<{
       >
         {isCallCenterMode && (
           <div className="space-y-2 mb-3">
-            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-amber-100">
-              <div className="text-sm font-black">وضع الكول سنتر — طلب ودفع وتوصيل</div>
-              <div className="text-[11px] font-bold text-amber-200/80 mt-1">
-                يمكنك إغلاق الفاتورة وتسجيل الدفع كالكاشير. بعد الدفع ينتقل الطلب تلقائياً للتحضير، ثم التجميع والدليفري حتى تأكيد تسليمه للعميل.
-              </div>
-            </div>
             <CustomerPhoneSearch
               onSelectCustomer={(customer) => handleSelectCustomer(customer)}
               onQuickAdd={() => { setQuickCustomerName(""); setQuickCustomerPhone(""); setShowQuickAddCustomer(true); }}
@@ -1815,29 +1886,47 @@ export const POS: React.FC<{
         )}
 
         <div className="flex-1 flex flex-col min-h-0">
-          {isDeliveryOrder && (
-            <div className="mx-1 mb-3 rounded-2xl border border-cyan-500/25 bg-cyan-500/10 p-3" dir="rtl">
-              <label className="mb-2 block text-xs font-black text-cyan-100">منطقة ورسوم التوصيل</label>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <select
-                  value={deliveryZoneId ?? ""}
-                  onChange={(event) => setDeliveryZoneId(event.target.value ? Number(event.target.value) : undefined)}
-                  className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white"
-                >
-                  <option value="">اختر منطقة التوصيل</option>
-                  {deliveryZones.map((zone) => (
-                    <option key={zone.id} value={zone.id}>
-                      {zone.name}{zone.area ? ` — ${zone.area}` : ""}
-                    </option>
-                  ))}
-                </select>
-                <div className="rounded-xl bg-slate-950/60 px-3 py-2 text-xs font-bold text-cyan-100">
-                  {deliveryQuoteLoading ? "جاري احتساب الرسم..." : `الرسم: ${deliveryFee.toFixed(2)} ₪`}
+          {deliveryZoneNeedsSelection && (
+            <div
+              className="mx-1 mb-2 flex flex-col gap-2 rounded-xl border border-amber-500/25 border-r-2 border-r-amber-400 bg-slate-900 px-3 py-2.5 sm:flex-row sm:items-center"
+              dir="rtl"
+              role="group"
+              aria-labelledby="delivery-zone-fallback-label"
+            >
+              <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-amber-500/10 text-amber-300">
+                  <AlertTriangle size={15} />
+                </span>
+                <div className="min-w-0">
+                  <label
+                    id="delivery-zone-fallback-label"
+                    htmlFor="delivery-zone-fallback"
+                    className="block text-xs font-black text-slate-100"
+                  >
+                    حدد منطقة هذا العنوان
+                  </label>
+                  <p className="mt-0.5 text-[10px] font-bold text-slate-500">
+                    تعذر تحديدها تلقائياً؛ يلزم الاختيار لإكمال الطلب.
+                  </p>
                 </div>
               </div>
-              {!deliveryEligible && deliveryZoneId && (
-                <p className="mt-2 text-xs font-bold text-red-300">قيمة الطلب أقل من الحد الأدنى للمنطقة أو تعذر جلب التسعير.</p>
-              )}
+              <select
+                id="delivery-zone-fallback"
+                value=""
+                onChange={(event) => {
+                  const selectedZoneId = Number(event.target.value) || undefined;
+                  setDeliveryZoneId(selectedZoneId);
+                  setDeliveryZoneNeedsSelection(!selectedZoneId);
+                }}
+                className="h-10 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-xs font-bold text-white outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20 sm:w-64"
+              >
+                <option value="">اختر منطقة التوصيل…</option>
+                {deliveryZones.map((zone) => (
+                  <option key={zone.id} value={zone.id}>
+                    {zone.name}{zone.area ? ` — ${zone.area}` : ""}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
           {activePOSMode === "tables" ? (

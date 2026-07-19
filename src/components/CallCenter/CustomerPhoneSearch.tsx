@@ -89,6 +89,17 @@ export const CustomerPhoneSearch: React.FC<Props> = ({
     setPreviewCustomer(null);
   };
 
+  const handleOpenQuickComplaint = (customer: CustomerSearchResult, orderId?: number) => {
+    setPreviewCustomer(null);
+    setComplaintContext({ customer, orderId });
+  };
+
+  const handleCloseQuickComplaint = () => {
+    const customer = complaintContext?.customer ?? null;
+    setComplaintContext(null);
+    setPreviewCustomer(customer);
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "active": return <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">نشط</span>;
@@ -170,19 +181,14 @@ export const CustomerPhoneSearch: React.FC<Props> = ({
           onSelect={handleConfirmCustomer}
           onClose={handleClosePreview}
           onOpenFullProfile={setDrawerCustomer}
-          onRepeatOrder={(order) => {
-            setPreviewCustomer(null);
-            if (onRepeatOrder) onRepeatOrder(order);
-            else onSelectCustomer({ ...previewCustomer, lastOrder: order });
-          }}
-          onQuickComplaint={(customer, orderId) => setComplaintContext({ customer, orderId })}
+          onQuickComplaint={handleOpenQuickComplaint}
         />
       )}
       {complaintContext && <QuickComplaintModal
         customerId={complaintContext.customer.id}
         customerName={complaintContext.customer.name}
         orderId={complaintContext.orderId}
-        onClose={() => setComplaintContext(null)}
+        onClose={handleCloseQuickComplaint}
       />}
       <CustomerProfileDrawer
         isOpen={Boolean(drawerCustomer)}
@@ -191,14 +197,14 @@ export const CustomerPhoneSearch: React.FC<Props> = ({
         onSelectCustomer={handleConfirmCustomer}
         onSelectAddress={(address) => {
           if (drawerCustomer) {
-            onSelectCustomer({ ...drawerCustomer, selectedAddress: address } as CustomerSearchResult);
+            onSelectCustomer({ ...drawerCustomer, selectedAddress: address });
           } else {
             onSelectAddress?.(address);
           }
         }}
         onRepeatOrder={(order) => {
           if (drawerCustomer) {
-            onSelectCustomer({ ...drawerCustomer, lastOrder: order } as CustomerSearchResult);
+            onSelectCustomer({ ...drawerCustomer, lastOrder: order });
           } else {
             onRepeatOrder?.(order);
           }
