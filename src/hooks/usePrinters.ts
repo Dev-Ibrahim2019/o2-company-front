@@ -1,49 +1,35 @@
 // src/hooks/usePrinters.ts
 // ──────────────────────────────────────────────────────────────
-// Hook لإدارة الطابعات وقواعد التوجيه
+// Hook لإدارة الطابعات — التوجيه مدمج في الطابعة
 
 import { useState, useEffect, useCallback } from "react";
-import { printerService, printRouteService } from "../services/printerService";
-import type { Printer, PrintRoute, PrintRouteFormData } from "../../types";
+import { printerService } from "../services/printerService";
+import type { Printer, PrinterFormData } from "../../types";
 
 interface UsePrintersReturn {
   printers: Printer[];
-  routes: PrintRoute[];
   loading: boolean;
   error: string | null;
 
-  addPrinter: (payload: {
-    name: string;
-    ip_address: string;
-    port?: string;
-    type: string;
-    branch_id?: number;
-  }) => Promise<Printer>;
-  deletePrinter: (id: number) => Promise<void>;
+  addPrinter: (payload: PrinterFormData) => Promise<Printer>;
+  updatePrinter: (id: number, payload: Partial<PrinterFormData & { is_active: boolean }>) => Promise<Printer>;
+  deletePrinter: (id: number, branchId?: number) => Promise<void>;
   testPrinter: (id: number) => Promise<boolean>;
 
-  addRoute: (payload: PrintRouteFormData) => Promise<PrintRoute>;
-  deleteRoute: (id: number) => Promise<void>;
-
-  refetchAll: () => Promise<void>;
+  refetchAll: (branchId?: number) => Promise<void>;
 }
 
 export const usePrinters = (): UsePrintersReturn => {
   const [printers, setPrinters] = useState<Printer[]>([]);
-  const [routes, setRoutes] = useState<PrintRoute[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchAll = useCallback(async () => {
+  const fetchAll = useCallback(async (branchId?: number) => {
     try {
       setLoading(true);
       setError(null);
-      const [printersData, routesData] = await Promise.all([
-        printerService.getAll(),
-        printRouteService.getAll(),
-      ]);
+      const printersData = await printerService.getAll(branchId);
       setPrinters(printersData);
-      setRoutes(routesData);
     } catch (err: any) {
       console.error("Error fetching printers:", err);
       setError(err.response?.data?.message || "فشل تحميل بيانات الطابعات");
@@ -56,23 +42,24 @@ export const usePrinters = (): UsePrintersReturn => {
     fetchAll();
   }, [fetchAll]);
 
-  const addPrinter = async (payload: {
-    name: string;
-    ip_address: string;
-    port?: string;
-    type: string;
-    branch_id?: number;
-  }): Promise<Printer> => {
+  const addPrinter = async (payload: PrinterFormData): Promise<Printer> => {
     const newPrinter = await printerService.create(payload);
     setPrinters((prev) => [newPrinter, ...prev]);
     return newPrinter;
   };
 
-  const deletePrinter = async (id: number): Promise<void> => {
-    await printerService.delete(id);
+  const updatePrinter = async (
+    id: number,
+    payload: Partial<PrinterFormData & { is_active: boolean }>,
+  ): Promise<Printer> => {
+    const updated = await printerService.update(id, payload);
+    setPrinters((prev) => prev.map((p) => (p.id === id ? updated : p)));
+    return updated;
+  };
+
+  const deletePrinter = async (id: number, branchId?: number): Promise<void> => {
+    await printerService.delete(id, branchId);
     setPrinters((prev) => prev.filter((p) => p.id !== id));
-    // حذف القواعد المرتبطة بالطابعة محلياً
-    setRoutes((prev) => prev.filter((r) => r.printer_id !== id));
   };
 
   const testPrinter = async (id: number): Promise<boolean> => {
@@ -80,27 +67,14 @@ export const usePrinters = (): UsePrintersReturn => {
     return result.success;
   };
 
-  const addRoute = async (payload: PrintRouteFormData): Promise<PrintRoute> => {
-    const newRoute = await printRouteService.create(payload);
-    setRoutes((prev) => [newRoute, ...prev]);
-    return newRoute;
-  };
-
-  const deleteRoute = async (id: number): Promise<void> => {
-    await printRouteService.delete(id);
-    setRoutes((prev) => prev.filter((r) => r.id !== id));
-  };
-
   return {
     printers,
-    routes,
     loading,
     error,
     addPrinter,
+    updatePrinter,
     deletePrinter,
     testPrinter,
-    addRoute,
-    deleteRoute,
     refetchAll: fetchAll,
   };
 };

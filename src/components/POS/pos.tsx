@@ -84,6 +84,8 @@ const apiOrderToCartItems = (order: OrderFromApi): CartItem[] =>
     quantity: Number(item.quantity || 0),
     notes: item.notes ?? undefined,
     department_id: item.department_id,
+    is_printed_direct: item.is_printed_direct ?? false,
+    is_takeaway: item.is_takeaway ?? false,
   }));
 
 const localOrderToCartItems = (order: Order): CartItem[] =>
@@ -123,8 +125,8 @@ const normalizeTableNumber = (value: string | number | null | undefined) =>
 
 export const POS: React.FC<{
   onViewTables: () => void;
-  initialMode?: "tables" | "menu" | "info" | "customer";
-}> = ({ onViewTables, initialMode = "tables" }) => {
+  initialMode?: "menu" | "tables" | "info" | "customer";
+}> = ({ onViewTables, initialMode = "menu" }) => {
 
   const [searchParams] = useSearchParams();
   const [deviceUuid, setDeviceUuid] = useState<string | null>(null);
@@ -254,17 +256,12 @@ const handleActivationSuccess = (activatedInfo: any) => {
   );
   const [payments, setPayments] = useState<PaymentEntry[]>([]);
   const [cartOrderType, setCartOrderType] = useState<OrderType>(
-    OrderType.DINE_IN,
+    OrderType.TAKEAWAY,
   );
   const [accountType, setAccountType] = useState<
     "ACCOUNT" | "SUPPLIER" | "EMPLOYEE"
   >("ACCOUNT");
   const [accountNumber, setAccountNumber] = useState("");
-
-  // ── Quick Add State ───────────────────────────────────────────────────────
-  const [quickId, setQuickId] = useState("");
-  const [quickQty, setQuickQty] = useState("");
-  const [quickTotal, setQuickTotal] = useState("");
 
   // ── Cart Editing State ────────────────────────────────────────────────────
   const [editingQty, setEditingQty] = useState<{ [id: string]: string }>({});
@@ -493,7 +490,14 @@ const handleActivationSuccess = (activatedInfo: any) => {
   // ✅ getItemCurrentPrice: السعر يجي من pivot مباشرة
   const getItemCurrentPrice = (item: any): number => item.price ?? 0;
 
-  const setOrderType = (type: OrderType) => setCartOrderType(type);
+  const setOrderType = (type: OrderType) => {
+    setCartOrderType(type);
+    if (type === OrderType.DINE_IN) {
+      setActivePOSMode("tables");
+    } else {
+      setActivePOSMode("menu");
+    }
+  };
 
   const addToCart = (
     item: MenuItem | any,
@@ -870,49 +874,6 @@ const handlePrintInvoice = async (orderId: number | string) => {
     setQuickCustomerPhone("");
   };
 
-  // ── Quick Add ─────────────────────────────────────────────────────────────
-  const handleQuickIdChange = (id: string) => {
-    setQuickId(id);
-    const item = findByCode(id);
-    if (item) {
-      setQuickQty("1");
-      setQuickTotal(item.price.toFixed(2));
-    } else {
-      setQuickQty("");
-      setQuickTotal("");
-    }
-  };
-
-  const handleQuickQtyChange = (qtyStr: string) => {
-    setQuickQty(qtyStr);
-    const item = findByCode(quickId);
-    if (item && qtyStr)
-      setQuickTotal(((parseFloat(qtyStr) || 0) * item.price).toFixed(2));
-  };
-
-  const handleQuickTotalChange = (totalStr: string) => {
-    setQuickTotal(totalStr);
-    const item = findByCode(quickId);
-    if (item && totalStr)
-      setQuickQty(((parseFloat(totalStr) || 0) / item.price).toFixed(2));
-  };
-
-  const handleQuickAdd = () => {
-    const item = findByCode(quickId);
-    if (!item) {
-      setPosError("الصنف غير موجود في منيو هذا الفرع");
-      return;
-    }
-    addToCart(item, { quantity: parseFloat(quickQty) || 1, price: item.price });
-    setQuickId("");
-    setQuickQty("");
-    setQuickTotal("");
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") handleQuickAdd();
-  };
-
   // ── Cart Handlers ─────────────────────────────────────────────────────────
   const handleNameChange = (uniqueId: string, newName: string) => {
     setEditingNames((prev) => ({ ...prev, [uniqueId]: newName }));
@@ -955,10 +916,11 @@ const handlePrintInvoice = async (orderId: number | string) => {
     _discount: number,
     meta: { name: string; phone: string; note: string },
     paymentsArg?: any[],
-  ) => {
+    clearAfterSubmit = true,
+  ): Promise<any> => {
     if (currentCart.length === 0) {
       setPosError("السلة فارغة");
-      return;
+      return null;
     }
 
     const orderType =
@@ -1058,6 +1020,7 @@ const handlePrintInvoice = async (orderId: number | string) => {
       isClosingOrder ? (apiClosingPayments as any[]) : [],
       isClosingOrder,
       editingApiOrderId,
+      clearAfterSubmit,
     );
 
     if (result) {
@@ -1094,6 +1057,7 @@ const handlePrintInvoice = async (orderId: number | string) => {
       setEditingApiOrderId(null);
       setShowCustomerModal(false);
     }
+    return result;
   };
 
   // ── commonCartProps ───────────────────────────────────────────────────────
@@ -1143,6 +1107,7 @@ const handlePrintInvoice = async (orderId: number | string) => {
     isPrinting,
     allItems,
     addToCart,
+    posInfo,
   };
   // 1. إذا كان النظام ما زال يفحص هوية المتصفح
   if (checkingSecurity) {
@@ -1210,14 +1175,6 @@ const handlePrintInvoice = async (orderId: number | string) => {
             setActivePOSMode={setActivePOSMode}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
-            quickId={quickId}
-            quickQty={quickQty}
-            quickTotal={quickTotal}
-            handleQuickIdChange={handleQuickIdChange}
-            handleQuickQtyChange={handleQuickQtyChange}
-            handleQuickTotalChange={handleQuickTotalChange}
-            handleQuickAdd={handleQuickAdd}
-            handleKeyDown={handleKeyDown}
             clearCart={clearActiveCart}
           />
         )}

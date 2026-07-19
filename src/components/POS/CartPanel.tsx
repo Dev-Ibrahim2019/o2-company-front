@@ -24,6 +24,8 @@ interface CartItem {
   discount_amount?: number;
   discount_percent?: number;
   discount_id?: number;
+  is_takeaway?: boolean;
+  is_printed_direct?: boolean;
 }
 
 interface SearchableItem {
@@ -89,7 +91,8 @@ interface CartPanelProps {
     discount: number,
     meta: { name: string; phone: string; note: string },
     payments?: { method: PaymentMethod; amount: number; reference?: string }[],
-  ) => void;
+    clearAfterSubmit?: boolean,
+  ) => Promise<any>;
   customerName: string;
   customerPhone: string;
   setShowCustomerModal: (show: boolean) => void;
@@ -98,6 +101,7 @@ interface CartPanelProps {
   onCloseCart?: () => void;
   allItems?: SearchableItem[];
   addToCart?: (item: any, opts?: { quantity?: number; price?: number }) => void;
+  posInfo?: { id?: number; code?: string; name?: string; branch_id?: number } | null;
 }
 
 export const CartPanel: React.FC<CartPanelProps> = ({
@@ -147,14 +151,19 @@ export const CartPanel: React.FC<CartPanelProps> = ({
   allItems = [],
   onCloseCart,
   addToCart,
+  posInfo,
 }) => {
   // ── Inline Search State ──────────────────────────────────────────────────
   const [inlineSearch, setInlineSearch] = useState("");
   const [inlineQty, setInlineQty] = useState("1");
+  const [inlineTotal, setInlineTotal] = useState("");
   const [selectedSearchItem, setSelectedSearchItem] =
     useState<SearchableItem | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLTableCellElement>(null);
+
+  const roundMoney = (value: number) =>
+    Math.round((Number(value) || 0) * 100) / 100;
 
   // ── Keyboard shortcuts: +/- to adjust quantity of last focused item ──
   const lastFocusedItemRef = useRef<string | null>(null);
@@ -218,6 +227,8 @@ export const CartPanel: React.FC<CartPanelProps> = ({
   const handleSelectSearchItem = (item: SearchableItem) => {
     setSelectedSearchItem(item);
     setInlineSearch(item.name_ar || item.name);
+    setInlineQty("1");
+    setInlineTotal(roundMoney(item.price).toFixed(2));
     setShowDropdown(false);
   };
 
@@ -230,11 +241,25 @@ export const CartPanel: React.FC<CartPanelProps> = ({
     });
     setInlineSearch("");
     setInlineQty("1");
+    setInlineTotal("");
     setSelectedSearchItem(null);
   };
 
+  const handleInlineSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInlineSearch(value);
+    setSelectedSearchItem(null);
+    setShowDropdown(true);
+  };
+
   const handleInlineKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") handleInlineAdd();
+    if (e.key === "Enter") {
+      if (selectedSearchItem) {
+        handleInlineAdd();
+      } else if (filteredSearchItems.length > 0) {
+        handleSelectSearchItem(filteredSearchItems[0]);
+      }
+    }
   };
 
   return (
@@ -251,10 +276,10 @@ export const CartPanel: React.FC<CartPanelProps> = ({
             </h3>
           </div>
           <div className="flex items-center gap-1.5">
-            {/* زر تصغير السلة (minimize) - يظهر في جميع الشاشات */}
+            {/* زر تصغير السلة (minimize) - يظهر فقط في الشاشات الصغيرة */}
             <button
               onClick={() => setIsCartOpen(false)}
-              className="p-1.5 text-slate-500 hover:text-white transition-colors"
+              className="lg:hidden p-1.5 text-slate-500 hover:text-white transition-colors"
               title="تصغير"
             >
               <span className="text-lg font-black leading-none">−</span>
@@ -389,43 +414,26 @@ export const CartPanel: React.FC<CartPanelProps> = ({
               {calculatedDiscount > 0 ? "الصافي النهائي" : "الإجمالي الكلي"}
             </span>
             <div className="text-left">
-              <span className="text-base sm:text-lg font-black text-red-600">
+            <span className="text-xl sm:text-2xl lg:text-3xl font-black text-red-600">
                 {total.toFixed(2)}
               </span>
-              <span className="text-[9px] font-black text-red-600 mr-1">₪</span>
+              <span className="text-[11px] font-black text-red-600 mr-1">₪</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 3. Invoice Items Table */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar min-h-[200px] lg:min-h-0">
-        {currentCart.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-6 text-slate-700 gap-2">
-            <div className="w-14 h-14 bg-slate-800 rounded-full flex items-center justify-center shadow-inner">
-              <ShoppingCart size={24} strokeWidth={1.5} />
-            </div>
-            <p className="font-black text-lg">الفاتورة فارغة</p>
-            {/* <button
-              onClick={() => {
-                const searchInput = document.querySelector<HTMLInputElement>('input[placeholder="ابحث عن صنف..."]');
-                if (searchInput) {
-                  searchInput.focus();
-                  searchInput.select();
-                }
-              }}
-              className="px-4 py-2 bg-red-600 text-white font-black text-[10px] rounded-lg hover:bg-red-700 transition-all flex items-center gap-2"
-            >
-              <Plus size={14} />
-              <span>إضافة صنف</span>
-            </button> */}
-          </div>
-        )}
+
+      {/* 3. Table Header + Search (pinned, no scroll) */}
+      <div className="bg-slate-900 border-b border-white/5">
         <div className="overflow-x-auto">
           <table className="w-full text-right border-collapse min-w-[350px]">
-            <thead className="sticky top-0 bg-slate-900 z-10">
+            <thead>
               <tr className="border-b border-white/5">
-                {["#", "الصنف", "السعر", "الكمية", "الإجمالي", ""].map(
+                {(cartOrderType === OrderType.DINE_IN
+                  ? ["#", "الصنف", "السعر", "الكمية", "الإجمالي", "TW", ""]
+                  : ["#", "الصنف", "السعر", "الكمية", "الإجمالي", ""]
+                ).map(
                   (h, i) => (
                     <th
                       key={i}
@@ -436,7 +444,117 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                   ),
                 )}
               </tr>
+              {/* Inline Search/Add Row — always visible */}
+              {addToCart && allItems.length > 0 && (
+                <tr className="bg-slate-800/30 border-b border-dashed border-white/10">
+                  <td className="p-2 text-center align-middle">
+                    <Plus size={12} className="text-emerald-500 mx-auto" />
+                  </td>
+                  <td className="p-2 relative" ref={searchRef}>
+                    <div className="relative flex items-center gap-1">
+                      <input
+                        type="text"
+                        value={inlineSearch}
+                        onChange={handleInlineSearchChange}
+                        onFocus={() => {
+                          if (inlineSearch) setShowDropdown(true);
+                        }}
+                        onKeyDown={handleInlineKeyDown}
+                        placeholder="ابحث عن صنف..."
+                        className="w-full bg-transparent text-[10px] sm:text-xs font-bold text-white outline-none border-b border-emerald-500/30 focus:border-emerald-500 placeholder:text-slate-600"
+                      />
+                      <Search
+                        size={12}
+                        className="shrink-0 text-slate-500"
+                      />
+                    </div>
+                    {/* Dropdown appears above */}
+                    {showDropdown && filteredSearchItems.length > 0 && (
+                      <div className="absolute left-0 right-0 bottom-full mb-1 bg-slate-800 border border-white/10 rounded-xl shadow-2xl z-30 max-h-40 overflow-y-auto custom-scrollbar">
+                        {filteredSearchItems.map((item) => (
+                          <button
+                            key={item.id}
+                            onClick={() => handleSelectSearchItem(item)}
+                            className="w-full text-right px-3 py-2 hover:bg-white/5 transition-colors flex items-center justify-between gap-2"
+                          >
+                            <span className="text-[10px] font-black text-white truncate">
+                              {item.name_ar || item.name}
+                            </span>
+                            <span className="text-[9px] font-bold text-emerald-500 shrink-0">
+                              {item.price} ₪
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td className="p-2 text-center text-[10px] font-bold text-slate-500">
+                    {selectedSearchItem ? selectedSearchItem.price : "—"}
+                  </td>
+                  <td className="p-2">
+                    <input
+                      type="number"
+                      value={inlineQty}
+                      onChange={(e) => setInlineQty(e.target.value)}
+                      onKeyDown={handleInlineKeyDown}
+                      className="w-10 sm:w-12 bg-transparent text-center text-[10px] sm:text-xs font-black text-white outline-none border-b border-emerald-500/30 focus:border-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                  </td>
+                  <td className="p-2">
+                    <input
+                      type="text"
+                      value={inlineTotal}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setInlineTotal(val);
+                        if (selectedSearchItem && val) {
+                          const total = parseFloat(val);
+                          if (!isNaN(total) && total >= 0 && selectedSearchItem.price > 0) {
+                            const qty = total / selectedSearchItem.price;
+                            setInlineQty(roundMoney(qty).toFixed(2));
+                          }
+                        }
+                      }}
+                      placeholder="—"
+                      className="w-16 sm:w-20 bg-transparent text-left text-[10px] sm:text-xs font-black text-emerald-400 outline-none border-b border-emerald-500/30 focus:border-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                  </td>
+                  <td className="p-2 text-center align-middle">
+                    <button
+                      onClick={handleInlineAdd}
+                      disabled={!selectedSearchItem}
+                      className="p-1 text-emerald-500 hover:text-emerald-400 transition-colors disabled:opacity-30"
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </td>
+                </tr>
+              )}
             </thead>
+          </table>
+        </div>
+      </div>
+
+      {/* 4. Invoice Items Table (scrollable) */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar min-h-[100px] lg:min-h-0">
+        {currentCart.length === 0 && !addToCart && (
+          <div className="flex flex-col items-center justify-center py-6 text-slate-700 gap-2">
+            <div className="w-14 h-14 bg-slate-800 rounded-full flex items-center justify-center shadow-inner">
+              <ShoppingCart size={24} strokeWidth={1.5} />
+            </div>
+            <p className="font-black text-lg">الفاتورة فارغة</p>
+          </div>
+        )}
+        {currentCart.length === 0 && addToCart && (
+          <div className="flex flex-col items-center justify-center py-6 text-slate-700 gap-2">
+            <div className="w-14 h-14 bg-slate-800 rounded-full flex items-center justify-center shadow-inner">
+              <ShoppingCart size={24} strokeWidth={1.5} />
+            </div>
+            <p className="font-black text-lg">الفاتورة فارغة</p>
+          </div>
+        )}
+        <div className="overflow-x-auto">
+          <table className="w-full text-right border-collapse min-w-[350px]">
             <tbody className="divide-y divide-white/5">
               {currentCart.map((item, index) => (
                 <tr
@@ -447,24 +565,70 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                     {index + 1}
                   </td>
                   <td className="p-2 sm:p-3">
-                    <input
+                     <input
+
                       type="text"
+
                       value={
+
                         editingNames[item.uniqueId] !== undefined
+
                           ? editingNames[item.uniqueId]
+
                           : item.name
+
                       }
-                      onChange={(e) =>
-                        handleNameChange(item.uniqueId, e.target.value)
-                      }
-                      onBlur={() =>
+
+                      onFocus={() => {
+
+                        // عند الدخول للحقل، نضع القيمة الحالية في التعديل للسماح بالإضافة فقط
+
+                        if (editingNames[item.uniqueId] === undefined) {
+
+                          setEditingNames((prev) => ({
+
+                            ...prev,
+
+                            [item.uniqueId]: item.name,
+
+                          }));
+
+                        }
+
+                      }}
+
+                      onChange={(e) => {
+
+                        const newVal = e.target.value;
+
+                        const baseName = item.name;
+
+                        // نسمح فقط إذا كانت القيمة الجديدة تبدأ بالاسم الأصلي
+
+                        if (newVal.startsWith(baseName)) {
+
+                          handleNameChange(item.uniqueId, newVal);
+
+                        }
+
+                      }}
+
+                      onBlur={() => {
+
                         setEditingNames((prev) => {
+
                           const next = { ...prev };
+
                           delete next[item.uniqueId];
+
                           return next;
-                        })
-                      }
+
+                        });
+
+                      }}
+
                       className="w-full bg-transparent text-[10px] sm:text-xs font-black text-white outline-none border-b border-transparent focus:border-red-500/30"
+
                     />
                   </td>
                   <td className="p-2 sm:p-3 text-center text-[10px] sm:text-xs font-bold text-slate-400">
@@ -529,96 +693,33 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                       className="w-16 sm:w-20 bg-transparent text-left text-[10px] sm:text-xs font-black text-red-500 outline-none"
                     />
                   </td>
+                  {cartOrderType === OrderType.DINE_IN && (
+                    <td className="p-2 sm:p-3 text-center">
+                      <input
+                        type="checkbox"
+                        checked={item.is_takeaway ?? false}
+                        onChange={(e) => {
+                          updateCartItem(item.uniqueId, { is_takeaway: e.target.checked });
+                        }}
+                        className="w-3.5 h-3.5 accent-emerald-500 cursor-pointer"
+                      />
+                    </td>
+                  )}
                   <td className="p-2 sm:p-3 text-center">
-                    <button
-                      onClick={() => removeFromCart(item.uniqueId)}
-                      className="p-1.5 text-slate-600 hover:text-red-500 transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    {item.is_printed_direct ? (
+                      <span className="text-emerald-500 text-[8px] font-black">مطبوع</span>
+                    ) : (
+                      <button
+                        onClick={() => removeFromCart(item.uniqueId)}
+                        className="p-1.5 text-slate-600 hover:text-red-500 transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
 
-              {/* Inline Search/Add Row — always visible */}
-              {addToCart && allItems.length > 0 && (
-                <tr className="bg-slate-800/30 border-t border-dashed border-white/10">
-                  <td className="p-2 text-center">
-                    <Plus size={12} className="text-emerald-500 mx-auto" />
-                  </td>
-                  <td className="p-2 relative" ref={searchRef}>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={inlineSearch}
-                        onChange={(e) => {
-                          setInlineSearch(e.target.value);
-                          setSelectedSearchItem(null);
-                          setShowDropdown(true);
-                        }}
-                        onFocus={() => {
-                          if (inlineSearch) setShowDropdown(true);
-                        }}
-                        onKeyDown={handleInlineKeyDown}
-                        placeholder="ابحث عن صنف..."
-                        className="w-full bg-transparent text-[10px] sm:text-xs font-bold text-white outline-none border-b border-emerald-500/30 focus:border-emerald-500 placeholder:text-slate-600 pr-5"
-                      />
-                      <Search
-                        size={10}
-                        className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-600"
-                      />
-                    </div>
-                    {/* Dropdown */}
-                    {showDropdown && filteredSearchItems.length > 0 && (
-                      <div className="absolute left-0 right-0 top-full mt-1 bg-slate-800 border border-white/10 rounded-xl shadow-2xl z-30 max-h-48 overflow-y-auto custom-scrollbar">
-                        {filteredSearchItems.map((item) => (
-                          <button
-                            key={item.id}
-                            onClick={() => handleSelectSearchItem(item)}
-                            className="w-full text-right px-3 py-2 hover:bg-white/5 transition-colors flex items-center justify-between gap-2"
-                          >
-                            <span className="text-[10px] font-black text-white truncate">
-                              {item.name_ar || item.name}
-                            </span>
-                            <span className="text-[9px] font-bold text-emerald-500 shrink-0">
-                              {item.price} ₪
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </td>
-                  <td className="p-2 text-center text-[10px] font-bold text-slate-500">
-                    {selectedSearchItem ? selectedSearchItem.price : "—"}
-                  </td>
-                  <td className="p-2">
-                    <input
-                      type="number"
-                      value={inlineQty}
-                      onChange={(e) => setInlineQty(e.target.value)}
-                      onKeyDown={handleInlineKeyDown}
-                      className="w-10 sm:w-12 bg-transparent text-center text-[10px] sm:text-xs font-black text-white outline-none border-b border-emerald-500/30 focus:border-emerald-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    />
-                  </td>
-                  <td className="p-2 text-left text-[10px] font-bold text-slate-500">
-                    {selectedSearchItem
-                      ? (
-                          selectedSearchItem.price *
-                          (parseFloat(inlineQty) || 1)
-                        ).toFixed(2)
-                      : "—"}
-                  </td>
-                  <td className="p-2 text-center">
-                    <button
-                      onClick={handleInlineAdd}
-                      disabled={!selectedSearchItem}
-                      className="p-1.5 text-emerald-500 hover:text-emerald-400 transition-colors disabled:opacity-30"
-                    >
-                      <Plus size={14} />
-                    </button>
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
@@ -626,173 +727,287 @@ export const CartPanel: React.FC<CartPanelProps> = ({
 
       {/* 4. Footer Summary & Actions */}
       <div className="p-3 sm:p-4 bg-slate-950 border-t border-white/10 space-y-2">
-        {/* Invoice Note - full width */}
-        <div className="bg-slate-900 px-3 py-1.5 rounded-xl border border-white/5 flex flex-col gap-0.5">
-          <div className="flex items-center gap-1 text-slate-500 shrink-0">
-            <FileText size={10} />
-            <span className="text-[8px] font-black uppercase tracking-widest">
-              الملاحظة
-            </span>
+        {/* Note & Discount Row */}
+        <div className="flex gap-2">
+          {/* Invoice Note */}
+          <div className="flex-1 bg-slate-900 px-3 py-1.5 rounded-xl border border-white/5 flex flex-col gap-0.5">
+            <div className="flex items-center gap-1 text-slate-500 shrink-0">
+              <FileText size={10} />
+              <span className="text-[8px] font-black uppercase tracking-widest">
+                الملاحظة
+              </span>
+            </div>
+            <textarea
+              value={invoiceNote}
+              onChange={(e) => setInvoiceNote(e.target.value)}
+              placeholder="..."
+              className="w-full bg-transparent text-[9px] sm:text-[10px] font-black outline-none text-white placeholder:text-slate-700 h-12 sm:h-16 resize-none"
+            />
           </div>
-          <textarea
-            value={invoiceNote}
-            onChange={(e) => setInvoiceNote(e.target.value)}
-            placeholder="..."
-            className="w-full bg-transparent text-[9px] sm:text-[10px] font-black outline-none text-white placeholder:text-slate-700 h-12 sm:h-16 resize-none"
-          />
-        </div>
-        {/* Action Buttons */}
-        <div
-          className={`grid ${isHospitality ? "grid-cols-2" : "grid-cols-3"} gap-2 pt-1`}
-        >
-          {isHospitality ? (
-            <>
-              <button
-                onClick={() => {
-                  if (cartOrderType === OrderType.DINE_IN && !manualTable) {
-                    setPosError("يرجى إدخال رقم الطاولة أولاً");
-                    return;
-                  }
-                  submitOrder(
-                    OrderStatus.PENDING,
-                    PaymentMethod.CASH,
-                    calculatedDiscount,
-                    {
-                      name: customerName,
-                      phone: customerPhone,
-                      note: invoiceNote,
-                    },
-                  );
-                }}
-                disabled={currentCart.length === 0}
-                className="py-3 sm:py-4 bg-slate-800 text-white rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 hover:bg-slate-700 shadow-lg disabled:opacity-30 transition-all active:scale-95"
-              >
-                <Save size={18} />
-                حفظ الطلب
-              </button>
-              <button
-                onClick={() => {
-                  if (cartOrderType === OrderType.DINE_IN && !manualTable) {
-                    setPosError("يرجى إدخل رقم الطاولة أولاً");
-                    return;
-                  }
-                  submitOrder(
-                    OrderStatus.CONFIRMED,
-                    PaymentMethod.CASH,
-                    calculatedDiscount,
-                    {
-                      name: customerName,
-                      phone: customerPhone,
-                      note: invoiceNote,
-                    },
-                  );
-                }}
-                disabled={currentCart.length === 0}
-                className="py-3 sm:py-4 bg-red-600 text-white rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 hover:bg-red-700 shadow-xl shadow-red-900/20 disabled:opacity-30 transition-all active:scale-95"
-              >
-                <Save size={18} />
-                {editingOrderId ? "تحديث الطلب" : "إرسال الطلب"}
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={() => {
-                  if (cartOrderType === OrderType.DINE_IN && !manualTable) {
-                    setPosError("يرجى إدخال رقم الطاولة أولاً");
-                    return;
-                  }
-                  submitOrder(
-                    OrderStatus.PENDING,
-                    paymentMethod,
-                    calculatedDiscount,
-                    {
-                      name: customerName,
-                      phone: customerPhone,
-                      note: invoiceNote,
-                    },
-                  );
-                }}
-                disabled={currentCart.length === 0}
-                className="py-2.5 sm:py-3 bg-slate-800 text-white rounded-xl font-black text-[9px] sm:text-[10px] flex items-center justify-center gap-1.5 hover:bg-slate-700 disabled:opacity-30 transition-all active:scale-95"
-              >
-                <Save size={14} />
-                حفظ
-              </button>
-              {/* Print Invoice Button */}
-{/* Print Invoice Button */}
-<button
-  onClick={async () => {
-    // استخدام المعرف الفعلي القادم من الـ props وإذا لم يتوفر نضع 11 كـ Fallback
-    const targetOrderId = editingOrderId || "11"; 
-
-    try {
-      console.log("جاري إرسال طلب الطباعة للطلب رقم:", targetOrderId);
-
-      // استيراد كائن الـ axios المخصص للمشروع ديناميكياً
-      const { default: customApi } = await import("../../api/axios");
-
-      // إرسال طلب الـ POST للباك إند
-      const response = await customApi.post(`/orders/${targetOrderId}/print-invoice`);
-
-      if (response.data && response.data.success) {
-        alert("نجاح الطباعة: " + response.data.message);
-      } else {
-        alert("تنبيه: " + (response.data?.message || "لم يتم تنفيذ الأمر بشكل صحيح"));
-      }
-    } catch (error: any) {
-      console.error("خطأ في عملية الطباعة:", error);
-      alert(
-        "فشل أمر الطباعة: " + 
-        (error.response?.data?.message || error.message || "تحقق من اتصال الطابعة بالشبكة")
-      );
+          {/* Discount */}
+          <div className="w-28 sm:w-32 bg-slate-900 px-3 py-1.5 rounded-xl border border-white/5 flex flex-col gap-0.5">
+            <div className="flex items-center gap-1 text-slate-500 shrink-0">
+              <Tag size={10} />
+              <span className="text-[8px] font-black uppercase tracking-widest">
+                الخصم
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <input
+  type="text"
+  value={editingDiscount}
+  onChange={(e) => {
+    setEditingDiscount(e.target.value);
+    const val = parseFloat(e.target.value);
+    if (!isNaN(val) && val >= 0) {
+      setDiscountValue(val);
     }
   }}
-  disabled={currentCart.length === 0 || isPrinting}
-  className="py-2.5 sm:py-3 bg-blue-600 text-white rounded-xl font-black text-[9px] sm:text-[10px] flex items-center justify-center gap-1.5 hover:bg-blue-700 shadow-xl shadow-blue-900/20 disabled:opacity-30 transition-all active:scale-95"
->
-  {isPrinting ? (
-    <Loader2 size={14} className="animate-spin" />
-  ) : (
-    <Printer size={14} />
-  )}
-  {isPrinting ? "جاري الإرسال..." : "طباعة"}
-</button>
-
+  placeholder="0"
+  // تم تغيير flex-1 إلى flex-1 min-w-0 أو w-0 flex-1 لمنع التمدد الزائد
+  className="flex-1 min-w-0 bg-transparent text-center text-[10px] sm:text-xs font-black text-white outline-none"
+/>
               <button
-                onClick={() => {
-                  if (cartOrderType === OrderType.DINE_IN && !manualTable) {
-                    setPosError("يرجى إدخال رقم الطاولة أولاً");
-                    return;
-                  }
-                  if (
-                    !customerName ||
-                    (customerName === "صندوق مبيعات" &&
-                      paymentMethod !== PaymentMethod.CASH)
-                  ) {
-                    setShowCustomerModal(true);
-                    return;
-                  }
-                  submitOrder(
-                    OrderStatus.DELIVERED,
-                    paymentMethod,
-                    calculatedDiscount,
-                    {
-                      name: customerName,
-                      phone: customerPhone,
-                      note: invoiceNote,
-                    },
-                  );
-                }}
-                disabled={currentCart.length === 0}
-                className="py-2.5 sm:py-3 bg-red-600 text-white rounded-xl font-black text-[9px] sm:text-[10px] flex items-center justify-center gap-1.5 hover:bg-red-700 shadow-xl shadow-red-900/20 disabled:opacity-30 transition-all active:scale-95"
+                onClick={() =>
+                  setDiscountType(
+                    discountType === "AMOUNT" ? "PERCENT" : "AMOUNT",
+                  )
+                }
+                className="text-[9px] font-black text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded hover:text-slate-200 transition-colors"
               >
-                <CheckCircle size={14} />
-                إغلاق
+                {discountType === "AMOUNT" ? "₪" : "%"}
               </button>
-            </>
-          )}
+            </div>
+          </div>
         </div>
+        {/* Action Buttons */}
+        {isHospitality ? (
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <button
+              onClick={() => {
+                if (cartOrderType === OrderType.DINE_IN && !manualTable) {
+                  setPosError("يرجى إدخال رقم الطاولة أولاً");
+                  return;
+                }
+                submitOrder(
+                  OrderStatus.PENDING,
+                  PaymentMethod.CASH,
+                  calculatedDiscount,
+                  {
+                    name: customerName,
+                    phone: customerPhone,
+                    note: invoiceNote,
+                  },
+                );
+              }}
+              disabled={currentCart.length === 0}
+              className="py-3 sm:py-4 bg-slate-800 text-white rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 hover:bg-slate-700 shadow-lg disabled:opacity-30 transition-all active:scale-95"
+            >
+              <Save size={18} />
+              حفظ الطلب
+            </button>
+            <button
+              onClick={() => {
+                if (cartOrderType === OrderType.DINE_IN && !manualTable) {
+                  setPosError("يرجى إدخل رقم الطاولة أولاً");
+                  return;
+                }
+                submitOrder(
+                  OrderStatus.CONFIRMED,
+                  PaymentMethod.CASH,
+                  calculatedDiscount,
+                  {
+                    name: customerName,
+                    phone: customerPhone,
+                    note: invoiceNote,
+                  },
+                );
+              }}
+              disabled={currentCart.length === 0}
+              className="py-3 sm:py-4 bg-red-600 text-white rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 hover:bg-red-700 shadow-xl shadow-red-900/20 disabled:opacity-30 transition-all active:scale-95"
+            >
+              <Save size={18} />
+              {editingOrderId ? "تحديث الطلب" : "إرسال الطلب"}
+            </button>
+          </div>
+        ) : cartOrderType === OrderType.TAKEAWAY ? (
+          /* فوري: زرين — حفظ وتنفيذ وطباعة */
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <button
+              onClick={() => {
+                submitOrder(
+                  OrderStatus.PENDING,
+                  paymentMethod,
+                  calculatedDiscount,
+                  {
+                    name: customerName,
+                    phone: customerPhone,
+                    note: invoiceNote,
+                  },
+                );
+              }}
+              disabled={currentCart.length === 0}
+              className="py-2.5 sm:py-3 bg-slate-800 text-white rounded-xl font-black text-[9px] sm:text-[10px] flex items-center justify-center gap-1.5 hover:bg-slate-700 disabled:opacity-30 transition-all active:scale-95"
+            >
+              <Save size={14} />
+              حفظ
+            </button>
+            <button
+              onClick={async () => {
+                const result = await submitOrder(
+                  OrderStatus.DELIVERED,
+                  paymentMethod,
+                  calculatedDiscount,
+                  {
+                    name: customerName,
+                    phone: customerPhone,
+                    note: invoiceNote,
+                  },
+                );
+                if (result?.id && posInfo?.id) {
+                  try {
+                    const { printerService } = await import("../../services/printerService");
+                    await printerService.directPrint(result.id, posInfo.id);
+                  } catch (printErr: any) {
+                    console.error("خطأ في الطباعة الفورية:", printErr);
+                  }
+                }
+              }}
+              disabled={currentCart.length === 0}
+              className="py-2.5 sm:py-3 bg-red-600 text-white rounded-xl font-black text-[9px] sm:text-[10px] flex items-center justify-center gap-1.5 hover:bg-red-700 shadow-xl shadow-red-900/20 disabled:opacity-30 transition-all active:scale-95"
+            >
+              <CheckCircle size={14} />
+              تنفيذ وطباعة
+            </button>
+          </div>
+        ) : (
+          /* محلي: 4 أزرار — حفظ, تنفيذ, طباعة, إغلاق */
+          <div className="grid grid-cols-4 gap-2 pt-1">
+            <button
+              onClick={() => {
+                if (cartOrderType === OrderType.DINE_IN && !manualTable) {
+                  setPosError("يرجى إدخال رقم الطاولة أولاً");
+                  return;
+                }
+                submitOrder(
+                  OrderStatus.PENDING,
+                  paymentMethod,
+                  calculatedDiscount,
+                  {
+                    name: customerName,
+                    phone: customerPhone,
+                    note: invoiceNote,
+                  },
+                );
+              }}
+              disabled={currentCart.length === 0}
+              className="py-2.5 sm:py-3 bg-slate-800 text-white rounded-xl font-black text-[9px] sm:text-[10px] flex items-center justify-center gap-1.5 hover:bg-slate-700 disabled:opacity-30 transition-all active:scale-95"
+            >
+              <Save size={14} />
+              حفظ
+            </button>
+            <button
+              onClick={async () => {
+                if (cartOrderType === OrderType.DINE_IN && !manualTable) {
+                  setPosError("يرجى إدخال رقم الطاولة أولاً");
+                  return;
+                }
+                const result = await submitOrder(
+                  OrderStatus.CONFIRMED,
+                  paymentMethod,
+                  calculatedDiscount,
+                  {
+                    name: customerName,
+                    phone: customerPhone,
+                    note: invoiceNote,
+                  },
+                  undefined,
+                  false,
+                );
+                if (result?.id && posInfo?.id) {
+                  try {
+                    const { printerService } = await import("../../services/printerService");
+                    // تجهيز بيانات TW لكل صنف
+                    const itemsWithTw = (result.items || []).map((item: any) => ({
+                      order_item_id: item.id,
+                      is_takeaway: currentCart.find(
+                        (c) => c.itemId === String(item.item_id),
+                      )?.is_takeaway ?? false,
+                    }));
+                    const printResult = await printerService.directPrint(result.id, posInfo.id, itemsWithTw);
+                    if (printResult?.success) {
+                      // تعليم كل صنف في الكارت كـ "مطبوع" مباشرة
+                      for (const cartItem of currentCart) {
+                        updateCartItem(cartItem.uniqueId, { is_printed_direct: true });
+                      }
+                    }
+                  } catch (printErr: any) {
+                    console.error("خطأ في الطباعة:", printErr);
+                  }
+                }
+              }}
+              disabled={currentCart.length === 0 || currentCart.every((item) => item.is_printed_direct)}
+              className="py-2.5 sm:py-3 bg-emerald-600 text-white rounded-xl font-black text-[9px] sm:text-[10px] flex items-center justify-center gap-1.5 hover:bg-emerald-700 shadow-xl shadow-emerald-900/20 disabled:opacity-30 transition-all active:scale-95"
+            >
+              <CheckCircle size={14} />
+              تنفيذ
+            </button>
+            <button
+              onClick={async () => {
+                const targetOrderId = editingOrderId || "11";
+                try {
+                  console.log("جاري إرسال طلب الطباعة للطلب رقم:", targetOrderId);
+                  const { default: customApi } = await import("../../api/axios");
+                  const response = await customApi.post(`/orders/${targetOrderId}/print-invoice`);
+                  if (response.data && response.data.success) {
+                    alert("نجاح الطباعة: " + response.data.message);
+                  } else {
+                    alert("تنبيه: " + (response.data?.message || "لم يتم تنفيذ الأمر بشكل صحيح"));
+                  }
+                } catch (error: any) {
+                  console.error("خطأ في عملية الطباعة:", error);
+                  alert("فشل أمر الطباعة: " + (error.response?.data?.message || error.message || "تحقق من اتصال الطابعة بالشبكة"));
+                }
+              }}
+              disabled={currentCart.length === 0 || isPrinting}
+              className="py-2.5 sm:py-3 bg-blue-600 text-white rounded-xl font-black text-[9px] sm:text-[10px] flex items-center justify-center gap-1.5 hover:bg-blue-700 shadow-xl shadow-blue-900/20 disabled:opacity-30 transition-all active:scale-95"
+            >
+              {isPrinting ? <Loader2 size={14} className="animate-spin" /> : <Printer size={14} />}
+              {isPrinting ? "..." : "طباعة"}
+            </button>
+            <button
+              onClick={() => {
+                if (cartOrderType === OrderType.DINE_IN && !manualTable) {
+                  setPosError("يرجى إدخال رقم الطاولة أولاً");
+                  return;
+                }
+                if (
+                  !customerName ||
+                  (customerName === "صندوق مبيعات" &&
+                    paymentMethod !== PaymentMethod.CASH)
+                ) {
+                  setShowCustomerModal(true);
+                  return;
+                }
+                submitOrder(
+                  OrderStatus.DELIVERED,
+                  paymentMethod,
+                  calculatedDiscount,
+                  {
+                    name: customerName,
+                    phone: customerPhone,
+                    note: invoiceNote,
+                  },
+                );
+              }}
+              disabled={currentCart.length === 0}
+              className="py-2.5 sm:py-3 bg-red-600 text-white rounded-xl font-black text-[9px] sm:text-[10px] flex items-center justify-center gap-1.5 hover:bg-red-700 shadow-xl shadow-red-900/20 disabled:opacity-30 transition-all active:scale-95"
+            >
+              <CheckCircle size={14} />
+              إغلاق
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

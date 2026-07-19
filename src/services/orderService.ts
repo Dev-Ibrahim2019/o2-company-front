@@ -319,6 +319,8 @@ export interface OrderItemFromApi {
   notes: string | null;
   tax_rate?: number;
   tax_amount?: number;
+  is_printed_direct?: boolean;
+  is_takeaway?: boolean;
   department?: { id: number; name: string; color: string; icon: string };
 }
 
