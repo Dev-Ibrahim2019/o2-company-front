@@ -16,20 +16,22 @@ import type { MenuItem } from "./useMenu";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface CartItem {
-  uniqueId: string; // item_id كـ string (للتوافق مع CartPanel)
-  itemId: string; // نفس uniqueId
-  id: number; // الرقم الحقيقي للصنف
+  uniqueId: string;
+  itemId: string;
+  id: number;
   name: string;
   name_ar: string;
-  price: number; // السعر الحالي (من pivot)
-  original_price?: number; // السعر الأصلي قبل الخصم
-  discount_amount?: number; // قيمة الخصم
-  discount_percent?: number; // نسبة الخصم
-  discount_id?: number; // معرف الخصم المطبق
-  final_price?: number; // السعر النهائي بعد الخصم
+  price: number;
+  original_price?: number;
+  discount_amount?: number;
+  discount_percent?: number;
+  discount_id?: number;
+  final_price?: number;
   quantity: number;
   notes?: string;
   department_id: number;
+  is_printed_direct?: boolean;
+  is_takeaway?: boolean;
 }
 
 export interface PaymentEntry {
@@ -121,9 +123,10 @@ export const useCart = () => {
       const price = opts?.price ?? item.price;
 
       setCart((prev) => {
-        const existingIdx = prev.findIndex((c) => c.id === item.id);
+        // لا ندمج مع صنف مطبوع — نضيف سطر جديد لكي يكون قابل للطباعة
+        const existingIdx = prev.findIndex((c) => c.id === item.id && !c.is_printed_direct);
         if (existingIdx >= 0) {
-          // الصنف موجود — زيد الكمية
+          // الصنف موجود وغير مطبوع — زيد الكمية
           const updated = [...prev];
           updated[existingIdx] = {
             ...updated[existingIdx],
@@ -131,10 +134,9 @@ export const useCart = () => {
           };
           return updated;
         }
-        // صنف جديد — أضف صف جديد
+        // صنف جديد — أضف في البداية (أول الفاتورة)
         const uniqueId = String(item.id) + '-' + Math.random().toString(36).substr(2, 9);
         return [
-          ...prev,
           {
             uniqueId,
             itemId: uniqueId,
@@ -146,6 +148,7 @@ export const useCart = () => {
             department_id: item.department_id,
             notes: undefined,
           },
+          ...prev,
         ];
       });
     },
@@ -184,10 +187,11 @@ export const useCart = () => {
   const submitOrder = useCallback(
     async (
       payload: SubmitOrderPayload,
-      shouldConfirm = false, // true = أرسل للمطبخ فوراً بعد الحفظ
+      shouldConfirm = false,
       paymentEntries: PaymentEntry[] = [],
       createInvoice = false,
       existingOrderId?: number | null,
+      clearAfterSubmit = true,
     ) => {
       if (cart.length === 0) return null;
 
@@ -218,12 +222,14 @@ export const useCart = () => {
         // ═══════════════════════════════════════════════════
         const orderPayload = {
           ...payload,
-          items: cart.map((c) => ({
-            item_id: c.id,
-            quantity: c.quantity,
-            unit_price: c.price,
-            notes: c.notes ?? undefined,
-          })),
+          items: cart
+            .filter((c) => !c.is_printed_direct)
+            .map((c) => ({
+              item_id: c.id,
+              quantity: c.quantity,
+              unit_price: c.price,
+              notes: c.notes ?? undefined,
+            })),
         };
 
         let order: OrderFromApi;
@@ -264,10 +270,18 @@ export const useCart = () => {
           try {
             order = await orderService.confirm(order.id);
           } catch (error) {
-            if (!isCloseUpdateStateError(error)) {
+            if (createInvoice) {
+              // عند الإغلاق، نتجاهل أخطاء التأكيد ونحاول جلب الطلب
+              try {
+                order = await orderService.getOne(order.id);
+              } catch {
+                // تجاهل
+              }
+            } else if (!isCloseUpdateStateError(error)) {
               throw error;
+            } else {
+              order = await orderService.getOne(order.id);
             }
-            order = await orderService.getOne(order.id);
           }
         }
 
@@ -357,7 +371,9 @@ export const useCart = () => {
           finalOrder = order;
         }
 
-        clearCart();
+        if (clearAfterSubmit) {
+          clearCart();
+        }
         return finalOrder;
       } catch (e) {
         const msg = getApiErrorMessage(e, "فشل إرسال الطلب");

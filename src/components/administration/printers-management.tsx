@@ -1,34 +1,34 @@
 /**
- * printers-management.tsx — إدارة وتوجيه الطابعات الاحترافي (معزول بالأفرع)
+ * printers-management.tsx — إدارة الطابعات مع توجيه مدمج
  * ─────────────────────────────────────────────────────────────
  * - Branch Selector في أعلى الصفحة
- * - كل البيانات مرتبطة بالفرع المحدد
- * - Two-Column Master-Detail Layout
- * - أجهزة الإرسال: نقاط البيع (POS) + أجهزة الضيافة
+ * - إضافة/تعديل طابعة مع تحديد النوع (كاشير ↔ POS / أقسام ↔ أقسام+أصناف)
+ * - عرض الطابعات مع معلومات التوجيه المرتبطة
+ * - اختبار الاتصال والطباعة
  */
 
 import React, { useState, useEffect, useCallback } from "react";
 import {
   Printer,
-  ArrowLeftRight,
   Plus,
   Trash2,
   Pencil,
   Layers,
-  Target,
   Loader2,
   RefreshCw,
   Wifi,
-  WifiOff,
   AlertCircle,
   Search,
-  User,
   Network,
   Monitor,
   Building2,
+  Check,
+  X,
   MonitorPlay,
-  HeartHandshake,
-  ArrowLeft,
+  Package,
+  Zap,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { toast } from "../shared/Toast";
 import { usePrinters } from "../../hooks/usePrinters";
@@ -38,8 +38,8 @@ import { fetchItems } from "../../services/itemService";
 import api from "../../api/axios";
 import type {
   Printer as PrinterType,
-  PrintRoute,
-  PrintRouteFormData,
+  PrinterFormData,
+  PrinterTypeValue,
 } from "../../../types";
 
 // ── Types محلية ──────────────────────────────────────────────
@@ -66,21 +66,6 @@ interface PosRegister {
   code: string;
   status: string;
   branch_id: number;
-}
-
-interface HospitalityDevice {
-  id: number;
-  name: string;
-  code: string;
-  status: string;
-  branch_id: number;
-}
-
-interface SenderDevice {
-  id: number;
-  name: string;
-  code: string;
-  type: "POS" | "HOSPITALITY";
 }
 
 // ── Loading & Error ──────────────────────────────────────────
@@ -211,18 +196,53 @@ const StatusDot = ({ isOnline }: { isOnline: boolean }) => (
   </span>
 );
 
+// ── Chip/Tag Component ───────────────────────────────────────
+
+const Chip = ({
+  label,
+  onRemove,
+  color = "blue",
+}: {
+  label: string;
+  onRemove?: () => void;
+  color?: "blue" | "green" | "purple" | "amber";
+}) => {
+  const colorMap: Record<string, string> = {
+    blue: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+    green: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    purple: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+    amber: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  };
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${colorMap[color]}`}
+    >
+      {label}
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="hover:text-white transition-colors"
+        >
+          <X size={10} />
+        </button>
+      )}
+    </span>
+  );
+};
+
 // ── المكون الرئيسي ──────────────────────────────────────────
 
 export function PrintersManagement() {
   const {
     printers,
-    routes,
     loading,
     error,
     addPrinter,
+    updatePrinter,
     deletePrinter,
-    addRoute,
-    deleteRoute,
+    testPrinter,
     refetchAll,
   } = usePrinters();
 
@@ -235,31 +255,30 @@ export function PrintersManagement() {
   const [categories, setCategories] = useState<CategoryType[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItemType[]>([]);
 
-  // أجهزة الإرسال (POS + Hospitality)
+  // أجهزة POS
   const [posRegisters, setPosRegisters] = useState<PosRegister[]>([]);
-  const [hospitalityDevices, setHospitalityDevices] = useState<HospitalityDevice[]>([]);
 
   // حالات نموذج الطابعة
   const [printerName, setPrinterName] = useState("");
   const [ipAddress, setIpAddress] = useState("");
   const [printerPort, setPrinterPort] = useState("9100");
-  const [printerType, setPrinterType] = useState<string>("KITCHEN");
+  const [printerType, setPrinterType] = useState<PrinterTypeValue>("KITCHEN");
   const [savingPrinter, setSavingPrinter] = useState(false);
   const [editingPrinter, setEditingPrinter] = useState<PrinterType | null>(null);
+  const [isInstant, setIsInstant] = useState(false);
 
-  // حالات مصفوفة التوجيه
-  const [routingScope, setRoutingScope] = useState<"CATEGORY" | "ITEM">("CATEGORY");
-  const [selectedTargetId, setSelectedTargetId] = useState("");
-  const [selectedPrinterId, setSelectedPrinterId] = useState("");
-  const [selectedSenderType, setSelectedSenderType] = useState<"NONE" | "POS" | "HOSPITALITY">("NONE");
-  const [selectedSenderId, setSelectedSenderId] = useState("");
-  const [savingRoute, setSavingRoute] = useState(false);
-
-  // حالة طباعة تجريبية
-  const [loadingPrinterId, setLoadingPrinterId] = useState<number | null>(null);
+  // حالات التوجيه المدمج
+  const [linkedPosRegisterId, setLinkedPosRegisterId] = useState<string>("");
+  const [selectedDepartmentIds, setSelectedDepartmentIds] = useState<number[]>([]);
+  const [selectedItemIds, setSelectedItemIds] = useState<number[]>([]);
 
   // فلترة البحث
   const [searchQuery, setSearchQuery] = useState("");
+  const [loadingPrinterId, setLoadingPrinterId] = useState<number | null>(null);
+
+  // توسيع/طي الأقسام
+  const [showDepartments, setShowDepartments] = useState(true);
+  const [showItems, setShowItems] = useState(false);
 
   // ── جلب الفروع ─────────────────────────────────────────────
 
@@ -282,36 +301,27 @@ export function PrintersManagement() {
     fetchBranches();
   }, []);
 
-  // ── جلب أجهزة الإرسال (POS + Hospitality) ──────────────────
+  // ── جلب أجهزة POS ──────────────────────────────────────────
 
-  const fetchSenderDevices = useCallback(async () => {
+  const fetchPosRegisters = useCallback(async () => {
     if (!selectedBranchId) return;
-
     try {
-      const [posRes, hospRes] = await Promise.all([
-        api.get("/admin/pos-registers"),
-        api.get("/admin/hospitality-devices"),
-      ]);
-
+      const posRes = await api.get("/admin/pos-registers");
       const posList = (posRes.data.data ?? posRes.data ?? []) as PosRegister[];
-      const hospList = (hospRes.data.data ?? hospRes.data ?? []) as HospitalityDevice[];
-
-      setPosRegisters(posList.filter(p => p.branch_id === selectedBranchId));
-      setHospitalityDevices(hospList.filter(h => h.branch_id === selectedBranchId));
+      setPosRegisters(posList.filter((p) => p.branch_id === selectedBranchId));
     } catch (err) {
-      console.error("Error fetching sender devices:", err);
+      console.error("Error fetching POS registers:", err);
     }
   }, [selectedBranchId]);
 
   useEffect(() => {
-    fetchSenderDevices();
-  }, [fetchSenderDevices]);
+    fetchPosRegisters();
+  }, [fetchPosRegisters]);
 
   // ── جلب البيانات المساعدة (حسب الفرع) ──────────────────────
 
   const fetchAuxiliaryData = useCallback(async () => {
     if (!selectedBranchId) return;
-
     try {
       const [deptsData, itemsData] = await Promise.all([
         departmentService.getAll(),
@@ -321,7 +331,8 @@ export function PrintersManagement() {
       setCategories(
         deptsData
           .filter((d) => {
-            const branchIds = (d as any).branch_ids || (d as any).branches?.map((b: any) => b.id) || [];
+            const branchIds =
+              (d as any).branch_ids || (d as any).branches?.map((b: any) => b.id) || [];
             return branchIds.length === 0 || branchIds.includes(selectedBranchId);
           })
           .map((d) => ({ id: d.id, name: d.name || d.nameAr || "" })),
@@ -330,9 +341,13 @@ export function PrintersManagement() {
       setMenuItems(
         itemsData
           .filter((i) => {
-            const branchItems = (i as any).branches || (i as any).branch_items || (i as any).branch_prices || [];
-            return branchItems.length === 0 || branchItems.some((b: any) => 
-              b.id === selectedBranchId || b.branch_id === selectedBranchId
+            const branchItems =
+              (i as any).branches || (i as any).branch_items || (i as any).branch_prices || [];
+            return (
+              branchItems.length === 0 ||
+              branchItems.some(
+                (b: any) => b.id === selectedBranchId || b.branch_id === selectedBranchId,
+              )
             );
           })
           .map((i) => ({
@@ -354,12 +369,24 @@ export function PrintersManagement() {
 
   useEffect(() => {
     if (selectedBranchId) {
-      refetchAll();
-      fetchSenderDevices();
+      refetchAll(selectedBranchId);
+      fetchPosRegisters();
     }
   }, [selectedBranchId]);
 
   // ── دوال المعالجة ──────────────────────────────────────────
+
+  const resetPrinterForm = () => {
+    setPrinterName("");
+    setIpAddress("");
+    setPrinterPort("9100");
+    setPrinterType("KITCHEN");
+    setLinkedPosRegisterId("");
+    setSelectedDepartmentIds([]);
+    setSelectedItemIds([]);
+    setIsInstant(false);
+    setEditingPrinter(null);
+  };
 
   const handleAddPrinter = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -372,32 +399,48 @@ export function PrintersManagement() {
       return;
     }
 
+    // التحقق من الحقول حسب النوع
+    if (printerType === "CASHIER") {
+      if (!linkedPosRegisterId) {
+        toast.warning("يرجى اختيار جهاز الكاشير");
+        return;
+      }
+    } else {
+      if (selectedDepartmentIds.length === 0) {
+        toast.warning("يرجى تحديد قسم واحد على الأقل");
+        return;
+      }
+    }
+
+    const payload: PrinterFormData = {
+      name: printerName.trim(),
+      ip_address: ipAddress.trim(),
+      port: printerPort.trim() || "9100",
+      type: printerType,
+      branch_id: selectedBranchId,
+      print_on_direct: printerType !== "CASHIER" ? isInstant : false,
+      linked_pos_register_id: printerType === "CASHIER" ? Number(linkedPosRegisterId) : null,
+      department_ids: printerType !== "CASHIER" ? selectedDepartmentIds : [],
+      item_ids: printerType !== "CASHIER" ? selectedItemIds : [],
+    };
+
     try {
       setSavingPrinter(true);
-      await addPrinter({
-        name: printerName.trim(),
-        ip_address: ipAddress.trim(),
-        port: printerPort.trim() || "9100",
-        type: printerType,
-        branch_id: selectedBranchId,
-      });
-      toast.success("تم تثبيت الطابعة بنجاح", "تمت إضافة الطابعة للنظام");
+      if (editingPrinter) {
+        await updatePrinter(editingPrinter.id, payload);
+        toast.success("تم تحديث الطابعة بنجاح");
+      } else {
+        await addPrinter(payload);
+        toast.success("تم تثبيت الطابعة بنجاح", "تمت إضافة الطابعة للنظام");
+      }
       resetPrinterForm();
     } catch (err: any) {
       const msg =
-        err.response?.data?.message || "فشل إضافة الطابعة، تحقق من البيانات";
-      toast.error("خطأ في الإضافة", msg);
+        err.response?.data?.message || "فشل حفظ الطابعة، تحقق من البيانات";
+      toast.error("خطأ في الحفظ", msg);
     } finally {
       setSavingPrinter(false);
     }
-  };
-
-  const resetPrinterForm = () => {
-    setPrinterName("");
-    setIpAddress("");
-    setPrinterPort("9100");
-    setPrinterType("KITCHEN");
-    setEditingPrinter(null);
   };
 
   const handleEditPrinter = (printer: PrinterType) => {
@@ -405,20 +448,23 @@ export function PrintersManagement() {
     setIpAddress(printer.ip_address);
     setPrinterPort(printer.port || "9100");
     setPrinterType(printer.type);
+    setLinkedPosRegisterId(printer.linked_pos_register_id?.toString() || "");
+    setSelectedDepartmentIds(printer.departments?.map((d) => d.id) || []);
+    setSelectedItemIds(printer.items?.map((i) => i.id) || []);
+    setIsInstant(printer.print_on_direct ?? false);
     setEditingPrinter(printer);
   };
 
   const handleDeletePrinter = async (id: number, name: string) => {
     if (
       !window.confirm(
-        `هل أنت متأكد من حذف الطابعة "${name}"؟\nسيتم حذف جميع القواعد المرتبطة بها.`,
+        `هل أنت متأكد من حذف الطابعة "${name}"؟\nسيتم حذف جميع الارتباطات المرتبطة بها.`,
       )
     ) {
       return;
     }
-
     try {
-      await deletePrinter(id);
+      await deletePrinter(id, selectedBranchId ?? undefined);
       toast.success("تم الحذف", `تم حذف الطابعة "${name}" بنجاح`);
     } catch (err: any) {
       toast.error(
@@ -428,58 +474,12 @@ export function PrintersManagement() {
     }
   };
 
-  const handleCreateRoute = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedTargetId || !selectedPrinterId) {
-      toast.warning("يرجى اختيار الهدف والطابعة");
-      return;
-    }
-    if (selectedSenderType === "NONE") {
-      toast.warning("يرجى اختيار جهاز الإرسال (POS أو ضيافة)");
-      return;
-    }
-
-    const payload: PrintRouteFormData = {
-      scope: routingScope,
-      printer_id: Number(selectedPrinterId),
-      user_id: null,
-      pos_register_id: selectedSenderType === "POS" ? Number(selectedSenderId) : null,
-      hospitality_device_id: selectedSenderType === "HOSPITALITY" ? Number(selectedSenderId) : null,
-      category_id: routingScope === "CATEGORY" ? Number(selectedTargetId) : null,
-      item_id: routingScope === "ITEM" ? Number(selectedTargetId) : null,
-    };
-
-    try {
-      setSavingRoute(true);
-      await addRoute(payload);
-      toast.success("تم إنشاء قاعدة التوجيه", "ستُطبَع الأصناف الموجهة على الطابعة المحددة");
-      setSelectedTargetId("");
-      setSelectedPrinterId("");
-      setSelectedSenderType("NONE");
-      setSelectedSenderId("");
-    } catch (err: any) {
-      toast.error(
-        "فشل إنشاء القاعدة",
-        err.response?.data?.message || "تحقق من عدم تكرار القاعدة",
-      );
-    } finally {
-      setSavingRoute(false);
-    }
-  };
-
-  const handleDeleteRoute = async (id: number) => {
-    try {
-      await deleteRoute(id);
-      toast.success("تم إلغاء القاعدة");
-    } catch (err: any) {
-      toast.error("فشل إلغاء القاعدة", err.response?.data?.message || "حدث خطأ");
-    }
-  };
-
   const handleTestPrint = async (printerId: number) => {
     setLoadingPrinterId(printerId);
     try {
-      await api.post(`/admin/printers/${printerId}/test-print`);
+      await api.post(`/admin/printers/${printerId}/test-print`, null, {
+        params: selectedBranchId ? { branch_id: selectedBranchId } : {},
+      });
       toast.success("تم إرسال أمر الطباعة بنجاح!", "تفقد الطابعة الآن");
     } catch (error: any) {
       const errorMessage =
@@ -489,6 +489,41 @@ export function PrintersManagement() {
       setLoadingPrinterId(null);
     }
   };
+
+  // ── إدارة الأقسام ─────────────────────────────────────────
+
+  const toggleDepartment = (deptId: number) => {
+    setSelectedDepartmentIds((prev) => {
+      const next = prev.includes(deptId)
+        ? prev.filter((id) => id !== deptId)
+        : [...prev, deptId];
+
+      // إزالة الأصناف التابعة للأقسام المُلغاة
+      if (prev.includes(deptId)) {
+        const removedDeptItems = menuItems
+          .filter((i) => i.department_id === deptId)
+          .map((i) => i.id);
+        setSelectedItemIds((prevItems) =>
+          prevItems.filter((id) => !removedDeptItems.includes(id)),
+        );
+      }
+
+      return next;
+    });
+  };
+
+  const toggleItem = (itemId: number) => {
+    setSelectedItemIds((prev) =>
+      prev.includes(itemId) ? prev.filter((id) => id !== itemId) : [...prev, itemId],
+    );
+  };
+
+  // ── الأصناف المتاحة (حسب الأقسام المحددة) ─────────────────
+
+  const filteredMenuItems =
+    selectedDepartmentIds.length > 0
+      ? menuItems.filter((i) => selectedDepartmentIds.includes(i.department_id))
+      : [];
 
   // ── تصفية ──────────────────────────────────────────────────
 
@@ -500,33 +535,6 @@ export function PrintersManagement() {
         p.type.toLowerCase().includes(searchQuery.toLowerCase())),
   );
 
-  const filteredRoutes = routes.filter(
-    (r) => !selectedBranchId || r.branch_id === selectedBranchId,
-  );
-
-  const getTargetName = (route: PrintRoute): string => {
-    if (route.scope === "CATEGORY" && route.category) return route.category.name;
-    if (route.scope === "ITEM" && route.item) return route.item.name;
-    const foundCat = categories.find((c) => c.id === route.category_id);
-    if (foundCat) return foundCat.name;
-    const foundItem = menuItems.find((i) => i.id === route.item_id);
-    if (foundItem) return foundItem.name;
-    return "---";
-  };
-
-  const getSenderName = (route: PrintRoute): string => {
-    if (route.posRegister) return `POS: ${route.posRegister.name}`;
-    if (route.hospitalityDevice) return `ضيافة: ${route.hospitalityDevice.name}`;
-    if (route.user) return route.user.name;
-    return "كل الأجهزة";
-  };
-
-  const getPrinterName = (route: PrintRoute): string => {
-    if (route.printer) return route.printer.name;
-    const p = printers.find((pr) => pr.id === route.printer_id);
-    return p?.name || "---";
-  };
-
   const printerTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
       CASHIER: "فاتورة كاشير",
@@ -535,6 +543,16 @@ export function PrintersManagement() {
       OTHER: "أخرى",
     };
     return labels[type] || type;
+  };
+
+  const printerTypeColor = (type: string) => {
+    const colors: Record<string, string> = {
+      CASHIER: "bg-emerald-500/10 text-emerald-400",
+      KITCHEN: "bg-amber-500/10 text-amber-400",
+      BAR: "bg-purple-500/10 text-purple-400",
+      OTHER: "bg-slate-500/10 text-slate-400",
+    };
+    return colors[type] || "bg-slate-500/10 text-slate-400";
   };
 
   // ── حالة التحميل ───────────────────────────────────────────
@@ -565,10 +583,10 @@ export function PrintersManagement() {
           <div className="w-8 h-8 bg-blue-600/20 rounded-lg flex items-center justify-center border border-blue-500/20">
             <Printer size={16} className="text-blue-400" />
           </div>
-          إدارة وتوجيه الطابعات الاحترافي
+          إدارة الطابعات وتوجيه الطباعة
         </h1>
         <p className="text-[11px] text-slate-500 mt-1 mr-10">
-          تحكم ديناميكي كامل في طباعة الفواتير وأوامر التشغيل — حسب القسم بالكامل أو صنف فردي محدَّد
+          أضف طابعة وحدد توجيهها: كاشير مرتبط بجهاز POS أو أقسام مرتبطة بأصناف محددة
         </p>
       </div>
 
@@ -579,7 +597,9 @@ export function PrintersManagement() {
           <span className="text-xs font-bold text-slate-400">الفرع الحالي:</span>
           <select
             value={selectedBranchId ?? ""}
-            onChange={(e) => setSelectedBranchId(e.target.value ? Number(e.target.value) : null)}
+            onChange={(e) =>
+              setSelectedBranchId(e.target.value ? Number(e.target.value) : null)
+            }
             className="flex-1 p-2 bg-slate-800 rounded-lg text-sm text-white border border-white/5 outline-none focus:ring-2 focus:ring-blue-500/50 cursor-pointer"
           >
             {branches.length === 0 && <option value="">لا توجد فروع</option>}
@@ -590,7 +610,7 @@ export function PrintersManagement() {
             ))}
           </select>
           <span className="text-[10px] text-slate-500 font-mono bg-slate-800 px-2 py-1 rounded-full">
-            {filteredPrinters.length} طابعة • {filteredRoutes.length} قاعدة
+            {filteredPrinters.length} طابعة
           </span>
         </div>
       </div>
@@ -599,20 +619,21 @@ export function PrintersManagement() {
        *  Two-Column Layout
        * ═════════════════════════════════════════════════════════ */}
       <div className="flex gap-5 items-stretch">
-        {/* ── العمود الأيمن (30%) — نموذج الطابعة ── */}
-        <div className="w-[30%] min-w-[280px] flex flex-col">
+        {/* ── العمود الأيمن (35%) — نموذج الطابعة ── */}
+        <div className="w-[35%] min-w-[320px] flex flex-col">
           <div className="bg-slate-900 border border-white/10 rounded-2xl p-5 shadow-xl flex-1">
             <h2 className="text-sm font-bold text-white flex items-center gap-2 border-b border-white/5 pb-3 mb-4">
               <Plus size={16} className="text-blue-400" />
               {editingPrinter ? "تعديل الطابعة" : "إضافة طابعة جديدة"}
             </h2>
+
             <form onSubmit={handleAddPrinter} className="space-y-4">
               <FloatingInput
                 label="اسم الطابعة"
                 icon={Printer}
                 value={printerName}
                 onChange={setPrinterName}
-                placeholder="مثال: طابعة المشاوي"
+                placeholder="مثال: طابعة المطبخ الرئيسي"
                 disabled={savingPrinter}
               />
 
@@ -640,7 +661,12 @@ export function PrintersManagement() {
                 label="نوع الطابعة"
                 icon={Layers}
                 value={printerType}
-                onChange={setPrinterType}
+                onChange={(v) => {
+                  setPrinterType(v as PrinterTypeValue);
+                  setLinkedPosRegisterId("");
+                  setSelectedDepartmentIds([]);
+                  setSelectedItemIds([]);
+                }}
                 disabled={savingPrinter}
                 options={[
                   { value: "KITCHEN", label: "مطبخ / أقسام تشغيل (KOT)" },
@@ -649,6 +675,205 @@ export function PrintersManagement() {
                   { value: "OTHER", label: "أخرى / تجهيز واستلام" },
                 ]}
               />
+
+              {/* ═══════════════════════════════════════════════════
+               *  توجيه حسب النوع
+               * ═══════════════════════════════════════════════════ */}
+
+              {/* ── كاشير: اختيار جهاز POS ── */}
+              {printerType === "CASHIER" && (
+                <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-xl p-3 space-y-3">
+                  <div className="flex items-center gap-2 text-emerald-400">
+                    <MonitorPlay size={14} />
+                    <span className="text-[11px] font-bold">جهاز الكاشير المرتبط</span>
+                  </div>
+                  <select
+                    value={linkedPosRegisterId}
+                    onChange={(e) => setLinkedPosRegisterId(e.target.value)}
+                    className="w-full p-2.5 bg-slate-800 rounded-lg text-xs text-white border border-white/5 outline-none focus:ring-2 focus:ring-emerald-500/50 cursor-pointer"
+                    disabled={savingPrinter}
+                  >
+                    <option value="">-- اختر جهاز الكاشير --</option>
+                    {posRegisters.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name} ({r.code})
+                      </option>
+                    ))}
+                  </select>
+                  {posRegisters.length === 0 && (
+                    <p className="text-[10px] text-amber-400/70">
+                      لا توجد أجهزة POS في هذا الفرع
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* ── أقسام/بار/أخرى: اختيار أقسام + أصناف ── */}
+              {printerType !== "CASHIER" && (
+                <div className="space-y-3">
+                  {/* الأقسام */}
+                  <div className="bg-amber-500/5 border border-amber-500/10 rounded-xl p-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowDepartments(!showDepartments)}
+                      className="w-full flex items-center justify-between text-amber-400 mb-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Layers size={14} />
+                        <span className="text-[11px] font-bold">
+                          الأقسام المرتبطة
+                          {selectedDepartmentIds.length > 0 && (
+                            <span className="text-[9px] mr-1.5 bg-amber-500/20 px-1.5 py-0.5 rounded-full">
+                              {selectedDepartmentIds.length}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                      {showDepartments ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+
+                    {showDepartments && (
+                      <div className="max-h-[160px] overflow-y-auto space-y-1 custom-scrollbar">
+                        {categories.length === 0 ? (
+                          <p className="text-[10px] text-slate-500">لا توجد أقسام</p>
+                        ) : (
+                          categories.map((cat) => {
+                            const isSelected = selectedDepartmentIds.includes(cat.id);
+                            return (
+                              <label
+                                key={cat.id}
+                                className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all ${
+                                  isSelected
+                                    ? "bg-amber-500/10 border border-amber-500/20"
+                                    : "hover:bg-slate-800/50 border border-transparent"
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => toggleDepartment(cat.id)}
+                                  className="sr-only"
+                                />
+                                <div
+                                  className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
+                                    isSelected
+                                      ? "bg-amber-500 border-amber-500"
+                                      : "border-slate-600"
+                                  }`}
+                                >
+                                  {isSelected && <Check size={10} className="text-white" />}
+                                </div>
+                                <span className="text-[11px] text-white font-bold">
+                                  {cat.name}
+                                </span>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* الأصناف (اختياري) */}
+                  {selectedDepartmentIds.length > 0 && (
+                    <div className="bg-blue-500/5 border border-blue-500/10 rounded-xl p-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowItems(!showItems)}
+                        className="w-full flex items-center justify-between text-blue-400 mb-2"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Package size={14} />
+                          <span className="text-[11px] font-bold">
+                            أصناف محددة (اختياري)
+                            {selectedItemIds.length > 0 && (
+                              <span className="text-[9px] mr-1.5 bg-blue-500/20 px-1.5 py-0.5 rounded-full">
+                                {selectedItemIds.length}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                        {showItems ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      </button>
+
+                      {showItems && (
+                        <div className="max-h-[160px] overflow-y-auto space-y-1 custom-scrollbar">
+                          {filteredMenuItems.length === 0 ? (
+                            <p className="text-[10px] text-slate-500">
+                              لا توجد أصناف في الأقسام المحددة
+                            </p>
+                          ) : (
+                            filteredMenuItems.map((item) => {
+                              const isSelected = selectedItemIds.includes(item.id);
+                              return (
+                                <label
+                                  key={item.id}
+                                  className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all ${
+                                    isSelected
+                                      ? "bg-blue-500/10 border border-blue-500/20"
+                                      : "hover:bg-slate-800/50 border border-transparent"
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => toggleItem(item.id)}
+                                    className="sr-only"
+                                  />
+                                  <div
+                                    className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
+                                      isSelected
+                                        ? "bg-blue-500 border-blue-500"
+                                        : "border-slate-600"
+                                    }`}
+                                  >
+                                    {isSelected && <Check size={10} className="text-white" />}
+                                  </div>
+                                  <span className="text-[11px] text-white font-bold">
+                                    {item.name}
+                                  </span>
+                                </label>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
+
+                      <p className="text-[9px] text-slate-500 mt-2">
+                        إذا لم تحدد أصناف محددة، ستطبع جميع أصناف الأقسام المحددة على هذه الطابعة
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── طباعة فورية (لأقسام التشغيل فقط) ── */}
+              {printerType !== "CASHIER" && (
+                <div className="bg-cyan-500/5 border border-cyan-500/10 rounded-xl p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Zap size={14} className="text-cyan-400" />
+                      <div>
+                        <span className="text-[11px] font-bold text-cyan-400">طباعة فورية</span>
+                        <p className="text-[9px] text-slate-500">تطبع الكروت تلقائياً عند تأكيد الطلب</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsInstant(!isInstant)}
+                      className={`relative w-10 h-5 rounded-full transition-colors ${
+                        isInstant ? "bg-cyan-500" : "bg-slate-700"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                          isInstant ? "right-0.5" : "right-[22px]"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-2 pt-1">
                 <button
@@ -681,10 +906,9 @@ export function PrintersManagement() {
           </div>
         </div>
 
-        {/* ── العمود الأيسر (70%) — الطابعات + التوجيه ── */}
+        {/* ── العمود الأيسر (65%) — الطابعات الفعالة ── */}
         <div className="flex-1 flex flex-col gap-5">
-          {/* ── أعلى: طابعات الشبكة الفعالة ── */}
-          <div className="bg-slate-900 border border-white/10 rounded-2xl p-5 shadow-xl">
+          <div className="bg-slate-900 border border-white/10 rounded-2xl p-5 shadow-xl flex-1">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
                 <Wifi size={15} className="text-emerald-400" />
@@ -694,7 +918,10 @@ export function PrintersManagement() {
                 </span>
               </h2>
               <div className="relative">
-                <Search size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                <Search
+                  size={13}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500"
+                />
                 <input
                   type="text"
                   value={searchQuery}
@@ -705,11 +932,13 @@ export function PrintersManagement() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5 max-h-[260px] overflow-y-auto custom-scrollbar">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-[calc(100vh-280px)] overflow-y-auto custom-scrollbar">
               {filteredPrinters.length === 0 ? (
-                <div className="col-span-2 text-center py-10 text-slate-600 text-xs">
+                <div className="col-span-full text-center py-10 text-slate-600 text-xs">
                   <Printer size={32} className="mx-auto mb-2 text-slate-700" />
-                  {searchQuery ? "لا توجد نتائج للبحث" : "لا توجد طابعات في هذا الفرع"}
+                  {searchQuery
+                    ? "لا توجد نتائج للبحث"
+                    : "لا توجد طابعات في هذا الفرع"}
                 </div>
               ) : (
                 filteredPrinters.map((p) => (
@@ -724,7 +953,10 @@ export function PrintersManagement() {
                           <p className="text-[13px] font-bold text-white truncate leading-tight">
                             {p.name}
                           </p>
-                          <p className="text-[10px] text-slate-500 font-mono mt-0.5" dir="ltr">
+                          <p
+                            className="text-[10px] text-slate-500 font-mono mt-0.5"
+                            dir="ltr"
+                          >
                             {p.ip_address}:{p.port}
                           </p>
                         </div>
@@ -744,283 +976,74 @@ export function PrintersManagement() {
                         >
                           <Trash2 size={12} />
                         </button>
-                        <button
-                          onClick={() => handleTestPrint(p.id)}
-                          disabled={loadingPrinterId === p.id}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all disabled:opacity-50 disabled:cursor-wait"
-                          title={loadingPrinterId === p.id ? "جاري الاتصال..." : "طباعة تجريبية"}
-                        >
-                          {loadingPrinterId === p.id ? (
-                            <Loader2 size={12} className="animate-spin" />
-                          ) : (
-                            <span className="text-[11px] leading-none">🖨️</span>
-                          )}
-                        </button>
                       </div>
                     </div>
+
+                    {/* نوع الطابعة */}
                     <div className="flex items-center gap-2 mt-2.5">
                       <span
-                        className={`inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                          p.type === "CASHIER"
-                            ? "bg-emerald-500/10 text-emerald-400"
-                            : p.type === "BAR"
-                              ? "bg-purple-500/10 text-purple-400"
-                              : p.type === "KITCHEN"
-                                ? "bg-amber-500/10 text-amber-400"
-                                : "bg-slate-500/10 text-slate-400"
-                        }`}
+                        className={`inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full ${printerTypeColor(
+                          p.type,
+                        )}`}
                       >
                         {printerTypeLabel(p.type)}
                       </span>
+                      {p.type !== "CASHIER" && p.print_on_direct && (
+                        <span className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400">
+                          <Zap size={8} /> فوري
+                        </span>
+                      )}
                       {!p.is_active && (
-                        <span className="text-[9px] text-rose-400/70 font-bold">غير فعالة</span>
+                        <span className="text-[9px] text-rose-400/70 font-bold">
+                          غير فعالة
+                        </span>
                       )}
                     </div>
-                    <button
-                      onClick={() => handleTestPrint(p.id)}
-                      disabled={loadingPrinterId === p.id}
-                      className="mt-2 w-full flex items-center justify-center gap-1.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-lg text-[10px] font-bold transition-all disabled:opacity-50 disabled:cursor-wait border border-emerald-500/10 hover:border-emerald-500/20"
-                    >
-                      {loadingPrinterId === p.id ? (
-                        <>
-                          <Loader2 size={10} className="animate-spin" /> جاري الاتصال... ⏳
-                        </>
-                      ) : (
-                        <>🖨️ طباعة تجريبية</>
+
+                    {/* معلومات التوجيه */}
+                    <div className="mt-2 space-y-1">
+                      {p.type === "CASHIER" && p.linkedPosRegister && (
+                        <div className="flex items-center gap-1.5 text-[10px] text-emerald-400/80">
+                          <MonitorPlay size={9} />
+                          <span>
+                            {p.linkedPosRegister.name} ({p.linkedPosRegister.code})
+                          </span>
+                        </div>
                       )}
-                    </button>
+                      {p.type !== "CASHIER" && p.departments && p.departments.length > 0 && (
+                        <div className="flex items-center gap-1 text-[10px] text-amber-400/80">
+                          <Layers size={9} />
+                          <span>{p.departments.length} قسم</span>
+                        </div>
+                      )}
+                      {p.type !== "CASHIER" && p.items && p.items.length > 0 && (
+                        <div className="flex items-center gap-1 text-[10px] text-blue-400/80">
+                          <Package size={9} />
+                          <span>{p.items.length} صنف محدد</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* أزرار الإجراءات */}
+                    <div className="flex gap-1.5 mt-3">
+                      <button
+                        onClick={() => handleTestPrint(p.id)}
+                        disabled={loadingPrinterId === p.id}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-lg text-[10px] font-bold transition-all disabled:opacity-50 disabled:cursor-wait border border-emerald-500/10 hover:border-emerald-500/20"
+                      >
+                        {loadingPrinterId === p.id ? (
+                          <>
+                            <Loader2 size={10} className="animate-spin" /> جاري...
+                          </>
+                        ) : (
+                          <>طباعة تجريبية</>
+                        )}
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
             </div>
-          </div>
-
-          {/* ── أسفل: مصفوفة التوجيه الذكية ── */}
-          <div className="bg-slate-900 border border-white/10 rounded-2xl p-5 shadow-xl flex-1">
-            <h2 className="text-sm font-bold text-white flex items-center gap-2 border-b border-white/5 pb-3 mb-4">
-              <ArrowLeftRight size={16} className="text-purple-400" />
-              مصفوفة وقواعد توجيه الطباعة
-              <span className="text-[10px] text-slate-500 font-mono bg-slate-800 px-2 py-0.5 rounded-full">
-                {filteredRoutes.length}
-              </span>
-            </h2>
-
-            {/* نموذج إنشاء قاعدة — Flex/Wrap */}
-            <form
-              onSubmit={handleCreateRoute}
-              className="flex flex-wrap gap-2.5 items-end mb-4 bg-slate-800/20 p-3 rounded-xl"
-            >
-              {/* 1. نوع جهاز الإرسال */}
-              <div className="w-[110px]">
-                <label className="block text-[9px] font-bold text-slate-500 mb-1">نوع الجهاز</label>
-                <select
-                  value={selectedSenderType}
-                  onChange={(e) => {
-                    setSelectedSenderType(e.target.value as "NONE" | "POS" | "HOSPITALITY");
-                    setSelectedSenderId("");
-                  }}
-                  className="w-full p-2 bg-slate-800 rounded-lg text-[11px] text-white border border-white/5 outline-none cursor-pointer"
-                  disabled={savingRoute}
-                >
-                  <option value="NONE">-- اختر --</option>
-                  <option value="POS">نقطة بيع (POS)</option>
-                  <option value="HOSPITALITY">جهاز ضيافة</option>
-                </select>
-              </div>
-
-              {/* 2. جهاز الإرسال المحدد */}
-              <div className="flex-[2] min-w-[150px]">
-                <label className="block text-[9px] font-bold text-slate-500 mb-1">جهاز الإرسال</label>
-                <select
-                  value={selectedSenderId}
-                  onChange={(e) => setSelectedSenderId(e.target.value)}
-                  className="w-full p-2 bg-slate-800 rounded-lg text-[11px] text-white border border-white/5 outline-none cursor-pointer"
-                  required
-                  disabled={savingRoute || selectedSenderType === "NONE"}
-                >
-                  <option value="">-- اختر الجهاز --</option>
-                  {selectedSenderType === "POS" &&
-                    posRegisters.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name} ({r.code})
-                      </option>
-                    ))}
-                  {selectedSenderType === "HOSPITALITY" &&
-                    hospitalityDevices.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name} ({d.code})
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              {/* 3. نطاق التوجيه */}
-              <div className="w-[110px]">
-                <label className="block text-[9px] font-bold text-slate-500 mb-1">النطاق</label>
-                <select
-                  value={routingScope}
-                  onChange={(e) => {
-                    setRoutingScope(e.target.value as "CATEGORY" | "ITEM");
-                    setSelectedTargetId("");
-                  }}
-                  className="w-full p-2 bg-slate-800 rounded-lg text-[11px] text-white border border-white/5 outline-none cursor-pointer"
-                  disabled={savingRoute}
-                >
-                  <option value="CATEGORY">قسم كامل</option>
-                  <option value="ITEM">صنف فردي</option>
-                </select>
-              </div>
-
-              {/* 4. الهدف */}
-              <div className="flex-[2] min-w-[150px]">
-                <label className="block text-[9px] font-bold text-slate-500 mb-1">الهدف</label>
-                <select
-                  value={selectedTargetId}
-                  onChange={(e) => setSelectedTargetId(e.target.value)}
-                  className="w-full p-2 bg-slate-800 rounded-lg text-[11px] text-white border border-white/5 outline-none cursor-pointer"
-                  required
-                  disabled={savingRoute}
-                >
-                  <option value="">-- اختر --</option>
-                  {routingScope === "CATEGORY"
-                    ? categories.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))
-                    : menuItems.map((i) => (
-                        <option key={i.id} value={i.id}>
-                          {i.name}
-                        </option>
-                      ))}
-                </select>
-              </div>
-
-              {/* 5. طابعة الإخراج */}
-              <div className="flex-[2] min-w-[150px]">
-                <label className="block text-[9px] font-bold text-slate-500 mb-1">طابعة الإخراج</label>
-                <select
-                  value={selectedPrinterId}
-                  onChange={(e) => setSelectedPrinterId(e.target.value)}
-                  className="w-full p-2 bg-slate-800 rounded-lg text-[11px] text-white border border-white/5 outline-none cursor-pointer"
-                  required
-                  disabled={savingRoute}
-                >
-                  <option value="">اختر طابعة...</option>
-                  {filteredPrinters.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <button
-                type="submit"
-                disabled={savingRoute}
-                className="h-[34px] px-4 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[11px] font-bold transition-all shadow-lg shadow-purple-900/20 disabled:opacity-50 flex items-center gap-1.5 active:scale-[0.98]"
-              >
-                {savingRoute ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <Plus size={13} />
-                )}
-                إنشاء
-              </button>
-            </form>
-
-            {/* جدول القواعد — أو Empty State */}
-            {filteredRoutes.length === 0 ? (
-              <div className="text-center py-10 bg-slate-800/10 rounded-xl border border-dashed border-white/5">
-                <div className="w-14 h-14 mx-auto bg-purple-500/5 rounded-full flex items-center justify-center border border-purple-500/10 mb-3">
-                  <ArrowLeftRight size={24} className="text-purple-400/50" />
-                </div>
-                <p className="text-slate-500 text-xs font-bold mb-1">لا توجد قواعد توجيه في هذا الفرع</p>
-                <p className="text-[10px] text-slate-600 mb-4">
-                  أنشئ قاعدة جديدة لتوجيه الطباعة إلى الطابعة المناسبة
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    document.querySelector("form")?.scrollIntoView({ behavior: "smooth" });
-                  }}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-purple-600/20 text-purple-400 rounded-lg text-[11px] font-bold hover:bg-purple-600/30 transition-colors border border-purple-500/20"
-                >
-                  <Plus size={13} /> إنشاء أول قاعدة
-                </button>
-              </div>
-            ) : (
-              <div className="overflow-hidden rounded-xl border border-white/5">
-                <table className="w-full text-right">
-                  <thead>
-                    <tr className="bg-slate-800/60 text-slate-400 text-[10px] font-bold uppercase tracking-wider">
-                      <th className="p-2.5 pr-4">جهاز الإرسال</th>
-                      <th className="p-2.5">نطاق التوجيه</th>
-                      <th className="p-2.5">الهدف المستهدف</th>
-                      <th className="p-2.5">طابعة الإخراج</th>
-                      <th className="p-2.5 text-center pl-4">التحكم</th>
-                    </tr>
-                  </thead>
-                  <tbody className="text-slate-300 divide-y divide-white/5">
-                    {filteredRoutes.map((r) => (
-                      <tr
-                        key={r.id}
-                        className="group hover:bg-slate-800/30 transition-colors"
-                      >
-                        <td className="p-2.5 pr-4 text-[11px] font-semibold text-slate-400">
-                          <span className="flex items-center gap-1.5">
-                            {r.posRegister ? (
-                              <MonitorPlay size={10} className="text-emerald-500 shrink-0" />
-                            ) : r.hospitalityDevice ? (
-                              <HeartHandshake size={10} className="text-purple-500 shrink-0" />
-                            ) : (
-                              <User size={10} className="text-slate-500 shrink-0" />
-                            )}
-                            {getSenderName(r)}
-                          </span>
-                        </td>
-                        <td className="p-2.5">
-                          <span
-                            className={`inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-full text-[9px] ${
-                              r.scope === "CATEGORY"
-                                ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
-                                : "bg-green-500/10 text-green-400 border border-green-500/20"
-                            }`}
-                          >
-                            {r.scope === "CATEGORY" ? (
-                              <Layers size={9} />
-                            ) : (
-                              <Target size={9} />
-                            )}
-                            {r.scope === "CATEGORY" ? "قسم كامل" : "صنف فردي"}
-                          </span>
-                        </td>
-                        <td className="p-2.5 text-[12px] font-bold text-white">
-                          {getTargetName(r)}
-                        </td>
-                        <td className="p-2.5">
-                          <span className="flex items-center gap-1.5 text-[11px] font-semibold text-blue-400">
-                            <ArrowLeft size={10} className="text-slate-600 shrink-0" />
-                            {getPrinterName(r)}
-                          </span>
-                        </td>
-                        <td className="p-2.5 text-center">
-                          <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => handleDeleteRoute(r.id)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all"
-                              title="حذف القاعدة"
-                            >
-                              <Trash2 size={11} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </div>
         </div>
       </div>

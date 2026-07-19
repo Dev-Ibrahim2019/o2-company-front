@@ -589,8 +589,14 @@ export interface Printer {
   type: PrinterTypeValue;
   branch_id: number;
   is_active: boolean;
+  print_on_direct: boolean;
+  linked_pos_register_id?: number | null;
   created_at?: string;
   updated_at?: string;
+  // Relations
+  linkedPosRegister?: { id: number; name: string; code: string };
+  departments?: { id: number; name: string }[];
+  items?: { id: number; name: string }[];
 }
 
 export type PrintRouteScope = 'CATEGORY' | 'ITEM';
@@ -604,12 +610,11 @@ export interface PrintRoute {
   category_id: number | null;
   item_id: number | null;
   printer_id: number;
-  scope: PrintRouteScope; // computed by backend accessor
-  action_type: string; // KOT أو BILL
+  scope: PrintRouteScope;
+  action_type: string;
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
-  // Relations (from API)
   printer?: Printer;
   user?: { id: number; name: string };
   posRegister?: { id: number; name: string; code: string };
@@ -627,4 +632,16 @@ export interface PrintRouteFormData {
   item_id?: number | null;
   printer_id: number;
   action_type?: string;
+}
+
+export interface PrinterFormData {
+  name: string;
+  ip_address: string;
+  port?: string;
+  type: PrinterTypeValue;
+  branch_id?: number;
+  print_on_direct?: boolean;
+  linked_pos_register_id?: number | null;
+  department_ids?: number[];
+  item_ids?: number[];
 }

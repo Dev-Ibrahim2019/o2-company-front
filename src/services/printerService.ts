@@ -1,9 +1,9 @@
 // src/services/printerService.ts
 // ──────────────────────────────────────────────────────────────
-// خدمة إدارة الطابعات الشبكية (SNBC) وقواعد التوجيه الذكي
+// خدمة إدارة الطابعات الشبكية (SNBC) — التوجيه مدمج في الطابعة
 
 import api from "../api/axios";
-import type { Printer, PrintRoute, PrintRouteFormData } from "../../types";
+import type { Printer, PrinterFormData } from "../../types";
 
 // ── أنواع الاستجابة ──────────────────────────────────────────
 
@@ -16,9 +16,11 @@ interface ApiResponse<T> {
 // ── الطابعات ─────────────────────────────────────────────────
 
 export const printerService = {
-  /** جلب جميع الطابعات (الفرع الحالي تلقائياً من الباك-إيند) */
-  getAll: async (): Promise<Printer[]> => {
-    const { data } = await api.get<ApiResponse<Printer[]>>("/admin/printers");
+  /** جلب جميع الطابعات لفرع محدد */
+  getAll: async (branchId?: number): Promise<Printer[]> => {
+    const params: Record<string, any> = {};
+    if (branchId) params.branch_id = branchId;
+    const { data } = await api.get<ApiResponse<Printer[]>>("/admin/printers", { params });
     return data.data ?? [];
   },
 
@@ -29,19 +31,17 @@ export const printerService = {
   },
 
   /** إضافة طابعة جديدة */
-  create: async (payload: {
-    name: string;
-    ip_address: string;
-    port?: string;
-    type: string;
-    branch_id?: number;
-  }): Promise<Printer> => {
+  create: async (payload: PrinterFormData): Promise<Printer> => {
     const { data } = await api.post<ApiResponse<Printer>>("/admin/printers", {
       name: payload.name,
       ip_address: payload.ip_address,
       port: payload.port ?? "9100",
       type: payload.type,
       branch_id: payload.branch_id,
+      print_on_direct: payload.print_on_direct ?? false,
+      linked_pos_register_id: payload.linked_pos_register_id ?? null,
+      department_ids: payload.department_ids ?? [],
+      item_ids: payload.item_ids ?? [],
     });
     return data.data;
   },
@@ -49,13 +49,7 @@ export const printerService = {
   /** تحديث طابعة */
   update: async (
     id: number,
-    payload: Partial<{
-      name: string;
-      ip_address: string;
-      port: string;
-      type: string;
-      is_active: boolean;
-    }>,
+    payload: Partial<PrinterFormData & { is_active: boolean }>,
   ): Promise<Printer> => {
     const { data } = await api.put<ApiResponse<Printer>>(
       `/admin/printers/${id}`,
@@ -65,8 +59,10 @@ export const printerService = {
   },
 
   /** حذف طابعة */
-  delete: async (id: number): Promise<void> => {
-    await api.delete(`/admin/printers/${id}`);
+  delete: async (id: number, branchId?: number): Promise<void> => {
+    const params: Record<string, any> = {};
+    if (branchId) params.branch_id = branchId;
+    await api.delete(`/admin/printers/${id}`, { params });
   },
 
   /** اختبار الاتصال بالطابعة */
@@ -76,48 +72,31 @@ export const printerService = {
     const { data } = await api.post(`/admin/printers/${id}/test`);
     return data;
   },
-};
 
-// ── قواعد التوجيه ────────────────────────────────────────────
-
-export const printRouteService = {
-  /** جلب جميع قواعد التوجيه */
-  getAll: async (): Promise<PrintRoute[]> => {
-    const { data } = await api.get<ApiResponse<PrintRoute[]>>("/admin/print-routes");
-    return data.data ?? [];
+  /** اختبار طباعة */
+  testPrint: async (id: number): Promise<{ success: boolean; message: string }> => {
+    const { data } = await api.post(`/admin/printers/${id}/test-print`);
+    return data;
   },
 
-  /** جلب قواعد توجيه لطابعة محددة */
-  getByPrinter: async (printerId: number): Promise<PrintRoute[]> => {
-    const { data } = await api.get<ApiResponse<PrintRoute[]>>(
-      `/admin/printers/${printerId}/routes`,
-    );
-    return data.data ?? [];
-  },
-
-  /** إنشاء قاعدة توجيه جديدة */
-  create: async (payload: PrintRouteFormData): Promise<PrintRoute> => {
-    const { data } = await api.post<ApiResponse<PrintRoute>>(
-      "/admin/print-routes",
-      payload,
-    );
-    return data.data;
-  },
-
-  /** تحديث قاعدة توجيه */
-  update: async (
-    id: number,
-    payload: Partial<PrintRouteFormData>,
-  ): Promise<PrintRoute> => {
-    const { data } = await api.put<ApiResponse<PrintRoute>>(
-      `/admin/print-routes/${id}`,
-      payload,
-    );
-    return data.data;
-  },
-
-  /** حذف قاعدة توجيه */
-  delete: async (id: number): Promise<void> => {
-    await api.delete(`/admin/print-routes/${id}`);
+  /** طباعة فورية وتنفيذ — تنفيذ الطلب وطباعته مباشرة */
+  directPrint: async (
+    orderId: number,
+    cashierDeviceId: number,
+    items?: { order_item_id: number; is_takeaway: boolean }[],
+  ): Promise<{
+    success: boolean;
+    message: string;
+    print_jobs: any[];
+    printed_items_count: number;
+  }> => {
+    const payload: Record<string, any> = {
+      cashier_device_id: cashierDeviceId,
+    };
+    if (items && items.length > 0) {
+      payload.items = items;
+    }
+    const { data } = await api.post(`/orders/${orderId}/direct-print`, payload);
+    return data;
   },
 };

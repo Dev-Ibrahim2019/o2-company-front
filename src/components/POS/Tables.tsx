@@ -137,8 +137,8 @@ export const TablesView: React.FC<{
 
   const HALLS = diningZones;
 
-  const [viewMode, setViewMode] = useState<"MAP" | "GRID">("GRID");
   const [selectedHallId, setSelectedHallId] = useState<string>(HALLS[0]?.id || "");
+  const [viewMode, setViewMode] = useState<"MAP" | "GRID">("GRID");
   const [zoom, setZoom] = useState(1);
   const [showPopup, setShowPopup] = useState<string | null>(null);
   const [transferMode, setTransferMode] = useState<{ fromId: string } | null>(
@@ -412,40 +412,6 @@ export const TablesView: React.FC<{
             ))}
           </div>
 
-          <div className="flex bg-slate-900 p-1 rounded-2xl border border-white/5">
-            <button
-              onClick={() => setViewMode("MAP")}
-              className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-xs transition-all ${viewMode === "MAP" ? "bg-red-600 text-white shadow-lg shadow-red-900/20" : "text-slate-500 hover:text-slate-300"}`}
-            >
-              <MapIcon size={16} /> خريطة
-            </button>
-            <button
-              onClick={() => setViewMode("GRID")}
-              className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-xs transition-all ${viewMode === "GRID" ? "bg-red-600 text-white shadow-lg shadow-red-900/20" : "text-slate-500 hover:text-slate-300"}`}
-            >
-              <Grid size={16} /> شبكة
-            </button>
-          </div>
-
-          {viewMode === "MAP" && (
-            <div className="flex bg-slate-900 p-1 rounded-2xl border border-white/5">
-              <button
-                onClick={() => setZoom((z) => Math.max(0.5, z - 0.1))}
-                className="p-2.5 text-slate-500 hover:text-white"
-              >
-                <ZoomOut size={18} />
-              </button>
-              <span className="px-4 py-2.5 text-xs font-black text-white flex items-center">
-                {Math.round(zoom * 100)}%
-              </span>
-              <button
-                onClick={() => setZoom((z) => Math.min(2, z + 0.1))}
-                className="p-2.5 text-slate-500 hover:text-white"
-              >
-                <ZoomIn size={18} />
-              </button>
-            </div>
-          )}
 
           {mergeMode.length > 0 && (
             <div className="flex gap-2">
@@ -469,8 +435,64 @@ export const TablesView: React.FC<{
         </div>
       </header>
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-6 py-4 border-y border-white/5">
+      {/* Main View Area - Grid Only */}
+      <div className="flex-1 relative overflow-hidden bg-slate-900/50 rounded-[2.5rem] border border-white/5 custom-scrollbar">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4 p-8 overflow-y-auto h-full custom-scrollbar">
+          {filteredTables.map((table) => {
+            const config = getStatusConfig(table.status, selectedTable?.id === table.id);
+            const order = getTableOrder(table.id);
+            return (
+              <motion.button
+                key={table.id}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => handleTableClick(table)}
+                className={`relative aspect-square rounded-3xl border-2 p-4 flex flex-col items-center justify-center gap-2 transition-all ${
+                  mergeMode.includes(table.id)
+                    ? "ring-4 ring-blue-600 ring-offset-4 ring-offset-slate-950"
+                    : ""
+                } ${table.mergedWithId ? "opacity-60 border-dashed" : ""} ${config.color} ${config.border} text-white shadow-xl`}
+              >
+                <span className="text-2xl font-black">{getTableDisplayLabel(table)}</span>
+                <div className="flex flex-col items-center gap-1">
+                  {table.status === TableStatus.PAID && (
+                    <span className="text-[8px] font-black bg-white text-emerald-600 px-2 py-0.5 rounded-full shadow-sm animate-pulse">
+                      تم الدفع
+                    </span>
+                  )}
+                  <span className="text-[10px] font-black bg-black/20 px-2 py-0.5 rounded-full">
+                    {table.mergedWithId
+                      ? `مدمجة مع #${tables.find((t) => t.id === table.mergedWithId)?.number}`
+                      : table.status === TableStatus.OCCUPIED || table.status === TableStatus.PAID
+                        ? `${table.guestCount || 0} أشخاص`
+                        : `${table.capacity} سعة`}
+                  </span>
+                  {order && !table.mergedWithId && (
+                    <div className="flex flex-col items-center gap-1">
+                      <span className="text-[10px] font-black text-white/80">
+                        {order.total.toFixed(2)} ₪
+                      </span>
+                      {order.shelfLocation && (
+                        <span className="text-[8px] font-black bg-white text-red-600 px-1.5 py-0.5 rounded-full shadow-sm">
+                          الرف: {order.shelfLocation}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {table.status === TableStatus.OCCUPIED && (
+                  <div className="absolute top-2 right-2 flex items-center gap-1 text-[8px] font-black bg-black/40 px-1.5 py-0.5 rounded-full">
+                    <Clock size={8} /> {calculateSittingTime(table.seatedAt)}
+                  </div>
+                )}
+              </motion.button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Legend - Bottom of Page */}
+      <div className="flex flex-wrap gap-6 py-4 border-t border-white/5">
         {Object.values(TableStatus).map((status) => {
           const config = getStatusConfig(status, false);
           return (
@@ -488,149 +510,6 @@ export const TablesView: React.FC<{
             نشطة (محددة حالياً)
           </span>
         </div>
-      </div>
-
-      {/* Main View Area */}
-      <div className="flex-1 relative overflow-hidden bg-slate-900/50 rounded-[2.5rem] border border-white/5 custom-scrollbar">
-        {viewMode === "GRID" ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4 p-8 overflow-y-auto h-full custom-scrollbar">
-            {filteredTables.map((table) => {
-              const config = getStatusConfig(table.status, selectedTable?.id === table.id);
-              const order = getTableOrder(table.id);
-              return (
-                <motion.button
-                  key={table.id}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => handleTableClick(table)}
-                  className={`relative aspect-square rounded-3xl border-2 p-4 flex flex-col items-center justify-center gap-2 transition-all ${
-                    mergeMode.includes(table.id)
-                      ? "ring-4 ring-blue-600 ring-offset-4 ring-offset-slate-950"
-                      : ""
-                  } ${table.mergedWithId ? "opacity-60 border-dashed" : ""} ${config.color} ${config.border} text-white shadow-xl`}
-                >
-                  <span className="text-2xl font-black">{getTableDisplayLabel(table)}</span>
-                  <div className="flex flex-col items-center gap-1">
-                    {table.status === TableStatus.PAID && (
-                      <span className="text-[8px] font-black bg-white text-emerald-600 px-2 py-0.5 rounded-full shadow-sm animate-pulse">
-                        تم الدفع
-                      </span>
-                    )}
-                    <span className="text-[10px] font-black bg-black/20 px-2 py-0.5 rounded-full">
-                      {table.mergedWithId
-                        ? `مدمجة مع #${tables.find((t) => t.id === table.mergedWithId)?.number}`
-                        : table.status === TableStatus.OCCUPIED ||
-                            table.status === TableStatus.PAID
-                          ? `${table.guestCount || 0} أشخاص`
-                          : `${table.capacity} سعة`}
-                    </span>
-                    {order && !table.mergedWithId && (
-                      <div className="flex flex-col items-center gap-1">
-                        <span className="text-[10px] font-black text-white/80">
-                          {order.total.toFixed(2)} ₪
-                        </span>
-                        {order.shelfLocation && (
-                          <span className="text-[8px] font-black bg-white text-red-600 px-1.5 py-0.5 rounded-full shadow-sm">
-                            الرف: {order.shelfLocation}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  {table.status === TableStatus.OCCUPIED && (
-                    <div className="absolute top-2 right-2 flex items-center gap-1 text-[8px] font-black bg-black/40 px-1.5 py-0.5 rounded-full">
-                      <Clock size={8} /> {calculateSittingTime(table.seatedAt)}
-                    </div>
-                  )}
-                </motion.button>
-              );
-            })}
-          </div>
-        ) : (
-          <div
-            ref={mapRef}
-            className="w-full h-full overflow-auto p-20 custom-scrollbar"
-            style={{ cursor: transferMode ? "crosshair" : "default" }}
-          >
-            <div
-              className="relative bg-slate-800/20 rounded-[4rem] border-4 border-dashed border-white/5"
-              style={{
-                width: 1500 * zoom,
-                height: 1500 * zoom,
-                transformOrigin: "top left",
-              }}
-            >
-              {filteredTables.map((table) => {
-                const config = getStatusConfig(table.status, selectedTable?.id === table.id);
-                const order = getTableOrder(table.id);
-                return (
-                  <motion.button
-                    key={table.id}
-                    initial={false}
-                    animate={{
-                      left: table.position.x * zoom,
-                      top: table.position.y * zoom,
-                      width: 100 * zoom,
-                      height: 100 * zoom,
-                    }}
-                    onClick={() => handleTableClick(table)}
-                    className={`absolute rounded-2xl border-2 flex flex-col items-center justify-center gap-1 shadow-2xl transition-all ${
-                      mergeMode.includes(table.id) ? "ring-4 ring-blue-600" : ""
-                    } ${table.mergedWithId ? "opacity-60 border-dashed" : ""} ${config.color} ${config.border} text-white`}
-                  >
-                    <span
-                      className="font-black"
-                      style={{ fontSize: `${18 * zoom}px` }}
-                    >
-                      {getTableDisplayLabel(table)}
-                    </span>
-                    {table.status === TableStatus.PAID && (
-                      <span
-                        className="font-black bg-white text-emerald-600 px-1 py-0.5 rounded-full shadow-sm animate-pulse"
-                        style={{ fontSize: `${7 * zoom}px` }}
-                      >
-                        تم الدفع
-                      </span>
-                    )}
-                    {zoom > 0.7 && (
-                      <div className="flex flex-col items-center">
-                        <span
-                          className="font-black bg-black/20 px-1.5 py-0.5 rounded-full"
-                          style={{ fontSize: `${8 * zoom}px` }}
-                        >
-                          {table.mergedWithId
-                            ? `مدمجة مع #${tables.find((t) => t.id === table.mergedWithId)?.number}`
-                            : table.status === TableStatus.OCCUPIED ||
-                                table.status === TableStatus.PAID
-                              ? `${table.guestCount || 0} أشخاص`
-                              : `${table.capacity} سعة`}
-                        </span>
-                        {order && !table.mergedWithId && (
-                          <div className="flex flex-col items-center">
-                            <span
-                              className="font-black"
-                              style={{ fontSize: `${9 * zoom}px` }}
-                            >
-                              {order.total.toFixed(2)} ₪
-                            </span>
-                            {order.shelfLocation && (
-                              <span
-                                className="font-black bg-white text-red-600 px-1 py-0.5 rounded-full shadow-sm"
-                                style={{ fontSize: `${7 * zoom}px` }}
-                              >
-                                الرف: {order.shelfLocation}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </motion.button>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Seating Modal */}
