@@ -112,6 +112,12 @@ const logSupplierPayload = (label: string, payload: Record<string, unknown>) => 
 export const supplierService = {
   // ── CRUD ──────────────────────────────────────────────────
 
+  getAll: async (params?: { search?: string; status?: string; branch_id?: number }): Promise<Supplier[]> => {
+    const res = await api.get("/suppliers", { params: { ...params, per_page: 500 } });
+    const raw = res.data?.data?.data ?? res.data?.data ?? [];
+    return Array.isArray(raw) ? raw : [];
+  },
+
   list: async (params?: {
     search?: string;
     status?: string;

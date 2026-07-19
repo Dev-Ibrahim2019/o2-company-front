@@ -413,23 +413,27 @@ const handleActivationSuccess = (activatedInfo: any) => {
     return undefined;
   };
 
-  const getPricingContext = () => ({
-    customer_id:
-      accountType === "ACCOUNT"
-        ? (selectedCustomer?.id ??
-          (accountNumber ? parseInt(accountNumber, 10) || undefined : undefined))
-        : undefined,
-    employee_id:
-      accountType === "EMPLOYEE" && accountNumber
-        ? parseInt(accountNumber, 10) || undefined
-        : undefined,
-    supplier_id:
-      accountType === "SUPPLIER" && accountNumber
-        ? parseInt(accountNumber, 10) || undefined
-        : undefined,
-    department_id: getEntityDepartmentId(),
-    branch_id: branchId ?? undefined,
-  });
+  const getPricingContext = () => {
+    const numericId = (v: unknown): number | undefined => {
+      if (v === null || v === undefined || v === "") return undefined;
+      const n = typeof v === "number" ? v : parseInt(String(v), 10);
+      return Number.isFinite(n) ? n : undefined;
+    };
+    return {
+      customer_id:
+        accountType === "ACCOUNT"
+          ? (selectedCustomer?.id
+              ? numericId(selectedCustomer.id)
+              : numericId(accountNumber))
+          : undefined,
+      employee_id:
+        accountType === "EMPLOYEE" ? numericId(accountNumber) : undefined,
+      supplier_id:
+        accountType === "SUPPLIER" ? numericId(accountNumber) : undefined,
+      department_id: numericId(getEntityDepartmentId()),
+      branch_id: numericId(branchId),
+    };
+  };
 
   const discountContext = useMemo(() => getPricingContext(), [
     accountType,

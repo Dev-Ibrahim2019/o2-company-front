@@ -177,6 +177,12 @@ export const customerService = {
     return res.data;
   },
 
+  getAll: async (params?: { search?: string; status?: string; branch_id?: number }): Promise<Customer[]> => {
+    const res = await api.get("/customers", { params: { ...params, per_page: 500 } });
+    const raw = res.data?.data?.data ?? res.data?.data ?? [];
+    return Array.isArray(raw) ? raw : [];
+  },
+
   get: async (
     id: number,
   ): Promise<

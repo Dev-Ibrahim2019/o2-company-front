@@ -5,9 +5,15 @@
  * 3. تحديث المحتوى عند تغيير الرابط (key prop)
  */
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { sound } from "./services/soundService";
 import { Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
-import { AuthProvider, useAuth, ProtectedRoute, UnauthorizedPage } from "./auth";
+import {
+  AuthProvider,
+  useAuth,
+  ProtectedRoute,
+  UnauthorizedPage,
+} from "./auth";
 import { ROLES } from "./auth/permissions";
 
 // ── المكونات ──
@@ -27,7 +33,10 @@ import { HospitalityOrders } from "./components/Hospitality/HospitalityOrders";
 import { HospitalityTables } from "./components/Hospitality/Tables";
 import { FinancialInvoicesPage } from "./components/financial/FinancialInvoicesPage";
 import { FinancialInvoiceForm } from "./components/financial/FinancialInvoiceForm";
-import { SalesInvoiceListPage, SalesInvoiceFormPage } from "./components/sales-invoices";
+import {
+  SalesInvoiceListPage,
+  SalesInvoiceFormPage,
+} from "./components/sales-invoices";
 import { ToastContainer } from "./components/shared/Toast";
 import UsersManagementPage from "./pages/UsersManagementPage";
 import PosRegistersPage from "./pages/PosRegistersPage";
@@ -43,6 +52,20 @@ import { CustomerTableProvider } from "./components/customer/CustomerTableProvid
 import RolesPermissionsPage from "./pages/RolesPermissionsPage";
 import DepartmentsPage from "./components/administration/DepartmentsPage";
 import { ThemeProvider } from "./theme";
+import { DayClosePage } from "./components/administration/DayClosePage";
+import { ReconciliationBoard } from "./components/administration/ReconciliationBoard";
+import { ShiftClosingsPage } from "./components/administration/ShiftClosingsPage";
+import { BusinessDayClosingPage } from "./components/administration/BusinessDayClosingPage";
+import { QuotesView } from "./components/quotes/QuotesView";
+import { VouchersView } from "./components/administration/VouchersView";
+import { CustomerVouchersView } from "./components/administration/CustomerVouchersView";
+import { SupplierVouchersView } from "./components/administration/SupplierVouchersView";
+import { SupplierPaymentVouchersView } from "./components/administration/SupplierPaymentVouchersView";
+import { PurchaseBillsView } from "./components/administration/PurchaseBillsView";
+import { ExtensionsTestView } from "./components/administration/ExtensionsTestView";
+import { PbxExtensionsTestView } from "./components/administration/PbxExtensionsTestView";
+import { PbxRecordingsView } from "./components/administration/PbxRecordingsView";
+import FreePBXTestPage from "./pages/FreePBXTestPage";
 
 /* ══════════════════════════════════════════════════════════════
  *  حماية الأدوار — تمنع الوصول لمن لا يملك الدور المطلوب
@@ -122,6 +145,7 @@ const financeViewMap: Record<string, string> = {
   orgstructure: "ORGSTRUCTURE",
   "financial-invoices": "FINANCIAL_INVOICES",
   discounts: "DISCOUNTS",
+  "shift-day-closing": "SHIFT_DAY_CLOSING",
 };
 
 /**
@@ -150,7 +174,12 @@ function AccountingView() {
     cash: "CASH",
     hr: "HR",
   };
-  return <AccountingPortal key={lastSegment} initialTab={tabMap[lastSegment] as any} />;
+  return (
+    <AccountingPortal
+      key={lastSegment}
+      initialTab={tabMap[lastSegment] as any}
+    />
+  );
 }
 
 /** SalesInvoicesView — page-based list ↔ form for new sales invoices module */
@@ -171,7 +200,11 @@ function SalesInvoicesView() {
   if (view === "form") {
     return (
       <div className="h-full overflow-y-auto custom-scrollbar">
-        <SalesInvoiceFormPage invoiceId={editId} onBack={handleBack} onSaved={handleBack} />
+        <SalesInvoiceFormPage
+          invoiceId={editId}
+          onBack={handleBack}
+          onSaved={handleBack}
+        />
       </div>
     );
   }
@@ -186,11 +219,17 @@ function SalesInvoicesView() {
 /** صفحة 404 مخصصة */
 function NotFoundPage() {
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white" dir="rtl">
+    <div
+      className="min-h-screen bg-slate-950 flex items-center justify-center text-white"
+      dir="rtl"
+    >
       <div className="text-center space-y-4">
         <h1 className="text-6xl font-black text-red-600">404</h1>
         <p className="text-slate-400 text-lg">الصفحة غير موجودة</p>
-        <a href="/" className="inline-block px-6 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors">
+        <a
+          href="/"
+          className="inline-block px-6 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors"
+        >
           العودة للرئيسية
         </a>
       </div>
@@ -208,6 +247,9 @@ function AppRoutes() {
       {/* ── مسارات عامة ── */}
       <Route path="/login" element={<Login />} />
       <Route path="/unauthorized" element={<UnauthorizedPage />} />
+
+      {/* ── مسارات عامة ── */}
+      <Route path="/freepbx/test" element={<FreePBXTestPage />} />
 
      {/* ══════════════════════════════════════════════════════════════
     * مسارات طلبات الطاولات عبر الـ QR Code (عامة للزبائن بدون تسجيل دخول)
@@ -228,8 +270,13 @@ function AppRoutes() {
     </Route>
 
       {/* ── مسارات محمية (تحتاج تسجيل دخول فقط) ── */}
-      <Route element={<ProtectedRoute><Outlet /></ProtectedRoute>}>
-
+      <Route
+        element={
+          <ProtectedRoute>
+            <Outlet />
+          </ProtectedRoute>
+        }
+      >
         {/* ═══ مسارات الإدارة العامة ═══
             RoleGuard يفحص الدور → AdminLayout يعرض السايد بار → FinanceView يعرض المحتوى
         */}
@@ -255,7 +302,28 @@ function AppRoutes() {
               <Route path="orgstructure" element={<FinanceView />} />
               <Route path="financial-invoices" element={<FinanceView />} />
               <Route path="sales-invoices" element={<SalesInvoicesView />} />
+              <Route path="quotes" element={<QuotesView />} />
+              <Route path="vouchers" element={<VouchersView />} />
+              <Route
+                path="vouchers/customers"
+                element={<CustomerVouchersView />}
+              />
+              <Route
+                path="vouchers/suppliers"
+                element={<SupplierVouchersView />}
+              />
+              <Route
+                path="supplier-payment-vouchers"
+                element={<SupplierPaymentVouchersView />}
+              />
+              <Route path="purchase-bills" element={<PurchaseBillsView />} />
+              <Route path="extensions-test" element={<ExtensionsTestView />} />
+              <Route path="pbx-extensions" element={<PbxExtensionsTestView />} />
+              <Route path="pbx-recordings" element={<PbxRecordingsView />} />
               <Route path="discounts" element={<FinanceView />} /> 
+              <Route path="shift-day-closing" element={<FinanceView />} />
+              <Route path="shift-closings" element={<ShiftClosingsPage />} />
+              <Route path="business-day" element={<BusinessDayClosingPage />} />
               <Route path="printers" element={<PrintersManagement />} />
               <Route path="accounting">
                 <Route index element={<Navigate to="dashboard" replace />} />
@@ -264,7 +332,10 @@ function AppRoutes() {
               <Route path="users" element={<UsersManagementPage />} />
               <Route path="permissions" element={<RolesPermissionsPage />} />
               <Route path="pos-registers" element={<PosRegistersPage />} />
-              <Route path="hospitality-devices" element={<HospitalityDevicesPage />} />
+              <Route
+                path="hospitality-devices"
+                element={<HospitalityDevicesPage />}
+              />
               <Route path="dining-zones" element={<DiningZonesPage />} />
               <Route path="dining-dashboard" element={<DiningTablesDashboard />} />
               <Route path="pos" element={<AdminPOSWrapper />} />
@@ -278,7 +349,7 @@ function AppRoutes() {
         <Route element={<RoleGuard allowedRoles={POS_ROLES} />}>
           <Route element={<POSLayout />}>
             <Route path="/pos">
-              <Route index element={<POS onViewTables={() => { }} />} />
+              <Route index element={<POS onViewTables={() => {}} />} />
               <Route path="orders" element={<OrdersView />} />
               <Route path="tables" element={<TablesView />} />
             </Route>
@@ -302,22 +373,25 @@ function AppRoutes() {
         {/* ── إدارة الشفت ── */}
         <Route
           path="/shift"
-          element={
-            React.createElement(ShiftView as any, {
-              currentShift: null,
-              summary: null,
-              shiftLoading: false,
-              currentUserName: "",
-              onOpen: async () => { },
-              onClose: async () => { },
-              onFetchSummary: async () => { },
-            })
-          }
+          element={React.createElement(ShiftView as any, {
+            currentShift: null,
+            summary: null,
+            shiftLoading: false,
+            currentUserName: "",
+            onOpen: async () => {},
+            onClose: async () => {},
+            onFetchSummary: async () => {},
+          })}
         />
+
+        {/* ── إغلاق اليوم ── */}
+        <Route path="/admin/day-close" element={<DayClosePage />} />
+
+        {/* ── لوحة التسوية المالية ── */}
+        <Route path="/admin/reconciliation" element={<ReconciliationBoard />} />
 
         {/* ── الصفحة الافتراضية ── */}
         <Route index element={<Navigate to="/admin/dashboard" replace />} />
-
       </Route>
 
       {/* ── 404 ── */}
@@ -330,8 +404,15 @@ function AppRoutes() {
  *  المكون الرئيسي
  * ══════════════════════════════════════════════════════════════ */
 
-
 function App() {
+  useEffect(() => {
+    const handler = () => {
+      sound.init();
+      document.removeEventListener("click", handler);
+    };
+    document.addEventListener("click", handler, { once: true });
+  }, []);
+
   return (
     <ThemeProvider>
       <AuthProvider>

@@ -8,6 +8,7 @@ import {
   Info,
   X,
 } from "lucide-react";
+import { sound } from "../../services/soundService";
 
 export type ToastType = "success" | "error" | "warning" | "info";
 
@@ -74,10 +75,22 @@ function removeToast(id: string) {
 }
 
 export const toast = {
-  success: (title: string, message?: string, duration?: number) => addToast("success", title, message, duration),
-  error: (title: string, message?: string, duration?: number) => addToast("error", title, message, duration ?? 7000),
-  warning: (title: string, message?: string, duration?: number) => addToast("warning", title, message, duration ?? 6000),
-  info: (title: string, message?: string, duration?: number) => addToast("info", title, message, duration),
+  success: (title: string, message?: string, duration?: number) => {
+    sound.success();
+    return addToast("success", title, message, duration);
+  },
+  error: (title: string, message?: string, duration?: number) => {
+    sound.error();
+    return addToast("error", title, message, duration ?? 7000);
+  },
+  warning: (title: string, message?: string, duration?: number) => {
+    sound.warning();
+    return addToast("warning", title, message, duration ?? 6000);
+  },
+  info: (title: string, message?: string, duration?: number) => {
+    sound.info();
+    return addToast("info", title, message, duration);
+  },
 };
 
 const ToastItemComponent = forwardRef<HTMLDivElement, { item: ToastItem; onClose: () => void }>(

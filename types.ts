@@ -577,6 +577,106 @@ export interface ActivityLog {
   details?: any;
 }
 
+// ── Blind Drop & Day Close Types ─────────────────────────────────────────────
+
+export interface DenominationEntry {
+  value: number;
+  count: number;
+}
+
+export interface BlindDropSubmission {
+  id: string;
+  shiftId: string;
+  cashierId: string;
+  cashierName: string;
+  submittedAt: Date;
+  denominations: DenominationEntry[];
+  cashTotal: number;
+  cardTotal: number;
+  walletTotal: number;
+  grandTotal: number;
+  status: "PENDING" | "VERIFIED" | "DISPUTED";
+}
+
+export interface ReconciliationEntry {
+  id: string;
+  shiftId: string;
+  cashierId: string;
+  cashierName: string;
+  shiftType: "MORNING" | "EVENING" | "NIGHT";
+  startTime: Date;
+  endTime?: Date;
+  // Actual amounts (blindly submitted by cashier)
+  actualCash: number;
+  actualCards: number;
+  actualWallets: number;
+  // Expected amounts (system-calculated)
+  expectedCash: number;
+  expectedCards: number;
+  expectedWallets: number;
+  // Variances
+  cashVariance: number;
+  cardsVariance: number;
+  walletsVariance: number;
+  totalVariance: number;
+  // Status
+  status: "BALANCED" | "SHORTAGE" | "OVERAGE" | "PENDING";
+  // Accounting
+  journalEntryId?: string;
+  journalEntryDate?: Date;
+}
+
+export interface DayCloseState {
+  id: string;
+  date: string; // YYYY-MM-DD
+  status: "OPEN" | "LOCKED" | "CLOSED";
+  totalShifts: number;
+  closedShifts: number;
+  allShiftsClosed: boolean;
+  executedBy?: string;
+  executedAt?: Date;
+  totalSales: number;
+  totalExpenses: number;
+  netRevenue: number;
+}
+
+export interface BusinessDayState {
+  id: string;
+  date: string;
+  status: "OPEN" | "CLOSED";
+  openedAt?: Date;
+  closedAt?: Date;
+  openedBy?: string;
+  closedBy?: string;
+  openingNote?: string;
+  closingNote?: string;
+  totalSales: number;
+  totalRevenue: number;
+  invoiceCount: number;
+  returnCount: number;
+  discountTotal: number;
+  taxTotal: number;
+}
+
+export interface JournalEntryLine {
+  id: string;
+  accountCode: string;
+  accountName: string;
+  debit: number;
+  credit: number;
+  description: string;
+}
+
+export interface VarianceJournalEntry {
+  id: string;
+  shiftId: string;
+  type: "SHORTAGE" | "OVERAGE";
+  amount: number;
+  lines: JournalEntryLine[];
+  createdAt: Date;
+  postedBy: string;
+}
+
 // ── Print Router Types ──────────────────────────────────────────────────────
 
 export type PrinterTypeValue = 'CASHIER' | 'KITCHEN' | 'BAR' | 'OTHER';
