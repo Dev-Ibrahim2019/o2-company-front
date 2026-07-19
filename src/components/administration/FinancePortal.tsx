@@ -22,10 +22,11 @@ import { FinancialInvoiceForm } from '../financial/FinancialInvoiceForm';
 import { OrgStructure } from './OrgStructure/OrgStructure';
 import { AccountingPortal } from './GL/AccountingPortal';
 import { DiscountManagementPortal } from './discounts/DiscountManagementPortal';
+import { ShiftDayClosingPage } from './ShiftDayClosingPage';
 
 
 interface FinancePortalProps {
-  initialView?: 'DASHBOARD' | 'BRANCHES' | 'DEPARTMENTS' | 'ITEM_TREE' | 'ITEMS_INDEX' | 'MENU' | 'ORDERS' | 'SALES' | 'CUSTOMERS' | 'SUPPLIERS' | 'EMPLOYEES' | 'ACCOUNTING' | 'REPORTS' | 'SETTINGS' | 'AUDIT_LOG' | 'ARCHIVE' | 'ORGSTRUCTURE' | 'FINANCIAL_INVOICES' | 'DISCOUNTS';
+  initialView?: 'DASHBOARD' | 'BRANCHES' | 'DEPARTMENTS' | 'ITEM_TREE' | 'ITEMS_INDEX' | 'MENU' | 'ORDERS' | 'SALES' | 'CUSTOMERS' | 'SUPPLIERS' | 'EMPLOYEES' | 'ACCOUNTING' | 'REPORTS' | 'SETTINGS' | 'AUDIT_LOG' | 'ARCHIVE' | 'ORGSTRUCTURE' | 'FINANCIAL_INVOICES' | 'DISCOUNTS' | 'SHIFT_DAY_CLOSING';
 }
 
 export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DASHBOARD' }) => {
@@ -89,6 +90,7 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
     SETTINGS: canEditSettings ? <SettingsPage /> : <div className="p-20 text-center text-slate-500">ليس لديك صلاحية للوصول إلى الإعدادات</div>,
     ORGSTRUCTURE: <OrgStructure />,
     DISCOUNTS: <DiscountManagementPortal />,
+    SHIFT_DAY_CLOSING: <ShiftDayClosingPage />,
   };
 
   return (

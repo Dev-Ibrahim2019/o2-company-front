@@ -1,5 +1,5 @@
 
-import React, { createContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import {
@@ -8,7 +8,8 @@ import {
   TableStatus, FinancialTransaction, FinancialTransactionType,
   CustomerFeedback, StaffTask, TableAssignment, Customer, CustomerType, CustomerAddress,
   EmployeeStatus, Attendance, WorkSchedule, ActivityLog, Hall,
-  FiscalYear, ChartOfAccount, CostCenter, JournalEntry, Supplier, BankAccount, CashBox, AccountType
+  FiscalYear, ChartOfAccount, CostCenter, JournalEntry, Supplier, BankAccount, CashBox, AccountType,
+  BlindDropSubmission, ReconciliationEntry, DayCloseState, BusinessDayState, DenominationEntry
 } from './types';
 import { TABLES, MENU_ITEMS } from './constants';
 import api from './src/api/axios';
@@ -128,9 +129,27 @@ interface AppState {
   notifications: { id: string; message: string; type: 'success' | 'error' | 'info' }[];
   addNotification: (message: string, type?: 'success' | 'error' | 'info') => void;
   removeNotification: (id: string) => void;
+
+  // Blind Drop Submissions
+  blindDropSubmissions: BlindDropSubmission[];
+  submitBlindDrop: (submission: Omit<BlindDropSubmission, 'id' | 'submittedAt' | 'status'>) => void;
+
+  // Reconciliation Entries
+  reconciliationEntries: ReconciliationEntry[];
+  getReconciliationData: (date?: string) => ReconciliationEntry[];
+
+  // Day Close State
+  dayCloseState: DayCloseState | null;
+  businessDayState: BusinessDayState | null;
+  openBusinessDay: (userId: string, note?: string) => void;
+  closeBusinessDay: (userId: string, note?: string) => void;
+  executeDayClose: (managerId: string) => void;
+  canExecuteDayClose: () => boolean;
+
+  // Sync bridge
+  syncFromContext: (data: { orders?: Order[]; shifts?: Shift[]; financialTransactions?: FinancialTransaction[] }) => void;
 }
 
-const AppContext = createContext<any>(null);
 export const useAppContext = () => useContext(AppContext);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -846,6 +865,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setShifts(prev => [closedShift, ...prev]);
     setCurrentShift(null);
+
+    // Sync closed shift to Zustand store for persistence
+    const zustandStore = useApp.getState();
+    const existingShifts = zustandStore.shifts ?? [];
+    zustandStore.syncFromContext({ shifts: [closedShift, ...existingShifts] });
+
     addActivityLog(currentUser.id, 'Closed Shift', { expectedBalance, closingBalance, difference: closingBalance - expectedBalance });
   };
 
@@ -910,6 +935,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'PENDING'
     };
     setFinancialTransactions(prev => [newTx, ...prev]);
+
+    // Sync to Zustand for persistence
+    const zustandStore = useApp.getState();
+    const existingTx = zustandStore.financialTransactions ?? [];
+    zustandStore.syncFromContext({ financialTransactions: [newTx, ...existingTx] });
+
     addActivityLog(tx.cashierId, `Financial Transaction: ${tx.type}`, { amount: tx.amount, reason: tx.reason });
   };
 
@@ -1729,6 +1760,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
   const setOrderType = (type: OrderType) => setCartOrderType(type);
 
+  // Auto-sync Context state to Zustand for persistence
+  // Skip initial sync to avoid overwriting persisted Zustand data with empty Context arrays
+  const _initialSyncDone = React.useRef(false);
+
+  React.useEffect(() => {
+    const zustand = useApp.getState();
+
+    // On first mount, if Zustand has persisted data, use it to seed Context
+    if (!_initialSyncDone.current) {
+      _initialSyncDone.current = true;
+      const hasShifts = (zustand.shifts ?? []).length > 0;
+      const hasOrders = (zustand.orders ?? []).length > 0;
+      const hasTx = (zustand.financialTransactions ?? []).length > 0;
+
+      // Only seed Context from Zustand if Zustand has the real data
+      if (hasShifts || hasOrders || hasTx) {
+        if (hasShifts && shifts.length === 0) {
+          // Import shifts from Zustand into Context
+          zustand.shifts?.forEach((s: any) => {
+            setShifts(prev => {
+              if (prev.find(p => p.id === s.id)) return prev;
+              return [s, ...prev];
+            });
+          });
+        }
+        if (hasTx && financialTransactions.length === 0) {
+          zustand.financialTransactions?.forEach((tx: any) => {
+            setFinancialTransactions(prev => {
+              if (prev.find(p => p.id === tx.id)) return prev;
+              return [tx, ...prev];
+            });
+          });
+        }
+        if (hasOrders && activeOrders.length === 0) {
+          zustand.orders?.forEach((o: any) => {
+            setActiveOrders(prev => {
+              if (prev.find(p => p.id === o.id)) return prev;
+              return [o, ...prev];
+            });
+          });
+        }
+      }
+      return;
+    }
+
+    // Subsequent syncs: Context → Zustand (only when Context has real changes)
+    const hasRealData = shifts.length > 0 || activeOrders.length > 0 || financialTransactions.length > 0;
+    if (hasRealData) {
+      zustand.syncFromContext({
+        shifts,
+        orders: activeOrders,
+        financialTransactions,
+      });
+    }
+  }, [shifts, activeOrders, financialTransactions]);
+
   return (
     <AppContext.Provider value={{
       activeOrders, currentUser, currentCart, cartOrderType, userRole,
@@ -1763,7 +1850,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       recordAttendance,
       deleteAttendance,
       addActivityLog,
-      updateWorkSchedule
+      updateWorkSchedule,
+      syncFromContext: (_data: any) => {}, // no-op in Context, real impl in Zustand
     }}>
       {children}
     </AppContext.Provider>
@@ -1887,9 +1975,36 @@ export const useApp = create<AppState>()(
 
       // Shifts
       currentShift: null,
+      shifts: [],
       setCurrentShift: (currentShift) => set({ currentShift }),
-      openShift: (shift) => set({ currentShift: shift }),
-      closeShift: () => set({ currentShift: null }),
+      openShift: (openingBalance: number, type: 'MORNING' | 'EVENING' | 'NIGHT' = 'MORNING') =>
+        set((state) => ({
+          currentShift: {
+            id: 'sh_' + Math.random().toString(36).substring(2, 8),
+            cashierId: state.currentUser?.id || 'unknown',
+            startTime: new Date(),
+            openingBalance,
+            status: 'OPEN',
+            type,
+          } as Shift,
+        })),
+      closeShift: (closingBalance?: number) =>
+        set((state) => {
+          if (!state.currentShift) return { currentShift: null };
+          const closedShift: Shift = {
+            ...state.currentShift,
+            status: 'CLOSED',
+            endTime: new Date(),
+            closingBalance: closingBalance ?? state.currentShift.openingBalance ?? 0,
+            expectedBalance:
+              (state.currentShift.openingBalance ?? 0) +
+              (state.currentShift.expectedBalance ?? 0),
+          };
+          return {
+            currentShift: null,
+            shifts: [closedShift, ...state.shifts],
+          };
+        }),
 
       // Employees
       employees: [],
@@ -1994,6 +2109,310 @@ export const useApp = create<AppState>()(
         set((state) => ({
           notifications: state.notifications.filter((n) => n.id !== id),
         })),
+
+      // Blind Drop Submissions
+      blindDropSubmissions: [],
+      submitBlindDrop: (submission) => {
+        const id = `bd-${Date.now()}`;
+        const newSubmission: BlindDropSubmission = {
+          ...submission,
+          id,
+          submittedAt: new Date(),
+          status: 'PENDING',
+        };
+        set((state) => ({
+          blindDropSubmissions: [...state.blindDropSubmissions, newSubmission],
+        }));
+
+        // Auto-generate variance journal entry
+        const { reconciliationEntries, shifts, financialTransactions } = get();
+        const shift = shifts.find(s => s.id === submission.shiftId);
+        if (shift) {
+          // Calculate expected amounts from financial transactions
+          const shiftStart = new Date(shift.startTime);
+          const shiftEnd = new Date();
+
+          const shiftSales = financialTransactions.filter(tx => {
+            const txDate = new Date(tx.timestamp);
+            return tx.shiftId === shift.id
+              && tx.type === FinancialTransactionType.SALE
+              && txDate >= shiftStart && txDate <= shiftEnd;
+          });
+          const totalSales = shiftSales.reduce((sum, tx) => sum + tx.amount, 0);
+
+          // Expected = opening balance + sales (cash portion assumed 80% for blind drop)
+          const expectedCash = shift.openingBalance + totalSales * 0.8;
+          const expectedCards = totalSales * 0.15;
+          const expectedWallets = totalSales * 0.05;
+
+          const cashVariance = submission.cashTotal - expectedCash;
+          const cardsVariance = submission.cardTotal - expectedCards;
+          const walletsVariance = submission.walletTotal - expectedWallets;
+          const totalVariance = cashVariance + cardsVariance + walletsVariance;
+
+          const reconEntry: ReconciliationEntry = {
+            id: `recon-${Date.now()}`,
+            shiftId: submission.shiftId,
+            cashierId: submission.cashierId,
+            cashierName: submission.cashierName,
+            shiftType: shift.type,
+            startTime: shift.startTime,
+            endTime: shiftEnd,
+            actualCash: submission.cashTotal,
+            actualCards: submission.cardTotal,
+            actualWallets: submission.walletTotal,
+            expectedCash,
+            expectedCards,
+            expectedWallets,
+            cashVariance,
+            cardsVariance,
+            walletsVariance,
+            totalVariance,
+            status: Math.abs(totalVariance) < 0.01 ? 'BALANCED' : totalVariance < 0 ? 'SHORTAGE' : 'OVERAGE',
+            journalEntryDate: new Date(),
+          };
+
+          set((state) => ({
+            reconciliationEntries: [...state.reconciliationEntries, reconEntry],
+          }));
+
+          // Add activity log
+          get().addActivityLog({
+            id: `log-${Date.now()}`,
+            employeeId: submission.cashierId,
+            action: 'Blind Drop Submitted',
+            timestamp: new Date(),
+            details: {
+              shiftId: submission.shiftId,
+              cashTotal: submission.cashTotal,
+              cardTotal: submission.cardTotal,
+              walletTotal: submission.walletTotal,
+              variance: totalVariance,
+              status: reconEntry.status,
+            },
+          });
+        }
+      },
+
+      // Reconciliation Entries
+      reconciliationEntries: [],
+      getReconciliationData: (date?: string) => {
+        const { reconciliationEntries } = get();
+        if (!date) return reconciliationEntries;
+        return reconciliationEntries.filter(entry => {
+          const entryDate = new Date(entry.startTime).toISOString().split('T')[0];
+          return entryDate === date;
+        });
+      },
+
+      // Day Close State
+      dayCloseState: null,
+      businessDayState: null,
+
+      // Sync bridge: Context pushes data here so Zustand functions can access it
+      syncFromContext: (data: { orders?: Order[]; shifts?: Shift[]; financialTransactions?: FinancialTransaction[] }) => {
+        set((state) => ({
+          orders: data.orders ?? state.orders,
+          shifts: data.shifts ?? state.shifts,
+          financialTransactions: data.financialTransactions ?? state.financialTransactions,
+        }));
+      },
+
+      openBusinessDay: (userId: string, note?: string) => {
+        const today = new Date().toISOString().split('T')[0];
+        const existing = get().businessDayState;
+        if (existing?.date === today && existing.status === 'OPEN') return;
+
+        const openState: BusinessDayState = {
+          id: `bd-${Date.now()}`,
+          date: today,
+          status: 'OPEN',
+          openedAt: new Date(),
+          openedBy: userId,
+          openingNote: note,
+          totalSales: 0,
+          totalRevenue: 0,
+          invoiceCount: 0,
+          returnCount: 0,
+          discountTotal: 0,
+          taxTotal: 0,
+        };
+
+        set({ businessDayState: openState });
+        get().addActivityLog({
+          id: `log-${Date.now()}`,
+          employeeId: userId,
+          action: 'Business Day Opened',
+          timestamp: new Date(),
+          details: { date: today, note },
+        });
+      },
+      closeBusinessDay: (userId: string, note?: string) => {
+        const today = new Date().toISOString().split('T')[0];
+        const existing = get().businessDayState;
+        if (existing?.date === today && existing.status === 'CLOSED') return;
+
+        const { financialTransactions, reconciliationEntries } = get();
+
+        // Calculate from financial transactions (the real source of truth)
+        const todayTx = financialTransactions.filter((tx: any) => {
+          const txDate = new Date(tx.timestamp).toISOString().split('T')[0];
+          return txDate === today;
+        });
+
+        const todayRecons = reconciliationEntries.filter((entry: any) => {
+          const entryDate = new Date(entry.startTime).toISOString().split('T')[0];
+          return entryDate === today;
+        });
+
+        const totalSales = todayRecons.reduce((sum, entry) => sum + entry.actualCash + entry.actualCards + entry.actualWallets, 0);
+        const totalExpenses = todayTx.filter(tx => tx.type === FinancialTransactionType.EXPENSE).reduce((sum, tx) => sum + tx.amount, 0);
+        const totalRefunds = todayTx.filter(tx => tx.type === FinancialTransactionType.REFUND).reduce((sum, tx) => sum + tx.amount, 0);
+        const invoiceCount = todayRecons.length;
+        const returnCount = todayTx.filter(tx => tx.type === FinancialTransactionType.REFUND).length;
+
+        const closedState: BusinessDayState = {
+          ...(existing ?? {
+            id: `bd-${Date.now()}`,
+            date: today,
+            status: 'OPEN',
+            totalSales: 0,
+            totalRevenue: 0,
+            invoiceCount: 0,
+            returnCount: 0,
+            discountTotal: 0,
+            taxTotal: 0,
+          }),
+          date: today,
+          status: 'CLOSED',
+          closedAt: new Date(),
+          closedBy: userId,
+          closingNote: note,
+          totalSales,
+          totalRevenue: totalSales - totalExpenses,
+          invoiceCount,
+          returnCount,
+          discountTotal: 0,
+          taxTotal: 0,
+        };
+
+        set({ businessDayState: closedState });
+        get().addActivityLog({
+          id: `log-${Date.now()}`,
+          employeeId: userId,
+          action: 'Business Day Closed',
+          timestamp: new Date(),
+          details: { date: today, note, totalSales, totalRevenue },
+        });
+      },
+      executeDayClose: (managerId: string) => {
+        const { reconciliationEntries, blindDropSubmissions, shifts, financialTransactions } = get();
+        const today = new Date().toISOString().split('T')[0];
+
+        // Check if all shifts for today are closed
+        const todayShifts = shifts.filter(s => {
+          const shiftDate = new Date(s.startTime).toISOString().split('T')[0];
+          return shiftDate === today;
+        });
+
+        const allClosed = todayShifts.every(s => s.status === 'CLOSED');
+        if (!allClosed) return;
+
+        // Calculate totals
+        const todayReconciliations = reconciliationEntries.filter(entry => {
+          const entryDate = new Date(entry.startTime).toISOString().split('T')[0];
+          return entryDate === today;
+        });
+
+        const totalSales = todayReconciliations.reduce((sum, entry) => sum + entry.actualCash + entry.actualCards + entry.actualWallets, 0);
+        const totalExpenses = financialTransactions
+          .filter(tx => {
+            const txDate = new Date(tx.timestamp).toISOString().split('T')[0];
+            return txDate === today && tx.type === FinancialTransactionType.EXPENSE;
+          })
+          .reduce((sum, tx) => sum + tx.amount, 0);
+
+        const dayClose: DayCloseState = {
+          id: `dc-${Date.now()}`,
+          date: today,
+          status: 'CLOSED',
+          totalShifts: todayShifts.length,
+          closedShifts: todayShifts.filter(s => s.status === 'CLOSED').length,
+          allShiftsClosed: true,
+          executedBy: managerId,
+          executedAt: new Date(),
+          totalSales,
+          totalExpenses,
+          netRevenue: totalSales - totalExpenses,
+        };
+
+        set({ dayCloseState: dayClose, businessDayState: {
+          ...(get().businessDayState ?? {
+            id: `bd-${Date.now()}`,
+            date: today,
+            status: 'CLOSED',
+            totalSales: 0,
+            totalRevenue: 0,
+            invoiceCount: 0,
+            returnCount: 0,
+            discountTotal: 0,
+            taxTotal: 0,
+          }),
+          date: today,
+          status: 'CLOSED',
+          closedAt: new Date(),
+          closedBy: managerId,
+          closingNote: 'إغلاق يوم محاسبي من نظام الإغلاق',
+          totalSales: dayClose.totalSales,
+          totalRevenue: dayClose.netRevenue,
+          invoiceCount: dayClose.totalShifts,
+          returnCount: 0,
+          discountTotal: 0,
+          taxTotal: 0,
+        } });
+
+        // Add activity log
+        get().addActivityLog({
+          id: `log-${Date.now()}`,
+          employeeId: managerId,
+          action: 'Day Close Executed',
+          timestamp: new Date(),
+          details: {
+            date: today,
+            totalShifts: dayClose.totalShifts,
+            totalSales: dayClose.totalSales,
+            totalExpenses: dayClose.totalExpenses,
+            netRevenue: dayClose.netRevenue,
+          },
+        });
+      },
+
+      canExecuteDayClose: () => {
+        const { shifts, blindDropSubmissions } = get();
+        const today = new Date().toISOString().split('T')[0];
+
+        // Get today's shifts
+        const todayShifts = shifts.filter(s => {
+          const shiftDate = new Date(s.startTime).toISOString().split('T')[0];
+          return shiftDate === today;
+        });
+
+        // Check if all shifts are closed
+        const allClosed = todayShifts.every(s => s.status === 'CLOSED');
+
+        // Check if all cashiers have submitted blind drops
+        const todayCashiers = todayShifts.map(s => s.cashierId);
+        const submittedCashiers = blindDropSubmissions
+          .filter(sub => {
+            const subDate = new Date(sub.submittedAt).toISOString().split('T')[0];
+            return subDate === today;
+          })
+          .map(sub => sub.cashierId);
+
+        const allSubmitted = todayCashiers.every(cashierId => submittedCashiers.includes(cashierId));
+
+        return allClosed && allSubmitted && todayShifts.length > 0;
+      },
     }),
     {
       name: 'o2-company-storage',
@@ -2002,8 +2421,16 @@ export const useApp = create<AppState>()(
         isLoggedIn: state.isLoggedIn,
         userRole: state.userRole,
         currentShift: state.currentShift,
+        shifts: state.shifts,
+        orders: state.orders,
+        financialTransactions: state.financialTransactions,
+        activityLogs: state.activityLogs,
         branches: state.branches,
         departments: state.departments,
+        blindDropSubmissions: state.blindDropSubmissions,
+        reconciliationEntries: state.reconciliationEntries,
+        dayCloseState: state.dayCloseState,
+        businessDayState: state.businessDayState,
       }),
     }
   )

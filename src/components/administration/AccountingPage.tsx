@@ -269,7 +269,7 @@ const AccountingPage = () => {
             <div className="bg-slate-900/50 border border-white/5 rounded-2xl p-6">
               <h3 className="text-lg font-bold text-white mb-4">توزيع طرق الدفع</h3>
               <div className="h-[200px]">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height={180}>
                   <PieChart>
                     <Pie
                       data={[

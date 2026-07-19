@@ -9,9 +9,11 @@ import {
   Search,
   User,
   Phone,
+  Building2,
 } from "lucide-react";
 import { orderService } from "../../services/orderService";
 import { fetchItems } from "../../services/itemService";
+import { branchService } from "../../services/branchService";
 import { useApp } from "../../../store";
 import { InvoicePaymentsEditor } from "./shared/InvoicePaymentsEditor";
 import {
@@ -51,8 +53,9 @@ const toNumber = (value: string, fallback = 0) => {
 const formatMoney = (value: number) => `${Number(value || 0).toFixed(2)} ₪`;
 
 const branchIdFromUser = (user: unknown) => {
-  const raw = (user as { branch_id?: number | string; branchId?: number | string } | null)
-    ?.branch_id ?? (user as { branchId?: number | string } | null)?.branchId;
+  const raw =
+    (user as { branch_id?: number | string; branchId?: number | string } | null)
+      ?.branch_id ?? (user as { branchId?: number | string } | null)?.branchId;
   const branchId = typeof raw === "number" ? raw : Number(raw);
   return Number.isFinite(branchId) && branchId > 0 ? branchId : 1;
 };
@@ -83,6 +86,8 @@ export const CreateInvoiceModal = ({
   ]);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState<string | null>(null);
+  const [branches, setBranches] = useState<{ id: number; name: string }[]>([]);
+  const [loadingBranches, setLoadingBranches] = useState(false);
 
   const startNewInvoice = () => {
     setOrder(null);
@@ -99,6 +104,36 @@ export const CreateInvoiceModal = ({
     setError(null);
     setStep("edit");
   };
+
+  useEffect(() => {
+    let active = true;
+    setLoadingBranches(true);
+    branchService
+      .getAll()
+      .then((list) => {
+        if (!active) return;
+        const raw = Array.isArray(list) ? list : [];
+        console.debug(
+          "[CreateInvoiceModal] branches raw:",
+          list,
+          "count:",
+          raw.length,
+        );
+        setBranches(raw);
+      })
+      .catch((err) => {
+        console.error("[CreateInvoiceModal] branches load error:", err);
+        if (!active) return;
+        setBranches([]);
+      })
+      .finally(() => {
+        if (!active) return;
+        setLoadingBranches(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const searchOrder = async () => {
     const id = parseInt(searchOrderId, 10);
@@ -135,7 +170,7 @@ export const CreateInvoiceModal = ({
           quantity: String(item.quantity),
           unit_price: String(item.unit_price),
           notes: item.notes ?? "",
-        }))
+        })),
       );
 
       setStep("edit");
@@ -150,10 +185,11 @@ export const CreateInvoiceModal = ({
   const subtotal = useMemo(
     () =>
       items.reduce(
-        (sum, item) => sum + toNumber(item.quantity) * toNumber(item.unit_price),
-        0
+        (sum, item) =>
+          sum + toNumber(item.quantity) * toNumber(item.unit_price),
+        0,
       ),
-    [items]
+    [items],
   );
   const discountAmount =
     discountType === "percent"
@@ -177,14 +213,44 @@ export const CreateInvoiceModal = ({
 
   const updateItem = (
     rowId: number,
-    changes: Partial<Omit<EditableItem, "rowId" | "item_id" | "name">>
+    changes: Partial<Omit<EditableItem, "rowId" | "item_id" | "name">>,
   ) => {
     setItems((prev) =>
       prev.map((item) =>
-        item.rowId === rowId ? { ...item, ...changes } : item
-      )
+        item.rowId === rowId ? { ...item, ...changes } : item,
+      ),
     );
   };
+
+  const selectedBranchId = useMemo(() => {
+    const raw =
+      (order?.branch_id as number | string | undefined) ??
+      branchIdFromUser(currentUser);
+    if (raw === undefined || raw === null || raw === "") return "";
+    return Number(raw);
+  }, [order?.branch_id, currentUser]);
+
+  const defaultBranchForAdmin = useMemo(() => {
+    if (!currentUser || currentUser.role !== "ADMIN") return undefined;
+    const mainBranch = branches.find((b: any) => b.isMainBranch) ?? branches[0];
+    return mainBranch?.id ? Number(mainBranch.id) : undefined;
+  }, [currentUser, branches]);
+
+  useEffect(() => {
+    if (loadingBranches) return;
+    console.debug("CreateInvoiceModal branches:", branches);
+  }, [branches, loadingBranches]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    if (currentUser.role !== "ADMIN") return;
+    if (!branches.length) return;
+    if (defaultBranchForAdmin == null) return;
+    setOrder((prev) => ({
+      ...(prev ?? ({} as any)),
+      branch_id: defaultBranchForAdmin as any,
+    }));
+  }, [currentUser, branches, defaultBranchForAdmin]);
 
   const removeItem = (rowId: number) => {
     setItems((prev) => prev.filter((item) => item.rowId !== rowId));
@@ -192,7 +258,7 @@ export const CreateInvoiceModal = ({
 
   const addItem = async () => {
     const codeInput = document.getElementById(
-      "create-item-code-input"
+      "create-item-code-input",
     ) as HTMLInputElement;
     const code = codeInput?.value.trim();
     if (!code) {
@@ -328,17 +394,26 @@ export const CreateInvoiceModal = ({
         <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl">
           <div className="p-4 border-b border-white/5 flex items-center justify-between">
             <div>
-              <h3 className="text-lg font-black text-white">إنشاء فاتورة جديدة</h3>
-              <p className="text-[11px] text-slate-500 font-bold">اختر فاتورة جديدة أو طلب موجود</p>
+              <h3 className="text-lg font-black text-white">
+                إنشاء فاتورة جديدة
+              </h3>
+              <p className="text-[11px] text-slate-500 font-bold">
+                اختر فاتورة جديدة أو طلب موجود
+              </p>
             </div>
-            <button onClick={onClose} className="p-2 rounded-xl bg-white/5 text-slate-400 hover:text-white">
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl bg-white/5 text-slate-400 hover:text-white"
+            >
               <X size={18} />
             </button>
           </div>
 
           <div className="p-5 space-y-4">
             {error && (
-              <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300">{error}</div>
+              <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300">
+                {error}
+              </div>
             )}
 
             <button
@@ -350,11 +425,18 @@ export const CreateInvoiceModal = ({
             </button>
 
             <label className="space-y-1 block">
-              <span className="text-[10px] font-black text-slate-500">رقم طلب موجود</span>
+              <span className="text-[10px] font-black text-slate-500">
+                رقم طلب موجود
+              </span>
               <input
                 value={searchOrderId}
                 onChange={(e) => setSearchOrderId(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); searchOrder(); } }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    searchOrder();
+                  }
+                }}
                 placeholder="أدخل رقم الطلب..."
                 className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-red-500/50"
                 autoFocus
@@ -363,7 +445,10 @@ export const CreateInvoiceModal = ({
           </div>
 
           <div className="p-4 border-t border-white/5 flex items-center justify-end gap-3">
-            <button onClick={onClose} className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-black hover:bg-slate-700">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-black hover:bg-slate-700"
+            >
               إلغاء
             </button>
             <button
@@ -371,7 +456,11 @@ export const CreateInvoiceModal = ({
               disabled={loading}
               className="px-5 py-2 rounded-xl bg-red-600 text-white text-xs font-black hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
             >
-              {loading ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+              {loading ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Search size={16} />
+              )}
               بحث عن الطلب
             </button>
           </div>
@@ -398,7 +487,8 @@ export const CreateInvoiceModal = ({
               <p className="text-[11px] text-slate-500 font-bold">
                 {order ? (
                   <>
-                    العميل: {order.customer_name || "عميل نقدي"} • {order.order_type === "dine_in" ? "🍽️ محلي" : "🛵 سفري"}
+                    العميل: {order.customer_name || "عميل نقدي"} •{" "}
+                    {order.order_type === "dine_in" ? "🍽️ محلي" : "🛵 سفري"}
                     {order.table_number ? ` • طاولة ${order.table_number}` : ""}
                   </>
                 ) : (
@@ -410,7 +500,10 @@ export const CreateInvoiceModal = ({
               </p>
             </div>
           </div>
-          <button onClick={() => setStep("search")} className="p-2 rounded-xl bg-white/5 text-slate-400 hover:text-white">
+          <button
+            onClick={() => setStep("search")}
+            className="p-2 rounded-xl bg-white/5 text-slate-400 hover:text-white"
+          >
             <X size={18} />
           </button>
         </div>
@@ -420,7 +513,12 @@ export const CreateInvoiceModal = ({
           {error && (
             <div className="bg-red-500/10 border border-red-500/20 text-red-300 rounded-xl px-4 py-3 text-xs font-bold flex items-center justify-between">
               <span>{error}</span>
-              <button onClick={() => setError(null)} className="text-xs underline">مسح</button>
+              <button
+                onClick={() => setError(null)}
+                className="text-xs underline"
+              >
+                مسح
+              </button>
             </div>
           )}
 
@@ -432,55 +530,139 @@ export const CreateInvoiceModal = ({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
               <label className="space-y-1">
-                <span className="text-[10px] font-black text-slate-500">النوع</span>
-                <select value={orderType} onChange={(e) => setOrderType(e.target.value as OrderType)}
-                  className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-red-500/50">
-                  <option value="dine_in">🍽️ محلي</option><option value="takeaway">🛵 سفري</option>
+                <span className="text-[10px] font-black text-slate-500">
+                  النوع
+                </span>
+                <select
+                  value={orderType}
+                  onChange={(e) => setOrderType(e.target.value as OrderType)}
+                  className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-red-500/50"
+                >
+                  <option value="dine_in">🍽️ محلي</option>
+                  <option value="takeaway">🛵 سفري</option>
                 </select>
               </label>
               <label className="space-y-1">
-                <span className="text-[10px] font-black text-slate-500">الطاولة</span>
-                <input value={tableNumber} onChange={(e) => setTableNumber(e.target.value)}
+                <span className="text-[10px] font-black text-slate-500">
+                  <Building2 size={12} className="inline ml-1" />
+                  الفرع
+                </span>
+                <select
+                  value={selectedBranchId}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const value = raw === "" ? undefined : Number(raw);
+                    setOrder(
+                      (prev) =>
+                        ({
+                          ...(prev ?? ({} as any)),
+                          branch_id: value as any,
+                        }) as any,
+                    );
+                  }}
+                  disabled={loadingBranches}
+                  className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-red-500/50 disabled:opacity-60"
+                >
+                  <option value="">
+                    {order?.branch_id != null
+                      ? "تغيير الفرع..."
+                      : "اختر الفرع..."}
+                  </option>
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+                {loadingBranches && (
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    جاري تحميل الفروع...
+                  </p>
+                )}
+                {!loadingBranches && branches.length === 0 && (
+                  <p className="text-[10px] text-red-400 mt-1">
+                    لا يوجد فروع متاحة — تحقق من الاتصال أو صلاحيات المستخدم
+                  </p>
+                )}
+                <p className="text-[10px] text-slate-500">
+                  الفرع المحدد حالياً:{" "}
+                  {selectedBranchId ? selectedBranchId : "غير محدد"}
+                </p>
+              </label>
+              <label className="space-y-1">
+                <span className="text-[10px] font-black text-slate-500">
+                  الطاولة
+                </span>
+                <input
+                  value={tableNumber}
+                  onChange={(e) => setTableNumber(e.target.value)}
                   placeholder="رقم الطاولة"
-                  className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-red-500/50" />
+                  className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-red-500/50"
+                />
               </label>
               <label className="space-y-1">
                 <span className="text-[10px] font-black text-slate-500">
-                  <User size={12} className="inline ml-1" />العميل
+                  <User size={12} className="inline ml-1" />
+                  العميل
                 </span>
-                <input value={customerName} onChange={(e) => setCustomerName(e.target.value)}
+                <input
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
                   placeholder="اسم العميل"
-                  className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-red-500/50" />
+                  className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-red-500/50"
+                />
               </label>
               <label className="space-y-1">
                 <span className="text-[10px] font-black text-slate-500">
-                  <Phone size={12} className="inline ml-1" />الجوال
+                  <Phone size={12} className="inline ml-1" />
+                  الجوال
                 </span>
-                <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)}
+                <input
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
                   placeholder="رقم الجوال"
-                  className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-red-500/50" />
+                  className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-red-500/50"
+                />
               </label>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3">
               <label className="space-y-1 md:col-span-2">
-                <span className="text-[10px] font-black text-slate-500">ملاحظة</span>
-                <input value={note} onChange={(e) => setNote(e.target.value)}
+                <span className="text-[10px] font-black text-slate-500">
+                  ملاحظة
+                </span>
+                <input
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
                   placeholder="ملاحظة على الفاتورة..."
-                  className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-red-500/50" />
+                  className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-red-500/50"
+                />
               </label>
               <label className="space-y-1">
-                <span className="text-[10px] font-black text-slate-500">الخصم</span>
-                <input value={discountValue} onChange={(e) => setDiscountValue(e.target.value)}
+                <span className="text-[10px] font-black text-slate-500">
+                  الخصم
+                </span>
+                <input
+                  value={discountValue}
+                  onChange={(e) => setDiscountValue(e.target.value)}
                   placeholder="0"
-                  className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-red-500/50" />
+                  className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-red-500/50"
+                />
               </label>
               <div>
                 <label className="space-y-1 block">
-                  <span className="text-[10px] font-black text-slate-500">نوع الخصم</span>
-                  <select value={discountType} onChange={(e) => setDiscountType(e.target.value as DiscountType)}
-                    className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-red-500/50">
-                    <option value="amount">₪ مبلغ</option><option value="percent">% نسبة</option>
+                  <span className="text-[10px] font-black text-slate-500">
+                    نوع الخصم
+                  </span>
+                  <select
+                    value={discountType}
+                    onChange={(e) =>
+                      setDiscountType(e.target.value as DiscountType)
+                    }
+                    className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-red-500/50"
+                  >
+                    <option value="amount">₪ مبلغ</option>
+                    <option value="percent">% نسبة</option>
                   </select>
                 </label>
               </div>
@@ -492,7 +674,9 @@ export const CreateInvoiceModal = ({
             <div className="flex items-center gap-2 mb-3">
               <div className="w-1 h-5 bg-blue-500 rounded-full"></div>
               <h4 className="text-sm font-black text-white">الأصناف</h4>
-              <span className="text-[10px] text-slate-500 font-bold">({items.length} صنف)</span>
+              <span className="text-[10px] text-slate-500 font-bold">
+                ({items.length} صنف)
+              </span>
             </div>
             <div className="border border-white/5 rounded-2xl overflow-hidden">
               <div className="overflow-x-auto">
@@ -510,27 +694,58 @@ export const CreateInvoiceModal = ({
                   </thead>
                   <tbody className="divide-y divide-white/5">
                     {items.map((item, idx) => {
-                      const lineTotal = toNumber(item.quantity) * toNumber(item.unit_price);
+                      const lineTotal =
+                        toNumber(item.quantity) * toNumber(item.unit_price);
                       return (
                         <tr key={item.rowId} className="hover:bg-white/[0.02]">
-                          <td className="p-3 text-[10px] text-slate-500 font-bold text-center">{idx + 1}</td>
-                          <td className="p-3 text-sm font-bold text-white">{item.name}</td>
-                          <td className="p-3">
-                            <input value={item.quantity} onChange={(e) => updateItem(item.rowId, { quantity: e.target.value })}
-                              className="w-full bg-slate-800 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white outline-none text-center focus:border-red-500/50" />
+                          <td className="p-3 text-[10px] text-slate-500 font-bold text-center">
+                            {idx + 1}
+                          </td>
+                          <td className="p-3 text-sm font-bold text-white">
+                            {item.name}
                           </td>
                           <td className="p-3">
-                            <input value={item.unit_price} onChange={(e) => updateItem(item.rowId, { unit_price: e.target.value })}
-                              className="w-full bg-slate-800 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white outline-none text-center focus:border-red-500/50" />
+                            <input
+                              value={item.quantity}
+                              onChange={(e) =>
+                                updateItem(item.rowId, {
+                                  quantity: e.target.value,
+                                })
+                              }
+                              className="w-full bg-slate-800 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white outline-none text-center focus:border-red-500/50"
+                            />
                           </td>
                           <td className="p-3">
-                            <input value={item.notes} onChange={(e) => updateItem(item.rowId, { notes: e.target.value })}
-                              placeholder="..." className="w-full bg-slate-800 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white outline-none focus:border-red-500/50" />
+                            <input
+                              value={item.unit_price}
+                              onChange={(e) =>
+                                updateItem(item.rowId, {
+                                  unit_price: e.target.value,
+                                })
+                              }
+                              className="w-full bg-slate-800 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white outline-none text-center focus:border-red-500/50"
+                            />
                           </td>
-                          <td className="p-3 text-sm font-black text-emerald-400 text-center">{lineTotal.toFixed(2)}</td>
                           <td className="p-3">
-                            <button onClick={() => removeItem(item.rowId)}
-                              className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-600 hover:text-white transition-colors">
+                            <input
+                              value={item.notes}
+                              onChange={(e) =>
+                                updateItem(item.rowId, {
+                                  notes: e.target.value,
+                                })
+                              }
+                              placeholder="..."
+                              className="w-full bg-slate-800 border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white outline-none focus:border-red-500/50"
+                            />
+                          </td>
+                          <td className="p-3 text-sm font-black text-emerald-400 text-center">
+                            {lineTotal.toFixed(2)}
+                          </td>
+                          <td className="p-3">
+                            <button
+                              onClick={() => removeItem(item.rowId)}
+                              className="p-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-600 hover:text-white transition-colors"
+                            >
                               <Trash2 size={13} />
                             </button>
                           </td>
@@ -540,18 +755,44 @@ export const CreateInvoiceModal = ({
                     <tr className="border-t border-white/5 bg-slate-950/30">
                       <td colSpan={7} className="p-3">
                         <div className="flex items-center gap-2">
-                          <input id="create-item-code-input" placeholder="🔍 أدخل كود الصنف..."
-                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addItem(); } }}
+                          <input
+                            id="create-item-code-input"
+                            placeholder="🔍 أدخل كود الصنف..."
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                addItem();
+                              }
+                            }}
                             className="flex-1 max-w-xs bg-slate-800 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-red-500/50"
-                            disabled={lookupLoading} />
-                          <button onClick={addItem} disabled={lookupLoading}
-                            className={`px-4 py-2 ${lookupLoading ? "bg-red-600/50" : "bg-red-600 hover:bg-red-700"} text-white rounded-lg text-sm font-bold flex items-center gap-1.5 transition-colors`}>
-                            {lookupLoading ? <Loader2 size={16} className="animate-spin" /> : <><Plus size={16} /> إضافة</>}
+                            disabled={lookupLoading}
+                          />
+                          <button
+                            onClick={addItem}
+                            disabled={lookupLoading}
+                            className={`px-4 py-2 ${lookupLoading ? "bg-red-600/50" : "bg-red-600 hover:bg-red-700"} text-white rounded-lg text-sm font-bold flex items-center gap-1.5 transition-colors`}
+                          >
+                            {lookupLoading ? (
+                              <Loader2 size={16} className="animate-spin" />
+                            ) : (
+                              <>
+                                <Plus size={16} /> إضافة
+                              </>
+                            )}
                           </button>
                         </div>
                       </td>
                     </tr>
-                    {lookupError && <tr><td colSpan={7} className="p-2 text-center text-red-500 text-xs">{lookupError}</td></tr>}
+                    {lookupError && (
+                      <tr>
+                        <td
+                          colSpan={7}
+                          className="p-2 text-center text-red-500 text-xs"
+                        >
+                          {lookupError}
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -562,17 +803,27 @@ export const CreateInvoiceModal = ({
           <div className="bg-slate-950/40 border border-white/5 rounded-2xl p-4">
             <div className="flex items-center justify-end gap-6">
               <div className="text-left">
-                <p className="text-[10px] font-black text-slate-500">المجموع الفرعي</p>
-                <p className="text-base font-black text-slate-300">{subtotal.toFixed(2)} ₪</p>
+                <p className="text-[10px] font-black text-slate-500">
+                  المجموع الفرعي
+                </p>
+                <p className="text-base font-black text-slate-300">
+                  {subtotal.toFixed(2)} ₪
+                </p>
               </div>
               <div className="text-left">
                 <p className="text-[10px] font-black text-slate-500">الخصم</p>
-                <p className="text-base font-black text-red-400">- {discountAmount.toFixed(2)} ₪</p>
+                <p className="text-base font-black text-red-400">
+                  - {discountAmount.toFixed(2)} ₪
+                </p>
               </div>
               <div className="w-px h-10 bg-white/10"></div>
               <div className="text-left">
-                <p className="text-[10px] font-black text-slate-500">الإجمالي النهائي</p>
-                <p className="text-2xl font-black text-emerald-400">{total.toFixed(2)} ₪</p>
+                <p className="text-[10px] font-black text-slate-500">
+                  الإجمالي النهائي
+                </p>
+                <p className="text-2xl font-black text-emerald-400">
+                  {total.toFixed(2)} ₪
+                </p>
               </div>
             </div>
           </div>
@@ -591,12 +842,22 @@ export const CreateInvoiceModal = ({
             {items.length} صنف • {formatMoney(total)}
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => setStep("search")} className="px-5 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-black hover:bg-slate-700 transition-colors">
+            <button
+              onClick={() => setStep("search")}
+              className="px-5 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-black hover:bg-slate-700 transition-colors"
+            >
               رجوع
             </button>
-            <button onClick={handleCreateInvoice} disabled={saving}
-              className="px-6 py-2.5 rounded-xl bg-gradient-to-l from-red-600 to-red-700 text-white text-xs font-black hover:from-red-700 hover:to-red-800 disabled:opacity-50 flex items-center gap-2 transition-all shadow-lg shadow-red-600/20">
-              {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+            <button
+              onClick={handleCreateInvoice}
+              disabled={saving}
+              className="px-6 py-2.5 rounded-xl bg-gradient-to-l from-red-600 to-red-700 text-white text-xs font-black hover:from-red-700 hover:to-red-800 disabled:opacity-50 flex items-center gap-2 transition-all shadow-lg shadow-red-600/20"
+            >
+              {saving ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Save size={16} />
+              )}
               إنشاء الفاتورة
             </button>
           </div>
