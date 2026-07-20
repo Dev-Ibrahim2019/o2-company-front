@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { X, User, ShoppingCart, Star, MapPin, MessageSquare, AlertTriangle, CreditCard, Phone, Mail, Calendar, Clock, Store, Package, ChevronLeft, Loader2, FileText, Percent, Ban, Plus, Heart, Flag, Bell, ExternalLink, Trash2, Edit3, Check, Copy, RefreshCw, Award, TrendingUp, AlertCircle, Building2, Headphones, UtensilsCrossed, Users, Activity } from "lucide-react";
+import { X, User, ShoppingCart, Star, MapPin, MessageSquare, AlertTriangle, CreditCard, Phone, Mail, Calendar, Clock, Store, Package, ChevronLeft, Loader2, FileText, Percent, Ban, Plus, Heart, Flag, Bell, ExternalLink, Trash2, Edit3, Check, Copy, RefreshCw, Award, TrendingUp, AlertCircle, Building2, Headphones, UtensilsCrossed, Users, Activity, ChevronDown, ChevronUp, Timer, Truck } from "lucide-react";
 import type { CustomerProfile, CustomerOrder, CustomerComplaint, FavoriteItem, OrderDetail, ComplaintFollowup, CustomerAddress, CustomerOccasion, CustomerNote, CustomerSearchResult } from "../../services/callCenterService";
-import { callCenterService } from "../../services/callCenterService";
+import { callCenterService, CUSTOMER_CATEGORY_LABELS, type CustomerCategory } from "../../services/callCenterService";
 import { orderService } from "../../services/orderService";
 
 interface Props {
@@ -239,7 +239,6 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
         <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
           {loading ? (
             <div className="space-y-4 py-3" aria-label="جاري تحميل ملف العميل">
-              {/* Skeleton Header */}
               <div className="flex items-center gap-3 p-3">
                 <div className="w-14 h-14 rounded-full bg-slate-800/70 animate-pulse" />
                 <div className="flex-1 space-y-2">
@@ -247,7 +246,6 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
                   <div className="h-3 w-1/3 rounded-lg bg-slate-800/50 animate-pulse" />
                 </div>
               </div>
-              {/* Skeleton Cards */}
               <div className="grid grid-cols-2 gap-2">
                 {[1, 2, 3, 4].map(i => (
                   <div key={i} className="h-24 rounded-xl bg-slate-800/70 animate-pulse" />
@@ -306,9 +304,11 @@ const FinanceTab: React.FC<{ profile: CustomerProfile }> = ({ profile }) => {
   </div>;
 };
 
-/* ─── Restructured Overview Tab for Call Center ─── */
+/* ─── Restructured Overview Tab v2 ─── */
 const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem; orders: CustomerOrder[]; onSelectOrder: (id: number) => void; onRepeatOrder?: (order: OrderDetail) => void }> = ({ profile, favorite, orders, onSelectOrder, onRepeatOrder }) => {
   const c = profile.customer;
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [savingCategory, setSavingCategory] = useState(false);
   const categoryLabel = c.category || "غير مصنف";
 
   const getCategoryBadge = () => {
@@ -327,7 +327,16 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
 
   const catBadge = getCategoryBadge();
 
-  /* تحديد مصدر الطلب بناءً على order_type */
+  const updateCategory = async (newCategory: CustomerCategory) => {
+    setSavingCategory(true);
+    try {
+      await callCenterService.updateCustomerClassification(c.id, newCategory);
+      c.category = newCategory;
+      setShowCategoryDropdown(false);
+    } catch { }
+    finally { setSavingCategory(false); }
+  };
+
   const getOrderSourceBadge = (order?: CustomerOrder) => {
     if (!order) return null;
     const type = order.order_type;
@@ -343,9 +352,14 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
   const lastOrder = orders[0];
   const sourceBadge = getOrderSourceBadge(lastOrder);
 
+  // حساب أيام منذ آخر طلب
+  const daysSinceLastOrder = profile.last_order_at
+    ? Math.floor((Date.now() - new Date(profile.last_order_at).getTime()) / 86400000)
+    : null;
+
   return (
     <div className="space-y-4">
-      {/* Customer Header with Category */}
+      {/* ─── Customer Header with Editable Classification ─── */}
       <div className="bg-gradient-to-br from-slate-800/60 to-slate-800/30 rounded-2xl p-4 border border-slate-700/30">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
@@ -357,58 +371,95 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
                 <h2 className="text-base font-black text-white">{c.name}</h2>
                 {statusBadge(c.status)}
               </div>
-              <div className="flex items-center gap-2 mt-1">
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border bg-gradient-to-l ${catBadge.bg}`}>
-                  <span className="inline-flex items-center gap-1">
-                    {catBadge.icon}
-                    {catBadge.label}
-                  </span>
-                </span>
+              <div className="flex items-center gap-2 mt-1.5">
+                {/* Phone next to name */}
+                {c.phone && (
+                  <a href={`tel:${c.phone}`} className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors">
+                    <Phone size={10} />
+                    {c.phone}
+                  </a>
+                )}
+                {c.mobile && c.mobile !== c.phone && (
+                  <a href={`tel:${c.mobile}`} className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20 hover:bg-blue-500/20 transition-colors">
+                    <Phone size={10} />
+                    {c.mobile}
+                  </a>
+                )}
                 <span className="text-[10px] text-slate-500 bg-slate-800/80 px-2 py-0.5 rounded-full border border-slate-700/50 font-mono tracking-wider">{c.code}</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Quick Actions Row */}
-        <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/5 pt-3">
-          {c.phone && (
-            <a href={`tel:${c.phone}`} className="inline-flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-slate-700/50 transition-colors">
-              <Phone size={11} className="text-emerald-400" />
-              {c.phone}
-            </a>
-          )}
-          {c.mobile && c.mobile !== c.phone && (
-            <a href={`tel:${c.mobile}`} className="inline-flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-slate-700/50 transition-colors">
-              <Phone size={11} className="text-blue-400" />
-              {c.mobile}
-            </a>
-          )}
+        {/* Editable Classification - replaces old "نشط" badge */}
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/5 pt-3">
+          <div className="relative">
+            <button
+              onClick={() => setShowCategoryDropdown(v => !v)}
+              disabled={savingCategory}
+              className={`text-[11px] font-bold px-3 py-1.5 rounded-full border bg-gradient-to-l ${catBadge.bg} inline-flex items-center gap-1.5 hover:opacity-80 transition-all active:scale-95`}
+            >
+              {savingCategory ? <Loader2 size={12} className="animate-spin" /> : catBadge.icon}
+              {catBadge.label}
+              {showCategoryDropdown ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+            </button>
+            {showCategoryDropdown && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowCategoryDropdown(false)} />
+                <div className="absolute right-0 top-full mt-1 z-20 w-44 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl shadow-black/40 overflow-hidden">
+                  {(Object.entries(CUSTOMER_CATEGORY_LABELS) as [CustomerCategory, string][]).map(([value, label]) => (
+                    <button
+                      key={value}
+                      onClick={() => updateCategory(value)}
+                      className={`w-full text-right px-3 py-2 text-xs font-bold hover:bg-white/5 transition-colors flex items-center gap-2 ${value === (c.category || "").toLowerCase() ? "text-red-400 bg-red-500/10" : "text-slate-300"}`}
+                    >
+                      {value === "vip" && <Award size={12} />}
+                      {value === "important" && <Star size={12} />}
+                      {value === "regular" && <User size={12} />}
+                      {value === "new" && <Activity size={12} />}
+                      {value === "follow_up" && <Bell size={12} />}
+                      {value === "complaints" && <AlertTriangle size={12} />}
+                      {value === "inactive" && <Ban size={12} />}
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           {(c as any).email && (
             <span className="inline-flex items-center gap-1.5 bg-slate-800/80 text-slate-400 text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-slate-700/50">
               <Mail size={11} />
               {(c as any).email}
             </span>
           )}
-          {(profile.total_orders || 0) > 0 && (
-            <span className="inline-flex items-center gap-1.5 bg-slate-800/80 text-slate-400 text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-slate-700/50">
-              <Package size={11} />
-              {profile.total_orders} طلب
-            </span>
-          )}
         </div>
       </div>
 
-      {/* Customer Classification & Experience Card */}
+      {/* ─── Customer Analytics Card (Merged Metrics + Dates + Favorite) ─── */}
       <div className="bg-gradient-to-br from-slate-800/50 to-slate-800/20 rounded-2xl p-4 border border-slate-700/30">
-        <h4 className="text-[10px] font-black text-slate-500 mb-3 uppercase tracking-widest flex items-center gap-1.5">
-          <Activity size={12} /> تصنيف العميل وتجربته
-        </h4>
+        <div className="flex items-center gap-2 mb-3">
+          <Activity size={14} className="text-red-400" />
+          <h4 className="text-xs font-black text-slate-300">تحليلات العميل</h4>
+        </div>
 
+        {/* Main metrics grid */}
         <div className="grid grid-cols-2 gap-2 mb-3">
+          {/* Avg Order Value */}
           <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-700/30">
             <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold mb-1">
               <TrendingUp size={12} />
+              متوسط قيمة الطلب
+            </div>
+            <div className="text-lg font-black text-white">
+              {profile.avg_order_value ? profile.avg_order_value.toFixed(2) : "0.00"}
+              <span className="text-xs text-slate-500 mr-1 font-bold">₪</span>
+            </div>
+          </div>
+          {/* Monthly Orders */}
+          <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-700/30">
+            <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold mb-1">
+              <ShoppingCart size={12} />
               معدل الطلبات الشهري
             </div>
             <div className="text-lg font-black text-white">
@@ -416,57 +467,36 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
               <span className="text-xs text-slate-500 mr-1 font-bold">/ شهر</span>
             </div>
           </div>
-          <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-700/30">
-            <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold mb-1">
-              <Award size={12} />
-              متوسط قيمة الطلب
+        </div>
+
+        {/* Dates Row */}
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <div className="bg-slate-900/40 rounded-lg px-3 py-2 border border-slate-700/20">
+            <div className="flex items-center gap-1 text-[10px] text-slate-500">
+              <Calendar size={10} />
+              أول طلب
             </div>
-            <div className="text-lg font-black text-white">
-              {(profile.avg_order_value || 0).toFixed(2)}
-              <span className="text-xs text-slate-500 mr-1 font-bold">₪</span>
+            <p className="text-xs font-bold text-white mt-0.5">
+              {profile.first_order_at ? new Date(profile.first_order_at).toLocaleDateString("ar-SA") : "—"}
+            </p>
+          </div>
+          <div className="bg-slate-900/40 rounded-lg px-3 py-2 border border-slate-700/20">
+            <div className="flex items-center gap-1 text-[10px] text-slate-500">
+              <Clock size={10} />
+              آخر طلب
             </div>
+            <p className="text-xs font-bold text-white mt-0.5">
+              {profile.last_order_at ? new Date(profile.last_order_at).toLocaleDateString("ar-SA") : "—"}
+            </p>
           </div>
         </div>
 
-        {/* Last Order Info - Source & Branch */}
-        {lastOrder && (
-          <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-700/30 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] text-slate-400 font-bold">آخر طلب:</span>
-              <span className="text-xs font-bold text-white">{lastOrder.order_number}</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {sourceBadge && (
-                <span className={`text-[10px] font-bold px-2 py-1 rounded-full border bg-gradient-to-l ${sourceBadge.color} inline-flex items-center gap-1`}>
-                  {sourceBadge.icon}
-                  {sourceBadge.label}
-                </span>
-              )}
-              {lastOrder.branch && (
-                <span className="text-[10px] font-bold px-2 py-1 rounded-full border border-cyan-500/30 bg-gradient-to-l from-cyan-500/20 to-cyan-500/5 text-cyan-300 inline-flex items-center gap-1">
-                  <Building2 size={11} />
-                  {lastOrder.branch.name}
-                </span>
-              )}
-              <span className="text-[10px] text-slate-400 px-2 py-1 bg-slate-800/50 rounded-full border border-slate-700/50">
-                {new Date(lastOrder.created_at).toLocaleDateString("ar-SA")}
-              </span>
-            </div>
-            {lastOrder.total !== undefined && (
-              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
-                <span className="text-slate-500 font-normal">الإجمالي:</span>
-                {lastOrder.total.toFixed(2)} ₪
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Favorite Item */}
         {favorite && (
-          <div className="mt-2 bg-gradient-to-l from-emerald-500/10 to-emerald-500/5 rounded-xl p-3 border border-emerald-500/20">
+          <div className="bg-gradient-to-l from-emerald-500/10 to-emerald-500/5 rounded-xl p-3 border border-emerald-500/20">
             <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-300 mb-1">
               <Heart size={12} />
-              الطلب المفضل
+              الصنف المفضل
             </div>
             <p className="text-sm font-black text-white">{favorite.item_name_ar || favorite.item_name}</p>
             <p className="text-[10px] text-emerald-200/60 mt-0.5">طُلب {favorite.order_count} مرات · {favorite.total_quantity} قطعة</p>
@@ -474,71 +504,142 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
         )}
       </div>
 
-      {/* Performance Indicators */}
-      <div>
-        <h4 className="text-[10px] font-black text-slate-500 mb-2 uppercase tracking-widest flex items-center gap-1.5">
-          <AlertCircle size={12} /> مؤشرات الأداء والتنبيهات
-        </h4>
-        <div className="grid grid-cols-3 gap-2">
-          <StatCard label="شكاوى مفتوحة" value={String(profile.open_complaints_count || 0)} icon={<AlertTriangle size={14} />} highlight={(profile.open_complaints_count || 0) > 0} />
-          <StatCard label="طلبات ملغاة" value={String(profile.cancelled_orders_count || 0)} icon={<Ban size={14} />} highlight={(profile.cancelled_orders_count || 0) > 0} />
-          <StatCard label="نقاط الولاء" value={String(profile.loyalty_points ?? c.loyalty_points ?? 0)} icon={<Star size={14} />} />
-        </div>
-      </div>
+      {/* ─── Last Order Details Card ─── */}
+      {lastOrder && (
+        <div className="bg-gradient-to-br from-slate-800/50 to-slate-800/20 rounded-2xl p-4 border border-slate-700/30">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Package size={14} className="text-cyan-400" />
+              <h4 className="text-xs font-black text-slate-300">آخر طلب</h4>
+            </div>
+            <OrderStatusBadge status={lastOrder.status} />
+          </div>
 
-      {/* Warning Notes */}
-      {(c.notes || profile.latest_note || (profile.open_complaints_count || 0) > 0) && (
-        <div>
-          <h4 className="text-[10px] font-black text-slate-500 mb-2 uppercase tracking-widest flex items-center gap-1.5">
-            <MessageSquare size={12} /> تنبيهات هامة
-          </h4>
-          <div className="space-y-2">
-            {c.notes && (
-              <div className="bg-gradient-to-l from-amber-500/10 to-amber-500/5 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-400">
-                <MessageSquare size={12} className="inline ml-1" />
-                {c.notes}
+          {/* Order Header */}
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-black text-white">{lastOrder.order_number}</span>
+            <span className="text-lg font-black text-emerald-400">{lastOrder.total.toFixed(2)} ₪</span>
+          </div>
+
+          {/* Order Details Grid */}
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <div className="bg-slate-900/40 rounded-lg px-3 py-2 border border-slate-700/20">
+              <div className="text-[10px] text-slate-500">مصدر الطلب</div>
+              <div className="mt-0.5">
+                {sourceBadge && (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border bg-gradient-to-l ${sourceBadge.color} inline-flex items-center gap-1`}>
+                    {sourceBadge.icon}
+                    {sourceBadge.label}
+                  </span>
+                )}
               </div>
-            )}
-            {profile.latest_note && (
-              <div className="bg-gradient-to-l from-amber-500/10 to-amber-500/5 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-400">
-                <MessageSquare size={12} className="inline ml-1" />
-                آخر ملاحظة: {profile.latest_note}
+            </div>
+            <div className="bg-slate-900/40 rounded-lg px-3 py-2 border border-slate-700/20">
+              <div className="text-[10px] text-slate-500">الفرع</div>
+              <div className="mt-0.5 text-xs font-bold text-white flex items-center gap-1">
+                <Building2 size={11} className="text-cyan-400" />
+                {lastOrder.branch?.name || "—"}
               </div>
-            )}
-            {(profile.open_complaints_count || 0) > 0 && (
-              <div className="bg-gradient-to-l from-red-500/10 to-red-500/5 border border-red-500/20 rounded-xl p-3 text-xs text-red-400 flex items-start gap-2">
-                <AlertCircle size={14} className="mt-0.5 shrink-0" />
-                يحتاج اهتمام — هذا العميل لديه {profile.open_complaints_count} شكوى مفتوحة
+            </div>
+            <div className="bg-slate-900/40 rounded-lg px-3 py-2 border border-slate-700/20">
+              <div className="text-[10px] text-slate-500">التاريخ</div>
+              <div className="mt-0.5 text-xs font-bold text-white">
+                {new Date(lastOrder.created_at).toLocaleDateString("ar-SA")}
               </div>
+            </div>
+            <div className="bg-slate-900/40 rounded-lg px-3 py-2 border border-slate-700/20">
+              <div className="text-[10px] text-slate-500">وقت الطلب</div>
+              <div className="mt-0.5 text-xs font-bold text-white">
+                {new Date(lastOrder.created_at).toLocaleTimeString("ar-SA", { hour: '2-digit', minute: '2-digit' })}
+              </div>
+            </div>
+          </div>
+
+          {/* Experience Status - يظهر إذا تم تقييم التجربة أو لا */}
+          <div className="bg-slate-900/60 rounded-lg px-3 py-2 border border-slate-700/30 mb-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-slate-500 font-bold">تقييم تجربة العميل</span>
+              <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 inline-flex items-center gap-1">
+                <Flag size={10} />
+                لم يتم التقييم
+              </span>
+            </div>
+          </div>
+
+          {/* Order Items Preview */}
+          <OrderItemsPreview orderId={lastOrder.id} />
+
+          {lastOrder.note && (
+            <div className="mt-2 bg-gradient-to-l from-amber-500/10 to-amber-500/5 rounded-lg px-3 py-2 border border-amber-500/20">
+              <p className="text-[11px] text-amber-400"><MessageSquare size={11} className="inline ml-1" />{lastOrder.note}</p>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="mt-3 flex gap-2">
+            <button onClick={() => onSelectOrder(lastOrder.id)} className="flex-1 rounded-lg bg-slate-700 hover:bg-slate-600 px-3 py-2 text-[11px] font-bold text-slate-200 transition-colors">
+              عرض التفاصيل كاملة
+            </button>
+            {onRepeatOrder && (
+              <RepeatOrderButton orderId={lastOrder.id} onRepeatOrder={onRepeatOrder} />
             )}
           </div>
         </div>
       )}
 
-      {/* Timeline Dates */}
-      <div className="bg-gradient-to-br from-slate-800/40 to-slate-800/20 rounded-xl p-3 border border-slate-700/30">
-        <div className="grid grid-cols-2 gap-3 text-[11px] text-slate-400">
-          {profile.first_order_at && (
-            <div className="flex items-center gap-1.5">
-              <Calendar size={11} className="text-slate-500 shrink-0" />
-              <span>أول طلب: <span className="text-white font-bold">{new Date(profile.first_order_at).toLocaleDateString("ar-SA")}</span></span>
-            </div>
-          )}
-          {profile.last_order_at && (
-            <div className="flex items-center gap-1.5">
-              <Clock size={11} className="text-slate-500 shrink-0" />
-              <span>آخر طلب: <span className="text-white font-bold">{new Date(profile.last_order_at).toLocaleDateString("ar-SA")}</span></span>
-            </div>
-          )}
+      {/* ─── Performance & Alerts ─── */}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <AlertCircle size={14} className="text-red-400" />
+          <h4 className="text-xs font-black text-slate-300">مؤشرات الأداء والتنبيهات</h4>
         </div>
+        <div className="grid grid-cols-3 gap-2 mb-2">
+          <StatCard label="شكاوى مفتوحة" value={String(profile.open_complaints_count || 0)} icon={<AlertTriangle size={14} />} highlight={(profile.open_complaints_count || 0) > 0} />
+          <StatCard label="طلبات ملغاة" value={String(profile.cancelled_orders_count || 0)} icon={<Ban size={14} />} highlight={(profile.cancelled_orders_count || 0) > 0} />
+          <StatCard label="نقاط الولاء" value={String(profile.loyalty_points ?? c.loyalty_points ?? 0)} icon={<Star size={14} />} />
+        </div>
+
+        {/* Delivery Delay Alert - مثال */}
+        {daysSinceLastOrder !== null && daysSinceLastOrder > 14 && (
+          <div className="bg-gradient-to-l from-amber-500/10 to-amber-500/5 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-400 flex items-start gap-2 mb-2">
+            <Timer size={14} className="mt-0.5 shrink-0" />
+            <span>لم يطلب العميل منذ <strong>{daysSinceLastOrder} يوماً</strong> — قد يكون بحاجة إلى عرض إعادة تنشيط أو متابعة</span>
+          </div>
+        )}
+
+        {/* Warning Notes */}
+        {(c.notes || profile.latest_note) && (
+          <div className="space-y-2 mb-2">
+            {c.notes && (
+              <div className="bg-gradient-to-l from-amber-500/10 to-amber-500/5 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-400 flex items-start gap-2">
+                <MessageSquare size={12} className="mt-0.5 shrink-0" />
+                {c.notes}
+              </div>
+            )}
+            {profile.latest_note && (
+              <div className="bg-gradient-to-l from-amber-500/10 to-amber-500/5 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-400 flex items-start gap-2">
+                <MessageSquare size={12} className="mt-0.5 shrink-0" />
+                آخر ملاحظة: {profile.latest_note}
+              </div>
+            )}
+          </div>
+        )}
+
+        {(profile.open_complaints_count || 0) > 0 && (
+          <div className="bg-gradient-to-l from-red-500/10 to-red-500/5 border border-red-500/20 rounded-xl p-3 text-xs text-red-400 flex items-start gap-2">
+            <AlertCircle size={14} className="mt-0.5 shrink-0" />
+            يحتاج اهتمام — هذا العميل لديه {profile.open_complaints_count} شكوى مفتوحة
+          </div>
+        )}
       </div>
 
-      {/* Recent Orders */}
+      {/* ─── Enhanced Recent Orders List ─── */}
       <section>
         <div className="mb-2 flex items-center justify-between">
-          <h4 className="text-xs font-black text-slate-300 flex items-center gap-1.5">
-            <ShoppingCart size={13} /> آخر الطلبات
-          </h4>
+          <div className="flex items-center gap-2">
+            <ShoppingCart size={14} className="text-slate-400" />
+            <h4 className="text-xs font-black text-slate-300">آخر الطلبات</h4>
+          </div>
           <span className="text-[10px] text-slate-500">آخر 5 طلبات</span>
         </div>
         <OrdersTab orders={orders.slice(0, 5)} onSelectOrder={onSelectOrder} onRepeatOrder={onRepeatOrder} />
@@ -547,61 +648,165 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
   );
 };
 
+/* ─── Order Items Preview Component ─── */
+const OrderItemsPreview: React.FC<{ orderId: number }> = ({ orderId }) => {
+  const [items, setItems] = useState<{ name: string; qty: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    callCenterService.getOrderDetails(orderId)
+      .then(r => {
+        if (!cancelled) {
+          setItems(r.data.items.map(item => ({
+            name: item.item_name_ar || item.item_name || "صنف",
+            qty: item.quantity,
+          })));
+        }
+      })
+      .catch(() => { })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [orderId]);
+
+  if (loading) return <div className="h-8 bg-slate-900/40 rounded-lg animate-pulse" />;
+  if (items.length === 0) return null;
+
+  return (
+    <div className="bg-slate-900/60 rounded-lg border border-slate-700/30 divide-y divide-slate-800/50">
+      {items.slice(0, 3).map((item, i) => (
+        <div key={i} className="flex items-center justify-between px-3 py-1.5">
+          <span className="text-[11px] text-slate-300">{item.name}</span>
+          <span className="text-[10px] text-slate-500 font-bold">× {item.qty}</span>
+        </div>
+      ))}
+      {items.length > 3 && (
+        <div className="px-3 py-1 text-[10px] text-slate-600 text-center">
+          +{items.length - 3} أصناف أخرى
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ─── Repeat Order Button ─── */
+const RepeatOrderButton: React.FC<{ orderId: number; onRepeatOrder: (order: OrderDetail) => void }> = ({ orderId, onRepeatOrder }) => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+
+  const handleRepeat = async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const response = await callCenterService.getOrderDetails(orderId);
+      onRepeatOrder(response.data);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleRepeat}
+      disabled={loading}
+      className="flex-1 rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 px-3 py-2 text-[11px] font-bold text-white transition-all active:scale-95 disabled:opacity-50 shadow-md shadow-emerald-900/30"
+    >
+      {loading ? <Loader2 size={12} className="inline animate-spin ml-1" /> : <Copy size={12} className="inline ml-1" />}
+      {loading ? "جاري التحميل..." : "تكرار الطلب"}
+    </button>
+  );
+};
+
 /* ─── Orders Tab ─── */
 const OrdersTab: React.FC<{ orders: CustomerOrder[]; onSelectOrder: (id: number) => void; onRepeatOrder?: (order: OrderDetail) => void }> = ({ orders, onSelectOrder, onRepeatOrder }) => {
-  const [repeatId, setRepeatId] = useState<number | null>(null);
-  const [repeatErrorId, setRepeatErrorId] = useState<number | null>(null);
-  const [experienceOrder, setExperienceOrder] = useState<CustomerOrder | null>(null);
   const [orderDetails, setOrderDetails] = useState<Record<number, OrderDetail>>({});
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [experienceOrder, setExperienceOrder] = useState<CustomerOrder | null>(null);
+
   useEffect(() => {
     let active = true;
     Promise.all(orders.slice(0, 5).map(order => callCenterService.getOrderDetails(order.id).then(result => result.data).catch(() => null)))
       .then(details => { if (active) setOrderDetails(Object.fromEntries(details.filter((detail): detail is OrderDetail => Boolean(detail)).map(detail => [detail.id, detail]))); });
     return () => { active = false; };
   }, [orders]);
-  const repeat = async (id: number) => {
-    if (!onRepeatOrder) return;
-    setRepeatId(id); setRepeatErrorId(null);
-    try { const response = await callCenterService.getOrderDetails(id); onRepeatOrder(response.data); }
-    catch { setRepeatErrorId(id); }
-    finally { setRepeatId(null); }
-  };
+
   if (orders.length === 0) return <EmptyState icon={ShoppingCart} text="لا توجد طلبات سابقة" />;
   return (
     <div className="space-y-2">
-      {orders.slice(0, 5).map((o) => (
-        <div key={o.id} className="w-full bg-gradient-to-br from-slate-800/50 to-slate-800/20 rounded-xl p-3 text-right hover:from-slate-800/70 hover:to-slate-800/30 transition-all border border-slate-700/30">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-sm font-bold text-white">{o.order_number}</span>
-            <OrderStatusBadge status={o.status} />
-          </div>
-          <div className="flex items-center gap-2 text-[11px] text-slate-400 flex-wrap">
-            <span className="flex items-center gap-1"><Calendar size={10} /> {new Date(o.created_at).toLocaleDateString("ar-SA")}</span>
-            <span className="flex items-center gap-1">{orderTypeLabel(o.order_type)}</span>
-            <span className="text-white font-bold">{o.total.toFixed(2)} ₪</span>
-            {o.branch && <span className="flex items-center gap-1"><Building2 size={10} /> {o.branch.name}</span>}
-          </div>
-          {orderDetails[o.id]?.items.length ? <div className="mt-2 max-h-20 space-y-1 overflow-y-auto rounded-lg border border-slate-700/70 bg-slate-950/50 p-2" aria-label={`أصناف الطلب ${o.order_number}`}>
-            {orderDetails[o.id].items.map(item => <div key={item.id} className="flex items-start justify-between gap-2 text-[11px]"><span className="text-slate-200">{item.item_name_ar || item.item_name}</span><span className="shrink-0 text-slate-500">× {item.quantity}</span></div>)}
-          </div> : null}
-          {o.note && <p className="mt-2 line-clamp-2 text-[11px] text-amber-200/80">ملاحظة: {o.note}</p>}
-          <div className="mt-3 flex gap-2 border-t border-white/5 pt-2">
-            <button onClick={() => onSelectOrder(o.id)} className="flex-1 rounded-lg bg-slate-700 px-2 py-1.5 text-[11px] font-bold text-slate-200 hover:bg-slate-600 transition-colors">عرض التفاصيل</button>
-            {onRepeatOrder && (
-              <button
-                onClick={() => repeat(o.id)}
-                disabled={repeatId !== null}
-                className="flex-1 rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-700 px-2 py-1.5 text-[11px] font-bold text-white hover:from-emerald-500 hover:to-emerald-600 transition-all active:scale-95 shadow-lg shadow-emerald-900/30"
-              >
-                {repeatId === o.id ? <Loader2 size={12} className="ml-1 inline animate-spin" /> : <Copy size={12} className="ml-1 inline" />}
-                {repeatId === o.id ? "جاري تحميل الطلب..." : "اعتماد وتكرار الطلب"}
-              </button>
+      {orders.slice(0, 5).map((o) => {
+        const detail = orderDetails[o.id];
+        return (
+          <div key={o.id} className="bg-gradient-to-br from-slate-800/50 to-slate-800/20 rounded-xl border border-slate-700/30 overflow-hidden transition-all hover:border-slate-700/50">
+            {/* Order Header - Always Visible */}
+            <button
+              onClick={() => setExpandedId(expandedId === o.id ? null : o.id)}
+              className="w-full text-right p-3 flex items-center justify-between gap-2"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center shrink-0">
+                  <Package size={13} className="text-slate-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-white truncate">{o.order_number}</p>
+                  <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
+                    <span>{new Date(o.created_at).toLocaleDateString("ar-SA")}</span>
+                    <span>{o.branch?.name}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-sm font-black text-white">{o.total.toFixed(2)}</span>
+                <OrderStatusBadge status={o.status} />
+                {expandedId === o.id ? <ChevronUp size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
+              </div>
+            </button>
+
+            {/* Expanded Content */}
+            {expandedId === o.id && (
+              <div className="px-3 pb-3 space-y-2">
+                <div className="flex items-center gap-2 text-[11px] text-slate-400 flex-wrap">
+                  <span className="flex items-center gap-1"><Calendar size={10} /> {new Date(o.created_at).toLocaleDateString("ar-SA")}</span>
+                  <span className="flex items-center gap-1">{orderTypeLabel(o.order_type)}</span>
+                  {o.branch && <span className="flex items-center gap-1"><Building2 size={10} /> {o.branch.name}</span>}
+                </div>
+
+                {detail?.items && detail.items.length > 0 && (
+                  <div className="bg-slate-900/50 rounded-lg border border-slate-700/30 divide-y divide-slate-800/50">
+                    {detail.items.map(item => (
+                      <div key={item.id} className="flex items-center justify-between px-3 py-1.5">
+                        <span className="text-[11px] text-slate-200">{item.item_name_ar || item.item_name}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-slate-500">× {item.quantity}</span>
+                          <span className="text-[11px] font-bold text-slate-300">{item.total.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {o.note && (
+                  <p className="text-[11px] text-amber-200/80 bg-amber-500/5 rounded-lg px-3 py-2">
+                    <MessageSquare size={11} className="inline ml-1" />
+                    {o.note}
+                  </p>
+                )}
+
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => onSelectOrder(o.id)} className="flex-1 rounded-lg bg-slate-700 hover:bg-slate-600 px-3 py-2 text-[11px] font-bold text-slate-200 transition-colors">
+                    عرض التفاصيل كاملة
+                  </button>
+                  {onRepeatOrder && <RepeatOrderButton orderId={o.id} onRepeatOrder={onRepeatOrder} />}
+                  <button onClick={() => setExperienceOrder(o)} className="rounded-lg border border-slate-600 hover:bg-slate-700 px-3 py-2 text-[11px] font-bold text-slate-200 transition-colors">
+                    تجربة العميل
+                  </button>
+                </div>
+              </div>
             )}
-            <button onClick={() => setExperienceOrder(o)} className="rounded-lg border border-slate-600 px-2 py-1.5 text-[11px] font-bold text-slate-200 hover:bg-slate-700 transition-colors">تجربة العميل</button>
           </div>
-          {repeatErrorId === o.id && <p role="alert" className="mt-2 text-[11px] font-bold text-red-400">تعذر تحميل تفاصيل الطلب. حاول مرة أخرى.</p>}
-        </div>
-      ))}
+        );
+      })}
       {experienceOrder && <ExperienceModal order={experienceOrder} onClose={() => setExperienceOrder(null)} />}
     </div>
   );
@@ -695,17 +900,13 @@ const AddressesTab: React.FC<{ customerId: number; onAddressSelect?: (addr: Cust
   const selectAddress = async (address: CustomerAddress) => {
     setSelectingId(address.id);
     setError("");
-    try {
-      await callCenterService.markAddressUsed(address.id);
-    } catch (requestError: any) {
+    try { await callCenterService.markAddressUsed(address.id); }
+    catch (requestError: any) {
       const message = String(requestError?.response?.data?.message || "");
       if (!message.includes("CustomerAddress") && !message.includes("does not exist")) {
         setError(message || "تعذر تسجيل استخدام العنوان، وتم اعتماده للطلب الحالي");
       }
-    } finally {
-      onAddressSelect?.(address);
-      setSelectingId(null);
-    }
+    } finally { onAddressSelect?.(address); setSelectingId(null); }
   };
   if (loading) return <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-red-500" /></div>;
   return (
@@ -765,10 +966,7 @@ const OccasionsTab: React.FC<{ customerId: number }> = ({ customerId }) => {
   const handleCreate = async () => {
     if (!formData.title || !formData.date) return;
     await callCenterService.createCustomerOccasion(customerId, {
-      occasion_type: formData.occasion_type,
-      title: formData.title,
-      date: formData.date,
-      notes: formData.notes || undefined,
+      occasion_type: formData.occasion_type, title: formData.title, date: formData.date, notes: formData.notes || undefined,
     });
     setShowForm(false);
     setFormData({ occasion_type: "birthday", title: "", date: "", notes: "" });
@@ -834,7 +1032,7 @@ const OccasionsTab: React.FC<{ customerId: number }> = ({ customerId }) => {
   );
 };
 
-/* ─── Notes Tab ─── */
+/* ─── Loyalty Tab ─── */
 const LoyaltyTab: React.FC<{ points: number }> = ({ points }) => {
   return (
     <div className="space-y-4">
@@ -846,19 +1044,14 @@ const LoyaltyTab: React.FC<{ points: number }> = ({ points }) => {
           </div>
           <Star size={30} className="text-amber-300" />
         </div>
-        <button
-          type="button"
-          disabled
-          className="mt-4 w-full cursor-not-allowed rounded-xl bg-slate-700 py-2.5 text-xs font-black text-slate-400"
-        >
-          خصم النقاط غير متاح حتى ضبط سياسة التحويل
-        </button>
-        <div className="mt-3 rounded-lg border border-amber-400/30 bg-slate-950/40 p-2.5 text-[11px] font-bold leading-5 text-amber-100"><AlertTriangle size={13} className="ml-1 inline" /> لا توجد حالياً سياسة تحويل نقاط معتمدة من الخادم، لذلك لن يُنشأ خصم ولن تُخصم نقاط. شحن المحفظة وسجل الاستبدال يحتاجان تفعيلهما من الخادم.</div>
+        <button type="button" disabled className="mt-4 w-full cursor-not-allowed rounded-xl bg-slate-700 py-2.5 text-xs font-black text-slate-400">خصم النقاط غير متاح حتى ضبط سياسة التحويل</button>
+        <div className="mt-3 rounded-lg border border-amber-400/30 bg-slate-950/40 p-2.5 text-[11px] font-bold leading-5 text-amber-100"><AlertTriangle size={13} className="ml-1 inline" /> لا توجد حالياً سياسة تحويل نقاط معتمدة من الخادم، لذلك لن يُنشأ خصم ولن تُخصم نقاط.</div>
       </section>
     </div>
   );
 };
 
+/* ─── Notes Tab ─── */
 const NotesTab: React.FC<{ customerId: number }> = ({ customerId }) => {
   const [notes, setNotes] = useState<CustomerNote[]>([]);
   const [loading, setLoading] = useState(true);
@@ -880,7 +1073,6 @@ const NotesTab: React.FC<{ customerId: number }> = ({ customerId }) => {
   };
 
   if (loading) return <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-red-500" /></div>;
-
   const typeLabel = (t: string) => ({ general: "عامة", delivery: "توصيل", warning: "تحذير", preference: "تفضيل", service: "خدمة عملاء", sensitive: "حساسة" }[t] || t);
   const importanceColor = (i: string) => i === "urgent" ? "text-red-400 bg-red-500/10" : i === "high" ? "text-amber-400 bg-amber-500/10" : "text-slate-400 bg-slate-500/10";
 
@@ -904,22 +1096,7 @@ const NotesTab: React.FC<{ customerId: number }> = ({ customerId }) => {
       {showForm ? (
         <div className="bg-slate-800/50 rounded-xl p-3 space-y-2">
           <textarea value={formData.content} onChange={e => setFormData(p => ({ ...p, content: e.target.value }))} placeholder="نص الملاحظة..." rows={3} className="w-full bg-slate-700 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 resize-none" />
-          <div className="flex gap-2">
-            <select value={formData.type} onChange={e => setFormData(p => ({ ...p, type: e.target.value }))} className="flex-1 bg-slate-700 border border-white/10 rounded-lg px-2 py-2 text-xs text-white">
-              <option value="general">عامة</option>
-              <option value="delivery">توصيل</option>
-              <option value="warning">تحذير</option>
-              <option value="preference">تفضيل</option>
-              <option value="service">خدمة عملاء</option>
-              <option value="sensitive">حساسة</option>
-            </select>
-            <select value={formData.importance} onChange={e => setFormData(p => ({ ...p, importance: e.target.value }))} className="flex-1 bg-slate-700 border border-white/10 rounded-lg px-2 py-2 text-xs text-white">
-              <option value="low">منخفضة</option>
-              <option value="normal">عادية</option>
-              <option value="high">مهمة</option>
-              <option value="urgent">عاجلة</option>
-            </select>
-          </div>
+          <div className="flex gap-2">{["عامة", "توصيل", "تحذير", "تفضيل"].map((t, i) => <button key={i} onClick={() => setFormData(p => ({ ...p, type: ["general", "delivery", "warning", "preference"][i] }))} className={`flex-1 rounded-lg py-2 text-xs font-bold ${formData.type === ["general", "delivery", "warning", "preference"][i] ? "bg-red-600 text-white" : "bg-slate-700 text-slate-300"}`}>{t}</button>)}</div>
           <label className="flex items-center gap-2 text-xs text-slate-400">
             <input type="checkbox" checked={formData.show_during_order} onChange={e => setFormData(p => ({ ...p, show_during_order: e.target.checked }))} className="rounded bg-slate-700 border-white/10" />
             إظهار أثناء إنشاء الطلب
@@ -949,11 +1126,7 @@ const OrderDetailsDrawer: React.FC<{ orderId: number; onBack: () => void; onClos
   const handleAdoptOrder = async () => {
     if (!order || !onReOrder) return;
     setAdopting(true);
-    try {
-      onReOrder(order);
-    } finally {
-      setAdopting(false);
-    }
+    try { onReOrder(order); } finally { setAdopting(false); }
   };
 
   return (
@@ -1032,9 +1205,7 @@ const ComplaintDetailDrawer: React.FC<{ complaintId: number; onBack: () => void;
       setFollowupText("");
       const res = await callCenterService.getComplaintTimeline(complaintId);
       setTimeline(res.data);
-    } catch { } finally {
-      setAddingFollowup(false);
-    }
+    } catch { } finally { setAddingFollowup(false); }
   };
 
   return (
@@ -1092,7 +1263,7 @@ const ComplaintDetailDrawer: React.FC<{ complaintId: number; onBack: () => void;
   );
 };
 
-/* ─── Missing Wallet Icon (needed by FinanceTab) ─── */
+/* ─── Wallet Icon ─── */
 const Wallet = ({ size }: { size?: number }) => (
   <svg width={size || 14} height={size || 14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="2" y="5" width="20" height="14" rx="2" />
