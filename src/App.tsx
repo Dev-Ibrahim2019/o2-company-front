@@ -35,6 +35,15 @@ import { CrmDirectoryPage } from "./components/CallCenter/CrmDirectoryPage";
 import { ComplaintsManagement } from "./components/CallCenter/ComplaintsManagement";
 import { CallCenterEmployees } from "./components/CallCenter/CallCenterEmployees";
 import { OccasionsPage as CallCenterOccasionsPage } from "./components/CallCenter/OccasionsPage";
+
+// ── Call Center PBX Module ──
+import { LiveCallsDashboard } from "./components/CallCenter/Pbx/LiveCallsDashboard";
+import { CallHistoryPage } from "./components/CallCenter/Pbx/CallHistoryPage";
+import { CallRecordingsPage } from "./components/CallCenter/Pbx/CallRecordingsPage";
+import { QueueDashboard } from "./components/CallCenter/Pbx/QueueDashboard";
+import { AgentPerformancePage } from "./components/CallCenter/Pbx/AgentPerformancePage";
+import { AnalyticsDashboard } from "./components/CallCenter/Pbx/AnalyticsDashboard";
+import { CallCenterSettings } from "./components/CallCenter/Pbx/CallCenterSettings";
 import { FinancialInvoiceForm } from "./components/financial/FinancialInvoiceForm";
 import { SalesInvoiceListPage, SalesInvoiceFormPage } from "./components/sales-invoices";
 import { ToastContainer } from "./components/shared/Toast";
@@ -276,6 +285,15 @@ function AppRoutes() {
               <Route path="call-center/complaints" element={<ComplaintsManagement />} />
               <Route path="call-center/employees" element={<CallCenterEmployees />} />
               <Route path="call-center/occasions" element={<CallCenterOccasionsPage />} />
+
+              {/* ── Call Center PBX Module ── */}
+              <Route path="call-center/pbx/live" element={<LiveCallsDashboard />} />
+              <Route path="call-center/pbx/cdr" element={<CallHistoryPage />} />
+              <Route path="call-center/pbx/recordings" element={<CallRecordingsPage />} />
+              <Route path="call-center/pbx/queues" element={<QueueDashboard />} />
+              <Route path="call-center/pbx/agents" element={<AgentPerformancePage />} />
+              <Route path="call-center/pbx/analytics" element={<AnalyticsDashboard />} />
+              <Route path="call-center/pbx/settings" element={<CallCenterSettings />} />
             </Route>
           </Route>
         </Route>

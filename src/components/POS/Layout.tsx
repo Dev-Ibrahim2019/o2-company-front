@@ -28,6 +28,12 @@ import {
   Phone,
   Calendar,
   PackageCheck,
+  Radio,
+  Clock as ClockIcon,
+  Headphones,
+  BarChart3,
+  Settings as SettingsIcon,
+  VoicemailIcon,
 } from "lucide-react";
 
 export const POSLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
@@ -106,6 +112,18 @@ export const POSLayout: React.FC<{ children?: React.ReactNode }> = ({ children }
               <SidebarLink to="/pos/call-center/employees" icon={User} label="إدارة الموظفين" permission={PERMISSIONS.ACCESS_CALL_CENTER} />
               <SidebarLink to="/pos/call-center/complaints" icon={AlertTriangle} label="الشكاوى والمتابعة" permission={PERMISSIONS.ACCESS_CALL_CENTER} />
               <SidebarLink to="/pos/call-center/occasions" icon={Calendar} label="المناسبات" permission={PERMISSIONS.ACCESS_CALL_CENTER} />
+
+              <div className="px-4 pt-3 pb-1">
+                <p className="text-[10px] font-black text-red-500 uppercase tracking-wider">☎ PBX - مركز الاتصال</p>
+              </div>
+              <SidebarLink to="/pos/call-center/pbx/live" icon={Radio} label="المكالمات المباشرة" permission={PERMISSIONS.ACCESS_CALL_CENTER} />
+              <SidebarLink to="/pos/call-center/pbx/cdr" icon={ClockIcon} label="سجل المكالمات" permission={PERMISSIONS.ACCESS_CALL_CENTER} />
+              <SidebarLink to="/pos/call-center/pbx/recordings" icon={VoicemailIcon} label="التسجيلات" permission={PERMISSIONS.ACCESS_CALL_CENTER} />
+              <SidebarLink to="/pos/call-center/pbx/queues" icon={Headphones} label="لوحة الطوابير" permission={PERMISSIONS.ACCESS_CALL_CENTER} />
+              <SidebarLink to="/pos/call-center/pbx/agents" icon={User} label="أداء الوكلاء" permission={PERMISSIONS.ACCESS_CALL_CENTER} />
+              <SidebarLink to="/pos/call-center/pbx/analytics" icon={BarChart3} label="التحليلات" permission={PERMISSIONS.ACCESS_CALL_CENTER} />
+              <SidebarLink to="/pos/call-center/pbx/settings" icon={SettingsIcon} label="إعدادات PBX" permission={PERMISSIONS.ACCESS_CALL_CENTER} />
+
               <SidebarLink to="/shift" icon={Clock} label="إدارة الشفت" />
             </>
           ) : (
