@@ -25,6 +25,7 @@ import { POSLayout } from "./components/POS/Layout";
 import { POS } from "./components/POS/pos";
 import AdminPOSWrapper from "./components/POS/AdminPOSWrapper";
 import { TablesView } from "./components/POS/Tables";
+import DeferredTables from "./components/POS/DeferredTables";
 import { OrdersView } from "./components/POS/Orders";
 import { ShiftView } from "./components/POS/Shift";
 import { HospitalityLayout } from "./components/Hospitality/Layout";
@@ -352,6 +353,7 @@ function AppRoutes() {
               <Route index element={<POS onViewTables={() => {}} />} />
               <Route path="orders" element={<OrdersView />} />
               <Route path="tables" element={<TablesView />} />
+              <Route path="deferred" element={<DeferredTables />} />
             </Route>
           </Route>
         </Route>

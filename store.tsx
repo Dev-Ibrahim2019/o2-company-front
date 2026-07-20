@@ -2040,9 +2040,9 @@ export const useApp = create<AppState>()(
                   const order = table.current_order;
                   updates[String(table.id)] = {
                     status: table.status || 'AVAILABLE',
-                    seated_at: table.seated_at,
-                    customer_count: table.customer_count,
-                    current_order_id: table.current_order_id,
+                    seatedAt: table.seated_at ? new Date(table.seated_at) : undefined,
+                    guestCount: table.customer_count || undefined,
+                    currentOrderId: table.current_order_id || undefined,
                     current_order: order ? {
                       id: order.id,
                       order_number: order.order_number,
@@ -2103,10 +2103,16 @@ export const useApp = create<AppState>()(
           set((state) => ({
             tables: state.tables.map((t) =>
               t.id === tableId
-                ? { ...t, status, ...(options?.currentOrderId ? { currentOrderId: options.currentOrderId } : {}), ...(options?.seatedAt ? { seatedAt: options.seatedAt } : {}) }
+                ? {
+                    ...t,
+                    status,
+                    currentOrderId: options && 'currentOrderId' in options ? options.currentOrderId : t.currentOrderId,
+                    seatedAt: options && 'seatedAt' in options ? options.seatedAt : t.seatedAt,
+                    guestCount: options && 'guestCount' in options ? options.guestCount : t.guestCount,
+                  }
                 : t
-          ),
-        }));
+            ),
+          }));
         } catch (error) {
           console.error('Failed to update table status:', error);
         }

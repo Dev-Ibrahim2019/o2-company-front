@@ -13,7 +13,8 @@ export type OrderStatus =
   | "ready"
   | "served"
   | "paid"
-  | "cancelled";
+  | "cancelled"
+  | "pending_payment";
 export type PaymentMethod = "cash" | "card" | "wallet" | "bank" | "account";
 export type DiscountType = "amount" | "percent";
 
@@ -877,6 +878,20 @@ export const orderService = {
 
   delete: async (id: number): Promise<void> => {
     await api.delete(`/orders/${id}`);
+  },
+
+  deferOrder: async (id: number): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${id}/defer`);
+    return data.data as OrderFromApi;
+  },
+
+  getDeferredOrders: async (branchId?: number): Promise<OrderFromApi[]> => {
+    const params: Record<string, any> = { status: "pending_payment" };
+    if (branchId && Number.isFinite(branchId)) {
+      params.branch_id = branchId;
+    }
+    const { data } = await api.get("/orders", { params });
+    return (data.data ?? data) as OrderFromApi[];
   },
 };
 

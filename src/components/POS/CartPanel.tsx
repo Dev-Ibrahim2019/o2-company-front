@@ -99,9 +99,12 @@ interface CartPanelProps {
   handlePrintInvoice?: () => void;
   isPrinting?: boolean;
   onCloseCart?: () => void;
+  onDeferOrder?: () => Promise<void>;
+  isDeferred?: boolean;
   allItems?: SearchableItem[];
   addToCart?: (item: any, opts?: { quantity?: number; price?: number }) => void;
   posInfo?: { id?: number; code?: string; name?: string; branch_id?: number } | null;
+  clearCart?: () => void;
 }
 
 export const CartPanel: React.FC<CartPanelProps> = ({
@@ -150,8 +153,11 @@ export const CartPanel: React.FC<CartPanelProps> = ({
   isPrinting = false,
   allItems = [],
   onCloseCart,
+  onDeferOrder,
+  isDeferred = false,
   addToCart,
   posInfo,
+  clearCart,
 }) => {
   // ── Inline Search State ──────────────────────────────────────────────────
   const [inlineSearch, setInlineSearch] = useState("");
@@ -323,12 +329,41 @@ export const CartPanel: React.FC<CartPanelProps> = ({
               />
             </div>
             <div className="flex items-end">
-              <button
-                onClick={onViewTables}
-                className="w-full py-1.5 bg-slate-800 text-slate-400 border border-white/5 rounded-lg font-black text-[8px] hover:bg-slate-700 hover:text-slate-100 transition-all"
-              >
-                الخريطة
-              </button>
+                {editingOrderId ? (
+                <button
+                  onClick={async () => {
+                    if (isDeferred) return; // الطلب مؤجل بالفعل
+                    if (onDeferOrder) {
+                      await onDeferOrder();
+                    } else {
+                      try {
+                        const { orderService } = await import("../../services/orderService");
+                        await orderService.deferOrder(Number(editingOrderId));
+                        clearCart?.();
+                        setPosError(null);
+                        setIsCartOpen(false);
+                      } catch (err: any) {
+                        setPosError(err?.response?.data?.message || "فشل تأجيل الطلب");
+                      }
+                    }
+                  }}
+                  disabled={isDeferred}
+                  className={`w-full py-1.5 rounded-lg font-black text-[8px] transition-all ${
+                    isDeferred
+                      ? "bg-slate-800 text-slate-500 border border-slate-600/30 cursor-not-allowed"
+                      : "bg-amber-600/20 text-amber-400 border border-amber-500/30 hover:bg-amber-600/30"
+                  }`}
+                >
+                  {isDeferred ? "مؤجلة" : "تأجيل"}
+                </button>
+              ) : (
+                <button
+                  onClick={onViewTables}
+                  className="w-full py-1.5 bg-slate-800 text-slate-400 border border-white/5 rounded-lg font-black text-[8px] hover:bg-slate-700 hover:text-slate-100 transition-all"
+                >
+                  الخريطة
+                </button>
+              )}
             </div>
           </div>
         )}

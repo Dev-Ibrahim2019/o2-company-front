@@ -190,12 +190,14 @@ const NAV = [
     label: "أجهزة الضيافة",
     permission: PERMISSIONS.MANAGE_HOSPITALITY_DEVICES,
   },
+  { to: "/admin/printers", icon: Printer, label: "أجهزة الطابعات"},
   {
     to: "/admin/dining-zones",
     icon: Grid3X3,
     label: "القاعات والطاولات",
     permission: PERMISSIONS.MANAGE_DINING_ZONES,
   },
+   { to: "/admin/dining-dashboard", icon: LayoutDashboard, label: "لوحة إدارة الطاولات", permission: PERMISSIONS.MANAGE_DINING_ZONES },
   {
     to: "/admin/pos",
     icon: Monitor,
@@ -587,12 +589,14 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({
             label="أجهزة الضيافة"
             permission={PERMISSIONS.MANAGE_HOSPITALITY_DEVICES}
           />
+          <SidebarLink to="/admin/printers" icon={Printer} label="أجهزة الطباعة" />
           <SidebarLink
             to="/admin/dining-zones"
             icon={Grid3X3}
             label="القاعات والطاولات"
             permission={PERMISSIONS.MANAGE_DINING_ZONES}
           />
+          <SidebarLink to="/admin/dining-dashboard" icon={LayoutDashboard} label="لوحة إدارة الطاولات" permission={PERMISSIONS.MANAGE_DINING_ZONES} />
           <SidebarLink
             to="/admin/pos"
             icon={Monitor}

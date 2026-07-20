@@ -616,11 +616,27 @@ const handleActivationSuccess = (activatedInfo: any) => {
     setIsCartOpen(draft.items.length > 0);
   };
 
+  // ── حالة الطلب الحالي (للتحقق مما إذا كان مؤجل) ──
+  const [currentOrderStatus, setCurrentOrderStatus] = useState<OrderStatus | null>(null);
+
   const applyApiOrderToCart = (order: OrderFromApi, table?: Table) => {
     loadCart(apiOrderToCartItems(order));
     setEditingApiOrderId(order.id);
+    // إذا كان الطلب مؤجل (pending_payment)، نبقي النوع dine_in مع إظهار رقم الطاولة
+    // حتى يفتح في واجهة "محلي" وليس "فوري"
+    const isDeferred = order.status === "pending_payment";
     setCartOrderType(toPosOrderType(order.order_type));
-    setManualTable(table?.table_number || order.table_number || table?.number.toString() || "");
+    if (isDeferred) {
+      // استخراج رقم الطاولة من الملاحظات إن وُجد (مخزن كـ [Table: A1])
+      const tableMatch = (order.note ?? "").match(/\[Table:\s*([^\]]+)\]/i);
+      const deferredTableNumber = tableMatch ? tableMatch[1].trim() : "";
+      // الطلب المؤجل: نخلي رقم الطاولة يظهر لكن بدون تحديد طاولة (لأنها محررة)
+      setManualTable(deferredTableNumber || order.table_number || table?.table_number || table?.number.toString() || "");
+      setSelectedTable(null);
+    } else {
+      setManualTable(table?.table_number || order.table_number || table?.number.toString() || "");
+    }
+    setCurrentOrderStatus(order.status);
     setInvoiceNote(order.note ?? "");
     setDiscountValue(Number(order.discount_value || 0));
     setDiscountType(order.discount_type === "percent" ? "PERCENT" : "AMOUNT");
@@ -996,16 +1012,32 @@ const handlePrintInvoice = async (orderId: number | string) => {
       .filter((p): p is NonNullable<typeof p> => p !== null) as any[];
     console.log('[POS] apiClosingPayments:', JSON.stringify(apiClosingPayments));
 
-    const activeTable =
-      cartOrderType === OrderType.DINE_IN ? resolveActiveDineInTable() : null;
-    if (cartOrderType === OrderType.DINE_IN && !activeTable) return;
+    // للطلبات المؤجلة (pending_payment): نتجاوز التحقق من الطاولة ونستخدم order_type = takeaway
+    const isDeferredOrder = currentOrderStatus === "pending_payment";
+    let activeTable: Table | null = null;
+    if (cartOrderType === OrderType.DINE_IN && !isDeferredOrder) {
+      activeTable = resolveActiveDineInTable();
+      if (!activeTable) return;
+    }
+
+    const effectiveOrderType = isDeferredOrder ? "takeaway" : orderType;
+
+    // للطلبات المؤجلة: نأكد الطلب أولاً (confirm) قبل إنشاء الفاتورة
+    if (isDeferredOrder && editingApiOrderId && isClosingOrder) {
+      try {
+        await orderService.confirm(editingApiOrderId);
+      } catch (confirmErr: any) {
+        console.warn("[deferred] confirm may have already been done:", confirmErr);
+      }
+    }
 
     const result = await submitOrderApi(
       {
         branch_id: branchId,
         cashier_id: currentUser?.id ? Number(currentUser.id) : undefined,
-        order_type: orderType,
+        order_type: effectiveOrderType,
         table_number: activeTable?.table_number || activeTable?.number.toString(),
+        dining_table_id: activeTable ? Number(activeTable.id) : undefined,
         customer_name: meta.name || undefined,
         customer_phone: meta.phone || undefined,
         note: meta.note || undefined,
@@ -1061,6 +1093,28 @@ const handlePrintInvoice = async (orderId: number | string) => {
   };
 
   // ── commonCartProps ───────────────────────────────────────────────────────
+  // دالة تأجيل الطلب من شاشة البيع — تقوم بتحديث حالة الطاولة محلياً
+  const handleDeferFromCart = async () => {
+    if (!editingApiOrderId) return;
+    try {
+      await orderService.deferOrder(editingApiOrderId);
+      // تحديث حالة الطاولة محلياً إلى AVAILABLE
+      if (selectedTable) {
+        updateTableStatus(selectedTable.id, TableStatus.AVAILABLE, {
+          currentOrderId: undefined,
+          seatedAt: undefined,
+          guestCount: undefined,
+        });
+        setSelectedTable(null);
+      }
+      clearActiveCart();
+      setIsCartOpen(false);
+      setPosError(null);
+    } catch (err: any) {
+      setPosError(err?.response?.data?.message || "فشل تأجيل الطلب");
+    }
+  };
+
   const commonCartProps = {
     isCartOpen,
     setIsCartOpen,
@@ -1108,6 +1162,9 @@ const handlePrintInvoice = async (orderId: number | string) => {
     allItems,
     addToCart,
     posInfo,
+    clearCart: clearActiveCart,
+    onDeferOrder: handleDeferFromCart,
+    isDeferred: currentOrderStatus === "pending_payment",
   };
   // 1. إذا كان النظام ما زال يفحص هوية المتصفح
   if (checkingSecurity) {

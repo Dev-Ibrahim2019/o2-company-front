@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAppContext } from "../../../store";
 import { TableStatus, OrderType } from "../../../types";
 import type { Table } from "../../../types";
@@ -31,6 +32,11 @@ import {
   Hash,
   CheckCircle,
   Send,
+  Pause,
+  CreditCard as PayIcon,
+  PackageOpen,
+  RotateCcw,
+  AlertTriangle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -72,6 +78,8 @@ const getApiOrderStatusLabel = (status: OrderFromApi["status"]) => {
       return "تم التقديم";
     case "paid":
       return "مدفوع";
+    case "pending_payment":
+      return "بانتظار الدفع";
     case "cancelled":
       return "ملغي";
     default:
@@ -117,6 +125,7 @@ export const TablesView: React.FC<{
   onSelect?: (table: Table) => void;
   mode?: "management" | "pos";
 }> = ({ onSelect, mode = "management" }) => {
+  const navigate = useNavigate();
   const {
     tables,
     selectedTable,
@@ -154,6 +163,65 @@ export const TablesView: React.FC<{
     string | null
   >(null);
   const [activeOrderError, setActiveOrderError] = useState<string | null>(null);
+
+  // ── Deferred tables tab ──
+  type DeferredTab = "tables" | "deferred";
+  const [activeTab, setActiveTab] = useState<DeferredTab>("tables");
+  const [deferredOrders, setDeferredOrders] = useState<OrderFromApi[]>([]);
+  const [deferredLoading, setDeferredLoading] = useState(false);
+  const [deferredError, setDeferredError] = useState<string | null>(null);
+  const [deferringTableId, setDeferringTableId] = useState<string | null>(null);
+
+  const branchId = useMemo(() => {
+    const raw = (currentUser as any)?.branch_id ?? (currentUser as any)?.branchId;
+    const id = typeof raw === "number" ? raw : Number(raw);
+    return Number.isFinite(id) ? id : undefined;
+  }, [currentUser]);
+
+  const loadDeferredOrders = useCallback(async () => {
+    setDeferredLoading(true);
+    setDeferredError(null);
+    try {
+      const data = await orderService.getDeferredOrders(branchId);
+      setDeferredOrders(data);
+    } catch (err: any) {
+      setDeferredError(err?.response?.data?.message || err?.message || "فشل تحميل الطلبات المؤجلة");
+    } finally {
+      setDeferredLoading(false);
+    }
+  }, [branchId]);
+
+  useEffect(() => {
+    if (activeTab === "deferred") {
+      loadDeferredOrders();
+    }
+  }, [activeTab, loadDeferredOrders]);
+
+  const handleDeferTable = async (table: Table, order: OrderFromApi) => {
+    if (!confirm(`هل تريد تأجيل طلب الطاولة ${getTableDisplayLabel(table)}؟\nسيتم تحرير الطاولة ونقل الطلب للطلبات المؤجلة.`)) return;
+    setDeferringTableId(table.id);
+
+    try {
+      // 1. تأجيل الطلب أولاً — وهذه الدالة تقوم بتحرير الطاولة أيضاً
+      //    لأن Backend deferOrder يستدعي $table->setAvailable()
+      await orderService.deferOrder(order.id);
+
+      // 2. تحديث محلي — تغيير حالة الطاولة إلى AVAILABLE
+      updateTableStatus(table.id, TableStatus.AVAILABLE, {
+        currentOrderId: undefined,
+        seatedAt: undefined,
+        guestCount: undefined,
+      });
+
+      setShowPopup(null);
+      if (activeTab === "deferred") loadDeferredOrders();
+    } catch (err: any) {
+      console.error("[defer] fatal error:", err);
+      alert(err?.response?.data?.message || err?.message || "فشل تأجيل الطلب");
+    } finally {
+      setDeferringTableId(null);
+    }
+  };
 
   // Live timer ticker
   const [, setTick] = useState(0);
@@ -394,26 +462,59 @@ export const TablesView: React.FC<{
             إدارة الطاولات
           </h2>
           <p className="text-slate-500 font-bold text-sm">
-            خريطة المطعم وتوزيع الطاولات المباشر
+            {activeTab === "tables" ? "خريطة المطعم وتوزيع الطاولات المباشر" : "الطلبات المؤجلة بانتظار الدفع"}
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-3">
-          {/* Hall Switcher */}
-          <div className="flex bg-slate-900 p-1 rounded-2xl border border-white/5 overflow-x-auto scrollbar-hide">
-            {HALLS.map((hall) => (
-              <button
-                key={hall.id}
-                onClick={() => setSelectedHallId(hall.id)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-[10px] transition-all whitespace-nowrap ${selectedHallId === hall.id ? "bg-slate-800 text-white border border-white/10" : "text-slate-500 hover:text-slate-300"}`}
-              >
-                <Layout size={14} /> {hall.name}
-              </button>
-            ))}
+        <div className="flex flex-wrap gap-3 items-center">
+          {/* Tab Switcher */}
+          <div className="flex bg-slate-900 p-1 rounded-2xl border border-white/5">
+            <button
+              onClick={() => setActiveTab("tables")}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-black text-[10px] transition-all ${activeTab === "tables" ? "bg-red-600 text-white shadow-lg shadow-red-900/30" : "text-slate-500 hover:text-slate-300"}`}
+            >
+              <Grid size={14} /> الطاولات
+            </button>
+            <button
+              onClick={() => setActiveTab("deferred")}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-black text-[10px] transition-all ${activeTab === "deferred" ? "bg-amber-600 text-white shadow-lg shadow-amber-900/30" : "text-slate-500 hover:text-slate-300"}`}
+            >
+              <Pause size={14} /> مؤجلة
+              {deferredOrders.length > 0 && (
+                <span className="bg-white/20 text-[9px] px-1.5 py-0.5 rounded-full ml-1">
+                  {deferredOrders.length}
+                </span>
+              )}
+            </button>
           </div>
 
+          {/* Hall Switcher - only show in tables tab */}
+          {activeTab === "tables" && (
+            <div className="flex bg-slate-900 p-1 rounded-2xl border border-white/5 overflow-x-auto scrollbar-hide">
+              {HALLS.map((hall) => (
+                <button
+                  key={hall.id}
+                  onClick={() => setSelectedHallId(hall.id)}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-[10px] transition-all whitespace-nowrap ${selectedHallId === hall.id ? "bg-slate-800 text-white border border-white/10" : "text-slate-500 hover:text-slate-300"}`}
+                >
+                  <Layout size={14} /> {hall.name}
+                </button>
+              ))}
+            </div>
+          )}
 
-          {mergeMode.length > 0 && (
+          {/* Refresh for deferred tab */}
+          {activeTab === "deferred" && (
+            <button
+              onClick={loadDeferredOrders}
+              disabled={deferredLoading}
+              className="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors disabled:opacity-50 border border-white/5"
+            >
+              <RotateCcw size={16} className={deferredLoading ? "animate-spin text-slate-400" : "text-slate-300"} />
+            </button>
+          )}
+
+          {activeTab === "tables" && mergeMode.length > 0 && (
             <div className="flex gap-2">
               <button
                 onClick={() => {
@@ -435,7 +536,9 @@ export const TablesView: React.FC<{
         </div>
       </header>
 
-      {/* Main View Area - Grid Only */}
+      {/* ── Tables Tab ── */}
+      {activeTab === "tables" && (
+      <>
       <div className="flex-1 relative overflow-hidden bg-slate-900/50 rounded-[2.5rem] border border-white/5 custom-scrollbar">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4 p-8 overflow-y-auto h-full custom-scrollbar">
           {filteredTables.map((table) => {
@@ -511,6 +614,76 @@ export const TablesView: React.FC<{
           </span>
         </div>
       </div>
+      </>
+      )}
+
+      {/* ── Deferred Tab ── */}
+      {activeTab === "deferred" && (
+        <div className="flex-1 relative overflow-hidden bg-slate-900/50 rounded-[2.5rem] border border-white/5 custom-scrollbar p-8 overflow-y-auto custom-scrollbar">
+          {deferredLoading && (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 size={32} className="animate-spin text-amber-500" />
+            </div>
+          )}
+
+          {deferredError && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-6 text-center">
+              <AlertTriangle size={32} className="mx-auto text-red-400 mb-3" />
+              <p className="text-red-400 text-sm font-bold">{deferredError}</p>
+              <button onClick={loadDeferredOrders} className="mt-3 text-xs text-red-300 underline font-bold">
+                إعادة المحاولة
+              </button>
+            </div>
+          )}
+
+          {!deferredLoading && !deferredError && deferredOrders.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+              <PackageOpen size={48} className="mb-4 opacity-50" />
+              <p className="font-bold text-lg">لا توجد طلبات مؤجلة</p>
+              <p className="text-sm mt-1">الطلبات المؤجلة من الطاولات ستظهر هنا</p>
+            </div>
+          )}
+
+          {!deferredLoading && deferredOrders.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {deferredOrders.map((order) => (
+                <motion.button
+                  key={order.id}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => navigate(`/pos?editOrderId=${order.id}`)}
+                  className="relative min-h-[200px] rounded-3xl border-2 border-dashed border-amber-500/40 bg-amber-500/5 p-6 flex flex-col items-center justify-center gap-3 transition-all hover:border-amber-500/60 hover:bg-amber-500/10 text-white shadow-xl hover:shadow-amber-500/10"
+                >
+                  <div className="flex items-center gap-2 text-amber-400 mb-2">
+                    <Pause size={16} />
+                    <span className="text-xs font-black uppercase tracking-widest">مؤجل</span>
+                  </div>
+                  <span className="text-3xl font-black text-white">
+                    {order.table_number || `#${order.order_number}`}
+                  </span>
+                  <div className="flex flex-col items-center gap-1.5">
+                    <span className="text-sm font-black text-amber-400">
+                      {Number(order.total).toFixed(2)} ₪
+                    </span>
+                    {order.items && order.items.length > 0 && (
+                      <span className="text-xs font-black text-slate-400 bg-black/20 px-3 py-1 rounded-full">
+                        {order.items.length} أصناف
+                      </span>
+                    )}
+                  </div>
+                  <div className="absolute bottom-3 left-3 right-3 flex items-center justify-center gap-1.5 text-xs font-black text-amber-500/60">
+                    <Clock size={10} />
+                    {formatDateTime(order.created_at)}
+                  </div>
+                  <div className="absolute top-3 left-3 bg-emerald-600 text-white px-3 py-1 rounded-full text-xs font-black flex items-center gap-1.5">
+                    <PayIcon size={10} /> اضغط للدفع
+                  </div>
+                </motion.button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Seating Modal */}
       <AnimatePresence>
@@ -925,6 +1098,23 @@ export const TablesView: React.FC<{
                         >
                           <ExternalLink size={16} /> فتح الطاولة في شاشة البيع
                         </button>
+
+                        {activePopupApiOrder.status !== "paid" &&
+                          activePopupApiOrder.status !== "cancelled" &&
+                          activePopupApiOrder.status !== "pending_payment" && (
+                          <button
+                            onClick={() => handleDeferTable(activePopupTable, activePopupApiOrder)}
+                            disabled={deferringTableId === activePopupTable.id}
+                            className="w-full bg-amber-600/20 text-amber-400 border border-amber-500/30 py-3 rounded-xl font-black text-xs hover:bg-amber-600/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                          >
+                            {deferringTableId === activePopupTable.id ? (
+                              <Loader2 size={16} className="animate-spin" />
+                            ) : (
+                              <Pause size={16} />
+                            )}
+                            تأجيل الطلب وتحرير الطاولة
+                          </button>
+                        )}
                       </div>
                     ) : activePopupOrder ? (
                       <div className="bg-slate-800/50 p-6 rounded-3xl border border-white/5 flex flex-col gap-4">

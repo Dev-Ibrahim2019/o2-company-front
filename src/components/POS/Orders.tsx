@@ -40,6 +40,7 @@ const ACTIVE_STATUSES: ApiOrderStatus[] = [
   "in_progress",
   "ready",
   "served",
+  "pending_payment",
 ];
 
 const getBranchFilter = (currentUser: unknown) => {
@@ -68,6 +69,8 @@ const getStatusColor = (status: ApiOrderStatus) => {
       return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
     case "served":
       return "bg-cyan-500/10 text-cyan-400 border-cyan-500/20";
+    case "pending_payment":
+      return "bg-amber-500/10 text-amber-400 border-amber-500/20";
     case "paid":
       return "bg-slate-500/10 text-slate-300 border-slate-500/20";
     case "cancelled":
@@ -93,6 +96,8 @@ const getStatusDotColor = (status: ApiOrderStatus) => {
       return "bg-cyan-400";
     case "paid":
       return "bg-slate-300";
+    case "pending_payment":
+      return "bg-amber-400";
     case "cancelled":
       return "bg-red-400";
     default:
@@ -116,6 +121,8 @@ const getStatusLabel = (status: ApiOrderStatus) => {
       return "تم التسليم";
     case "paid":
       return "مغلق ماليا";
+    case "pending_payment":
+      return "بانتظار الدفع";
     case "cancelled":
       return "ملغي";
     default:

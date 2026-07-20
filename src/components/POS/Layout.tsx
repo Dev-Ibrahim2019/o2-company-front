@@ -22,6 +22,7 @@ import {
   Menu,
   Receipt,
   HeartHandshake,
+  Pause,
 } from "lucide-react";
 
 export const POSLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
@@ -91,6 +92,7 @@ export const POSLayout: React.FC<{ children?: React.ReactNode }> = ({ children }
           <SidebarLink to="/pos" icon={ShoppingCart} label="نقطة البيع (POS)" />
           <SidebarLink to="/pos/orders" icon={ClipboardList} label="الطلبات النشطة" permission={PERMISSIONS.VIEW_ORDERS} />
           <SidebarLink to="/pos/tables" icon={Grid2X2} label="إدارة الطاولات" />
+          <SidebarLink to="/pos/deferred" icon={Pause} label="الطاولات المؤجلة" />
           <SidebarLink to="/shift" icon={Clock} label="إدارة الشفت" />
           <SidebarLink to="/pos" icon={Receipt} label="التقارير المالية" permission={PERMISSIONS.VIEW_REPORTS} />
         </nav>
