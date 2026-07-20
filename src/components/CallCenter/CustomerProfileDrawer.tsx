@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { X, User, ShoppingCart, Star, MapPin, MessageSquare, AlertTriangle, CreditCard, Phone, Mail, Calendar, Clock, Store, Package, ChevronLeft, Loader2, FileText, Percent, Ban, Plus, Heart, Flag, Bell, ExternalLink, Trash2, Edit3, Check, Copy, RefreshCw, Award, TrendingUp, AlertCircle } from "lucide-react";
+import { X, User, ShoppingCart, Star, MapPin, MessageSquare, AlertTriangle, CreditCard, Phone, Mail, Calendar, Clock, Store, Package, ChevronLeft, Loader2, FileText, Percent, Ban, Plus, Heart, Flag, Bell, ExternalLink, Trash2, Edit3, Check, Copy, RefreshCw, Award, TrendingUp, AlertCircle, Building2, Headphones, UtensilsCrossed, Users, Activity } from "lucide-react";
 import type { CustomerProfile, CustomerOrder, CustomerComplaint, FavoriteItem, OrderDetail, ComplaintFollowup, CustomerAddress, CustomerOccasion, CustomerNote, CustomerSearchResult } from "../../services/callCenterService";
 import { callCenterService } from "../../services/callCenterService";
 import { orderService } from "../../services/orderService";
@@ -51,6 +51,7 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [selectedComplaintId, setSelectedComplaintId] = useState<number | null>(null);
   const [upcomingOccasion, setUpcomingOccasion] = useState<CustomerOccasion | null>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -98,15 +99,21 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
     load();
   };
 
+  const badges = {
+    orders: orders.length || undefined,
+    occasions: upcomingOccasion ? ("!" as const) : undefined,
+    complaints: complaints.length || undefined,
+  };
+
   const tabs: { key: Tab; label: string; icon: React.ElementType; badge?: string | number }[] = [
     { key: "overview", label: "نظرة عامة", icon: User },
-    { key: "orders", label: "الطلبات السابقة", icon: ShoppingCart, badge: orders.length || undefined },
+    { key: "orders", label: "الطلبات", icon: ShoppingCart, badge: badges.orders },
     { key: "addresses", label: "العناوين", icon: MapPin },
-    { key: "occasions", label: "المناسبات", icon: Calendar, badge: upcomingOccasion ? "!" : undefined },
-    { key: "complaints", label: "الشكاوى", icon: AlertTriangle, badge: complaints.length || undefined },
+    { key: "occasions", label: "المناسبات", icon: Calendar, badge: badges.occasions },
+    { key: "complaints", label: "الشكاوى", icon: AlertTriangle, badge: badges.complaints },
     { key: "loyalty", label: "الولاء", icon: Star },
-    { key: "notes", label: "ملاحظات ورعاية العميل", icon: MessageSquare },
-    { key: "finance", label: "الحساب المالي", icon: CreditCard },
+    { key: "notes", label: "ملاحظات", icon: MessageSquare },
+    { key: "finance", label: "المالي", icon: CreditCard },
   ];
 
   const handleSelect = () => {
@@ -160,19 +167,20 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
     <div className={`fixed inset-0 z-[300] transition-[visibility] ${isOpen ? "visible" : "invisible pointer-events-none"}`} dir="rtl" aria-hidden={!isOpen} role="dialog" aria-modal="true" aria-label="ملف العميل الكامل">
       <div className={`absolute inset-0 bg-black/40 transition-opacity duration-300 ${isOpen ? "opacity-100" : "opacity-0"}`} onClick={onClose} aria-hidden="true" />
       <div ref={dialogRef} className={`absolute top-0 bottom-0 right-0 w-full sm:w-[45vw] sm:min-w-[420px] sm:max-w-[740px] bg-slate-900 border-l border-white/10 shadow-2xl shadow-black/50 overflow-hidden flex flex-col transform transition-transform duration-300 ease-out ${isOpen ? "translate-x-0" : "translate-x-full"}`}>
-        <div className="flex items-center justify-between p-4 border-b border-white/5 shrink-0">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-white/5 shrink-0 bg-gradient-to-l from-slate-900 to-slate-800/80">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-red-600/20 flex items-center justify-center">
-              <User size={16} className="text-red-500" />
+            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center shadow-lg shadow-red-600/20">
+              <User size={16} className="text-white" />
             </div>
             <div>
-              <h3 className="text-white font-black text-sm">ملف العميل</h3>
-              {profile && <p className="text-[10px] text-slate-400">{profile.customer.name}</p>}
+              <h3 className="text-white font-black text-sm tracking-wide">ملف العميل</h3>
+              {profile && <p className="text-[10px] text-slate-400 font-medium">{profile.customer.name}</p>}
             </div>
           </div>
           <div className="flex items-center gap-2">
             {onSelectCustomer && profile && (
-              <button onClick={handleSelect} aria-label="اختيار العميل للطلب" className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400">
+              <button onClick={handleSelect} aria-label="اختيار العميل للطلب" className="p-2 bg-gradient-to-br from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white rounded-lg transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 shadow-md shadow-red-700/20 active:scale-95">
                 <Check size={14} />
               </button>
             )}
@@ -182,42 +190,72 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
           </div>
         </div>
 
+        {/* Upcoming Occasion Banner */}
         {upcomingOccasion && (
-          <div className="mx-4 mt-3 rounded-xl border border-fuchsia-400/30 bg-fuchsia-500/10 px-3 py-2 text-xs font-black text-fuchsia-200 motion-safe:animate-pulse">
-            اقتربت مناسبة العميل! اقترح عليه العرض العائلي الفاخر
+          <div className="mx-4 mt-3 rounded-xl border border-fuchsia-400/30 bg-gradient-to-l from-fuchsia-500/10 to-fuchsia-500/5 px-4 py-2.5 flex items-center gap-2 motion-safe:animate-pulse shadow-sm shadow-fuchsia-900/20">
+            <Calendar size={14} className="text-fuchsia-300 shrink-0" />
+            <p className="text-xs font-bold text-fuchsia-200">
+              اقتربت مناسبة العميل! اقترح عليه العرض العائلي الفاخر
+            </p>
           </div>
         )}
 
-        <div className="grid shrink-0 grid-cols-2 border-b border-white/5 sm:flex sm:overflow-x-auto">
-          {tabs.map(({ key, label, icon: Icon, badge }) => (
-            <button key={key} onClick={() => setActiveTab(key)} className={`relative flex min-w-0 items-center gap-1.5 border-b-2 px-2 py-2.5 text-[11px] font-bold transition-all sm:whitespace-nowrap sm:px-3 sm:text-xs ${activeTab === key ? "border-red-500 bg-red-500/5 text-white" : "border-transparent text-slate-400 hover:text-slate-200"}`}>
-              <Icon size={13} /> {label}
-              {badge && (
-                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-700 text-slate-300">{badge}</span>
-              )}
-            </button>
-          ))}
+        {/* Modern Tab Bar */}
+        <div ref={tabsRef} className="shrink-0 border-b border-white/5 bg-gradient-to-b from-slate-800/50 to-transparent overflow-x-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+          <div className="flex gap-0.5 px-2 py-2 min-w-max">
+            {tabs.map(({ key, label, icon: Icon, badge }) => (
+              <button
+                key={key}
+                onClick={() => setActiveTab(key)}
+                className={`
+                  relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-bold whitespace-nowrap transition-all duration-150
+                  ${activeTab === key
+                    ? "bg-gradient-to-b from-red-600/20 to-red-600/5 text-white shadow-sm shadow-red-700/10 border border-red-500/20"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-white/5 border border-transparent"
+                  }
+                `}
+              >
+                <Icon size={13} className={activeTab === key ? "text-red-400" : "text-slate-500"} />
+                <span>{label}</span>
+                {badge !== undefined && badge !== null && (
+                  <span className={`
+                    text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none
+                    ${badge === "!"
+                      ? "bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/30"
+                      : key === "complaints" && typeof badge === "number" && badge > 0
+                        ? "bg-red-500/20 text-red-300 border border-red-500/30"
+                        : "bg-slate-700 text-slate-300 border border-slate-600/50"
+                    }
+                  `}>
+                    {badge === "!" ? <><span className="animate-pulse">●</span> {badge}</> : badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4">
+        {/* Content Area */}
+        <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
           {loading ? (
-            <div className="space-y-3 py-3" aria-label="جاري تحميل ملف العميل">
-              {/* Skeleton Loader - أنيق ومتحرك */}
+            <div className="space-y-4 py-3" aria-label="جاري تحميل ملف العميل">
+              {/* Skeleton Header */}
               <div className="flex items-center gap-3 p-3">
-                <div className="w-12 h-12 rounded-full bg-slate-800/70 animate-pulse" />
+                <div className="w-14 h-14 rounded-full bg-slate-800/70 animate-pulse" />
                 <div className="flex-1 space-y-2">
-                  <div className="h-4 w-2/3 rounded-lg bg-slate-800/70 animate-pulse" />
+                  <div className="h-5 w-2/3 rounded-lg bg-slate-800/70 animate-pulse" />
                   <div className="h-3 w-1/3 rounded-lg bg-slate-800/50 animate-pulse" />
                 </div>
               </div>
+              {/* Skeleton Cards */}
               <div className="grid grid-cols-2 gap-2">
                 {[1, 2, 3, 4].map(i => (
-                  <div key={i} className="h-20 rounded-xl bg-slate-800/70 animate-pulse" />
+                  <div key={i} className="h-24 rounded-xl bg-slate-800/70 animate-pulse" />
                 ))}
               </div>
               <div className="space-y-2">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="h-12 rounded-xl bg-slate-800/50 animate-pulse" />
+                {[1, 2].map(i => (
+                  <div key={i} className="h-16 rounded-xl bg-slate-800/50 animate-pulse" />
                 ))}
               </div>
             </div>
@@ -225,7 +263,7 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
             <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-center">
               <AlertTriangle size={32} className="text-red-400" />
               <p className="text-sm text-slate-300">{loadError}</p>
-              <button onClick={handleRetry} className="flex items-center gap-2 rounded-lg bg-red-600 px-5 py-2.5 text-xs font-bold text-white hover:bg-red-700 transition-all active:scale-95">
+              <button onClick={handleRetry} className="flex items-center gap-2 rounded-lg bg-gradient-to-br from-red-600 to-red-700 px-5 py-2.5 text-xs font-bold text-white hover:from-red-500 hover:to-red-600 transition-all active:scale-95 shadow-md shadow-red-700/20">
                 <RefreshCw size={14} />
                 إعادة المحاولة
               </button>
@@ -268,96 +306,207 @@ const FinanceTab: React.FC<{ profile: CustomerProfile }> = ({ profile }) => {
   </div>;
 };
 
-/* ─── Overview Tab ─── */
+/* ─── Restructured Overview Tab for Call Center ─── */
 const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem; orders: CustomerOrder[]; onSelectOrder: (id: number) => void; onRepeatOrder?: (order: OrderDetail) => void }> = ({ profile, favorite, orders, onSelectOrder, onRepeatOrder }) => {
   const c = profile.customer;
-
   const categoryLabel = c.category || "غير مصنف";
+
+  const getCategoryBadge = () => {
+    const cat = (c.category || "").toLowerCase();
+    switch (cat) {
+      case "vip": return { bg: "from-amber-500/20 to-amber-500/5 border-amber-500/30 text-amber-300", icon: <Award size={12} />, label: "VIP" };
+      case "important": return { bg: "from-emerald-500/20 to-emerald-500/5 border-emerald-500/30 text-emerald-300", icon: <Star size={12} />, label: "مهم" };
+      case "regular": return { bg: "from-blue-500/20 to-blue-500/5 border-blue-500/30 text-blue-300", icon: <User size={12} />, label: "عادي" };
+      case "new": return { bg: "from-sky-500/20 to-sky-500/5 border-sky-500/30 text-sky-300", icon: <Activity size={12} />, label: "جديد" };
+      case "follow_up": return { bg: "from-violet-500/20 to-violet-500/5 border-violet-500/30 text-violet-300", icon: <Bell size={12} />, label: "متابعة" };
+      case "complaints": return { bg: "from-red-500/20 to-red-500/5 border-red-500/30 text-red-300", icon: <AlertTriangle size={12} />, label: "شكاوى" };
+      case "inactive": return { bg: "from-slate-500/20 to-slate-500/5 border-slate-500/30 text-slate-300", icon: <Ban size={12} />, label: "غير نشط" };
+      default: return { bg: "from-slate-500/20 to-slate-500/5 border-slate-500/30 text-slate-300", icon: <User size={12} />, label: categoryLabel };
+    }
+  };
+
+  const catBadge = getCategoryBadge();
+
+  /* تحديد مصدر الطلب بناءً على order_type */
+  const getOrderSourceBadge = (order?: CustomerOrder) => {
+    if (!order) return null;
+    const type = order.order_type;
+    switch (type) {
+      case "call_center": return { label: "كول سنتر", icon: <Headphones size={12} />, color: "from-violet-500/20 to-violet-500/5 border-violet-500/30 text-violet-300" };
+      case "dine_in": return { label: "فوري", icon: <UtensilsCrossed size={12} />, color: "from-emerald-500/20 to-emerald-500/5 border-emerald-500/30 text-emerald-300" };
+      case "delivery": return { label: "توصيل", icon: <Package size={12} />, color: "from-blue-500/20 to-blue-500/5 border-blue-500/30 text-blue-300" };
+      case "takeaway": return { label: "استلام", icon: <Store size={12} />, color: "from-amber-500/20 to-amber-500/5 border-amber-500/30 text-amber-300" };
+      default: return { label: type || "غير محدد", icon: <ShoppingCart size={12} />, color: "from-slate-500/20 to-slate-500/5 border-slate-500/30 text-slate-300" };
+    }
+  };
+
+  const lastOrder = orders[0];
+  const sourceBadge = getOrderSourceBadge(lastOrder);
 
   return (
     <div className="space-y-4">
-      {/* رأس العميل */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-red-600/20 flex items-center justify-center">
-            <User size={18} className="text-red-500" />
-          </div>
-          <div>
-            <h2 className="text-base font-black text-white">{c.name}</h2>
-            <div className="flex items-center gap-2 mt-0.5">
-              {statusBadge(c.status)}
-              <span className="text-[11px] font-bold px-1.5 py-0.5 rounded border border-slate-500/30 bg-slate-500/10 text-slate-300">
-                <Star size={10} className="inline ml-1" />
-                {categoryLabel}
-              </span>
+      {/* Customer Header with Category */}
+      <div className="bg-gradient-to-br from-slate-800/60 to-slate-800/30 rounded-2xl p-4 border border-slate-700/30">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-red-500/30 to-red-600/10 flex items-center justify-center border border-red-500/20">
+              <User size={20} className="text-red-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-black text-white">{c.name}</h2>
+                {statusBadge(c.status)}
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border bg-gradient-to-l ${catBadge.bg}`}>
+                  <span className="inline-flex items-center gap-1">
+                    {catBadge.icon}
+                    {catBadge.label}
+                  </span>
+                </span>
+                <span className="text-[10px] text-slate-500 bg-slate-800/80 px-2 py-0.5 rounded-full border border-slate-700/50 font-mono tracking-wider">{c.code}</span>
+              </div>
             </div>
           </div>
         </div>
-        <span className="text-[10px] text-slate-500 bg-slate-800/50 px-2 py-1 rounded-lg">{c.code}</span>
-      </div>
 
-      {/* معلومات الاتصال */}
-      <div className="grid grid-cols-1 gap-1.5 text-[11px] text-slate-400 bg-slate-800/30 rounded-xl p-3 sm:grid-cols-2">
-        <div className="flex items-center gap-1.5"><Phone size={11} /> {c.phone || c.mobile || "—"}</div>
-        {(c as any).email && <div className="flex items-center gap-1.5"><Mail size={11} /> {(c as any).email}</div>}
-        {c.city && <div className="flex items-center gap-1.5"><MapPin size={11} /> {c.city}</div>}
-        {c.category && <div className="flex items-center gap-1.5"><Star size={11} /> {c.category}</div>}
-        <div className="flex items-center gap-1.5"><Calendar size={11} /> {new Date(c.created_at).toLocaleDateString("ar-SA")}</div>
-      </div>
-
-      {favorite && (
-        <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-3">
-          <div className="flex items-center gap-2 text-[11px] font-black text-emerald-300"><Heart size={14} /> الطلب الأكثر تكراراً</div>
-          <p className="mt-1 text-sm font-black text-white">{favorite.item_name_ar || favorite.item_name}</p>
-          <p className="mt-0.5 text-[11px] text-emerald-200/70">طُلب {favorite.order_count} مرات • {favorite.total_quantity} قطعة</p>
+        {/* Quick Actions Row */}
+        <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/5 pt-3">
+          {c.phone && (
+            <a href={`tel:${c.phone}`} className="inline-flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-slate-700/50 transition-colors">
+              <Phone size={11} className="text-emerald-400" />
+              {c.phone}
+            </a>
+          )}
+          {c.mobile && c.mobile !== c.phone && (
+            <a href={`tel:${c.mobile}`} className="inline-flex items-center gap-1.5 bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-slate-700/50 transition-colors">
+              <Phone size={11} className="text-blue-400" />
+              {c.mobile}
+            </a>
+          )}
+          {(c as any).email && (
+            <span className="inline-flex items-center gap-1.5 bg-slate-800/80 text-slate-400 text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-slate-700/50">
+              <Mail size={11} />
+              {(c as any).email}
+            </span>
+          )}
+          {(profile.total_orders || 0) > 0 && (
+            <span className="inline-flex items-center gap-1.5 bg-slate-800/80 text-slate-400 text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-slate-700/50">
+              <Package size={11} />
+              {profile.total_orders} طلب
+            </span>
+          )}
         </div>
-      )}
+      </div>
 
-      {/* بطاقات الأداء السريعة */}
+      {/* Customer Classification & Experience Card */}
+      <div className="bg-gradient-to-br from-slate-800/50 to-slate-800/20 rounded-2xl p-4 border border-slate-700/30">
+        <h4 className="text-[10px] font-black text-slate-500 mb-3 uppercase tracking-widest flex items-center gap-1.5">
+          <Activity size={12} /> تصنيف العميل وتجربته
+        </h4>
+
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-700/30">
+            <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold mb-1">
+              <TrendingUp size={12} />
+              معدل الطلبات الشهري
+            </div>
+            <div className="text-lg font-black text-white">
+              {profile.monthly_orders_count ?? 0}
+              <span className="text-xs text-slate-500 mr-1 font-bold">/ شهر</span>
+            </div>
+          </div>
+          <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-700/30">
+            <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold mb-1">
+              <Award size={12} />
+              متوسط قيمة الطلب
+            </div>
+            <div className="text-lg font-black text-white">
+              {(profile.avg_order_value || 0).toFixed(2)}
+              <span className="text-xs text-slate-500 mr-1 font-bold">₪</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Last Order Info - Source & Branch */}
+        {lastOrder && (
+          <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-700/30 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-slate-400 font-bold">آخر طلب:</span>
+              <span className="text-xs font-bold text-white">{lastOrder.order_number}</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {sourceBadge && (
+                <span className={`text-[10px] font-bold px-2 py-1 rounded-full border bg-gradient-to-l ${sourceBadge.color} inline-flex items-center gap-1`}>
+                  {sourceBadge.icon}
+                  {sourceBadge.label}
+                </span>
+              )}
+              {lastOrder.branch && (
+                <span className="text-[10px] font-bold px-2 py-1 rounded-full border border-cyan-500/30 bg-gradient-to-l from-cyan-500/20 to-cyan-500/5 text-cyan-300 inline-flex items-center gap-1">
+                  <Building2 size={11} />
+                  {lastOrder.branch.name}
+                </span>
+              )}
+              <span className="text-[10px] text-slate-400 px-2 py-1 bg-slate-800/50 rounded-full border border-slate-700/50">
+                {new Date(lastOrder.created_at).toLocaleDateString("ar-SA")}
+              </span>
+            </div>
+            {lastOrder.total !== undefined && (
+              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
+                <span className="text-slate-500 font-normal">الإجمالي:</span>
+                {lastOrder.total.toFixed(2)} ₪
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Favorite Item */}
+        {favorite && (
+          <div className="mt-2 bg-gradient-to-l from-emerald-500/10 to-emerald-500/5 rounded-xl p-3 border border-emerald-500/20">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-300 mb-1">
+              <Heart size={12} />
+              الطلب المفضل
+            </div>
+            <p className="text-sm font-black text-white">{favorite.item_name_ar || favorite.item_name}</p>
+            <p className="text-[10px] text-emerald-200/60 mt-0.5">طُلب {favorite.order_count} مرات · {favorite.total_quantity} قطعة</p>
+          </div>
+        )}
+      </div>
+
+      {/* Performance Indicators */}
       <div>
-        <h4 className="text-[10px] font-black text-slate-500 mb-2 uppercase tracking-widest">مؤشرات المتابعة</h4>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <h4 className="text-[10px] font-black text-slate-500 mb-2 uppercase tracking-widest flex items-center gap-1.5">
+          <AlertCircle size={12} /> مؤشرات الأداء والتنبيهات
+        </h4>
+        <div className="grid grid-cols-3 gap-2">
           <StatCard label="شكاوى مفتوحة" value={String(profile.open_complaints_count || 0)} icon={<AlertTriangle size={14} />} highlight={(profile.open_complaints_count || 0) > 0} />
           <StatCard label="طلبات ملغاة" value={String(profile.cancelled_orders_count || 0)} icon={<Ban size={14} />} highlight={(profile.cancelled_orders_count || 0) > 0} />
           <StatCard label="نقاط الولاء" value={String(profile.loyalty_points ?? c.loyalty_points ?? 0)} icon={<Star size={14} />} />
         </div>
       </div>
 
-      {/* تواريخ مهمة */}
-      <div className="space-y-1.5 text-[11px] text-slate-400 bg-slate-800/30 rounded-xl p-3">
-        {profile.first_order_at && (
-          <div className="flex items-center gap-1.5">
-            <Calendar size={11} className="text-slate-500" />
-            <span>أول طلب: <span className="text-white font-bold">{new Date(profile.first_order_at).toLocaleDateString("ar-SA")}</span></span>
-          </div>
-        )}
-        {profile.last_order_at && (
-          <div className="flex items-center gap-1.5">
-            <Clock size={11} className="text-slate-500" />
-            <span>آخر طلب: <span className="text-white font-bold">{new Date(profile.last_order_at).toLocaleDateString("ar-SA")}</span></span>
-          </div>
-        )}
-      </div>
-
-      {/* الملاحظات التحذيرية الثابتة */}
+      {/* Warning Notes */}
       {(c.notes || profile.latest_note || (profile.open_complaints_count || 0) > 0) && (
         <div>
-          <h4 className="text-[10px] font-black text-slate-500 mb-2 uppercase tracking-widest">ملاحظات تحذيرية</h4>
+          <h4 className="text-[10px] font-black text-slate-500 mb-2 uppercase tracking-widest flex items-center gap-1.5">
+            <MessageSquare size={12} /> تنبيهات هامة
+          </h4>
           <div className="space-y-2">
             {c.notes && (
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-400">
+              <div className="bg-gradient-to-l from-amber-500/10 to-amber-500/5 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-400">
                 <MessageSquare size={12} className="inline ml-1" />
                 {c.notes}
               </div>
             )}
             {profile.latest_note && (
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-400">
+              <div className="bg-gradient-to-l from-amber-500/10 to-amber-500/5 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-400">
                 <MessageSquare size={12} className="inline ml-1" />
                 آخر ملاحظة: {profile.latest_note}
               </div>
             )}
             {(profile.open_complaints_count || 0) > 0 && (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-xs text-red-400 flex items-start gap-2">
+              <div className="bg-gradient-to-l from-red-500/10 to-red-500/5 border border-red-500/20 rounded-xl p-3 text-xs text-red-400 flex items-start gap-2">
                 <AlertCircle size={14} className="mt-0.5 shrink-0" />
                 يحتاج اهتمام — هذا العميل لديه {profile.open_complaints_count} شكوى مفتوحة
               </div>
@@ -365,8 +514,33 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
           </div>
         </div>
       )}
+
+      {/* Timeline Dates */}
+      <div className="bg-gradient-to-br from-slate-800/40 to-slate-800/20 rounded-xl p-3 border border-slate-700/30">
+        <div className="grid grid-cols-2 gap-3 text-[11px] text-slate-400">
+          {profile.first_order_at && (
+            <div className="flex items-center gap-1.5">
+              <Calendar size={11} className="text-slate-500 shrink-0" />
+              <span>أول طلب: <span className="text-white font-bold">{new Date(profile.first_order_at).toLocaleDateString("ar-SA")}</span></span>
+            </div>
+          )}
+          {profile.last_order_at && (
+            <div className="flex items-center gap-1.5">
+              <Clock size={11} className="text-slate-500 shrink-0" />
+              <span>آخر طلب: <span className="text-white font-bold">{new Date(profile.last_order_at).toLocaleDateString("ar-SA")}</span></span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Recent Orders */}
       <section>
-        <div className="mb-2 flex items-center justify-between"><h4 className="text-xs font-black text-slate-300">آخر خمسة طلبات</h4><span className="text-[10px] text-slate-500">تفاصيل عملية قابلة للتنفيذ</span></div>
+        <div className="mb-2 flex items-center justify-between">
+          <h4 className="text-xs font-black text-slate-300 flex items-center gap-1.5">
+            <ShoppingCart size={13} /> آخر الطلبات
+          </h4>
+          <span className="text-[10px] text-slate-500">آخر 5 طلبات</span>
+        </div>
         <OrdersTab orders={orders.slice(0, 5)} onSelectOrder={onSelectOrder} onRepeatOrder={onRepeatOrder} />
       </section>
     </div>
@@ -396,34 +570,34 @@ const OrdersTab: React.FC<{ orders: CustomerOrder[]; onSelectOrder: (id: number)
   return (
     <div className="space-y-2">
       {orders.slice(0, 5).map((o) => (
-        <div key={o.id} className="w-full bg-slate-800/50 rounded-xl p-3 text-right hover:bg-slate-800 transition-all">
+        <div key={o.id} className="w-full bg-gradient-to-br from-slate-800/50 to-slate-800/20 rounded-xl p-3 text-right hover:from-slate-800/70 hover:to-slate-800/30 transition-all border border-slate-700/30">
           <div className="flex items-center justify-between mb-1">
             <span className="text-sm font-bold text-white">{o.order_number}</span>
             <OrderStatusBadge status={o.status} />
           </div>
-          <div className="flex items-center gap-3 text-[11px] text-slate-400">
-            <span>{new Date(o.created_at).toLocaleDateString("ar-SA")}</span>
-            <span>{orderTypeLabel(o.order_type)}</span>
+          <div className="flex items-center gap-2 text-[11px] text-slate-400 flex-wrap">
+            <span className="flex items-center gap-1"><Calendar size={10} /> {new Date(o.created_at).toLocaleDateString("ar-SA")}</span>
+            <span className="flex items-center gap-1">{orderTypeLabel(o.order_type)}</span>
             <span className="text-white font-bold">{o.total.toFixed(2)} ₪</span>
-            {o.branch && <span>{o.branch.name}</span>}
+            {o.branch && <span className="flex items-center gap-1"><Building2 size={10} /> {o.branch.name}</span>}
           </div>
           {orderDetails[o.id]?.items.length ? <div className="mt-2 max-h-20 space-y-1 overflow-y-auto rounded-lg border border-slate-700/70 bg-slate-950/50 p-2" aria-label={`أصناف الطلب ${o.order_number}`}>
             {orderDetails[o.id].items.map(item => <div key={item.id} className="flex items-start justify-between gap-2 text-[11px]"><span className="text-slate-200">{item.item_name_ar || item.item_name}</span><span className="shrink-0 text-slate-500">× {item.quantity}</span></div>)}
           </div> : null}
           {o.note && <p className="mt-2 line-clamp-2 text-[11px] text-amber-200/80">ملاحظة: {o.note}</p>}
           <div className="mt-3 flex gap-2 border-t border-white/5 pt-2">
-            <button onClick={() => onSelectOrder(o.id)} className="flex-1 rounded-lg bg-slate-700 px-2 py-1.5 text-[11px] font-bold text-slate-200 hover:bg-slate-600">عرض التفاصيل</button>
+            <button onClick={() => onSelectOrder(o.id)} className="flex-1 rounded-lg bg-slate-700 px-2 py-1.5 text-[11px] font-bold text-slate-200 hover:bg-slate-600 transition-colors">عرض التفاصيل</button>
             {onRepeatOrder && (
               <button
                 onClick={() => repeat(o.id)}
                 disabled={repeatId !== null}
-                className="flex-1 rounded-lg bg-emerald-600 px-2 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 transition-all active:scale-95 shadow-lg shadow-emerald-900/30"
+                className="flex-1 rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-700 px-2 py-1.5 text-[11px] font-bold text-white hover:from-emerald-500 hover:to-emerald-600 transition-all active:scale-95 shadow-lg shadow-emerald-900/30"
               >
                 {repeatId === o.id ? <Loader2 size={12} className="ml-1 inline animate-spin" /> : <Copy size={12} className="ml-1 inline" />}
                 {repeatId === o.id ? "جاري تحميل الطلب..." : "اعتماد وتكرار الطلب"}
               </button>
             )}
-            <button onClick={() => setExperienceOrder(o)} className="rounded-lg border border-slate-600 px-2 py-1.5 text-[11px] font-bold text-slate-200 hover:bg-slate-700">تجربة العميل</button>
+            <button onClick={() => setExperienceOrder(o)} className="rounded-lg border border-slate-600 px-2 py-1.5 text-[11px] font-bold text-slate-200 hover:bg-slate-700 transition-colors">تجربة العميل</button>
           </div>
           {repeatErrorId === o.id && <p role="alert" className="mt-2 text-[11px] font-bold text-red-400">تعذر تحميل تفاصيل الطلب. حاول مرة أخرى.</p>}
         </div>
@@ -448,7 +622,7 @@ const ExperienceModal = ({ order, onClose }: { order: CustomerOrder; onClose: ()
       {(["food_rating", "delivery_rating", "speed_rating"] as const).map((key, index) => <label key={key} className="mb-3 block text-xs font-bold text-slate-300">{["جودة الطعام", "خدمة التوصيل", "سرعة الخدمة"][index]}<select value={ratings[key]} onChange={e => setRatings(v => ({ ...v, [key]: Number(e.target.value) }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-white focus:border-red-500 focus:outline-none">{[5, 4, 3, 2, 1].map(v => <option key={v} value={v}>{v} / 5</option>)}</select></label>)}
       <label className="block text-xs font-bold text-slate-300">ملاحظات المكالمة<textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className="mt-1 w-full resize-none rounded-lg border border-slate-700 bg-slate-950 p-2 text-white focus:border-red-500 focus:outline-none" /></label>
       {state === "success" && <p role="status" className="mt-3 text-sm font-bold text-emerald-400">تم حفظ تجربة العميل بنجاح.</p>}{state === "error" && <p role="alert" className="mt-3 text-sm font-bold text-red-400">تعذر الحفظ. تحقق من الاتصال وحاول مجدداً.</p>}
-      <button onClick={submit} disabled={state === "saving" || state === "success"} className="mt-4 w-full rounded-xl bg-red-600 py-2.5 text-sm font-black text-white hover:bg-red-500 disabled:bg-slate-700">{state === "saving" ? "جارٍ الحفظ…" : state === "success" ? "تم الحفظ" : "حفظ التجربة"}</button>
+      <button onClick={submit} disabled={state === "saving" || state === "success"} className="mt-4 w-full rounded-xl bg-gradient-to-br from-red-600 to-red-700 py-2.5 text-sm font-black text-white hover:from-red-500 hover:to-red-600 disabled:from-slate-700 disabled:to-slate-700">{state === "saving" ? "جارٍ الحفظ…" : state === "success" ? "تم الحفظ" : "حفظ التجربة"}</button>
     </div>
   </div>;
 };
@@ -483,7 +657,7 @@ const ComplaintsTab: React.FC<{ complaints: CustomerComplaint[]; onSelectComplai
   return (
     <div className="space-y-2">
       {complaints.map((c) => (
-        <button key={c.id} onClick={() => onSelectComplaint(c.id)} className="w-full bg-slate-800/50 rounded-xl p-3 text-right hover:bg-slate-800 transition-all">
+        <button key={c.id} onClick={() => onSelectComplaint(c.id)} className="w-full bg-gradient-to-br from-slate-800/50 to-slate-800/20 rounded-xl p-3 text-right hover:from-slate-800/70 hover:to-slate-800/30 transition-all border border-slate-700/30">
           <div className="flex items-center justify-between mb-1">
             <span className="text-sm font-bold text-white">{c.title}</span>
             <ComplaintStatusBadge status={c.status} />
@@ -538,14 +712,14 @@ const AddressesTab: React.FC<{ customerId: number; onAddressSelect?: (addr: Cust
     <div className="space-y-2">
       {addresses.length === 0 && <EmptyState icon={MapPin} text="لا توجد عناوين مسجلة" />}
       {addresses.map((a) => (
-        <div key={a.id} className="bg-slate-800/50 rounded-xl p-3">
+        <div key={a.id} className="bg-gradient-to-br from-slate-800/50 to-slate-800/20 rounded-xl p-3 border border-slate-700/30">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-white">{a.label}</span>
               {a.is_default && <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">افتراضي</span>}
             </div>
             {onAddressSelect && (
-              <button disabled={selectingId !== null} onClick={() => selectAddress(a)} aria-label={`اختيار عنوان ${a.label}`} className="flex items-center gap-1.5 rounded-lg bg-red-600 px-2.5 py-2 text-white transition-colors hover:bg-red-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400">
+              <button disabled={selectingId !== null} onClick={() => selectAddress(a)} aria-label={`اختيار عنوان ${a.label}`} className="flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-red-600 to-red-700 px-2.5 py-2 text-white transition-all hover:from-red-500 hover:to-red-600 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 active:scale-95 shadow-md shadow-red-700/10">
                 {selectingId === a.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
                 <span className="text-[10px] font-black">اعتماد</span>
               </button>
@@ -569,7 +743,7 @@ const AddressesTab: React.FC<{ customerId: number; onAddressSelect?: (addr: Cust
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">{([['city', 'المدينة'], ['area', 'المنطقة'], ['street', 'الشارع'], ['building_no', 'المبنى'], ['floor', 'الطابق'], ['apartment', 'الشقة'], ['landmark', 'أقرب معلم']] as const).map(([key, label]) => <label key={key} className="text-[11px] font-bold text-slate-400">{label}<input value={form[key]} onChange={e => setForm(value => ({ ...value, [key]: e.target.value }))} className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-2.5 py-2 text-xs text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500" /></label>)}</div>
         <label className="block text-[11px] font-bold text-slate-400">ملاحظات التوصيل<textarea value={form.delivery_notes} onChange={e => setForm(value => ({ ...value, delivery_notes: e.target.value }))} className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-2.5 py-2 text-xs text-white" /></label>
         {error && <p role="alert" className="text-xs font-bold text-red-400">{error}</p>}
-        <div className="flex gap-2"><button onClick={createAddress} disabled={saving} className="flex-1 rounded-lg bg-emerald-600 py-2.5 text-xs font-black text-white disabled:opacity-50">{saving ? "جاري الحفظ..." : "حفظ واختيار العنوان"}</button><button onClick={() => setShowForm(false)} disabled={saving} className="rounded-lg bg-slate-700 px-4 text-xs font-bold text-slate-300">إلغاء</button></div>
+        <div className="flex gap-2"><button onClick={createAddress} disabled={saving} className="flex-1 rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-700 py-2.5 text-xs font-black text-white disabled:opacity-50 shadow-md shadow-emerald-900/20">{saving ? "جاري الحفظ..." : "حفظ واختيار العنوان"}</button><button onClick={() => setShowForm(false)} disabled={saving} className="rounded-lg bg-slate-700 px-4 text-xs font-bold text-slate-300">إلغاء</button></div>
       </div> : <button onClick={() => setShowForm(true)} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-600 py-3 text-xs font-black text-slate-300 hover:border-emerald-500 hover:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"><Plus size={15} /> إضافة عنوان جديد</button>}
     </div>
   );
@@ -614,7 +788,7 @@ const OccasionsTab: React.FC<{ customerId: number }> = ({ customerId }) => {
     <div className="space-y-2">
       {occasions.length === 0 && !showForm && <EmptyState icon={Calendar} text="لا توجد مناسبات مسجلة" />}
       {occasions.map((o) => (
-        <div key={o.id} className="bg-slate-800/50 rounded-xl p-3">
+        <div key={o.id} className="bg-gradient-to-br from-slate-800/50 to-slate-800/20 rounded-xl p-3 border border-slate-700/30">
           <div className="flex items-center justify-between mb-1">
             <div>
               <span className="text-sm font-bold text-white">{o.title}</span>
@@ -647,7 +821,7 @@ const OccasionsTab: React.FC<{ customerId: number }> = ({ customerId }) => {
           <input value={formData.date} onChange={e => setFormData(p => ({ ...p, date: e.target.value }))} type="date" className="w-full bg-slate-700 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" />
           <input value={formData.notes} onChange={e => setFormData(p => ({ ...p, notes: e.target.value }))} placeholder="ملاحظات" className="w-full bg-slate-700 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500" />
           <div className="flex gap-2">
-            <button onClick={handleCreate} className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 text-xs font-bold transition-colors">حفظ</button>
+            <button onClick={handleCreate} className="flex-1 bg-gradient-to-br from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white rounded-lg py-2 text-xs font-bold transition-all shadow-md shadow-red-700/10">حفظ</button>
             <button onClick={() => setShowForm(false)} className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg py-2 text-xs font-bold transition-colors">إلغاء</button>
           </div>
         </div>
@@ -664,7 +838,7 @@ const OccasionsTab: React.FC<{ customerId: number }> = ({ customerId }) => {
 const LoyaltyTab: React.FC<{ points: number }> = ({ points }) => {
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4">
+      <section className="rounded-2xl border border-amber-400/20 bg-gradient-to-br from-amber-500/10 to-amber-500/5 p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-xs font-black text-amber-300">رصيد الولاء المسجل</p>
@@ -714,7 +888,7 @@ const NotesTab: React.FC<{ customerId: number }> = ({ customerId }) => {
     <div className="space-y-2">
       {notes.length === 0 && !showForm && <EmptyState icon={MessageSquare} text="لا توجد ملاحظات" />}
       {notes.map((n) => (
-        <div key={n.id} className="bg-slate-800/50 rounded-xl p-3">
+        <div key={n.id} className="bg-gradient-to-br from-slate-800/50 to-slate-800/20 rounded-xl p-3 border border-slate-700/30">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
               <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${importanceColor(n.importance)}`}>{n.importance === "urgent" ? "عاجل" : n.importance === "high" ? "مهم" : n.importance === "normal" ? "عادي" : "منخفض"}</span>
@@ -751,7 +925,7 @@ const NotesTab: React.FC<{ customerId: number }> = ({ customerId }) => {
             إظهار أثناء إنشاء الطلب
           </label>
           <div className="flex gap-2">
-            <button onClick={handleCreate} className="flex-1 bg-red-600 hover:bg-red-700 text-white rounded-lg py-2 text-xs font-bold transition-colors">حفظ</button>
+            <button onClick={handleCreate} className="flex-1 bg-gradient-to-br from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white rounded-lg py-2 text-xs font-bold transition-all shadow-md shadow-red-700/10">حفظ</button>
             <button onClick={() => setShowForm(false)} className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg py-2 text-xs font-bold transition-colors">إلغاء</button>
           </div>
         </div>
@@ -791,7 +965,7 @@ const OrderDetailsDrawer: React.FC<{ orderId: number; onBack: () => void; onClos
           <h3 className="text-white font-black text-sm">{order?.order_number || "تفاصيل الطلب"}</h3>
           <div className="mr-auto flex gap-2">
             {order && onReOrder && (
-              <button onClick={handleAdoptOrder} disabled={adopting} className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 text-white rounded-lg text-[10px] font-bold transition-all active:scale-95 shadow-lg shadow-emerald-900/30">
+              <button onClick={handleAdoptOrder} disabled={adopting} className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-br from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 disabled:from-slate-700 disabled:to-slate-700 text-white rounded-lg text-[10px] font-bold transition-all active:scale-95 shadow-lg shadow-emerald-900/30">
                 {adopting ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />}
                 {adopting ? "جاري الاعتماد..." : "اعتماد وتكرار الطلب"}
               </button>
@@ -905,7 +1079,7 @@ const ComplaintDetailDrawer: React.FC<{ complaintId: number; onBack: () => void;
                   <h4 className="text-xs font-bold text-slate-400 mb-2">إضافة متابعة</h4>
                   <div className="flex gap-2">
                     <input value={followupText} onChange={e => setFollowupText(e.target.value)} placeholder="نص المتابعة..." className="flex-1 bg-slate-700 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500" />
-                    <button onClick={handleAddFollowup} disabled={addingFollowup || !followupText.trim()} className="px-4 bg-red-600 hover:bg-red-700 disabled:bg-slate-700 text-white rounded-lg text-xs font-bold transition-colors">
+                    <button onClick={handleAddFollowup} disabled={addingFollowup || !followupText.trim()} className="px-4 bg-gradient-to-br from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 disabled:from-slate-700 disabled:to-slate-700 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-red-700/10">
                       {addingFollowup ? <Loader2 size={14} className="animate-spin" /> : "إضافة"}
                     </button>
                   </div>
@@ -918,10 +1092,18 @@ const ComplaintDetailDrawer: React.FC<{ complaintId: number; onBack: () => void;
   );
 };
 
+/* ─── Missing Wallet Icon (needed by FinanceTab) ─── */
+const Wallet = ({ size }: { size?: number }) => (
+  <svg width={size || 14} height={size || 14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="5" width="20" height="14" rx="2" />
+    <path d="M16 12h2" />
+  </svg>
+);
+
 /* ─── Shared Components ─── */
 
 const StatCard: React.FC<{ label: string; value: string; icon: React.ReactNode; highlight?: boolean }> = ({ label, value, icon, highlight }) => (
-  <div className={`bg-slate-800/30 rounded-xl p-3 ${highlight ? "border border-red-500/20" : ""}`}>
+  <div className={`bg-gradient-to-br from-slate-800/50 to-slate-800/20 rounded-xl p-3 border ${highlight ? "border-red-500/30" : "border-slate-700/30"}`}>
     <div className="flex items-center gap-1 text-[10px] font-bold text-slate-500 mb-1">{icon} {label}</div>
     <div className={`text-sm font-black ${highlight ? "text-red-400" : "text-white"}`}>{value}</div>
   </div>
