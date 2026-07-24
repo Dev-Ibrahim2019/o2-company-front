@@ -1171,7 +1171,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateTableStatus = async (tableId: string, status: TableStatus, extra?: Partial<Table>) => {
     try {
-      await api.put(`/tables/${tableId}/status`, { status });
+      const payload: Record<string, any> = { status };
+      if (status === TableStatus.OCCUPIED && extra?.currentOrderId) {
+        payload.current_order_id = Number(extra.currentOrderId);
+      }
+      if (extra?.guestCount) {
+        payload.customer_count = extra.guestCount;
+      }
+      await api.put(`/tables/${tableId}/status`, payload);
       setTables(prev => {
         const tableToUpdate = prev.find(t => t.id === tableId);
         if (!tableToUpdate) return prev;

@@ -390,10 +390,27 @@ export const TablesView: React.FC<{
 
     if (transferMode) {
       if (table.status === TableStatus.AVAILABLE) {
-        transferTable(transferMode.fromId, table.id);
-        setTransferMode(null);
+        const handleTransfer = async () => {
+          const sourceTable = tables.find((t) => t.id === transferMode.fromId);
+          const orderId = sourceTable?.currentOrderId;
+          if (!orderId) {
+            transferTable(transferMode.fromId, table.id);
+            setTransferMode(null);
+            return;
+          }
+          try {
+            const { orderService } = await import("../../services/orderService");
+            const targetNumber = table.table_number || table.number;
+            await orderService.transferOrder(Number(orderId), String(targetNumber));
+            setTransferMode(null);
+            await fetchTables();
+          } catch (err: any) {
+            alert(err?.response?.data?.message || "فشل نقل الطلب");
+          }
+        };
+        handleTransfer();
       } else {
-        alert("يرجى اختيار طاولة فارغة للنقل إليها");
+        alert("لا يمكن النقل لهذه الطاولة مشغولة");
       }
       return;
     }

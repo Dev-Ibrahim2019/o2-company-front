@@ -329,10 +329,17 @@ export const CartPanel: React.FC<CartPanelProps> = ({
               />
             </div>
             <div className="flex items-end">
-                {editingOrderId ? (
+              {isHospitality ? (
+                <button
+                  onClick={onViewTables}
+                  className="w-full py-1.5 bg-slate-800 text-slate-400 border border-white/5 rounded-lg font-black text-[8px] hover:bg-slate-700 hover:text-slate-100 transition-all"
+                >
+                  الخريطة
+                </button>
+              ) : editingOrderId ? (
                 <button
                   onClick={async () => {
-                    if (isDeferred) return; // الطلب مؤجل بالفعل
+                    if (isDeferred) return;
                     if (onDeferOrder) {
                       await onDeferOrder();
                     } else {
@@ -763,9 +770,9 @@ export const CartPanel: React.FC<CartPanelProps> = ({
       {/* 4. Footer Summary & Actions */}
       <div className="p-3 sm:p-4 bg-slate-950 border-t border-white/10 space-y-2">
         {/* Note & Discount Row */}
-        <div className="flex gap-2">
+        <div className={`flex gap-2 ${isHospitality ? '' : ''}`}>
           {/* Invoice Note */}
-          <div className="flex-1 bg-slate-900 px-3 py-1.5 rounded-xl border border-white/5 flex flex-col gap-0.5">
+          <div className={`${isHospitality ? 'w-full' : 'flex-1'} bg-slate-900 px-3 py-1.5 rounded-xl border border-white/5 flex flex-col gap-0.5`}>
             <div className="flex items-center gap-1 text-slate-500 shrink-0">
               <FileText size={10} />
               <span className="text-[8px] font-black uppercase tracking-widest">
@@ -780,6 +787,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
             />
           </div>
           {/* Discount */}
+          {!isHospitality && (
           <div className="w-28 sm:w-32 bg-slate-900 px-3 py-1.5 rounded-xl border border-white/5 flex flex-col gap-0.5">
             <div className="flex items-center gap-1 text-slate-500 shrink-0">
               <Tag size={10} />
@@ -799,7 +807,6 @@ export const CartPanel: React.FC<CartPanelProps> = ({
     }
   }}
   placeholder="0"
-  // تم تغيير flex-1 إلى flex-1 min-w-0 أو w-0 flex-1 لمنع التمدد الزائد
   className="flex-1 min-w-0 bg-transparent text-center text-[10px] sm:text-xs font-black text-white outline-none"
 />
               <button
@@ -814,6 +821,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
               </button>
             </div>
           </div>
+          )}
         </div>
         {/* Action Buttons */}
         {isHospitality ? (

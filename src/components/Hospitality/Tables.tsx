@@ -159,6 +159,7 @@ export const HospitalityTables: React.FC<{
   const [transferMode, setTransferMode] = useState<{ fromId: string } | null>(
     null,
   );
+  const [transferError, setTransferError] = useState<string | null>(null);
   const [mergeMode, setMergeMode] = useState<string[]>([]);
   const [seatingTableId, setSeatingTableId] = useState<string | null>(null);
   const [guestCount, setGuestCount] = useState<number>(2);
@@ -341,6 +342,39 @@ export const HospitalityTables: React.FC<{
     }
   };
 
+  const handleTransferToTable = async (targetTable: Table) => {
+    if (!transferMode) return;
+    const sourceTable = tables.find((t) => t.id === transferMode.fromId);
+    if (!sourceTable) return;
+
+    let orderId = sourceTable.currentOrderId;
+
+    if (!orderId) {
+      try {
+        const sourceNumber = sourceTable.table_number || String(sourceTable.number);
+        const order = await orderService.getActiveByTableNumber(sourceNumber, getBranchFilter(currentUser));
+        if (order) {
+          orderId = String(order.id);
+        }
+      } catch {}
+    }
+
+    if (!orderId) {
+      setTransferError("لا يوجد طلب نشط على الطاولة المصدر");
+      return;
+    }
+
+    try {
+      const targetNumber = targetTable.table_number || String(targetTable.number);
+      await orderService.transferOrder(Number(orderId), String(targetNumber));
+      setTransferMode(null);
+      setTransferError(null);
+      await fetchTables();
+    } catch (err: any) {
+      setTransferError(err?.response?.data?.message || "فشل نقل الطلب");
+    }
+  };
+
   const handleTableClick = (table: Table) => {
     if (mode === "pos") {
       setSelectedTable(table);
@@ -351,10 +385,9 @@ export const HospitalityTables: React.FC<{
 
     if (transferMode) {
       if (table.status === TableStatus.AVAILABLE) {
-        transferTable(transferMode.fromId, table.id);
-        setTransferMode(null);
+        handleTransferToTable(table);
       } else {
-        alert("يرجى اختيار طاولة فارغة للنقل إليها");
+        setTransferError("لا يمكن النقل لهذه الطاولة مشغولة");
       }
       return;
     }
@@ -754,7 +787,7 @@ export const HospitalityTables: React.FC<{
                 className={`p-4 sm:p-8 ${getStatusConfig(activePopupTable.status, selectedTable?.id === activePopupTable.id).color} text-white flex justify-between items-start`}
               >
                 <div className="space-y-0.5 sm:space-y-1">
-                  <h3 className="text-xl sm:text-3xl font-black">
+                  <h3 className="text-2xl sm:text-5xl font-black">
                     طاولة {getTableDisplayLabel(activePopupTable)}
                   </h3>
                   <div className="flex items-center gap-2 text-xs sm:text-sm font-bold opacity-80">
@@ -842,7 +875,7 @@ export const HospitalityTables: React.FC<{
                                 الفاتورة / الطلب
                               </span>
                             </div>
-                            <p className="text-2xl font-black text-white">
+                            <p className="text-sm font-black text-white">
                               #{activePopupApiOrder.order_number}
                             </p>
                             <p className="text-[10px] font-bold text-slate-500">
@@ -857,7 +890,7 @@ export const HospitalityTables: React.FC<{
                                 الإجمالي
                               </span>
                             </div>
-                            <p className="text-3xl font-black text-red-600">
+                            <p className="text-sm font-black text-red-600">
                               {formatMoney(activePopupApiOrder.total)}
                             </p>
                           </div>
@@ -941,7 +974,7 @@ export const HospitalityTables: React.FC<{
                                 className="grid grid-cols-[1fr_auto_auto] gap-3 items-center px-3 py-2.5 border-b border-white/5 last:border-b-0 bg-slate-900/40"
                               >
                                 <div className="min-w-0">
-                                  <p className="text-xs font-black text-white truncate">
+                                  <p className="text-sm font-black text-white truncate">
                                     {item.item_name_ar || item.item_name}
                                   </p>
                                   {item.notes && (
@@ -949,11 +982,14 @@ export const HospitalityTables: React.FC<{
                                       {item.notes}
                                     </p>
                                   )}
+                                  <p className="text-[9px] font-bold text-slate-500">
+                                    {calculateSittingTime(item.created_at || activePopupApiOrder.created_at)}
+                                  </p>
                                 </div>
-                                <span className="text-[10px] font-black text-slate-300">
+                                <span className="text-sm font-black text-slate-300">
                                   x{item.quantity}
                                 </span>
-                                <span className="text-[10px] font-black text-red-400">
+                                <span className="text-sm font-black text-red-400">
                                   {formatMoney(item.total_price)}
                                 </span>
                               </div>
@@ -1023,61 +1059,6 @@ export const HospitalityTables: React.FC<{
                           </button>
                         )}
 
-                        {/* زر ترحيل العناصر الجديدة — يظهر عندما الطلب مؤكد لكن فيه عناصر جديدة بانتظار الترحيل */}
-                        {activePopupApiOrder.status !== "pending_confirmation" &&
-                          activePopupApiOrder.status !== "paid" &&
-                          activePopupApiOrder.status !== "cancelled" &&
-                          activePopupApiOrder.status !== "served" &&
-                          (activePopupApiOrder as any).has_unsent_items && (
-                          <button
-                            onClick={async () => {
-                              try {
-                                const res = await fetch(
-                                  `${import.meta.env.VITE_API_URL || "/api"}/orders/${activePopupApiOrder.id}/confirm`,
-                                  {
-                                    method: "POST",
-                                    headers: {
-                                      "Content-Type": "application/json",
-                                      Authorization: `Bearer ${localStorage.getItem("token")}`,
-                                    },
-                                  }
-                                );
-                                const data = await res.json();
-                                if (data.success) {
-                                  setActiveApiOrder({
-                                    ...activePopupApiOrder,
-                                    status: "confirmed",
-                                    has_unsent_items: false,
-                                  });
-                                  alert("تم ترحيل العناصر الجديدة للأقسام");
-                                } else {
-                                  alert(data.message || "فشل ترحيل العناصر");
-                                }
-                              } catch {
-                                alert("حدث خطأ أثناء ترحيل العناصر");
-                              }
-                            }}
-                            className="w-full bg-amber-500 text-white py-3 rounded-xl font-black text-xs shadow-lg shadow-amber-900/20 flex items-center justify-center gap-2 animate-pulse"
-                          >
-                            <Send size={16} /> ترحيل العناصر الجديدة
-                          </button>
-                        )}
-
-                        {activePopupApiOrder.status !== "paid" && activePopupApiOrder.status !== "pending_confirmation" && (
-                          <button
-                            onClick={() =>
-                              updateTableStatus(
-                                activePopupTable.id,
-                                TableStatus.PAYMENT_PENDING,
-                                { currentOrderId: String(activePopupApiOrder.id) },
-                              )
-                            }
-                            className="w-full bg-orange-500 text-white py-3 rounded-xl font-black text-xs shadow-lg shadow-orange-900/20 flex items-center justify-center gap-2"
-                          >
-                            <DollarSign size={16} /> طلب الحساب (بانتظار الدفع)
-                          </button>
-                        )}
-
                         <button
                           onClick={() => {
                             setSelectedTable(activePopupTable);
@@ -1088,6 +1069,19 @@ export const HospitalityTables: React.FC<{
                           className="w-full bg-red-600 text-white py-3 rounded-xl font-black text-xs shadow-lg shadow-red-900/20 flex items-center justify-center gap-2"
                         >
                           <ExternalLink size={16} /> فتح الطاولة في شاشة البيع
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            setSelectedTable(activePopupTable);
+                            setOrderType(OrderType.DINE_IN);
+                            setShowPopup(null);
+                            clearCart?.();
+                            handleNavigateToPOS(activePopupTable);
+                          }}
+                          className="w-full bg-emerald-600 text-white py-3 rounded-xl font-black text-xs shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2"
+                        >
+                          <Plus size={16} /> طلب جديد
                         </button>
                       </div>
                     ) : activePopupOrder ? (
@@ -1318,7 +1312,7 @@ export const HospitalityTables: React.FC<{
           <Move size={24} className="hidden sm:block" />
           <span className="text-[10px] sm:text-sm">اختر الطاولة الجديدة...</span>
           <button
-            onClick={() => setTransferMode(null)}
+            onClick={() => { setTransferMode(null); setTransferError(null); }}
             className="bg-black/20 p-1 rounded-full hover:bg-black/40"
           >
             <X size={14} className="sm:hidden" />

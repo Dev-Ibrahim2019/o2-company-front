@@ -885,6 +885,11 @@ export const orderService = {
     return data.data as OrderFromApi;
   },
 
+  transferOrder: async (orderId: number, newTableNumber: string): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${orderId}/transfer`, { table_number: newTableNumber });
+    return data.data as OrderFromApi;
+  },
+
   getDeferredOrders: async (branchId?: number): Promise<OrderFromApi[]> => {
     const params: Record<string, any> = { status: "pending_payment" };
     if (branchId && Number.isFinite(branchId)) {

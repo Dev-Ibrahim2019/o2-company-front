@@ -752,7 +752,7 @@ export const HospitalityPOS: React.FC = () => {
 
     if (result) {
       if (activeTable) {
-        updateTableStatus(activeTable.id, TableStatus.OCCUPIED, {
+        await updateTableStatus(activeTable.id, TableStatus.OCCUPIED, {
           currentOrderId: String(result.id),
         });
         setSelectedTable(activeTable);
@@ -961,7 +961,7 @@ export const HospitalityPOS: React.FC = () => {
           forgetTableDraft(activeTable.id);
           setSelectedTable(null);
         } else {
-          updateTableStatus(activeTable.id, TableStatus.OCCUPIED, {
+          await updateTableStatus(activeTable.id, TableStatus.OCCUPIED, {
             currentOrderId: String(result.id),
           });
           forgetTableDraft(activeTable.id);
