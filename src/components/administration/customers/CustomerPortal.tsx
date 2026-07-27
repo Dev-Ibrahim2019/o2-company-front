@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "../../shared/Toast";
 import {
     Users, FileText, LayoutDashboard, Wallet, Clock,
     AlertTriangle, TrendingUp, TrendingDown, DollarSign,
@@ -64,12 +65,21 @@ const CustomerPortal: React.FC = () => {
     });
     const [creating, setCreating] = useState(false);
     const updateField = (f: string, v: any) => setForm(p => ({ ...p, [f]: v }));
+    const resetForm = () => setForm({
+        name: "", name_en: "", status: "active", category: "retail",
+        phone: "", mobile: "", email: "", address: "", city: "",
+        currency: "ILS", payment_terms: "net30", credit_limit: 0, opening_balance: 0,
+        notes: "", gps_link: "", advanced: false,
+    });
 
     const handleCreate = async () => {
-        if (!form.name.trim()) return;
+        if (!form.name.trim()) {
+            toast.warning("اسم العميل مطلوب");
+            return;
+        }
         setCreating(true);
         try {
-            await customerService.create({
+            const res = await customerService.create({
                 name: form.name, name_en: form.name_en || undefined,
                 status: form.status, category: form.category,
                 phone: form.phone || undefined, mobile: form.mobile || undefined,
@@ -79,9 +89,15 @@ const CustomerPortal: React.FC = () => {
                 credit_limit: form.credit_limit || 0, opening_balance: form.opening_balance || 0,
                 notes: form.notes || undefined, gps_link: form.gps_link || undefined,
             });
-            setForm({ ...form, name: "", name_en: "", phone: "", mobile: "", email: "", address: "", city: "", notes: "", gps_link: "", credit_limit: 0, opening_balance: 0 });
+            const createdCustomer = (res as any)?.data ?? res;
+            resetForm();
+            toast.success("تم إنشاء العميل بنجاح", createdCustomer?.name ? `تمت إضافة ${createdCustomer.name}` : undefined);
             setActiveView("directory");
-        } catch { } finally { setCreating(false); }
+        } catch (error: any) {
+            const message = error?.response?.data?.message || error?.message || "فشل إنشاء العميل";
+            const details = error?.response?.data?.errors ? Object.values(error.response.data.errors).flat().join(" • ") : undefined;
+            toast.error("فشل إنشاء العميل", details || message);
+        } finally { setCreating(false); }
     };
 
     return (

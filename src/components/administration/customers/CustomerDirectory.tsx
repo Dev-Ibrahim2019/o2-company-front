@@ -31,6 +31,7 @@ import {
     Filter,
 } from "lucide-react";
 import { customerService, type Customer, type CustomerForm } from "../../../services/customerService";
+import { toast } from "../../shared/Toast";
 
 // ─── Helpers ───────────────────────────────────────────────
 
@@ -146,6 +147,7 @@ const CustomerFormModal: React.FC<{
     const handleSubmit = async () => {
         if (!form.name.trim()) {
             setError("اسم العميل مطلوب");
+            toast.warning("اسم العميل مطلوب");
             return;
         }
         setSaving(true);
@@ -153,13 +155,18 @@ const CustomerFormModal: React.FC<{
         try {
             if (customer) {
                 await customerService.update(customer.id, form);
+                toast.success("تم تحديث العميل بنجاح");
             } else {
                 await customerService.create(form);
+                toast.success("تم إنشاء العميل بنجاح");
             }
             onSaved();
             onClose();
         } catch (err: any) {
-            setError(err?.response?.data?.message || err?.message || "فشل الحفظ");
+            const message = err?.response?.data?.message || err?.message || "فشل الحفظ";
+            const details = err?.response?.data?.errors ? Object.values(err.response.data.errors).flat().join(" • ") : undefined;
+            setError(message);
+            toast.error(customer ? "فشل تحديث العميل" : "فشل إنشاء العميل", details || message);
         } finally {
             setSaving(false);
         }

@@ -33,6 +33,7 @@ import type {
   CostCenter,
 } from "../../../services/accountingService";
 
+import { toast } from "../../shared/Toast";
 import { AccountingDashboard } from "./AccountingDashboard";
 import { FiscalYearsView, CostCentersView } from "./GLSubViews";
 import { EnterpriseJournalView as JournalView } from "./EnterpriseJournalView";
@@ -248,14 +249,14 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
     name: "",
     name_en: "",
     status: "active",
-    category: "regular",
+    category: "retail",
     phone: "",
     mobile: "",
     email: "",
     address: "",
     city: "",
     currency: "ILS",
-    payment_terms: "due_on_receipt",
+    payment_terms: "net30",
     credit_limit: 0,
     opening_balance: 0,
     notes: "",
@@ -265,7 +266,10 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
     setCustomerForm((prev) => ({ ...prev, [field]: value }));
   }, []);
   const handleCreateCustomer = useCallback(async () => {
-    if (!customerForm.name.trim()) return;
+    if (!customerForm.name.trim()) {
+      toast.warning("اسم العميل مطلوب");
+      return;
+    }
     setCreating(true);
     try {
       const { customerService } =
@@ -287,19 +291,20 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
         notes: customerForm.notes || undefined,
         gps_link: customerForm.gps_link || undefined,
       });
+      toast.success("تم إنشاء العميل بنجاح");
       setShowCreateCustomer(false);
       setCustomerForm({
         name: "",
         name_en: "",
         status: "active",
-        category: "regular",
+        category: "retail",
         phone: "",
         mobile: "",
         email: "",
         address: "",
         city: "",
         currency: "ILS",
-        payment_terms: "due_on_receipt",
+        payment_terms: "net30",
         credit_limit: 0,
         opening_balance: 0,
         notes: "",
@@ -318,7 +323,10 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
           );
         })
         .catch(() => { });
-    } catch (err) {
+    } catch (err: any) {
+      const message = err?.response?.data?.message || err?.message || "فشل إنشاء العميل";
+      const details = err?.response?.data?.errors ? Object.values(err.response.data.errors).flat().join(" • ") : undefined;
+      toast.error("فشل إنشاء العميل", details || message);
       console.error("Failed to create customer:", err);
     } finally {
       setCreating(false);
@@ -329,14 +337,14 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
     name: "",
     name_en: "",
     status: "active",
-    category: "regular",
+    category: "retail",
     phone: "",
     mobile: "",
     email: "",
     address: "",
     city: "",
     currency: "ILS",
-    payment_terms: "due_on_receipt",
+    payment_terms: "net30",
     credit_limit: 0,
     opening_balance: 0,
     notes: "",
