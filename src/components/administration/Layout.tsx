@@ -41,6 +41,7 @@ import {
   Phone,
   FileAudio,
   Printer,
+  Headphones,
 } from "lucide-react";
 
 /* ── روابط التنقل ── */
@@ -189,6 +190,11 @@ const NAV = [
     icon: HeartHandshake,
     label: "أجهزة الضيافة",
     permission: PERMISSIONS.MANAGE_HOSPITALITY_DEVICES,
+  },
+  {
+    to: "/admin/call-center-devices",
+    icon: Headphones,
+    label: "أجهزة الكول سنتر",
   },
   { to: "/admin/printers", icon: Printer, label: "أجهزة الطابعات"},
   {
@@ -588,6 +594,11 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({
             icon={HeartHandshake}
             label="أجهزة الضيافة"
             permission={PERMISSIONS.MANAGE_HOSPITALITY_DEVICES}
+          />
+          <SidebarLink
+            to="/admin/call-center-devices"
+            icon={Headphones}
+            label="أجهزة الكول سنتر"
           />
           <SidebarLink to="/admin/printers" icon={Printer} label="أجهزة الطباعة" />
           <SidebarLink

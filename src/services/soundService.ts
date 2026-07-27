@@ -1,4 +1,4 @@
-type SoundType = "success" | "error" | "warning" | "info" | "click";
+type SoundType = "success" | "error" | "warning" | "info" | "click" | "ringing" | "callConnected" | "callEnded";
 
 let audioCtx: AudioContext | null = null;
 const lastPlayed: Partial<Record<SoundType, number>> = {};
@@ -87,6 +87,33 @@ export const sound = {
   click() {
     throttled("click", () => {
       playTone(1200, 0.03, "sine", 0.08);
+    });
+  },
+
+  /** صوت رنين المكالمة الواردة - نغمتين متتاليتين */
+  ringing() {
+    throttled("ringing", () => {
+      playTone(440, 0.25, "sine", 0.3);
+      setTimeout(() => playTone(440, 0.25, "sine", 0.3), 300);
+      setTimeout(() => playTone(440, 0.25, "sine", 0.3), 600);
+      setTimeout(() => playTone(440, 0.25, "sine", 0.3), 900);
+    });
+  },
+
+  /** صوت عند الرد على المكالمة */
+  callConnected() {
+    throttled("callConnected", () => {
+      playTone(600, 0.08, "sine", 0.25);
+      setTimeout(() => playTone(800, 0.12, "sine", 0.25), 80);
+    });
+  },
+
+  /** صوت عند إنهاء المكالمة */
+  callEnded() {
+    throttled("callEnded", () => {
+      playTone(500, 0.1, "sine", 0.2);
+      setTimeout(() => playTone(400, 0.1, "sine", 0.2), 100);
+      setTimeout(() => playTone(300, 0.2, "sine", 0.15), 200);
     });
   },
 

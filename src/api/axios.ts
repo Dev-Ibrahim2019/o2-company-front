@@ -25,13 +25,15 @@ api.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
-  // 2️⃣ 🛡️ حقن معرّف الجهاز (device_uuid) في الهيدر — دعم مزدوج (POS + ضيافة)
-  // ي优先 يرسل hospitality_device_uuid إذا كان موجوداً (لأنه أكثر تحديداً)
-  // وإلا يرسل pos_device_uuid
+  // 2️⃣ 🛡️ حقن معرّف الجهاز (device_uuid) في الهيدر — دعم ثلاثي (كول سنتر + ضيافة + POS)
+  // الأولوية: call_center > hospitality > pos
+  const callCenterUuid = localStorage.getItem("call_center_device_uuid");
   const hospitalityUuid = localStorage.getItem("hospitality_device_uuid");
   const posUuid = localStorage.getItem("pos_device_uuid");
 
-  if (hospitalityUuid) {
+  if (callCenterUuid) {
+    config.headers["X-Device-UUID"] = callCenterUuid;
+  } else if (hospitalityUuid) {
     config.headers["X-Device-UUID"] = hospitalityUuid;
   } else if (posUuid) {
     config.headers["X-Device-UUID"] = posUuid;
@@ -67,19 +69,22 @@ api.interceptors.response.use(
       }
 
       // 🟢 تحديد نوع الجهاز من الـ UUID المرسل
+      const callCenterUuid = localStorage.getItem("call_center_device_uuid");
       const hospitalityUuid = localStorage.getItem("hospitality_device_uuid");
       const posUuid = localStorage.getItem("pos_device_uuid");
 
       // نستخدم الـ UUID الذي كان مُرسلاً في الطلب الأصلي
       const sentUuid = error.config.headers?.["X-Device-UUID"];
 
-      if (sentUuid && hospitalityUuid && sentUuid === hospitalityUuid) {
-        // جهاز ضيافة — مسح مفاتيح الضيافة والتحويل لصفحة الضيافة
+      if (sentUuid && callCenterUuid && sentUuid === callCenterUuid) {
+        localStorage.removeItem("call_center_device_uuid");
+        localStorage.removeItem("call_center_register_info");
+        window.location.href = "/call-center";
+      } else if (sentUuid && hospitalityUuid && sentUuid === hospitalityUuid) {
         localStorage.removeItem("hospitality_device_uuid");
         localStorage.removeItem("hospitality_register_info");
         window.location.href = "/Hospitality";
-      } else {
-        // جهاز POS — مسح مفاتيح POS والتحويل لصفحة التفعيل
+      } else if (sentUuid) {
         localStorage.removeItem("pos_device_uuid");
         localStorage.removeItem("pos_register_info");
         window.location.href = "/activate";

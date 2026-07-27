@@ -35,6 +35,9 @@ export const ROLES = {
 
   /** موظف القسم — عرض طلبات القسم فقط */
   DEPT_STAFF: "dept-staff",
+
+  /** موظف الكول سنتر — إدارة العملاء والشكاوى والمناسبات */
+  CALL_CENTER: "call-center",
 } as const;
 
 /** نوع يمثل جميع قيم الأدوار الممكنة */
@@ -102,6 +105,11 @@ export const PERMISSIONS = {
   ACCESS_POS_INTERFACE: "access-pos-interface",
   // ── الخصومات ──
   MANAGE_DISCOUNTS: "manage-discounts",
+
+  // ── الكول سنتر ──
+  MANAGE_CALL_CENTER: "manage-call-center",
+  ACCESS_CALL_CENTER_INTERFACE: "access-call-center-interface",
+  MANAGE_CALL_CENTER_DEVICES: "manage-call-center-devices",
 } as const;
 
 /** نوع يمثل جميع قيم الصلاحيات الممكنة */
@@ -135,6 +143,9 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     PERMISSIONS.MANAGE_SUPPLIERS,
     PERMISSIONS.MANAGE_INVOICES,
     PERMISSIONS.MANAGE_DISCOUNTS,
+    PERMISSIONS.MANAGE_CALL_CENTER,
+    PERMISSIONS.ACCESS_CALL_CENTER_INTERFACE,
+    PERMISSIONS.MANAGE_CALL_CENTER_DEVICES,
   ],
 
   [ROLES.BRANCH_MANAGER]: [
@@ -176,4 +187,11 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
   ],
 
   [ROLES.DEPT_STAFF]: [PERMISSIONS.VIEW_ORDERS],
+
+  [ROLES.CALL_CENTER]: [
+    PERMISSIONS.ACCESS_CALL_CENTER_INTERFACE,
+    PERMISSIONS.MANAGE_CUSTOMERS,
+    PERMISSIONS.VIEW_ORDERS,
+    PERMISSIONS.MANAGE_CALL_CENTER,
+  ],
 };
