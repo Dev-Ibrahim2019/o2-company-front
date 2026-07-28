@@ -1,5 +1,7 @@
 ﻿import api from "../../../api/axios";
 
+import type { CustomerIdentity } from "../../../types/customer";
+
 export type CustomerCategory = "regular" | "important" | "vip" | "new" | "inactive" | "follow_up" | "complaints";
 
 export const CUSTOMER_CATEGORY_LABELS: Record<CustomerCategory, string> = {
@@ -32,19 +34,8 @@ const sanitizeCustomerAddress = (data: Record<string, unknown>) => {
   );
 };
 
-export interface CustomerSearchResult {
-  id: number;
-  name: string;
-  phone: string | null;
-  mobile: string | null;
-  code: string;
-  status: "active" | "inactive" | "blocked";
-  category: string | null;
-  city: string | null;
-  address: string | null;
-  branch_id: number | null;
+export interface CustomerSearchResult extends CustomerIdentity {
   loyalty_points?: number;
-  branch?: { id: number; name: string } | null;
   lastOrder?: OrderDetail;
   selectedAddress?: CustomerAddress;
 }

@@ -112,6 +112,12 @@ export const PERMISSIONS = {
   MANAGE_CALL_CENTER_DEVICES: "manage-call-center-devices",
 } as const;
 
+/** صلاحيات CRM الجديدة، مستقلة عن شاشة حسابات العملاء القديمة. */
+export const CRM_PERMISSIONS = {
+  ACCESS: "crm.access",
+  VIEW_CUSTOMER_FINANCIAL: "crm.view-customer-financial",
+} as const;
+
 /** نوع يمثل جميع قيم الصلاحيات الممكنة */
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 

@@ -68,6 +68,13 @@ import { ExtensionsTestView } from "./components/administration/ExtensionsTestVi
 import { PbxExtensionsTestView } from "./components/administration/PbxExtensionsTestView";
 import { PbxRecordingsView } from "./components/administration/PbxRecordingsView";
 import FreePBXTestPage from "./pages/FreePBXTestPage";
+import {
+  CrmRouteGuard,
+  CrmShell,
+  CrmDashboardPage,
+  CrmCustomersPage,
+  Customer360Page,
+} from "./features/crm";
 
 // ── مكونات الكول سنتر ──
 import { CallCenterLayout } from "./components/call-center/Layout";
@@ -302,6 +309,16 @@ function AppRoutes() {
         {/* ═══ مسارات الإدارة العامة ═══
             RoleGuard يفحص الدور → AdminLayout يعرض السايد بار → FinanceView يعرض المحتوى
         */}
+        <Route element={<AdminLayout />}>
+          <Route
+            path="/admin/crm"
+            element={<CrmRouteGuard><CrmShell /></CrmRouteGuard>}
+          >
+            <Route index element={<CrmDashboardPage />} />
+            <Route path="customers" element={<CrmCustomersPage />} />
+            <Route path="customers/:customerId/*" element={<Customer360Page />} />
+          </Route>
+        </Route>
         <Route element={<RoleGuard allowedRoles={ADMIN_ROLES} />}>
           <Route element={<AdminLayout />}>
             <Route path="/admin">
