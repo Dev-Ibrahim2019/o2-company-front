@@ -58,9 +58,8 @@ api.interceptors.response.use(
 
     // 2️⃣ 🛡️ الحماية الذكية لأخطاء الـ 403 (مهم جداً!)
     if (error.response?.status === 403) {
-      
       // الفحص السحري: هل الخطأ قادم من محاولة تسجيل الدخول (Login)؟
-      const isLoginRequest = error.config.url?.includes('/login');
+      const isLoginRequest = error.config.url?.includes("/login");
 
       if (isLoginRequest) {
         // ❌ إذا كان خطأ فرع في الـ Login: لا تمسح الـ UUID الفعال للجهاز!
@@ -69,6 +68,15 @@ api.interceptors.response.use(
       }
 
       // 🟢 تحديد نوع الجهاز من الـ UUID المرسل
+      const requestUrl = String(error.config?.url ?? "");
+      const isCallCenterStatusCheck = requestUrl.includes(
+        "/call-center/check-status",
+      );
+      const isHospitalityStatusCheck = requestUrl.includes(
+        "/hospitality/check-status",
+      );
+      const isPosStatusCheck = requestUrl.includes("/pos/check-status");
+
       const callCenterUuid = localStorage.getItem("call_center_device_uuid");
       const hospitalityUuid = localStorage.getItem("hospitality_device_uuid");
       const posUuid = localStorage.getItem("pos_device_uuid");
@@ -76,15 +84,30 @@ api.interceptors.response.use(
       // نستخدم الـ UUID الذي كان مُرسلاً في الطلب الأصلي
       const sentUuid = error.config.headers?.["X-Device-UUID"];
 
-      if (sentUuid && callCenterUuid && sentUuid === callCenterUuid) {
+      if (
+        isCallCenterStatusCheck &&
+        sentUuid &&
+        callCenterUuid &&
+        sentUuid === callCenterUuid
+      ) {
         localStorage.removeItem("call_center_device_uuid");
         localStorage.removeItem("call_center_register_info");
         window.location.href = "/call-center";
-      } else if (sentUuid && hospitalityUuid && sentUuid === hospitalityUuid) {
+      } else if (
+        isHospitalityStatusCheck &&
+        sentUuid &&
+        hospitalityUuid &&
+        sentUuid === hospitalityUuid
+      ) {
         localStorage.removeItem("hospitality_device_uuid");
         localStorage.removeItem("hospitality_register_info");
         window.location.href = "/Hospitality";
-      } else if (sentUuid) {
+      } else if (
+        isPosStatusCheck &&
+        sentUuid &&
+        posUuid &&
+        sentUuid === posUuid
+      ) {
         localStorage.removeItem("pos_device_uuid");
         localStorage.removeItem("pos_register_info");
         window.location.href = "/activate";
@@ -131,7 +154,10 @@ function getDiscountMockHandler(
     return discountApi.create(config.data ? JSON.parse(config.data) : {});
   }
   // POST /admin/pos-registers/discounts/calculate-cart
-  if (method === "POST" && u === "/admin/pos-registers/discounts/calculate-cart") {
+  if (
+    method === "POST" &&
+    u === "/admin/pos-registers/discounts/calculate-cart"
+  ) {
     return discountApi.calculateCart(
       config.data ? JSON.parse(config.data) : {},
     );
@@ -141,7 +167,10 @@ function getDiscountMockHandler(
     return discountApi.debug(config.data ? JSON.parse(config.data) : {});
   }
   // POST /admin/pos-registers/discounts/validate-target
-  if (method === "POST" && u === "/admin/pos-registers/discounts/validate-target") {
+  if (
+    method === "POST" &&
+    u === "/admin/pos-registers/discounts/validate-target"
+  ) {
     return discountApi.validateTarget(
       config.data ? JSON.parse(config.data) : {},
     );
