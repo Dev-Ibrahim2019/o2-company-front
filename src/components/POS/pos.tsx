@@ -87,6 +87,51 @@ const normalizeAddressForMatch = (value: string) =>
 const normalizeDeliveryZoneText = (value: unknown) =>
   normalizeAddressForMatch(String(value ?? ""));
 
+const matchDeliveryZoneFromAddress = (
+  zones: DeliveryZoneOption[],
+  address: any,
+  addressText: string,
+) => {
+  if (zones.length === 1) return zones[0];
+
+  const area = normalizeDeliveryZoneText(address?.area || address?.district);
+  const city = normalizeDeliveryZoneText(address?.city);
+  const fullAddress = normalizeDeliveryZoneText(
+    addressText || formatCustomerAddress(address),
+  );
+  const unique = (matches: DeliveryZoneOption[]) =>
+    matches.length === 1 ? matches[0] : undefined;
+
+  if (area) {
+    const match = unique(zones.filter((zone) => {
+      const zoneArea = normalizeDeliveryZoneText(zone.area);
+      const zoneName = normalizeDeliveryZoneText(zone.name);
+      return zoneArea === area || zoneName === area;
+    }));
+    if (match) return match;
+  }
+
+  if (fullAddress) {
+    const match = unique(zones.filter((zone) => {
+      const zoneArea = normalizeDeliveryZoneText(zone.area);
+      const zoneName = normalizeDeliveryZoneText(zone.name);
+      return Boolean(
+        (zoneArea && fullAddress.includes(zoneArea)) ||
+        (zoneName && fullAddress.includes(zoneName)),
+      );
+    }));
+    if (match) return match;
+  }
+
+  if (city) {
+    return unique(zones.filter(
+      (zone) => normalizeDeliveryZoneText(zone.city) === city,
+    ));
+  }
+
+  return undefined;
+};
+
 const requiresPaymentReference = (method: PaymentMethod) =>
   method === PaymentMethod.WALLET ||
   method === PaymentMethod.QR ||
@@ -661,6 +706,55 @@ export const POS: React.FC<{
     selectedDeliveryAddress,
     customerAddress,
   ]);
+
+  const resolveDeliveryPricingForSubmit = async () => {
+    if (!branchId) return null;
+
+    let zones = deliveryZones;
+    if (zones.length === 0) {
+      try {
+        zones = await deliveryPricingService.activeZones(branchId);
+        setDeliveryZones(zones);
+      } catch {
+        return null;
+      }
+    }
+
+    const selectedZone =
+      zones.find((zone) => zone.id === deliveryZoneId) ||
+      matchDeliveryZoneFromAddress(
+        zones,
+        selectedDeliveryAddress,
+        customerAddress,
+      );
+    if (!selectedZone) {
+      setDeliveryZoneNeedsSelection(zones.length > 1);
+      return null;
+    }
+
+    setDeliveryZoneId(selectedZone.id);
+    setDeliveryZoneNeedsSelection(false);
+    setDeliveryQuoteLoading(true);
+    try {
+      const quote = await deliveryPricingService.quote(
+        branchId,
+        selectedZone.id,
+        displaySubtotal,
+      );
+      const fee = roundMoney(Number(quote.fee) || 0);
+      const eligible = Boolean(quote.eligible);
+      setDeliveryFee(fee);
+      setDeliveryEligible(eligible);
+      return { zoneId: selectedZone.id, fee, eligible };
+    } catch {
+      setDeliveryFee(0);
+      setDeliveryEligible(false);
+      return null;
+    } finally {
+      setDeliveryQuoteLoading(false);
+    }
+  };
+
   const totalPaid = roundMoney(
     payments.reduce((sum, payment) => sum + payment.amount, 0),
   );
@@ -1121,10 +1215,17 @@ export const POS: React.FC<{
         : cartOrderType === OrderType.DELIVERY
           ? "delivery"
           : "takeaway";
-    if (orderType === "delivery" && (!deliveryZoneId || !deliveryEligible || deliveryQuoteLoading)) {
-      setPosError(!deliveryZoneId ? "تعذر تحديد منطقة التوصيل تلقائياً من العنوان المعتمد. اختر أو حدّث عنوان العميل ثم حاول مجدداً" : "تعذر اعتماد رسوم التوصيل لهذه المنطقة والطلب");
-      setActivePOSMode("customer");
-      return;
+    let submissionDeliveryZoneId = deliveryZoneId;
+    let submissionDeliveryFee = deliveryFee;
+    if (orderType === "delivery") {
+      const pricing = await resolveDeliveryPricingForSubmit();
+      if (!pricing || !pricing.eligible) {
+        setPosError(!pricing ? "تعذر تحميل منطقة التوصيل أو تسعيرها. تحقق من الفرع والعنوان ثم حاول مجدداً" : "تعذر اعتماد رسوم التوصيل لهذه المنطقة والطلب");
+        setActivePOSMode("customer");
+        return;
+      }
+      submissionDeliveryZoneId = pricing.zoneId;
+      submissionDeliveryFee = pricing.fee;
     }
     let resolvedCustomer = selectedCustomer;
     let resolvedAddressId = customerAddressId;
@@ -1156,8 +1257,8 @@ export const POS: React.FC<{
         customer_mobile: customerMobile || undefined,
         customer_address_id: resolvedAddressId || undefined,
         delivery_address_snapshot: resolvedAddressSnapshot || undefined,
-        delivery_zone_id: orderType === "delivery" ? deliveryZoneId : undefined,
-        delivery_fee: orderType === "delivery" ? deliveryFee : 0,
+        delivery_zone_id: orderType === "delivery" ? submissionDeliveryZoneId : undefined,
+        delivery_fee: orderType === "delivery" ? submissionDeliveryFee : 0,
         customer_notes: customerOrderNotes || undefined,
         note: invoiceNote || undefined,
         discount_value: discountValue || undefined,
@@ -1499,10 +1600,17 @@ export const POS: React.FC<{
         ? "dine_in"
         : "takeaway";
 
-    if (orderType === "delivery" && (!deliveryZoneId || !deliveryEligible || deliveryQuoteLoading)) {
-      setPosError(!deliveryZoneId ? "تعذر تحديد منطقة التوصيل تلقائياً من العنوان المعتمد. اختر أو حدّث عنوان العميل ثم حاول مجدداً" : "الطلب غير مؤهل للتوصيل إلى المنطقة المختارة");
-      setActivePOSMode("customer");
-      return;
+    let submissionDeliveryZoneId = deliveryZoneId;
+    let submissionDeliveryFee = deliveryFee;
+    if (orderType === "delivery") {
+      const pricing = await resolveDeliveryPricingForSubmit();
+      if (!pricing || !pricing.eligible) {
+        setPosError(!pricing ? "تعذر تحميل منطقة التوصيل أو تسعيرها. تحقق من الفرع والعنوان ثم حاول مجدداً" : "الطلب غير مؤهل للتوصيل إلى المنطقة المختارة");
+        setActivePOSMode("customer");
+        return;
+      }
+      submissionDeliveryZoneId = pricing.zoneId;
+      submissionDeliveryFee = pricing.fee;
     }
 
     let orderCustomer = selectedCustomer;
@@ -1623,8 +1731,8 @@ export const POS: React.FC<{
         customer_mobile: customerMobile || undefined,
         customer_address_id: orderAddressId || undefined,
         delivery_address_snapshot: orderAddressSnapshot || undefined,
-        delivery_zone_id: orderType === "delivery" ? deliveryZoneId : undefined,
-        delivery_fee: orderType === "delivery" ? deliveryFee : 0,
+        delivery_zone_id: orderType === "delivery" ? submissionDeliveryZoneId : undefined,
+        delivery_fee: orderType === "delivery" ? submissionDeliveryFee : 0,
         customer_notes: customerOrderNotes || undefined,
         note: meta.note || undefined,
         discount_value: discountValue || undefined,
