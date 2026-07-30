@@ -4,7 +4,7 @@ import api from "../api/axios";
 import type { Transaction as AccountingTransaction } from "./accountingService";
 
 // ── أنواع ─────────────────────────────────────────────────────────────────────
-export type OrderType = "dine_in" | "takeaway";
+export type OrderType = "dine_in" | "takeaway" | "delivery";
 export type OrderStatus =
   | "pending"
   | "pending_confirmation"

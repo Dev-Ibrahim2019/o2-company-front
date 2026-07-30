@@ -14,6 +14,7 @@ interface MenuGridProps {
   searchQuery: string;
   addToCart: (item: MenuItem) => void;
   loading?: boolean;
+  categoryScrollable?: boolean;
 }
 
 export const MenuGrid: React.FC<MenuGridProps> = ({
@@ -23,20 +24,8 @@ export const MenuGrid: React.FC<MenuGridProps> = ({
   searchQuery,
   addToCart,
   loading = false,
+  categoryScrollable = false,
 }) => {
-  // ── DEBUG ─────────────────────────────────────────────────────────────────
-  console.log("🟢 [MenuGrid] Rendering with:", {
-    categoriesCount: categories.length,
-    selectedCategory,
-    searchQuery,
-    categories: categories.map(c => ({
-      id: c.id,
-      name: c.name_ar,
-      itemsCount: c.items?.length || 0,
-      items: c.items?.map(i => ({ id: i.id, name: i.name_ar, price: i.price }))
-    }))
-  });
-
   // ── Filtered items ────────────────────────────────────────────────────────
   const filteredItems = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -52,7 +41,6 @@ export const MenuGrid: React.FC<MenuGridProps> = ({
         item.code.toLowerCase().includes(q)
       );
 
-    console.log("🔵 [MenuGrid] Filtered items:", result.length, result.map(i => ({ id: i.id, name: i.name_ar, price: i.price })));
     return result;
   }, [categories, selectedCategory, searchQuery]);
 
@@ -85,7 +73,7 @@ export const MenuGrid: React.FC<MenuGridProps> = ({
   return (
     <>
       {/* ── Category Tabs ── */}
-      <div className="mb-3 flex flex-wrap gap-1 shrink-0 sticky top-0 z-10 py-1">
+      <div className={`mb-3 flex shrink-0 gap-1 sticky top-0 z-10 py-1 ${categoryScrollable ? "overflow-x-auto custom-scrollbar" : "flex-wrap"}`}>
         {/* زر "الكل" */}
         <button
           onClick={() => setSelectedCategory('all')}

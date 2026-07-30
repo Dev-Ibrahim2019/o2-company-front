@@ -38,12 +38,16 @@ export interface PaymentEntry {
   method: PaymentMethod;
   amount: number;
   reference?: string;
+  entity_type?: "customer" | "employee" | "supplier";
+  entity_id?: number;
+  subledger_type?: "customer" | "employee" | "supplier";
+  subledger_id?: number;
 }
 
 export interface SubmitOrderPayload {
   branch_id: number;
   cashier_id?: number;
-  order_type: "dine_in" | "takeaway";
+  order_type: "dine_in" | "takeaway" | "delivery";
   table_number?: string;
   customer_name?: string;
   customer_phone?: string;
@@ -54,6 +58,14 @@ export interface SubmitOrderPayload {
   discount_value?: number;
   discount_type?: "amount" | "percent";
   payment_method?: PaymentMethod;
+  source?: "call_center" | string;
+  call_center_agent_id?: number;
+  call_notes?: string;
+  customer_address_id?: number;
+  delivery_address_snapshot?: Record<string, unknown>;
+  delivery_zone_id?: number;
+  delivery_fee?: number;
+  delivery_notes?: string;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -266,7 +278,7 @@ export const useCart = () => {
         // ═══════════════════════════════════════════════════
         // نأكد الطلب إذا كان pending سواء أردنا confirm أو createInvoice
         // لأن الباكند يتطلب tickets موجودة قبل إنشاء الفاتورة
-        if ((shouldConfirm || createInvoice) && order.status === "pending") {
+        if (shouldConfirm && !createInvoice && order.status === "pending") {
           try {
             order = await orderService.confirm(order.id);
           } catch (error) {
@@ -361,6 +373,17 @@ export const useCart = () => {
               subledger_id: (payment as any).subledger_id,
             })),
           });
+        }
+
+        // Financial closure must succeed before production tickets are created.
+        // This path is used by call-center checkout and prevents unpaid orders
+        // from reaching the kitchen.
+        if (createInvoice && shouldConfirm) {
+          const latest = await orderService.getOne(order.id);
+          if (latest.status !== "paid") {
+            throw new Error("لا يمكن إرسال الطلب للمطبخ قبل اكتمال الدفع");
+          }
+          order = await orderService.confirm(order.id);
         }
 
         let finalOrder = order;

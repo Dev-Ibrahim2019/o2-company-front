@@ -53,35 +53,12 @@ export const DEFAULT_EXTENSIONS: CallCenterExtension[] = [
 class MockCallProvider implements CallProvider {
   private listeners: Array<(call: CallEvent) => void> = [];
   private activeCalls: Map<string, { startTime?: Date }> = new Map();
-  private intervalId: ReturnType<typeof setInterval> | null = null;
-  private mockPhoneNumbers = [
-    "0599111222",
-    "0568111333",
-    "0599000111",
-    "0599123456",
-    "0599222333",
-  ];
 
   startListening(onIncoming: (call: CallEvent) => void): void {
     this.listeners.push(onIncoming);
-
-    // محاكاة مكالمة واردة كل 30-60 ثانية
-    if (!this.intervalId) {
-      this.intervalId = setInterval(() => {
-        const randomPhone =
-          this.mockPhoneNumbers[
-            Math.floor(Math.random() * this.mockPhoneNumbers.length)
-          ];
-        this.simulateIncomingCall(randomPhone);
-      }, 30000 + Math.random() * 30000);
-    }
   }
 
   stopListening(): void {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-    }
     this.listeners = [];
   }
 

@@ -65,7 +65,7 @@ export const useCallCenterCall = (): UseCallCenterCallReturn => {
 
   // تحديث المدة كل ثانية أثناء المكالمة
   useEffect(() => {
-    if (phase === "ordering" && session) {
+    if ((phase === "identifying" || phase === "ordering") && session) {
       durationRef.current = setInterval(() => {
         setSession((prev) => {
           if (!prev || !prev.answeredAt) return prev;
@@ -93,6 +93,11 @@ export const useCallCenterCall = (): UseCallCenterCallReturn => {
 
   // الاستماع للمكالمات الواردة مع تشغيل الأصوات
   useEffect(() => {
+    if (isOnBreak) {
+      provider.stopListening();
+      return;
+    }
+
     provider.startListening((call: CallEvent) => {
       if (call.state === "ringing") {
         // صوت رنين المكالمة
@@ -143,7 +148,7 @@ export const useCallCenterCall = (): UseCallCenterCallReturn => {
     return () => {
       provider.stopListening();
     };
-  }, [provider]);
+  }, [provider, isOnBreak]);
 
   const answer = useCallback(async () => {
     if (!session || phase !== "incoming") return;
@@ -156,7 +161,7 @@ export const useCallCenterCall = (): UseCallCenterCallReturn => {
   }, [session, phase, provider]);
 
   const hangup = useCallback(async () => {
-    if (!session || phase !== "ordering") return;
+    if (!session || !["identifying", "ordering"].includes(phase)) return;
     await provider.hangup(session.callId);
   }, [session, phase, provider]);
 

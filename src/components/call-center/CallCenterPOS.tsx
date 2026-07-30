@@ -1,936 +1,387 @@
-// src/components/call-center/CallCenterPOS.tsx
-//
-// POS الكول سنتر - يعيد استخدام مكونات POS الحالية مع تغيير سير العمل
-// يعتمد على useCallCenterCall لإدارة دورة حياة المكالمة
-
-import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  Phone,
-  PhoneOff,
-  PhoneIncoming,
-  Clock,
-  User,
-  MapPin,
-  AlertTriangle,
-  Loader2,
-  ShoppingCart,
-  CheckCircle2,
-  Headphones,
-} from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, Headphones, Loader2, Phone, PhoneForwarded, PhoneIncoming, PhoneOff, Users } from "lucide-react";
 import { useApp } from "../../../store";
-import { useCallCenterCall, type CallCenterPhase } from "../../hooks/useCallCenterCall";
-import { callCenterService, type CustomerSearchResult } from "./services/callCenterService";
+import { useCallCenterCall } from "../../hooks/useCallCenterCall";
+import { useCallTicket } from "../../hooks/useCallTicket";
+import {
+  useCallCenterCart,
+  type PaymentEntry,
+} from "../../hooks/useCallCenterCart";
 import { useMenu } from "../../hooks/useMenu";
-import { useCart } from "../../hooks/useCart";
-import { MenuGrid } from "../POS/MenuGrid";
-import { CartPanel } from "../POS/CartPanel";
 import { toast } from "../shared/Toast";
-import { sound } from "../../services/soundService";
-import { DEFAULT_EXTENSIONS, type CallCenterExtension } from "../../services/callProvider";
-import { OrderType, OrderStatus, PaymentMethod } from "../../../types";
-import { Pause, Play, PhoneForwarded } from "lucide-react";
+import { CustomerProfileDrawer } from "./CustomerProfileDrawer";
+import {
+  callCenterService, type CustomerAddress, type CustomerSearchResult, type OrderDetail,
+} from "./services/callCenterService";
+import {
+  ActiveCallRail, ActiveOrdersBoard, CallCenterCart, CallCenterMenuShell, CustomerContext, MobileWorkspaceNav,
+  ProductBuilder, RepeatOrderDialog, type RepeatCandidate, type CallCenterSuccess, type OrderMode, type WorkspaceTab,
+} from "./CallCenterWorkspace";
+import type { DeliveryQuote } from "./services/callCenterService";
+import { DEFAULT_EXTENSIONS } from "../../services/callProvider";
+import { branchService, type Branch } from "../../services/branchService";
+import { customerResolutionRequestKey, type CustomerResolutionStatus as ResolutionStatus } from "./customerFlow";
+import { CallCenterInvoiceInfoTab } from "./CallCenterInvoiceInfoTab";
+import type { OrderFromApi } from "../../services/orderService";
 
-// ── Helper: تنسيق المدة ──────────────────────────────────────────────────────
-const formatDuration = (seconds: number): string => {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-};
-
-// ═══════════════════════════════════════════════════════════════════════════════
-//  المكون الرئيسي
-// ═══════════════════════════════════════════════════════════════════════════════
+interface CustomerResolutionState {
+  status: ResolutionStatus;
+  normalizedPhone: string | null;
+  customer: CustomerSearchResult | null;
+  candidates: CustomerSearchResult[];
+  error: string | null;
+  requestKey: string | null;
+}
+export interface NewCallerDraft {
+  name: string;
+  phone: string;
+  normalizedPhone: string;
+  customerType: "individual" | "company";
+  city: string;
+  area: string;
+  addressLine: string;
+  landmark: string;
+  deliveryNotes: string;
+}
+const emptyResolution: CustomerResolutionState = { status:"idle", normalizedPhone:null, customer:null, candidates:[], error:null, requestKey:null };
+const emptyDraft = (phone = "", normalizedPhone = ""): NewCallerDraft => ({ name:"", phone, normalizedPhone, customerType:"individual", city:"", area:"", addressLine:"", landmark:"", deliveryNotes:"" });
 
 export const CallCenterPOS: React.FC = () => {
-  const { currentUser, addCustomer } = useApp();
-  const {
-    session,
-    phase,
-    answer,
-    reject,
-    hangup,
-    transferCall,
-    setCustomer,
-    reset,
-    simulateCall,
-    isOnBreak,
-    setBreak,
-  } = useCallCenterCall();
+  const { currentUser } = useApp();
+  const calls = useCallCenterCall();
+  const ticket = useCallTicket();
+  const userBranchId = Number((currentUser as any)?.branch_id || 0);
+  const [branchId, setBranchId] = useState(userBranchId);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const menu = useMenu(branchId || undefined);
+  const cart = useCallCenterCart();
 
-  // ── Branch ID ──────────────────────────────────────────────────────────────
-  const branchId: number | undefined = (currentUser as any)?.branch_id ?? undefined;
+  const [customer, setCustomerState] = useState<CustomerSearchResult | null>(null);
+  const [resolution, setResolution] = useState<CustomerResolutionState>(emptyResolution);
+  const [newCaller, setNewCaller] = useState<NewCallerDraft>(() => emptyDraft());
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [customerPaneOpen, setCustomerPaneOpen] = useState(false);
+  const [selectedAddress, setSelectedAddress] = useState<CustomerAddress | null>(null);
+  const [orderMode, setOrderMode] = useState<OrderMode>("delivery");
+  const [category, setCategory] = useState("all");
+  const [query, setQuery] = useState("");
+  const [discount, setDiscount] = useState(0);
+  const [deliveryQuote, setDeliveryQuote] = useState<DeliveryQuote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState("");
+  const [note, setNote] = useState("");
+  const [payments, setPayments] = useState<PaymentEntry[]>([]);
+  const [success, setSuccess] = useState<CallCenterSuccess | null>(null);
+  const [tab, setTab] = useState<WorkspaceTab>("products");
+  const [draftOrderId, setDraftOrderId] = useState<number | null>(null);
+  const [currentOrder, setCurrentOrder] = useState<OrderFromApi | null>(null);
+  const [invoiceOpenedAt, setInvoiceOpenedAt] = useState(() => new Date().toISOString());
+  const [repeatRows, setRepeatRows] = useState<RepeatCandidate[] | null>(null);
+  const ticketAttemptRef = useRef<string | null>(null);
+  const resolutionRequestRef = useRef<string | null>(null);
 
-  // ── Menu ───────────────────────────────────────────────────────────────────
-  const { categories, allItems, loading: menuLoading } = useMenu(branchId);
-
-  // ── Cart ───────────────────────────────────────────────────────────────────
-  const {
-    cart: currentCart,
-    subtotal,
-    addToCart,
-    updateCartItem,
-    removeFromCart,
-    clearCart,
-    submitOrder: submitOrderApi,
-    submitting,
-    submitError,
-  } = useCart();
-
-  // ── UI State ───────────────────────────────────────────────────────────────
-  const [isCartOpen, setIsCartOpen] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [posError, setPosError] = useState<string | null>(null);
-
-  // ── Customer Identification State ──────────────────────────────────────────
-  const [identifiedCustomer, setIdentifiedCustomer] = useState<CustomerSearchResult | null>(null);
-  const [isSearchingCustomer, setIsSearchingCustomer] = useState(false);
-  const [customerSearchError, setCustomerSearchError] = useState<string | null>(null);
-
-  // ── Quick Customer Creation ────────────────────────────────────────────────
-  const [showQuickCreate, setShowQuickCreate] = useState(false);
-  const [quickName, setQuickName] = useState("");
-  const [quickPhone, setQuickPhone] = useState("");
-  const [quickAddress, setQuickAddress] = useState("");
-
-  // ── Invoice State ──────────────────────────────────────────────────────────
-  const [invoiceNote, setInvoiceNote] = useState("");
-  const [discountValue, setDiscountValue] = useState<number>(0);
-  const [discountType, setDiscountType] = useState<"AMOUNT" | "PERCENT">("AMOUNT");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.CASH);
-  const [payments, setPayments] = useState<any[]>([]);
-  const [cartOrderType, setCartOrderType] = useState<OrderType>(OrderType.TAKEAWAY);
-
-  // ── Auto-identify customer when call is answered ───────────────────────────
   useEffect(() => {
-    if (phase === "identifying" && session?.callerNumber) {
-      identifyCustomerByPhone(session.callerNumber);
-    }
-  }, [phase, session?.callerNumber]);
+    void branchService.getAll().then(rows => {
+      setBranches(rows);
+      if (!branchId && rows.length === 1) setBranchId(rows[0].id);
+    }).catch(() => toast.error("تعذر تحميل الفروع"));
+  }, []);
 
-  const identifyCustomerByPhone = async (phone: string) => {
-    setIsSearchingCustomer(true);
-    setCustomerSearchError(null);
-    try {
-      const response = await callCenterService.searchCustomers(phone, 5);
-      const results = response.data ?? [];
-      const exactMatch = results.find(
-        (c) => c.phone === phone || c.mobile === phone,
-      );
-      if (exactMatch) {
-        setIdentifiedCustomer(exactMatch);
-        setCustomer(exactMatch.id, exactMatch.name, exactMatch.phone ?? phone);
-        toast.success(`تم التعرف على العميل: ${exactMatch.name}`);
-      } else {
-        setIdentifiedCustomer(null);
-        setQuickPhone(phone);
-        setShowQuickCreate(true);
-        setCustomerSearchError("العميل غير موجود، يرجى إنشاء عميل جديد");
-      }
-    } catch (err) {
-      console.error("فشل البحث عن العميل:", err);
-      setCustomerSearchError("فشل البحث عن العميل");
-      setShowQuickCreate(true);
-      setQuickPhone(phone);
-    } finally {
-      setIsSearchingCustomer(false);
-    }
+  useEffect(() => {
+    setDeliveryQuote(null); setQuoteError("");
+    if (orderMode !== "delivery" || !branchId) return;
+    if (!customer && resolution.status !== "not_found" && calls.phase !== "waiting") return;
+    if (customer && !selectedAddress) return;
+    if (!customer && !newCaller.area.trim()) return;
+    let active = true; setQuoteLoading(true);
+    const request = customer && selectedAddress
+      ? callCenterService.getDeliveryQuote(customer.id, selectedAddress.id, branchId)
+      : callCenterService.getDraftDeliveryQuote(branchId, newCaller.area, newCaller.city);
+    request
+      .then(response => { if (active) setDeliveryQuote(response.data); })
+      .catch(error => { if (active) setQuoteError(error?.response?.data?.message || "العنوان خارج نطاق التوصيل المهيأ"); })
+      .finally(() => { if (active) setQuoteLoading(false); });
+    return () => { active = false; };
+  }, [orderMode, selectedAddress?.id, branchId, customer?.id, resolution.status, newCaller.area, newCaller.city, calls.phase]);
+
+  useEffect(() => {
+    const callId = calls.session?.callId;
+    if (calls.phase !== "incoming" || !calls.session?.callerNumber || !callId || ticket.ticket || ticket.loading || ticketAttemptRef.current === callId) return;
+    ticketAttemptRef.current = callId;
+    void ticket.open(calls.session.callerNumber, branchId || undefined, callId)
+      .catch(() => toast.error("تعذر إنشاء تذكرة المكالمة"));
+  }, [calls.phase, calls.session?.callId, calls.session?.callerNumber, ticket.ticket, ticket.loading, branchId]);
+
+  const retryTicket = () => {
+    ticketAttemptRef.current = null;
+    ticket.reset();
   };
 
-  const handleQuickCreateCustomer = async () => {
-    if (!quickName || !quickPhone) {
-      toast.error("يرجى إدخال اسم ورقم هاتف العميل");
-      return;
-    }
-    try {
-      // المحاولة الأولى: API الإنشاء السريع
-      let newCustomer: any;
+  useEffect(() => {
+    if (calls.phase !== "identifying" || !calls.session?.callerNumber || !calls.session.callId || customer) return;
+    const phone = calls.session.callerNumber;
+    const requestKey = customerResolutionRequestKey(calls.session.callId, phone);
+    if (resolutionRequestRef.current === requestKey) return;
+    resolutionRequestRef.current = requestKey;
+    const controller = new AbortController();
+    setResolution({ ...emptyResolution, status:"searching", requestKey });
+    const resolve = async () => {
       try {
-        const response = await callCenterService.quickCreateCustomer({
-          name: quickName,
-          phone: quickPhone,
-          address: quickAddress || undefined,
-          branch_id: branchId,
-        });
-        newCustomer = response.data;
-      } catch (quickErr) {
-        console.warn("quickCreateCustomer فشل، جرب createCustomer:", quickErr);
-        // المحاولة الثانية: API الإنشاء العادي
-        try {
-          const response = await callCenterService.createCustomer({
-            name: quickName,
-            phone: quickPhone,
-            address: quickAddress || undefined,
-            branch_id: branchId,
-          });
-          newCustomer = response.data;
-        } catch (createErr) {
-          console.warn("createCustomer فشل، إنشاء محلي:", createErr);
-          // المحاولة الثالثة: إنشاء محلي في الـ store
-          const localId = Date.now();
-          newCustomer = {
-            id: localId,
-            name: quickName,
-            phone: quickPhone,
-            mobile: quickPhone,
-            code: `CALL-${localId}`,
-            status: "active" as const,
-            category: null,
-            city: quickAddress || null,
-            address: quickAddress || null,
-            branch_id: branchId ?? null,
-          };
-          // إضافة للـ store المحلي
-          (addCustomer as any)?.({
-            name: quickName,
-            phone: quickPhone,
-            type: "REGULAR",
-            allowCredit: false,
-            notes: quickAddress || "",
-          });
+        let resolved;
+        if (ticket.ticket?.customer_id) {
+          const profile = await callCenterService.getCustomerFullProfile(ticket.ticket.customer_id);
+          resolved = { status:"found" as const, normalized_phone:ticket.ticket.normalized_phone, customer:profile.data.profile.customer, candidates:[] };
+        } else {
+          resolved = (await callCenterService.resolveCustomerByPhone(phone, controller.signal)).data;
         }
+        if (controller.signal.aborted || resolutionRequestRef.current !== requestKey) return;
+        if (resolved.status === "found" && resolved.customer) {
+          setResolution({ status:"found", normalizedPhone:resolved.normalized_phone, customer:resolved.customer, candidates:[], error:null, requestKey });
+          await identify(resolved.customer);
+        } else if (resolved.status === "multiple") {
+          setResolution({ status:"multiple", normalizedPhone:resolved.normalized_phone, customer:null, candidates:resolved.candidates, error:null, requestKey });
+        } else {
+          setNewCaller(emptyDraft(phone, resolved.normalized_phone));
+          setResolution({ status:"not_found", normalizedPhone:resolved.normalized_phone, customer:null, candidates:[], error:null, requestKey });
+        }
+      } catch (error:any) {
+        if (controller.signal.aborted) return;
+        setResolution({ status:"error", normalizedPhone:null, customer:null, candidates:[], error:error?.response?.data?.message || "تعذر التحقق من بيانات العميل", requestKey });
       }
-
-      if (newCustomer) {
-        setIdentifiedCustomer(newCustomer as CustomerSearchResult);
-        setCustomer(newCustomer.id, newCustomer.name, newCustomer.phone ?? quickPhone);
-        setShowQuickCreate(false);
-        setQuickName("");
-        setQuickPhone("");
-        setQuickAddress("");
-        toast.success(`تم إنشاء العميل: ${newCustomer.name}`);
-      }
-    } catch (err) {
-      console.error("فشل إنشاء العميل:", err);
-      toast.error("فشل إنشاء العميل");
-    }
-  };
-
-  // ── Auto-dismiss error ─────────────────────────────────────────────────────
-  useEffect(() => {
-    if (posError) {
-      toast.error(posError);
-      setPosError(null);
-    }
-  }, [posError]);
-
-  useEffect(() => {
-    if (submitError) {
-      toast.error("فشل إرسال الطلب", submitError);
-    }
-  }, [submitError]);
-
-  // ── Submit Order ───────────────────────────────────────────────────────────
-  // تطابق توقيع CartPanel.submitOrder
-  const handleSubmitOrder = async (
-    status: OrderStatus,
-    method: PaymentMethod,
-    discount: number,
-    meta: { name: string; phone: string; note: string },
-    paymentsArg?: any[],
-    clearAfterSubmit = true,
-  ): Promise<any> => {
-    if (currentCart.length === 0) {
-      setPosError("السلة فارغة");
-      return null;
-    }
-    if (!session?.customerId) {
-      setPosError("لم يتم تحديد العميل");
-      return null;
-    }
-
-    const orderPayload = {
-      branch_id: branchId || 0,
-      cashier_id: (currentUser as any)?.id,
-      order_type: "takeaway" as const,
-      customer_id: session.customerId,
-      customer_name: session.customerName,
-      customer_phone: session.customerPhone,
-      note: `[Call Center] مكالمة: ${session.callId} | ${meta.note || invoiceNote}`.trim(),
-      discount_value: discountValue,
-      discount_type: (discountType === "PERCENT" ? "percent" : "amount") as "amount" | "percent",
-      payment_method: "cash" as any,
     };
+    void resolve();
+    return () => controller.abort();
+  }, [calls.phase, calls.session?.callId, calls.session?.callerNumber, ticket.ticket?.customer_id, customer]);
 
-    const result = await submitOrderApi(
-      orderPayload,
-      true, // shouldConfirm - إرسال للمطبخ
-      paymentsArg ?? payments,
-      false, // createInvoice
-      null, // existingOrderId
-      clearAfterSubmit,
-    );
-
-    if (result) {
-      toast.success("تم إرسال الطلب بنجاح");
-      await hangup();
-      setTimeout(() => {
-        reset();
-        clearCart();
-        setIdentifiedCustomer(null);
-        setIsCartOpen(false);
-        setInvoiceNote("");
-        setDiscountValue(0);
-        setPayments([]);
-      }, 3000);
-    }
-    return result;
+  const retryCustomerResolution = () => {
+    resolutionRequestRef.current = null;
+    setResolution(emptyResolution);
   };
 
-  // ── Render based on phase ──────────────────────────────────────────────────
-  return (
-    <div className="h-full flex flex-col bg-slate-950 text-slate-100" dir="rtl">
-      {/* شريط حالة المكالمة */}
-      <CallStatusBar
-        phase={phase}
-        session={session}
-        onHangup={hangup}
-        customerName={session?.customerName}
-        customerPhone={session?.customerPhone}
-      />
+  const identify = async (value: CustomerSearchResult) => {
+    try {
+      if (ticket.ticket?.customer_id !== value.id) await ticket.linkCustomer(value.id);
+      setCustomerState(value);
+      setCustomerPaneOpen(true);
+      setResolution(current => ({ ...current, status:"found", customer:value, candidates:[], error:null }));
+      calls.setCustomer(value.id, value.name, value.phone || value.mobile || "");
+    } catch (error:any) {
+      setResolution(current => ({ ...current, status:"error", error:error?.response?.data?.message || "تعذر ربط العميل بالمكالمة" }));
+    }
+  };
 
-      <div className="flex-1 overflow-hidden">
-        <AnimatePresence mode="wait">
-          {phase === "waiting" && (
-            <WaitingScreen
-              key="waiting"
-              onSimulate={simulateCall}
-              isOnBreak={isOnBreak}
-              onToggleBreak={() => setBreak(!isOnBreak)}
-            />
-          )}
+  const answer = async () => {
+    if (!ticket.ticket) return toast.error("انتظر تجهيز تذكرة المكالمة");
+    try { await ticket.accept(); await calls.answer(); }
+    catch { toast.error("تعذر قبول المكالمة"); }
+  };
+  const reject = async () => {
+    try { if (ticket.ticket) await ticket.complete("rejected"); }
+    finally { await calls.reject(); }
+  };
+  const endCall = async () => {
+    try { if (ticket.ticket && !success) await ticket.complete("call_ended", note); }
+    finally { await calls.hangup(); }
+  };
 
-          {phase === "incoming" && (
-            <IncomingCallScreen
-              key="incoming"
-              callerNumber={session?.callerNumber ?? ""}
-              onAnswer={answer}
-              onReject={reject}
-              onTransfer={transferCall}
-              extensions={DEFAULT_EXTENSIONS}
-            />
-          )}
+  const addressSnapshot = selectedAddress ? {
+    label: selectedAddress.label, city: selectedAddress.city, area: selectedAddress.area,
+    district: selectedAddress.district, street: selectedAddress.street,
+    landmark: selectedAddress.landmark, building_no: selectedAddress.building_no,
+    floor: selectedAddress.floor, apartment: selectedAddress.apartment,
+    delivery_notes: selectedAddress.delivery_notes,
+    delivery_quote: deliveryQuote ? {
+      quote_id: deliveryQuote.quote_id, valid_until: deliveryQuote.valid_until,
+      zone_id: deliveryQuote.delivery_zone_id, zone_name: deliveryQuote.zone_name,
+      fee: deliveryQuote.fee, eta_minutes: deliveryQuote.eta_minutes,
+    } : undefined,
+  } : undefined;
 
-          {(phase === "identifying" || phase === "ordering") && (
-            <OrderingScreen
-              key="ordering"
-              phase={phase}
-              isSearchingCustomer={isSearchingCustomer}
-              customerSearchError={customerSearchError}
-              identifiedCustomer={identifiedCustomer}
-              showQuickCreate={showQuickCreate}
-              quickName={quickName}
-              quickPhone={quickPhone}
-              quickAddress={quickAddress}
-              onQuickNameChange={setQuickName}
-              onQuickPhoneChange={setQuickPhone}
-              onQuickAddressChange={setQuickAddress}
-              onQuickCreate={handleQuickCreateCustomer}
-              onCancelQuickCreate={() => setShowQuickCreate(false)}
-              // POS props
-              categories={categories}
-              selectedCategory={selectedCategory}
-              setSelectedCategory={setSelectedCategory}
-              searchQuery={searchQuery}
-              addToCart={addToCart}
-              menuLoading={menuLoading}
-              isCartOpen={isCartOpen}
-              setIsCartOpen={setIsCartOpen}
-              currentCart={currentCart}
-              subtotal={subtotal}
-              invoiceNote={invoiceNote}
-              onInvoiceNoteChange={setInvoiceNote}
-              discountValue={discountValue}
-              discountType={discountType}
-              onDiscountValueChange={setDiscountValue}
-              onDiscountTypeChange={setDiscountType}
-              payments={payments}
-              onPaymentsChange={setPayments}
-              paymentMethod={paymentMethod}
-              onPaymentMethodChange={setPaymentMethod}
-              cartOrderType={cartOrderType}
-              submitting={submitting}
-              onSubmitOrder={handleSubmitOrder}
-              customerName={session?.customerName ?? ""}
-              customerPhone={session?.customerPhone ?? ""}
-              onUpdateCartItem={updateCartItem}
-              onRemoveFromCart={removeFromCart}
-              onClearCart={clearCart}
-              setPosError={setPosError}
-            />
-          )}
+  const submit = async (close: boolean) => {
+    if (!branchId) return toast.error("يجب اختيار الفرع");
+    const isManualDraft = calls.phase === "waiting";
+    if (!isManualDraft && !customer && resolution.status !== "not_found") return toast.error("لم يكتمل التحقق من العميل");
+    if (!customer && !newCaller.name.trim()) return toast.error("اسم العميل مطلوب");
+    if (!customer && !newCaller.phone.trim()) return toast.error("رقم هاتف العميل مطلوب");
+    if (orderMode === "delivery" && (!(selectedAddress || newCaller.area.trim()) || !deliveryQuote)) return toast.error("يجب اعتماد عنوان وعرض توصيل صالحين");
 
-          {(phase === "completed" || phase === "missed" || phase === "cancelled") && (
-            <CallEndedScreen
-              key="ended"
-              phase={phase}
-              duration={session?.duration ?? 0}
-              onReset={reset}
-            />
-          )}
-        </AnimatePresence>
+    let activeCustomer = customer;
+    let activeAddress = selectedAddress;
+    let activeOrderId = draftOrderId;
+    if (!activeCustomer) {
+      try {
+        const transaction = (await callCenterService.createCallCenterOrder({
+          call_ticket_id: ticket.ticket?.id,
+          external_call_id: calls.session?.callId,
+          branch_id: branchId,
+          order_type: orderMode,
+          customer: { name:newCaller.name.trim(), phone:newCaller.phone, normalized_phone:newCaller.normalizedPhone },
+          address: orderMode === "delivery" ? {
+            label:"المنزل", city:newCaller.city, area:newCaller.area, street:newCaller.addressLine,
+            landmark:newCaller.landmark, delivery_notes:newCaller.deliveryNotes,
+          } : undefined,
+          delivery_zone_id: deliveryQuote?.delivery_zone_id,
+          delivery_fee: deliveryQuote?.fee,
+          delivery_address_snapshot: orderMode === "delivery" ? {
+            label:"المنزل", city:newCaller.city, area:newCaller.area, street:newCaller.addressLine,
+            landmark:newCaller.landmark, delivery_notes:newCaller.deliveryNotes,
+            delivery_quote: deliveryQuote,
+          } : undefined,
+          items: cart.cart.map(item => ({ item_id:item.id, quantity:item.quantity, unit_price:item.price, notes:item.notes })),
+          discount_value: discount,
+          discount_type: "amount",
+          notes: note,
+        })).data;
+        activeCustomer = transaction.customer;
+        activeAddress = transaction.address;
+        activeOrderId = transaction.order.id;
+        setCustomerState(transaction.customer);
+        setSelectedAddress(transaction.address);
+        setDraftOrderId(transaction.order.id);
+        setCurrentOrder(transaction.order as OrderFromApi);
+        setResolution(current => ({ ...current, status:"found", customer:transaction.customer, candidates:[], error:null }));
+        calls.setCustomer(transaction.customer.id, transaction.customer.name, transaction.customer.phone || transaction.customer.mobile || "");
+        if (!close) {
+          toast.success(`تم إنشاء ملف العميل وحفظ الطلب ${transaction.order.order_number} بانتظار الدفع`);
+          setTab("cart");
+          return;
+        }
+      } catch (error:any) {
+        toast.error(error?.response?.data?.message || "تعذر حفظ بيانات العميل والطلب. لم يتم إنشاء فاتورة.");
+        return;
+      }
+    }
+
+    if (!activeCustomer) return;
+    const payload = {
+      branch_id: branchId,
+      cashier_id: Number((currentUser as any)?.id),
+      call_center_agent_id: Number((currentUser as any)?.id),
+      source: "call_center",
+      call_notes: ticket.ticket
+        ? `Call ${calls.session?.callId} / Ticket ${ticket.ticket.id}`
+        : "Manual call-center invoice",
+      order_type: orderMode,
+      customer_id: activeCustomer.id,
+      customer_name: activeCustomer.name,
+      customer_phone: activeCustomer.phone || activeCustomer.mobile || "",
+      customer_address_id: orderMode === "delivery" ? activeAddress?.id : undefined,
+      delivery_address_snapshot: orderMode === "delivery" ? addressSnapshot : undefined,
+      delivery_zone_id: orderMode === "delivery" ? deliveryQuote?.delivery_zone_id : undefined,
+      delivery_fee: orderMode === "delivery" ? deliveryQuote?.fee : 0,
+      delivery_notes: orderMode === "delivery" ? [selectedAddress?.delivery_notes, note].filter(Boolean).join(" | ") : undefined,
+      note: `[Call Center] ${note}`.trim(),
+      discount_value: discount,
+      discount_type: "amount" as const,
+    };
+    let result = activeOrderId
+      ? await cart.saveDraft(payload, activeOrderId)
+      : await cart.saveDraft(payload);
+    if (!result) return;
+    setDraftOrderId(Number(result.id));
+    setCurrentOrder(result);
+    if (ticket.ticket && ticket.ticket.linked_order_id !== Number(result.id)) {
+      await ticket.linkOrder(Number(result.id));
+    }
+    if (!close) {
+      toast.success(`حُفظ الطلب ${result.order_number || result.id} بانتظار الدفع`);
+      setTab("cart"); return;
+    }
+    result = await cart.checkout(Number(result.id), payments, {
+      id: activeCustomer.id,
+      name: activeCustomer.name,
+      phone: activeCustomer.phone || activeCustomer.mobile || "",
+    });
+    if (!result) return;
+    setCurrentOrder(result);
+    if (ticket.ticket) await ticket.complete("order_completed", note);
+    if (selectedAddress) void callCenterService.markAddressUsed(selectedAddress.id).catch(() => undefined);
+    setSuccess({
+      orderId: Number(result.id), orderNumber: String(result.order_number || result.id),
+      invoiceNumber: result.invoice?.number || result.invoice?.invoice_number,
+      total: Number(result.total || cart.subtotal - discount + (orderMode === "delivery" ? deliveryQuote?.fee || 0 : 0)),
+      customerName: activeCustomer.name,
+      address: activeAddress ? [activeAddress.city, activeAddress.area, activeAddress.street].filter(Boolean).join("، ") : undefined,
+      payments,
+    });
+    if (calls.phase !== "waiting") await calls.hangup();
+  };
+
+  const repeatOrder = (order: OrderDetail) => {
+    setRepeatRows(order.items.map((old,index) => {
+      const item = menu.allItems.find(current => current.id === old.item_id);
+      return { key:`${old.id}-${index}`, name:old.item_name_ar||old.item_name||"صنف", quantity:old.quantity, oldPrice:old.price, item:item||null };
+    }));
+  };
+  const addRepeatRows = (rows:RepeatCandidate[]) => {
+    rows.forEach(row => { if(row.item) cart.addToCart(row.item,{quantity:row.quantity,price:row.item.price}); });
+    toast.success(`أضيف ${rows.length} صنف إلى السلة`); setRepeatRows(null); setProfileOpen(false); setTab("products");
+  };
+
+  const resetAll = () => {
+    calls.reset(); ticket.reset(); cart.clearCart(); setCustomerState(null); setSelectedAddress(null);
+    setPayments([]); setDiscount(0); setDeliveryQuote(null); setQuoteError(""); setNote(""); setSuccess(null);
+    setDraftOrderId(null); setCurrentOrder(null); setInvoiceOpenedAt(new Date().toISOString()); setResolution(emptyResolution); setNewCaller(emptyDraft()); setTab("products"); setCustomerPaneOpen(false);
+    resolutionRequestRef.current = null; ticketAttemptRef.current = null;
+  };
+
+  const newCallerActive =
+    (calls.phase === "identifying" && resolution.status === "not_found") ||
+    calls.phase === "waiting";
+  return <div className="relative flex h-full min-h-0 flex-col bg-[#0B0D10] font-['Tajawal']" dir="rtl">
+    {calls.phase !== "waiting" && calls.phase !== "incoming" && <ActiveCallRail name={customer?.name || "متصل جديد"} phone={customer?.phone||customer?.mobile||newCaller.phone||calls.session?.callerNumber} duration={calls.session?.duration||0} ticketId={ticket.ticket?.id} stage={success?"kitchen":payments.length?"payment":cart.cart.length?"order":"customer"} orderState={draftOrderId?"محفوظ":"مسودة"} paymentState={success?"مدفوع":payments.length?"قيد التحصيل":"غير مدفوع"} invoiceState={success?"فاتورة منشأة":"لم تُنشأ"} kitchenState={success?"أُرسل":"لم يُرسل"} onToggleProfile={()=>setCustomerPaneOpen(value=>!value)} profileOpen={customerPaneOpen} onTransfer={async ext=>{await calls.transferCall(ext);if(ticket.ticket)await ticket.complete("transferred",ext);}} extensions={DEFAULT_EXTENSIONS} onEnd={endCall}/>}
+    {!customerPaneOpen&&customer&&<button onClick={()=>setCustomerPaneOpen(true)} className="absolute left-5 top-4 z-40 hidden min-h-10 items-center gap-2 rounded-lg border border-[#2A3039] bg-[#171B21] px-3 text-xs font-bold text-slate-200 shadow-xl xl:flex"><Users size={15}/>فتح ملف العميل</button>}
+    {!branchId&&<div className="border-b border-amber-500/30 bg-amber-500/10 p-2 text-center text-xs text-amber-200"><label className="font-bold">اختر الفرع المسؤول عن تنفيذ الطلب <select value={branchId} onChange={e=>setBranchId(Number(e.target.value))} className="mr-2 min-h-10 rounded-md bg-[#12151A] px-3 text-white"><option value={0}>اختر الفرع</option>{branches.map(branch=><option key={branch.id} value={branch.id}>{branch.name}</option>)}</select></label></div>}
+    <div className="flex min-h-0 flex-1 gap-4 overflow-hidden bg-slate-950 p-2 sm:p-4">
+      {customerPaneOpen&&customer&&<div className="relative hidden min-h-0 w-[320px] shrink-0 overflow-hidden rounded-3xl border border-white/5 bg-[#12151A] xl:flex 2xl:w-[380px]">
+        <button onClick={()=>setCustomerPaneOpen(false)} aria-label="إغلاق ملف العميل" className="absolute left-2 top-2 z-20 flex h-9 w-9 items-center justify-center rounded-lg border border-[#2A3039] bg-[#171B21] text-slate-300 hover:bg-[#222B36]"><span aria-hidden="true">×</span></button>
+        <CustomerContext view={tab==="history"?"history":"customer"} customer={customer} newCaller={newCallerActive?newCaller:null} setNewCaller={setNewCaller} selectedAddress={selectedAddress} onAddress={setSelectedAddress} onProfile={()=>setProfileOpen(true)} onRepeat={repeatOrder}/>
+      </div>}
+      <div className={`${tab==="cart"?"hidden":"flex"} min-h-0 min-w-0 flex-1 lg:flex`}>
+        <CallCenterMenuShell tab={tab} setTab={setTab} customerName={customer?.name || newCaller.name || "عميل غير محدد"} phone={customer?.phone||customer?.mobile||newCaller.phone||"بدون مكالمة"} branchName={branches.find(branch=>branch.id===branchId)?.name||"الفرع غير محدد"} query={query} onQuery={setQuery}>
+          {tab==="products"&&<ProductBuilder categories={menu.categories} loading={menu.loading} error={menu.error} selectedCategory={category} onCategory={setCategory} query={query} onQuery={setQuery} onAdd={cart.addToCart}/>}
+          {tab==="order"&&<CallCenterInvoiceInfoTab currentUser={currentUser} branch={branches.find(branch=>branch.id===branchId)||null} ticket={ticket.ticket} order={currentOrder} payments={payments} openedAt={invoiceOpenedAt} isSubmitting={cart.submitting} closedSuccessfully={Boolean(success)}/>}
+          {tab==="customer"&&<div className={`h-full ${customerPaneOpen?"xl:hidden":""}`}><CustomerContext view="customer" customer={customer} newCaller={newCallerActive?newCaller:null} setNewCaller={setNewCaller} selectedAddress={selectedAddress} onAddress={setSelectedAddress} onProfile={()=>setProfileOpen(true)} onRepeat={repeatOrder}/></div>}
+          {tab==="history"&&<div className={`h-full overflow-y-auto p-3 ${customerPaneOpen?"xl:hidden":""}`}><ActiveOrdersBoard branchId={branchId}/><div className="min-h-[360px]"><CustomerContext view="history" customer={customer} newCaller={newCallerActive?newCaller:null} setNewCaller={setNewCaller} selectedAddress={selectedAddress} onAddress={setSelectedAddress} onProfile={()=>setProfileOpen(true)} onRepeat={repeatOrder}/></div></div>}
+        </CallCenterMenuShell>
+      </div>
+      <div className={`${tab==="cart"?"flex":"hidden"} min-h-0 w-full shrink-0 lg:flex lg:w-[450px] xl:w-[500px]`}>
+        <CallCenterCart cart={cart.cart} subtotal={cart.subtotal} update={cart.updateCartItem} remove={cart.removeFromCart} clear={cart.clearCart} orderMode={orderMode} setOrderMode={setOrderMode} selectedAddress={selectedAddress} customerId={customer?.id} branchId={branchId} newCaller={newCallerActive?newCaller:null} discount={discount} setDiscount={setDiscount} deliveryQuote={deliveryQuote} quoteLoading={quoteLoading} quoteError={quoteError} note={note} setNote={setNote} payments={payments} setPayments={setPayments} submitting={cart.submitting} onSaveDraft={()=>void submit(false)} onSubmit={()=>void submit(true)} success={success} onNew={resetAll} orderId={draftOrderId}/>
       </div>
     </div>
-  );
+    <MobileWorkspaceNav tab={tab} setTab={setTab} items={cart.cart.reduce((s,i)=>s+i.quantity,0)}/>
+    {customerPaneOpen&&customer&&<div className="fixed inset-0 z-[65] hidden items-stretch bg-black/45 md:flex xl:hidden" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setCustomerPaneOpen(false);}}>
+      <aside role="dialog" aria-modal="true" aria-label="ملف العميل" className="relative mr-auto flex h-full w-[360px] max-w-[92vw] overflow-hidden border-r border-white/10 bg-[#12151A] shadow-2xl">
+        <button autoFocus onClick={()=>setCustomerPaneOpen(false)} aria-label="إغلاق ملف العميل" className="absolute left-3 top-3 z-20 flex h-10 w-10 items-center justify-center rounded-xl border border-[#2A3039] bg-[#171B21] text-slate-200 hover:bg-[#222B36] focus:ring-2 focus:ring-red-600/60"><span aria-hidden="true">×</span></button>
+        <CustomerContext view={tab==="history"?"history":"customer"} customer={customer} newCaller={null} setNewCaller={setNewCaller} selectedAddress={selectedAddress} onAddress={setSelectedAddress} onProfile={()=>setProfileOpen(true)} onRepeat={repeatOrder}/>
+      </aside>
+    </div>}
+    {customer&&<CustomerProfileDrawer customerId={customer.id} isOpen={profileOpen} onClose={()=>setProfileOpen(false)} onSelectAddress={setSelectedAddress} onRepeatOrder={repeatOrder}/>}
+    {repeatRows&&<RepeatOrderDialog rows={repeatRows} cartHasItems={cart.cart.length>0} onClose={()=>setRepeatRows(null)} onAdd={addRepeatRows}/>}
+    {calls.phase === "incoming" && <div className="pointer-events-none absolute inset-x-0 top-3 z-[80] flex justify-center px-3"><Incoming phone={calls.session?.callerNumber||""} loading={ticket.loading} ticketReady={Boolean(ticket.ticket)} ticketError={ticket.error} onRetryTicket={retryTicket} onAnswer={answer} onReject={reject} onTransfer={async extension => { await calls.transferCall(extension); if(ticket.ticket) await ticket.complete("transferred",extension); }}/></div>}
+    {calls.phase === "identifying" && resolution.status === "searching" && <div className="pointer-events-none absolute inset-0 z-[75] bg-black/15"><CustomerSearchLoading phone={calls.session?.callerNumber||""}/></div>}
+    {calls.phase === "identifying" && resolution.status === "error" && <div className="absolute inset-x-0 top-3 z-[75] flex justify-center px-3"><CustomerSearchError message={resolution.error} onRetry={retryCustomerResolution} onEnd={endCall}/></div>}
+    {calls.phase === "identifying" && resolution.status === "multiple" && <div className="absolute inset-x-0 top-3 z-[75] flex justify-center px-3"><CustomerCandidateSelector candidates={resolution.candidates} onSelect={value=>void identify(value)} onRetry={retryCustomerResolution}/></div>}
+    {calls.phase === "waiting" && import.meta.env.DEV && <CallSimulator isBreak={calls.isOnBreak} onBreak={()=>calls.setBreak(!calls.isOnBreak)} onSimulate={calls.simulateCall}/>}
+  </div>;
 };
 
-// ═══════════════════════════════════════════════════════════════════════════════
-//  المكونات الفرعية
-// ═══════════════════════════════════════════════════════════════════════════════
-
-// ── شريط حالة المكالمة ───────────────────────────────────────────────────────
-
-const CallStatusBar: React.FC<{
-  phase: CallCenterPhase;
-  session: any;
-  onHangup: () => void;
-  customerName?: string;
-  customerPhone?: string;
-}> = ({ phase, session, onHangup, customerName, customerPhone }) => {
-  const isActive = phase === "ordering" || phase === "identifying";
-  const isRinging = phase === "incoming";
-
-  if (!isActive && !isRinging) return null;
-
-  return (
-    <div
-      className={`flex items-center justify-between px-4 py-2 border-b ${
-        isRinging
-          ? "bg-green-600/20 border-green-500/30"
-          : "bg-cyan-600/10 border-cyan-500/20"
-      }`}
-    >
-      <div className="flex items-center gap-3">
-        <div
-          className={`w-2 h-2 rounded-full ${
-            isRinging ? "bg-green-400 animate-pulse" : "bg-cyan-400"
-          }`}
-        />
-        <span className="text-xs font-bold text-slate-300">
-          {isRinging
-            ? "مكالمة واردة..."
-            : `مدة المكالمة: ${formatDuration(session?.duration ?? 0)}`}
-        </span>
-        {customerName && (
-          <>
-            <span className="text-white/30">|</span>
-            <User size={14} className="text-cyan-400" />
-            <span className="text-sm font-bold text-white">{customerName}</span>
-            <span className="text-xs text-slate-400">{customerPhone}</span>
-          </>
-        )}
-      </div>
-      <div className="flex items-center gap-2">
-        {phase === "ordering" && (
-          <button
-            onClick={onHangup}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600/80 hover:bg-red-600 rounded-lg text-xs font-bold text-white transition-colors"
-          >
-            <PhoneOff size={14} />
-            إنهاء المكالمة
-          </button>
-        )}
-      </div>
-    </div>
-  );
+const CallSimulator:React.FC<{isBreak:boolean;onBreak:()=>void;onSimulate:(p:string)=>void}>=({isBreak,onBreak,onSimulate})=>{
+  const [open,setOpen]=useState(false);
+  const [phone,setPhone]=useState(()=>localStorage.getItem("call_center_simulation_phone")||"0599001122");
+  const valid=/^(?:\+?970|0)?(?:59|56)\d{7}$/.test(phone.replace(/[\s-]/g,""));
+  return <div className="absolute bottom-4 left-4 z-50" dir="rtl">{open&&<div className="mb-2 w-72 rounded-xl border border-[#2A3039] bg-[#12151A] p-3 text-white shadow-2xl"><label className="text-xs font-bold">محاكاة مكالمة<input value={phone} onChange={e=>setPhone(e.target.value)} dir="ltr" className="mt-2 min-h-10 w-full rounded-lg border border-[#2A3039] bg-[#0B0D10] px-3"/></label><button disabled={!valid||isBreak} onClick={()=>{localStorage.setItem("call_center_simulation_phone",phone);onSimulate(phone);setOpen(false);}} className="mt-2 min-h-10 w-full rounded-lg bg-[#E20004] text-xs font-black disabled:opacity-50">بدء المكالمة</button><button onClick={onBreak} className="mt-2 min-h-9 w-full text-xs text-slate-400">{isBreak?"إنهاء الاستراحة":"بدء استراحة"}</button></div>}<button onClick={()=>setOpen(value=>!value)} aria-label="أدوات اختبار المكالمات" className="flex h-11 items-center gap-2 rounded-lg border border-[#2A3039] bg-[#171B21] px-3 text-xs font-bold text-slate-300 shadow-xl"><Headphones size={16}/>اختبار مكالمة</button></div>;
 };
 
-// ── شاشة الانتظار ────────────────────────────────────────────────────────────
-
-const WaitingScreen: React.FC<{
-  onSimulate: (phone: string) => void;
-  isOnBreak: boolean;
-  onToggleBreak: () => void;
-}> = ({ onSimulate, isOnBreak, onToggleBreak }) => {
-  const [showSimulate, setShowSimulate] = useState(false);
-  const [simPhone, setSimPhone] = useState("");
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="h-full flex flex-col items-center justify-center p-8"
-    >
-      <div className="relative mb-8">
-        <div className="w-24 h-24 bg-cyan-600/20 rounded-full flex items-center justify-center">
-          <Headphones size={48} className="text-cyan-400" />
-        </div>
-        <div className="absolute -top-1 -right-1 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
-          <div className="w-3 h-3 bg-white rounded-full animate-ping" />
-        </div>
-      </div>
-
-      <h2 className="text-2xl font-black text-white mb-2">نظام الكول سنتر</h2>
-      <p className="text-slate-400 text-sm mb-8">في انتظار المكالمات الواردة...</p>
-
-      <div className="flex items-center gap-2 text-xs text-slate-500">
-        <Clock size={14} />
-        <span>النظام جاهز لاستقبال المكالمات</span>
-      </div>
-
-      <div className="mt-12">
-        {!showSimulate ? (
-          <button
-            onClick={() => setShowSimulate(true)}
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs text-slate-400 transition-colors"
-          >
-            محاكاة مكالمة واردة (تطوير)
-          </button>
-        ) : (
-          <div className="flex items-center gap-2">
-            <input
-              value={simPhone}
-              onChange={(e) => setSimPhone(e.target.value)}
-              placeholder="رقم الهاتف..."
-              className="w-40 px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white outline-none focus:border-cyan-500/50"
-            />
-            <button
-              onClick={() => {
-                if (simPhone.trim()) {
-                  onSimulate(simPhone.trim());
-                  setShowSimulate(false);
-                  setSimPhone("");
-                }
-              }}
-              className="px-3 py-2 bg-cyan-600 hover:bg-cyan-500 rounded-xl text-xs font-bold text-white transition-colors"
-            >
-              محاكاة
-            </button>
-            <button
-              onClick={() => setShowSimulate(false)}
-              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs text-slate-400 transition-colors"
-            >
-              إلغاء
-            </button>
-          </div>
-        )}
-      </div>
-    </motion.div>
-  );
+const Waiting:React.FC<{isBreak:boolean;onBreak:()=>void;onSimulate:(p:string)=>void}>=({isBreak,onBreak,onSimulate})=>{
+  const [phone,setPhone]=useState(()=>localStorage.getItem("call_center_simulation_phone")||"0599001122");
+  const valid=/^(?:\+?970|0)?(?:59|56)\d{7}$/.test(phone.replace(/[\s-]/g,""));
+  const start=()=>{if(!valid)return;localStorage.setItem("call_center_simulation_phone",phone);onSimulate(phone);};
+  return <div className="flex h-full items-center justify-center bg-[#0B0D10] p-6 text-white" dir="rtl"><div className="w-full max-w-lg text-center"><span className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-[#171B21] text-[#E20004]"><Headphones size={38}/></span><h1 className="mt-5 text-2xl font-black">{isBreak?"أنت في استراحة":"مختبر رحلة الكول سنتر"}</h1><p className="mt-2 text-sm text-[#94A3B8]">{isBreak?"أوقف وضع الاستراحة لبدء المحاكاة.":"لن ترن أي مكالمة تلقائيًا. أدخل الرقم وابدأ السيناريو عندما تكون مستعدًا."}</p>{import.meta.env.DEV&&<div className="mt-6 rounded-xl border border-[#2A3039] bg-[#12151A] p-4 text-right"><label className="block text-xs font-bold text-[#CBD5E1]">رقم هاتف العميل<input value={phone} onChange={e=>setPhone(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")start();}} dir="ltr" inputMode="tel" className="mt-2 min-h-12 w-full rounded-lg border border-[#2A3039] bg-[#0B0D10] px-4 text-lg font-bold tracking-wider outline-none focus:border-[#E20004]"/></label>{!valid&&<p className="mt-2 text-xs text-rose-300">أدخل رقم جوال فلسطيني صالح بصيغة 059 أو 056 أو +970.</p>}<div className="mt-3 grid grid-cols-2 gap-2"><button disabled={!valid||isBreak} onClick={start} className="min-h-12 rounded-lg bg-[#E20004] font-black disabled:cursor-not-allowed disabled:bg-[#3A1D20] disabled:text-[#8B6A6C]"><PhoneIncoming size={18} className="ml-2 inline"/>بدء محاكاة المكالمة</button><button onClick={()=>setPhone("0599001122")} className="min-h-12 rounded-lg border border-[#2A3039] text-xs font-bold">عميل الاختبار الموجود</button></div><p className="mt-3 text-[11px] leading-5 text-[#64748B]">بعد إكمال الطلب والعودة إلى هذه الشاشة سيبقى الرقم محفوظًا، ويمكنك بدء طلب جديد للعميل نفسه وتحليل POS مرة أخرى.</p></div>}<button onClick={onBreak} className="mt-4 min-h-11 rounded-lg border border-[#2A3039] px-5 font-bold hover:bg-[#20252D]">{isBreak?"العودة للعمل":"بدء استراحة"}</button></div></div>;
 };
 
-// ── شاشة المكالمة الواردة ────────────────────────────────────────────────────
+const Incoming:React.FC<{phone:string;loading:boolean;ticketReady:boolean;ticketError:string|null;onRetryTicket:()=>void;onAnswer:()=>void;onReject:()=>void;onTransfer:(x:string)=>void}>=({phone,loading,ticketReady,ticketError,onRetryTicket,onAnswer,onReject,onTransfer})=><section role="dialog" aria-modal="false" aria-label="مكالمة واردة" className="pointer-events-auto w-full max-w-lg rounded-2xl border border-green-500/30 bg-[#12151A] p-4 text-center text-white shadow-[0_24px_70px_rgba(0,0,0,.65)] sm:p-5" dir="rtl"><div className="flex items-center justify-center gap-3"><PhoneIncoming className="animate-pulse text-green-400" size={32}/><div className="text-right"><p className="text-xs text-[#94A3B8]">مكالمة واردة</p><h1 className="text-xl font-black" dir="ltr">{phone}</h1></div></div>{ticketError&&<div className="mt-3 rounded-lg border border-rose-500/30 bg-rose-500/10 p-2 text-xs text-rose-200"><p>{ticketError}</p><button onClick={onRetryTicket} className="mt-2 min-h-10 rounded-md border border-rose-400/40 px-4 font-bold">إعادة محاولة إنشاء التذكرة</button></div>}<div className="mt-4 grid grid-cols-2 gap-2"><button disabled={loading||!ticketReady} onClick={onAnswer} className="min-h-11 rounded-lg bg-green-600 font-black hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50">{loading?<Loader2 className="mx-auto animate-spin"/>:<><Phone size={18} className="ml-2 inline"/>رد</>}</button><button onClick={onReject} className="min-h-11 rounded-lg bg-rose-600 font-black"><PhoneOff size={18} className="ml-2 inline"/>رفض</button></div>{!ticketReady&&!ticketError&&<p className="mt-2 text-xs text-[#94A3B8]">جارٍ تجهيز تذكرة المكالمة…</p>}<div className="mt-3 flex justify-center gap-2 overflow-x-auto">{DEFAULT_EXTENSIONS.slice(0,3).map(ext=><button key={ext.extension} onClick={()=>onTransfer(ext.extension)} className="min-h-10 shrink-0 rounded-lg border border-[#2A3039] px-3 text-xs"><PhoneForwarded size={14} className="ml-1 inline"/>{ext.name}</button>)}</div></section>;
 
-const IncomingCallScreen: React.FC<{
-  callerNumber: string;
-  onAnswer: () => void;
-  onReject: () => void;
-  onTransfer: (target: string) => Promise<void>;
-  extensions: CallCenterExtension[];
-}> = ({ callerNumber, onAnswer, onReject, onTransfer, extensions }) => {
-  const [showTransfer, setShowTransfer] = useState(false);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      className="h-full flex flex-col items-center justify-center p-8"
-    >
-      <div className="relative mb-8">
-        <div className="w-28 h-28 bg-green-600/20 rounded-full flex items-center justify-center">
-          <PhoneIncoming size={56} className="text-green-400 animate-bounce" />
-        </div>
-        <div className="absolute -top-2 -right-2 w-8 h-8 bg-green-500 rounded-full flex items-center justify-center animate-ping">
-          <Phone size={14} className="text-white" />
-        </div>
-      </div>
-
-      <h2 className="text-2xl font-black text-white mb-2">مكالمة واردة</h2>
-      <p className="text-3xl font-black text-green-400 mb-1" dir="ltr">
-        {callerNumber}
-      </p>
-      <p className="text-slate-500 text-sm mb-10">جاري البحث عن العميل...</p>
-
-      <div className="flex items-center gap-6">
-        <button onClick={onAnswer} className="flex flex-col items-center gap-2 group">
-          <div className="w-16 h-16 bg-green-600 hover:bg-green-500 rounded-full flex items-center justify-center transition-all group-hover:scale-110 group-hover:shadow-lg group-hover:shadow-green-500/30">
-            <Phone size={28} className="text-white" />
-          </div>
-          <span className="text-xs font-bold text-green-400">رد</span>
-        </button>
-        <button onClick={onReject} className="flex flex-col items-center gap-2 group">
-          <div className="w-16 h-16 bg-red-600 hover:bg-red-500 rounded-full flex items-center justify-center transition-all group-hover:scale-110 group-hover:shadow-lg group-hover:shadow-red-500/30">
-            <PhoneOff size={28} className="text-white" />
-          </div>
-          <span className="text-xs font-bold text-red-400">رفض</span>
-        </button>
-        <button
-          onClick={() => setShowTransfer(!showTransfer)}
-          className="flex flex-col items-center gap-2 group"
-        >
-          <div className="w-16 h-16 bg-cyan-600 hover:bg-cyan-500 rounded-full flex items-center justify-center transition-all group-hover:scale-110 group-hover:shadow-lg group-hover:shadow-cyan-500/30">
-            <PhoneForwarded size={28} className="text-white" />
-          </div>
-          <span className="text-xs font-bold text-cyan-400">تحويل</span>
-        </button>
-      </div>
-
-      {/* قائمة تحويل المكالمة */}
-      {showTransfer && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 10 }}
-          className="mt-6 grid grid-cols-2 gap-3 w-full max-w-md"
-        >
-          {extensions
-            .filter((ext) => ext.status === "available")
-            .map((ext) => (
-              <button
-                key={ext.number}
-                onClick={() => {
-                  onTransfer(ext.number);
-                  setShowTransfer(false);
-                }}
-                className="flex flex-col items-center gap-1.5 p-3 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors"
-              >
-                <span className="text-lg font-black text-cyan-400" dir="ltr">
-                  {ext.number}
-                </span>
-                <span className="text-xs font-bold text-slate-300">{ext.name}</span>
-              </button>
-            ))}
-        </motion.div>
-      )}
-    </motion.div>
-  );
-};
-
-// ── شاشة الطلب (تستخدم مكونات POS) ───────────────────────────────────────────
-
-const OrderingScreen: React.FC<{
-  phase: CallCenterPhase;
-  isSearchingCustomer: boolean;
-  customerSearchError: string | null;
-  identifiedCustomer: CustomerSearchResult | null;
-  showQuickCreate: boolean;
-  quickName: string;
-  quickPhone: string;
-  quickAddress: string;
-  onQuickNameChange: (v: string) => void;
-  onQuickPhoneChange: (v: string) => void;
-  onQuickAddressChange: (v: string) => void;
-  onQuickCreate: () => void;
-  onCancelQuickCreate: () => void;
-  // POS props
-  categories: any[];
-  selectedCategory: string;
-  setSelectedCategory: (c: string) => void;
-  searchQuery: string;
-  addToCart: (item: any) => void;
-  menuLoading?: boolean;
-  isCartOpen: boolean;
-  setIsCartOpen: (open: boolean) => void;
-  currentCart: any[];
-  subtotal: number;
-  invoiceNote: string;
-  onInvoiceNoteChange: (n: string) => void;
-  discountValue: number;
-  discountType: "AMOUNT" | "PERCENT";
-  onDiscountValueChange: (v: number) => void;
-  onDiscountTypeChange: (t: "AMOUNT" | "PERCENT") => void;
-  payments: any[];
-  onPaymentsChange: (p: any[]) => void;
-  paymentMethod: PaymentMethod;
-  onPaymentMethodChange: (m: PaymentMethod) => void;
-  cartOrderType: OrderType;
-  submitting: boolean;
-  onSubmitOrder: (
-    status: OrderStatus,
-    method: PaymentMethod,
-    discount: number,
-    meta: { name: string; phone: string; note: string },
-    payments?: any[],
-    clearAfterSubmit?: boolean,
-  ) => Promise<any>;
-  customerName: string;
-  customerPhone: string;
-  onUpdateCartItem: (id: string, changes: any) => void;
-  onRemoveFromCart: (id: string) => void;
-  onClearCart: () => void;
-  setPosError: (err: string | null) => void;
-}> = ({
-  phase,
-  isSearchingCustomer,
-  customerSearchError,
-  identifiedCustomer,
-  showQuickCreate,
-  quickName,
-  quickPhone,
-  quickAddress,
-  onQuickNameChange,
-  onQuickPhoneChange,
-  onQuickAddressChange,
-  onQuickCreate,
-  onCancelQuickCreate,
-  // POS
-  categories,
-  selectedCategory,
-  setSelectedCategory,
-  searchQuery,
-  addToCart,
-  menuLoading,
-  isCartOpen,
-  setIsCartOpen,
-  currentCart,
-  subtotal,
-  invoiceNote,
-  onInvoiceNoteChange,
-  discountValue,
-  discountType,
-  onDiscountValueChange,
-  onDiscountTypeChange,
-  payments,
-  onPaymentsChange,
-  paymentMethod,
-  onPaymentMethodChange,
-  cartOrderType,
-  submitting,
-  onSubmitOrder,
-  customerName,
-  customerPhone,
-  onUpdateCartItem,
-  onRemoveFromCart,
-  onClearCart,
-  setPosError,
-}) => {
-  // أثناء التعرف على العميل
-  if (phase === "identifying") {
-    return (
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="h-full flex flex-col items-center justify-center p-8"
-      >
-        {isSearchingCustomer ? (
-          <>
-            <Loader2 size={40} className="animate-spin text-cyan-400 mb-4" />
-            <p className="text-slate-400">جاري التعرف على العميل...</p>
-          </>
-        ) : showQuickCreate ? (
-          <div className="w-full max-w-md bg-slate-900 rounded-2xl border border-slate-800 p-6">
-            <h3 className="text-lg font-black text-white mb-4">إنشاء عميل جديد</h3>
-            {customerSearchError && (
-              <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 rounded-xl px-3 py-2 mb-4">
-                <AlertTriangle size={14} />
-                {customerSearchError}
-              </div>
-            )}
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">الاسم *</label>
-                <input
-                  value={quickName}
-                  onChange={(e) => onQuickNameChange(e.target.value)}
-                  placeholder="اسم العميل"
-                  className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-cyan-500/50"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">رقم الهاتف *</label>
-                <input
-                  value={quickPhone}
-                  onChange={(e) => onQuickPhoneChange(e.target.value)}
-                  placeholder="رقم الهاتف"
-                  className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-cyan-500/50"
-                  dir="ltr"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-400 mb-1">العنوان</label>
-                <input
-                  value={quickAddress}
-                  onChange={(e) => onQuickAddressChange(e.target.value)}
-                  placeholder="العنوان (اختياري)"
-                  className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white outline-none focus:border-cyan-500/50"
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-2 mt-6">
-              <button
-                onClick={onQuickCreate}
-                className="flex-1 px-4 py-2.5 bg-cyan-600 hover:bg-cyan-500 rounded-xl text-sm font-bold text-white transition-colors"
-              >
-                إنشاء العميل وبدء الطلب
-              </button>
-              <button
-                onClick={onCancelQuickCreate}
-                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm text-slate-400 transition-colors"
-              >
-                إلغاء
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </motion.div>
-    );
-  }
-
-  // شاشة الطلب - تعيد استخدام مكونات POS
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="h-full flex flex-col"
-    >
-      {/* معلومات العميل */}
-      {identifiedCustomer && (
-        <div className="px-4 py-2 bg-slate-900/50 border-b border-slate-800">
-          <div className="flex items-center gap-4 text-xs">
-            <div className="flex items-center gap-1.5">
-              <User size={14} className="text-cyan-400" />
-              <span className="font-bold text-white">{identifiedCustomer.name}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Phone size={14} className="text-slate-500" />
-              <span className="text-slate-400" dir="ltr">
-                {identifiedCustomer.phone || identifiedCustomer.mobile}
-              </span>
-            </div>
-            {identifiedCustomer.city && (
-              <div className="flex items-center gap-1.5">
-                <MapPin size={14} className="text-slate-500" />
-                <span className="text-slate-400">{identifiedCustomer.city}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* واجهة POS - إعادة استخدام المكونات الموجودة */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* القائمة */}
-        <div className="flex-1 overflow-y-auto">
-          <MenuGrid
-            categories={categories}
-            selectedCategory={selectedCategory}
-            setSelectedCategory={setSelectedCategory}
-            searchQuery={searchQuery}
-            addToCart={addToCart}
-            loading={menuLoading}
-          />
-        </div>
-
-        {/* السلة (جانبية) */}
-        <AnimatePresence>
-          {isCartOpen && (
-            <motion.div
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 400, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              className="border-r border-slate-800 overflow-hidden"
-            >
-              <div className="w-[400px] h-full overflow-y-auto">
-                <CartPanel
-                  isCartOpen={isCartOpen}
-                  setIsCartOpen={setIsCartOpen}
-                  isHospitality={false}
-                  cartOrderType={cartOrderType}
-                  setOrderType={() => {}}
-                  currentCart={currentCart}
-                  manualTable=""
-                  handleTableInput={() => {}}
-                  onViewTables={() => {}}
-                  subtotal={subtotal}
-                  calculatedDiscount={discountValue}
-                  discountType={discountType}
-                  discountValue={discountValue}
-                  total={subtotal}
-                  invoiceNote={invoiceNote}
-                  setInvoiceNote={onInvoiceNoteChange}
-                  editingDiscount="0"
-                  setEditingDiscount={() => {}}
-                  setDiscountValue={onDiscountValueChange}
-                  setDiscountType={onDiscountTypeChange}
-                  paymentMethod={paymentMethod}
-                  editingOrderId={null}
-                  editingQty={{}}
-                  editingNames={{}}
-                  handleNameChange={() => {}}
-                  handleQuantityChange={() => {}}
-                  handleQuantityBlur={() => {}}
-                  handleTotalChange={() => {}}
-                  setEditingNames={() => {}}
-                  removeFromCart={onRemoveFromCart}
-                  updateCartItem={onUpdateCartItem}
-                  getItemCurrentPrice={(item: any) => item.price ?? 0}
-                  setPosError={setPosError}
-                  submitOrder={onSubmitOrder}
-                  customerName={customerName}
-                  customerPhone={customerPhone}
-                  setShowCustomerModal={() => {}}
-                />
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* زر فتح السلة (عندما تكون مغلقة) */}
-      {!isCartOpen && currentCart.length > 0 && (
-        <button
-          onClick={() => setIsCartOpen(true)}
-          className="absolute left-4 bottom-4 flex items-center gap-2 px-4 py-3 bg-cyan-600 hover:bg-cyan-500 rounded-xl text-sm font-bold text-white shadow-lg transition-colors"
-        >
-          <ShoppingCart size={18} />
-          عرض السلة ({currentCart.length})
-        </button>
-      )}
-    </motion.div>
-  );
-};
-
-// ── شاشة انتهاء المكالمة ─────────────────────────────────────────────────────
-
-const CallEndedScreen: React.FC<{
-  phase: CallCenterPhase;
-  duration: number;
-  onReset: () => void;
-}> = ({ phase, duration, onReset }) => {
-  const isCompleted = phase === "completed";
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      className="h-full flex flex-col items-center justify-center p-8"
-    >
-      <div
-        className={`w-20 h-20 rounded-full flex items-center justify-center mb-6 ${
-          isCompleted ? "bg-green-600/20" : "bg-slate-800"
-        }`}
-      >
-        {isCompleted ? (
-          <CheckCircle2 size={40} className="text-green-400" />
-        ) : (
-          <PhoneOff size={40} className="text-slate-500" />
-        )}
-      </div>
-
-      <h2 className="text-2xl font-black text-white mb-2">
-        {isCompleted ? "تم إتمام الطلب" : "المكالمة الفائتة"}
-      </h2>
-      <p className="text-slate-400 text-sm mb-2">
-        {isCompleted
-          ? "تم إرسال الطلب للمطبخ وإنهاء المكالمة"
-          : "لم يتم الرد على المكالمة"}
-      </p>
-      <p className="text-xs text-slate-500 mb-8">
-        مدة المكالمة: {formatDuration(duration)}
-      </p>
-
-      <button
-        onClick={onReset}
-        className="px-6 py-3 bg-cyan-600 hover:bg-cyan-500 rounded-xl text-sm font-bold text-white transition-colors"
-      >
-        العودة لانتظار المكالمات
-      </button>
-    </motion.div>
-  );
-};
+const CustomerSearchLoading=({phone}:{phone:string})=><div className="flex h-full items-start justify-center p-5 pt-24 text-white" dir="rtl"><div className="pointer-events-auto rounded-xl border border-red-500/25 bg-[#12151A] px-8 py-5 text-center shadow-2xl"><Loader2 className="mx-auto mb-3 animate-spin text-[#E20004]" size={34}/><h1 className="text-base font-black">جارٍ التحقق من بيانات العميل...</h1><p className="mt-2 text-xs text-[#94A3B8]" dir="ltr">{phone}</p><p className="mt-2 text-[11px] text-slate-500">يمكنك متابعة إضافة الأصناف أثناء البحث.</p></div></div>;
+const CustomerSearchError=({message,onRetry,onEnd}:{message:string|null;onRetry:()=>void;onEnd:()=>void})=><section role="alertdialog" aria-modal="false" className="w-full max-w-md rounded-xl border border-rose-500/30 bg-[#12151A] p-5 text-center text-white shadow-2xl" dir="rtl"><AlertTriangle className="mx-auto text-rose-400" size={34}/><h1 className="mt-3 text-lg font-black">تعذر التحقق من بيانات العميل</h1><p className="mt-2 text-sm text-rose-200">{message}</p><div className="mt-4 grid grid-cols-2 gap-2"><button autoFocus onClick={onRetry} className="min-h-11 rounded-lg bg-[#E20004] font-black">إعادة المحاولة</button><button onClick={onEnd} className="min-h-11 rounded-lg border border-rose-500/30 text-xs text-rose-300">إنهاء المكالمة</button></div></section>;
+const CustomerCandidateSelector=({candidates,onSelect,onRetry}:{candidates:CustomerSearchResult[];onSelect:(v:CustomerSearchResult)=>void;onRetry:()=>void})=><section role="dialog" aria-modal="false" aria-label="اختيار العميل" className="max-h-[70vh] w-full max-w-xl overflow-y-auto rounded-xl border border-[#2A3039] bg-[#12151A] p-5 text-white shadow-2xl" dir="rtl"><div className="mb-4 flex items-center gap-2"><Users className="text-blue-400"/><div><h1 className="font-black">اختر العميل الصحيح</h1><p className="text-xs text-[#94A3B8]">يمكن متابعة تجهيز الفاتورة خلف هذه البطاقة.</p></div></div><div className="space-y-2">{candidates.map((value,index)=><button autoFocus={index===0} key={value.id} onClick={()=>onSelect(value)} className="w-full rounded-lg border border-[#2A3039] bg-[#171B21] p-3 text-right hover:border-[#E20004] focus:ring-2 focus:ring-red-600/60"><b>{value.name}</b><span className="mt-1 block text-xs text-[#94A3B8]" dir="ltr">{value.phone||value.mobile} · {value.code}</span></button>)}</div><button onClick={onRetry} className="mt-3 min-h-10 w-full text-xs text-blue-300">إعادة البحث</button></section>;

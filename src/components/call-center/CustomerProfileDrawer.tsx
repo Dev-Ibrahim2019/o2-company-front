@@ -1,8 +1,8 @@
-﻿import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { X, User, ShoppingCart, Star, MapPin, MessageSquare, AlertTriangle, CreditCard, Phone, Mail, Calendar, Clock, Store, Package, ChevronLeft, Loader2, FileText, Percent, Ban, Plus, Heart, Flag, Bell, ExternalLink, Trash2, Edit3, Check, Copy, RefreshCw, Award, TrendingUp, AlertCircle, Building2, Headphones, UtensilsCrossed, Users, Activity, ChevronDown, ChevronUp, Timer, Truck } from "lucide-react";
 import type { CustomerProfile, CustomerOrder, CustomerComplaint, FavoriteItem, OrderDetail, ComplaintFollowup, CustomerAddress, CustomerOccasion, CustomerNote, CustomerSearchResult } from "./services/callCenterService";
 import { callCenterService, CUSTOMER_CATEGORY_LABELS, type CustomerCategory } from "./services/callCenterService";
-import { orderService } from "../../services/orderService";
+import { feedbackDraftFrom, feedbackPayload, feedbackValidationMessage } from "./feedbackFlow";
 
 interface Props {
   isOpen?: boolean;
@@ -61,18 +61,19 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
     while (attempts < maxAttempts) {
       attempts += 1;
       try {
-        const [fullProfileRes, favoritesRes, complaintsRes, occasionsRes] = await Promise.all([
-          callCenterService.getCustomerFullProfile(customerId),
+        const fullProfileRes = await callCenterService.getCustomerFullProfile(customerId);
+        const [favoritesRes, complaintsRes, occasionsRes] = await Promise.allSettled([
           callCenterService.getCustomerFavorites(customerId),
           callCenterService.getCustomerComplaints(customerId),
           callCenterService.getCustomerOccasions(customerId),
         ]);
         setProfile(fullProfileRes.data.profile);
         setOrders(fullProfileRes.data.orders.slice(0, 5));
-        setFavorites(favoritesRes.data ?? []);
-        setComplaints(complaintsRes.data?.data ?? []);
+        setFavorites(favoritesRes.status === "fulfilled" ? favoritesRes.value.data ?? [] : []);
+        setComplaints(complaintsRes.status === "fulfilled" ? complaintsRes.value.data?.data ?? [] : []);
         const now = new Date();
-        const withinSevenDays = (occasionsRes.data ?? []).find((occasion) => {
+        const occasions = occasionsRes.status === "fulfilled" ? occasionsRes.value.data ?? [] : [];
+        const withinSevenDays = occasions.find((occasion) => {
           const date = new Date(occasion.date);
           date.setFullYear(now.getFullYear());
           if (date < now) date.setFullYear(now.getFullYear() + 1);
@@ -88,7 +89,7 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
         }
       }
     }
-    setLoadError("طھط¹ط°ط± طھط­ظ…ظٹظ„ ظ…ظ„ظپ ط§ظ„ط¹ظ…ظٹظ„ ط¨ط¹ط¯ 3 ظ…ط­ط§ظˆظ„ط§طھ. طھط­ظ‚ظ‚ ظ…ظ† ط§ظ„ط§طھطµط§ظ„ ط«ظ… ط£ط¹ط¯ ط§ظ„ظ…ط­ط§ظˆظ„ط©.");
+    setLoadError("تعذر تحميل ملف العميل بعد 3 محاولات. تحقق من الاتصال ثم أعد المحاولة.");
     setLoading(false);
   }, [customerId]);
 
@@ -106,14 +107,14 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
   };
 
   const tabs: { key: Tab; label: string; icon: React.ElementType; badge?: string | number }[] = [
-    { key: "overview", label: "ظ†ط¸ط±ط© ط¹ط§ظ…ط©", icon: User },
-    { key: "orders", label: "ط§ظ„طلبط§طھ", icon: ShoppingCart, badge: badges.orders },
-    { key: "addresses", label: "ط§ظ„ط¹ظ†ط§ظˆظٹظ†", icon: MapPin },
-    { key: "occasions", label: "ط§ظ„ظ…ظ†ط§ط³ط¨ط§طھ", icon: Calendar, badge: badges.occasions },
-    { key: "complaints", label: "ط§ظ„ط´ظƒط§ظˆظ‰", icon: AlertTriangle, badge: badges.complaints },
-    { key: "loyalty", label: "ط§ظ„ظˆظ„ط§ط،", icon: Star },
+    { key: "overview", label: "نظرة عامة", icon: User },
+    { key: "orders", label: "الطلبات", icon: ShoppingCart, badge: badges.orders },
+    { key: "addresses", label: "العناوين", icon: MapPin },
+    { key: "occasions", label: "المناسبات", icon: Calendar, badge: badges.occasions },
+    { key: "complaints", label: "الشكاوى", icon: AlertTriangle, badge: badges.complaints },
+    { key: "loyalty", label: "الولاء", icon: Star },
     { key: "notes", label: "ملاحظات", icon: MessageSquare },
-    { key: "finance", label: "ط§ظ„ظ…ط§ظ„ظٹ", icon: CreditCard },
+    { key: "finance", label: "المالي", icon: CreditCard },
   ];
 
   const handleSelect = () => {
@@ -164,7 +165,7 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
   }
 
   return (
-    <div className={`fixed inset-0 z-[300] transition-[visibility] ${isOpen ? "visible" : "invisible pointer-events-none"}`} dir="rtl" aria-hidden={!isOpen} role="dialog" aria-modal="true" aria-label="ظ…ظ„ظپ ط§ظ„ط¹ظ…ظٹظ„ ط§ظ„ظƒط§ظ…ظ„">
+    <div className={`fixed inset-0 z-[300] transition-[visibility] ${isOpen ? "visible" : "invisible pointer-events-none"}`} dir="rtl" aria-hidden={!isOpen} role="dialog" aria-modal="true" aria-label="ملف العميل الكامل">
       <div className={`absolute inset-0 bg-black/40 transition-opacity duration-300 ${isOpen ? "opacity-100" : "opacity-0"}`} onClick={onClose} aria-hidden="true" />
       <div ref={dialogRef} className={`absolute top-0 bottom-0 right-0 w-full sm:w-[45vw] sm:min-w-[420px] sm:max-w-[740px] bg-slate-900 border-l border-white/10 shadow-2xl shadow-black/50 overflow-hidden flex flex-col transform transition-transform duration-300 ease-out ${isOpen ? "translate-x-0" : "translate-x-full"}`}>
         {/* Header */}
@@ -174,17 +175,17 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
               <User size={16} className="text-white" />
             </div>
             <div>
-              <h3 className="text-white font-black text-sm tracking-wide">ظ…ظ„ظپ ط§ظ„ط¹ظ…ظٹظ„</h3>
+              <h3 className="text-white font-black text-sm tracking-wide">ملف العميل</h3>
               {profile && <p className="text-[10px] text-slate-400 font-medium">{profile.customer.name}</p>}
             </div>
           </div>
           <div className="flex items-center gap-2">
             {onSelectCustomer && profile && (
-              <button onClick={handleSelect} aria-label="ط§ط®طھظٹط§ط± ط§ظ„ط¹ظ…ظٹظ„ ظ„ظ„طلب" className="p-2 bg-gradient-to-br from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white rounded-lg transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 shadow-md shadow-red-700/20 active:scale-95">
+              <button onClick={handleSelect} aria-label="اختيار العميل للطلب" className="p-2 bg-gradient-to-br from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white rounded-lg transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 shadow-md shadow-red-700/20 active:scale-95">
                 <Check size={14} />
               </button>
             )}
-            <button onClick={onClose} aria-label="ط¥ط؛ظ„ط§ظ‚ ظ…ظ„ظپ ط§ظ„ط¹ظ…ظٹظ„" className="p-2 hover:bg-white/5 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400">
+            <button onClick={onClose} aria-label="إغلاق ملف العميل" className="p-2 hover:bg-white/5 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400">
               <X size={16} className="text-slate-400" />
             </button>
           </div>
@@ -195,7 +196,7 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
           <div className="mx-4 mt-3 rounded-xl border border-fuchsia-400/30 bg-gradient-to-l from-fuchsia-500/10 to-fuchsia-500/5 px-4 py-2.5 flex items-center gap-2 motion-safe:animate-pulse shadow-sm shadow-fuchsia-900/20">
             <Calendar size={14} className="text-fuchsia-300 shrink-0" />
             <p className="text-xs font-bold text-fuchsia-200">
-              ط§ظ‚طھط±ط¨طھ ظ…ظ†ط§ط³ط¨ط© ط§ظ„ط¹ظ…ظٹظ„! ط§ظ‚طھط±ط­ ط¹ظ„ظٹظ‡ ط§ظ„ط¹ط±ط¶ ط§ظ„ط¹ط§ط¦ظ„ظٹ ط§ظ„ظپط§ط®ط±
+              اقتربت مناسبة العميل! اقترح عليه العرض العائلي الفاخر
             </p>
           </div>
         )}
@@ -227,7 +228,7 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
                         : "bg-slate-700 text-slate-300 border border-slate-600/50"
                     }
                   `}>
-                    {badge === "!" ? <><span className="animate-pulse">â—ڈ</span> {badge}</> : badge}
+                    {badge === "!" ? <><span className="animate-pulse">●</span> {badge}</> : badge}
                   </span>
                 )}
               </button>
@@ -238,7 +239,7 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
         {/* Content Area */}
         <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
           {loading ? (
-            <div className="space-y-4 py-3" aria-label="ط¬ط§ط±ظٹ طھط­ظ…ظٹظ„ ظ…ظ„ظپ ط§ظ„ط¹ظ…ظٹظ„">
+            <div className="space-y-4 py-3" aria-label="جاري تحميل ملف العميل">
               <div className="flex items-center gap-3 p-3">
                 <div className="w-14 h-14 rounded-full bg-slate-800/70 animate-pulse" />
                 <div className="flex-1 space-y-2">
@@ -263,7 +264,7 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
               <p className="text-sm text-slate-300">{loadError}</p>
               <button onClick={handleRetry} className="flex items-center gap-2 rounded-lg bg-gradient-to-br from-red-600 to-red-700 px-5 py-2.5 text-xs font-bold text-white hover:from-red-500 hover:to-red-600 transition-all active:scale-95 shadow-md shadow-red-700/20">
                 <RefreshCw size={14} />
-                ط¥ط¹ط§ط¯ط© ط§ظ„ظ…ط­ط§ظˆظ„ط©
+                إعادة المحاولة
               </button>
             </div>
           ) : activeTab === "overview" && profile ? (
@@ -293,14 +294,14 @@ const FinanceTab: React.FC<{ profile: CustomerProfile }> = ({ profile }) => {
   const hasFinancialProfile = Number(profile.customer.credit_limit || 0) > 0 || Number(profile.balance || 0) !== 0;
   return <div className="space-y-4">
     <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 p-3 text-xs leading-6 text-sky-100">
-      ظ‡ط°ظ‡ ط§ظ„ط¨ظٹط§ظ†ط§طھ ظ„ظ„ط¹ط±ط¶ ظپظ‚ط·. ظ…ظ„ظپ CRM ظ…ظ†ظپطµظ„ ط¹ظ† ط§ظ„ط°ظ…ظ… ظˆط§ظ„محاسبط©طŒ ظˆظ„ط§ ظٹظ…ظƒظ† ط¥ظ†ط´ط§ط، ط¯ظپط¹ط© ط£ظˆ ظ‚ظٹط¯ ظ…ظ† ظ‡ظ†ط§.
+      هذه البيانات للعرض فقط. ملف CRM منفصل عن الذمم والمحاسبة، ولا يمكن إنشاء دفعة أو قيد من هنا.
     </div>
     {hasFinancialProfile ? <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      <StatCard label="ط±طµظٹط¯ ط§ظ„ط°ظ…ط©" value={`${Number(profile.balance).toFixed(2)} â‚ھ`} icon={<Wallet size={14} />} highlight={Number(profile.balance) > 0} />
-      <StatCard label="ط§ظ„ط­ط¯ ط§ظ„ط§ط¦طھظ…ط§ظ†ظٹ" value={`${Number(profile.customer.credit_limit).toFixed(2)} â‚ھ`} icon={<CreditCard size={14} />} />
-      <StatCard label="ط§ظ„ظ…طھط§ط­" value={`${Number(profile.available_credit).toFixed(2)} â‚ھ`} icon={<TrendingUp size={14} />} highlight={profile.is_over_limit} />
-      <StatCard label="ط­ط§ظ„ط© ط§ظ„ط­ط¯" value={profile.is_over_limit ? "ظ…طھط¬ط§ظˆط²" : "ط¶ظ…ظ† ط§ظ„ط­ط¯"} icon={<Check size={14} />} highlight={profile.is_over_limit} />
-    </div> : <EmptyState icon={CreditCard} text="ظ„ط§ ظٹظˆط¬ط¯ ظ…ظ„ظپ ظ…ط§ظ„ظٹ ظ…ظپط¹ظ„ ظ„ظ‡ط°ط§ ط§ظ„ط¹ظ…ظٹظ„" />}
+      <StatCard label="رصيد الذمة" value={`${Number(profile.balance).toFixed(2)} ₪`} icon={<Wallet size={14} />} highlight={Number(profile.balance) > 0} />
+      <StatCard label="الحد الائتماني" value={`${Number(profile.customer.credit_limit).toFixed(2)} ₪`} icon={<CreditCard size={14} />} />
+      <StatCard label="المتاح" value={`${Number(profile.available_credit).toFixed(2)} ₪`} icon={<TrendingUp size={14} />} highlight={profile.is_over_limit} />
+      <StatCard label="حالة الحد" value={profile.is_over_limit ? "متجاوز" : "ضمن الحد"} icon={<Check size={14} />} highlight={profile.is_over_limit} />
+    </div> : <EmptyState icon={CreditCard} text="لا يوجد ملف مالي مفعل لهذا العميل" />}
   </div>;
 };
 
@@ -309,18 +310,18 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
   const c = profile.customer;
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [savingCategory, setSavingCategory] = useState(false);
-  const categoryLabel = c.category || "ط؛ظٹط± ظ…طµظ†ظپ";
+  const categoryLabel = c.category || "غير مصنف";
 
   const getCategoryBadge = () => {
     const cat = (c.category || "").toLowerCase();
     switch (cat) {
       case "vip": return { bg: "from-amber-500/20 to-amber-500/5 border-amber-500/30 text-amber-300", icon: <Award size={12} />, label: "VIP" };
-      case "important": return { bg: "from-emerald-500/20 to-emerald-500/5 border-emerald-500/30 text-emerald-300", icon: <Star size={12} />, label: "ظ…ظ‡ظ…" };
-      case "regular": return { bg: "from-blue-500/20 to-blue-500/5 border-blue-500/30 text-blue-300", icon: <User size={12} />, label: "ط¹ط§ط¯ظٹ" };
-      case "new": return { bg: "from-sky-500/20 to-sky-500/5 border-sky-500/30 text-sky-300", icon: <Activity size={12} />, label: "ط¬ط¯ظٹط¯" };
-      case "follow_up": return { bg: "from-violet-500/20 to-violet-500/5 border-violet-500/30 text-violet-300", icon: <Bell size={12} />, label: "ظ…طھط§ط¨ط¹ط©" };
-      case "complaints": return { bg: "from-red-500/20 to-red-500/5 border-red-500/30 text-red-300", icon: <AlertTriangle size={12} />, label: "ط´ظƒط§ظˆظ‰" };
-      case "inactive": return { bg: "from-slate-500/20 to-slate-500/5 border-slate-500/30 text-slate-300", icon: <Ban size={12} />, label: "ط؛ظٹط± نشط" };
+      case "important": return { bg: "from-emerald-500/20 to-emerald-500/5 border-emerald-500/30 text-emerald-300", icon: <Star size={12} />, label: "مهم" };
+      case "regular": return { bg: "from-blue-500/20 to-blue-500/5 border-blue-500/30 text-blue-300", icon: <User size={12} />, label: "عادي" };
+      case "new": return { bg: "from-sky-500/20 to-sky-500/5 border-sky-500/30 text-sky-300", icon: <Activity size={12} />, label: "جديد" };
+      case "follow_up": return { bg: "from-violet-500/20 to-violet-500/5 border-violet-500/30 text-violet-300", icon: <Bell size={12} />, label: "متابعة" };
+      case "complaints": return { bg: "from-red-500/20 to-red-500/5 border-red-500/30 text-red-300", icon: <AlertTriangle size={12} />, label: "شكاوى" };
+      case "inactive": return { bg: "from-slate-500/20 to-slate-500/5 border-slate-500/30 text-slate-300", icon: <Ban size={12} />, label: "غير نشط" };
       default: return { bg: "from-slate-500/20 to-slate-500/5 border-slate-500/30 text-slate-300", icon: <User size={12} />, label: categoryLabel };
     }
   };
@@ -341,18 +342,18 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
     if (!order) return null;
     const type = order.order_type;
     switch (type) {
-      case "call_center": return { label: "ظƒظˆظ„ ط³ظ†طھط±", icon: <Headphones size={12} />, color: "from-violet-500/20 to-violet-500/5 border-violet-500/30 text-violet-300" };
-      case "dine_in": return { label: "ظپظˆط±ظٹ", icon: <UtensilsCrossed size={12} />, color: "from-emerald-500/20 to-emerald-500/5 border-emerald-500/30 text-emerald-300" };
-      case "delivery": return { label: "طھظˆطµظٹظ„", icon: <Package size={12} />, color: "from-blue-500/20 to-blue-500/5 border-blue-500/30 text-blue-300" };
-      case "takeaway": return { label: "ط§ط³طھظ„ط§ظ…", icon: <Store size={12} />, color: "from-amber-500/20 to-amber-500/5 border-amber-500/30 text-amber-300" };
-      default: return { label: type || "ط؛ظٹط± ظ…ط­ط¯ط¯", icon: <ShoppingCart size={12} />, color: "from-slate-500/20 to-slate-500/5 border-slate-500/30 text-slate-300" };
+      case "call_center": return { label: "كول سنتر", icon: <Headphones size={12} />, color: "from-violet-500/20 to-violet-500/5 border-violet-500/30 text-violet-300" };
+      case "dine_in": return { label: "فوري", icon: <UtensilsCrossed size={12} />, color: "from-emerald-500/20 to-emerald-500/5 border-emerald-500/30 text-emerald-300" };
+      case "delivery": return { label: "توصيل", icon: <Package size={12} />, color: "from-blue-500/20 to-blue-500/5 border-blue-500/30 text-blue-300" };
+      case "takeaway": return { label: "استلام", icon: <Store size={12} />, color: "from-amber-500/20 to-amber-500/5 border-amber-500/30 text-amber-300" };
+      default: return { label: type || "غير محدد", icon: <ShoppingCart size={12} />, color: "from-slate-500/20 to-slate-500/5 border-slate-500/30 text-slate-300" };
     }
   };
 
   const lastOrder = orders[0];
   const sourceBadge = getOrderSourceBadge(lastOrder);
 
-  // ط­ط³ط§ط¨ ط£ظٹط§ظ… ظ…ظ†ط° ط¢ط®ط± طلب
+  // حساب أيام منذ آخر طلب
   const daysSinceLastOrder = profile.last_order_at
     ? Math.floor((Date.now() - new Date(profile.last_order_at).getTime()) / 86400000)
     : null;
@@ -440,7 +441,7 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
       <div className="bg-gradient-to-br from-slate-800/50 to-slate-800/20 rounded-2xl p-4 border border-slate-700/30">
         <div className="flex items-center gap-2 mb-3">
           <Activity size={14} className="text-red-400" />
-          <h4 className="text-xs font-black text-slate-300">طھط­ظ„ظٹظ„ط§طھ ط§ظ„ط¹ظ…ظٹظ„</h4>
+          <h4 className="text-xs font-black text-slate-300">تحليلات العميل</h4>
         </div>
 
         {/* Main metrics grid */}
@@ -449,22 +450,22 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
           <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-700/30">
             <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold mb-1">
               <TrendingUp size={12} />
-              ظ…طھظˆط³ط· ظ‚ظٹظ…ط© ط§ظ„طلب
+              متوسط قيمة الطلب
             </div>
             <div className="text-lg font-black text-white">
               {profile.avg_order_value ? profile.avg_order_value.toFixed(2) : "0.00"}
-              <span className="text-xs text-slate-500 mr-1 font-bold">â‚ھ</span>
+              <span className="text-xs text-slate-500 mr-1 font-bold">₪</span>
             </div>
           </div>
           {/* Monthly Orders */}
           <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-700/30">
             <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-bold mb-1">
               <ShoppingCart size={12} />
-              ظ…ط¹ط¯ظ„ ط§ظ„طلبط§طھ ط§ظ„ط´ظ‡ط±ظٹ
+              معدل الطلبات الشهري
             </div>
             <div className="text-lg font-black text-white">
               {profile.monthly_orders_count ?? 0}
-              <span className="text-xs text-slate-500 mr-1 font-bold">/ ط´ظ‡ط±</span>
+              <span className="text-xs text-slate-500 mr-1 font-bold">/ شهر</span>
             </div>
           </div>
         </div>
@@ -474,19 +475,19 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
           <div className="bg-slate-900/40 rounded-lg px-3 py-2 border border-slate-700/20">
             <div className="flex items-center gap-1 text-[10px] text-slate-500">
               <Calendar size={10} />
-              ط£ظˆظ„ طلب
+              أول طلب
             </div>
             <p className="text-xs font-bold text-white mt-0.5">
-              {profile.first_order_at ? new Date(profile.first_order_at).toLocaleDateString("ar-SA") : "â€”"}
+              {profile.first_order_at ? new Date(profile.first_order_at).toLocaleDateString("ar-SA") : "—"}
             </p>
           </div>
           <div className="bg-slate-900/40 rounded-lg px-3 py-2 border border-slate-700/20">
             <div className="flex items-center gap-1 text-[10px] text-slate-500">
               <Clock size={10} />
-              ط¢ط®ط± طلب
+              آخر طلب
             </div>
             <p className="text-xs font-bold text-white mt-0.5">
-              {profile.last_order_at ? new Date(profile.last_order_at).toLocaleDateString("ar-SA") : "â€”"}
+              {profile.last_order_at ? new Date(profile.last_order_at).toLocaleDateString("ar-SA") : "—"}
             </p>
           </div>
         </div>
@@ -496,10 +497,10 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
           <div className="bg-gradient-to-l from-emerald-500/10 to-emerald-500/5 rounded-xl p-3 border border-emerald-500/20">
             <div className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-300 mb-1">
               <Heart size={12} />
-              ط§ظ„طµظ†ظپ ط§ظ„ظ…ظپط¶ظ„
+              الصنف المفضل
             </div>
             <p className="text-sm font-black text-white">{favorite.item_name_ar || favorite.item_name}</p>
-            <p className="text-[10px] text-emerald-200/60 mt-0.5">ط·ظڈظ„ط¨ {favorite.order_count} ظ…ط±ط§طھ آ· {favorite.total_quantity} ظ‚ط·ط¹ط©</p>
+            <p className="text-[10px] text-emerald-200/60 mt-0.5">طُلب {favorite.order_count} مرات · {favorite.total_quantity} قطعة</p>
           </div>
         )}
       </div>
@@ -510,7 +511,7 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Package size={14} className="text-cyan-400" />
-              <h4 className="text-xs font-black text-slate-300">ط¢ط®ط± طلب</h4>
+              <h4 className="text-xs font-black text-slate-300">آخر طلب</h4>
             </div>
             <OrderStatusBadge status={lastOrder.status} />
           </div>
@@ -518,13 +519,13 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
           {/* Order Header */}
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-black text-white">{lastOrder.order_number}</span>
-            <span className="text-lg font-black text-emerald-400">{lastOrder.total.toFixed(2)} â‚ھ</span>
+            <span className="text-lg font-black text-emerald-400">{lastOrder.total.toFixed(2)} ₪</span>
           </div>
 
           {/* Order Details Grid */}
           <div className="grid grid-cols-2 gap-2 mb-3">
             <div className="bg-slate-900/40 rounded-lg px-3 py-2 border border-slate-700/20">
-              <div className="text-[10px] text-slate-500">ظ…طµط¯ط± ط§ظ„طلب</div>
+              <div className="text-[10px] text-slate-500">مصدر الطلب</div>
               <div className="mt-0.5">
                 {sourceBadge && (
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border bg-gradient-to-l ${sourceBadge.color} inline-flex items-center gap-1`}>
@@ -538,30 +539,30 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
               <div className="text-[10px] text-slate-500">الفرع</div>
               <div className="mt-0.5 text-xs font-bold text-white flex items-center gap-1">
                 <Building2 size={11} className="text-cyan-400" />
-                {lastOrder.branch?.name || "â€”"}
+                {lastOrder.branch?.name || "—"}
               </div>
             </div>
             <div className="bg-slate-900/40 rounded-lg px-3 py-2 border border-slate-700/20">
-              <div className="text-[10px] text-slate-500">ط§ظ„طھط§ط±ظٹط®</div>
+              <div className="text-[10px] text-slate-500">التاريخ</div>
               <div className="mt-0.5 text-xs font-bold text-white">
                 {new Date(lastOrder.created_at).toLocaleDateString("ar-SA")}
               </div>
             </div>
             <div className="bg-slate-900/40 rounded-lg px-3 py-2 border border-slate-700/20">
-              <div className="text-[10px] text-slate-500">ظˆظ‚طھ ط§ظ„طلب</div>
+              <div className="text-[10px] text-slate-500">وقت الطلب</div>
               <div className="mt-0.5 text-xs font-bold text-white">
                 {new Date(lastOrder.created_at).toLocaleTimeString("ar-SA", { hour: '2-digit', minute: '2-digit' })}
               </div>
             </div>
           </div>
 
-          {/* Experience Status - ظٹط¸ظ‡ط± ط¥ط°ط§ طھظ… طھظ‚ظٹظٹظ… ط§ظ„طھط¬ط±ط¨ط© ط£ظˆ ظ„ط§ */}
+          {/* Experience Status - يظهر إذا تم تقييم التجربة أو لا */}
           <div className="bg-slate-900/60 rounded-lg px-3 py-2 border border-slate-700/30 mb-2">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-slate-500 font-bold">طھظ‚ظٹظٹظ… طھط¬ط±ط¨ط© ط§ظ„ط¹ظ…ظٹظ„</span>
+              <span className="text-[10px] text-slate-500 font-bold">تقييم تجربة العميل</span>
               <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20 inline-flex items-center gap-1">
                 <Flag size={10} />
-                ظ„ظ… ظٹطھظ… ط§ظ„طھظ‚ظٹظٹظ…
+                لم يتم التقييم
               </span>
             </div>
           </div>
@@ -578,7 +579,7 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
           {/* Action Buttons */}
           <div className="mt-3 flex gap-2">
             <button onClick={() => onSelectOrder(lastOrder.id)} className="flex-1 rounded-lg bg-slate-700 hover:bg-slate-600 px-3 py-2 text-[11px] font-bold text-slate-200 transition-colors">
-              ط¹ط±ط¶ التفاصيل ظƒط§ظ…ظ„ط©
+              عرض التفاصيل كاملة
             </button>
             {onRepeatOrder && (
               <RepeatOrderButton orderId={lastOrder.id} onRepeatOrder={onRepeatOrder} />
@@ -591,19 +592,19 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
       <div>
         <div className="flex items-center gap-2 mb-2">
           <AlertCircle size={14} className="text-red-400" />
-          <h4 className="text-xs font-black text-slate-300">ظ…ط¤ط´ط±ط§طھ ط§ظ„ط£ط¯ط§ط، ظˆالتنبيهات</h4>
+          <h4 className="text-xs font-black text-slate-300">مؤشرات الأداء ظˆالتنبيهات</h4>
         </div>
         <div className="grid grid-cols-3 gap-2 mb-2">
-          <StatCard label="ط´ظƒط§ظˆظ‰ مفتوحط©" value={String(profile.open_complaints_count || 0)} icon={<AlertTriangle size={14} />} highlight={(profile.open_complaints_count || 0) > 0} />
-          <StatCard label="طلبط§طھ ظ…ظ„ط؛ط§ط©" value={String(profile.cancelled_orders_count || 0)} icon={<Ban size={14} />} highlight={(profile.cancelled_orders_count || 0) > 0} />
-          <StatCard label="ظ†ظ‚ط§ط· ط§ظ„ظˆظ„ط§ط،" value={String(profile.loyalty_points ?? c.loyalty_points ?? 0)} icon={<Star size={14} />} />
+          <StatCard label="شكاوى مفتوحط©" value={String(profile.open_complaints_count || 0)} icon={<AlertTriangle size={14} />} highlight={(profile.open_complaints_count || 0) > 0} />
+          <StatCard label="طلبات ملغاة" value={String(profile.cancelled_orders_count || 0)} icon={<Ban size={14} />} highlight={(profile.cancelled_orders_count || 0) > 0} />
+          <StatCard label="نقاط الولاء" value={String(profile.loyalty_points ?? c.loyalty_points ?? 0)} icon={<Star size={14} />} />
         </div>
 
-        {/* Delivery Delay Alert - ظ…ط«ط§ظ„ */}
+        {/* Delivery Delay Alert - مثال */}
         {daysSinceLastOrder !== null && daysSinceLastOrder > 14 && (
           <div className="bg-gradient-to-l from-amber-500/10 to-amber-500/5 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-400 flex items-start gap-2 mb-2">
             <Timer size={14} className="mt-0.5 shrink-0" />
-            <span>ظ„ظ… ظٹطلب ط§ظ„ط¹ظ…ظٹظ„ ظ…ظ†ط° <strong>{daysSinceLastOrder} يوماً</strong> â€” ظ‚ط¯ ظٹظƒظˆظ† ط¨ط­ط§ط¬ط© ط¥ظ„ظ‰ ط¹ط±ط¶ ط¥ط¹ط§ط¯ط© طھظ†ط´ظٹط· ط£ظˆ ظ…طھط§ط¨ط¹ط©</span>
+            <span>لم يطلب العميل منذ <strong>{daysSinceLastOrder} يوماً</strong> — قد يكون بحاجة إلى عرض إعادة تنشيط أو متابعة</span>
           </div>
         )}
 
@@ -619,7 +620,7 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
             {profile.latest_note && (
               <div className="bg-gradient-to-l from-amber-500/10 to-amber-500/5 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-400 flex items-start gap-2">
                 <MessageSquare size={12} className="mt-0.5 shrink-0" />
-                ط¢ط®ط± ظ…ظ„ط§ط­ط¸ط©: {profile.latest_note}
+                آخر ملاحظة: {profile.latest_note}
               </div>
             )}
           </div>
@@ -628,7 +629,7 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
         {(profile.open_complaints_count || 0) > 0 && (
           <div className="bg-gradient-to-l from-red-500/10 to-red-500/5 border border-red-500/20 rounded-xl p-3 text-xs text-red-400 flex items-start gap-2">
             <AlertCircle size={14} className="mt-0.5 shrink-0" />
-            ظٹط­طھط§ط¬ ط§ظ‡طھظ…ط§ظ… â€” ظ‡ط°ط§ ط§ظ„ط¹ظ…ظٹظ„ ظ„ط¯ظٹظ‡ {profile.open_complaints_count} ط´ظƒظˆظ‰ مفتوحط©
+            يحتاج اهتمام — هذا العميل لديه {profile.open_complaints_count} شكوى مفتوحة
           </div>
         )}
       </div>
@@ -638,9 +639,9 @@ const OverviewTab: React.FC<{ profile: CustomerProfile; favorite?: FavoriteItem;
         <div className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShoppingCart size={14} className="text-slate-400" />
-            <h4 className="text-xs font-black text-slate-300">ط¢ط®ط± ط§ظ„طلبط§طھ</h4>
+            <h4 className="text-xs font-black text-slate-300">آخر الطلبات</h4>
           </div>
-          <span className="text-[10px] text-slate-500">ط¢ط®ط± 5 طلبط§طھ</span>
+          <span className="text-[10px] text-slate-500">آخر 5 طلبات</span>
         </div>
         <OrdersTab orders={orders.slice(0, 5)} onSelectOrder={onSelectOrder} onRepeatOrder={onRepeatOrder} />
       </section>
@@ -659,7 +660,7 @@ const OrderItemsPreview: React.FC<{ orderId: number }> = ({ orderId }) => {
       .then(r => {
         if (!cancelled) {
           setItems(r.data.items.map(item => ({
-            name: item.item_name_ar || item.item_name || "طµظ†ظپ",
+            name: item.item_name_ar || item.item_name || "صنف",
             qty: item.quantity,
           })));
         }
@@ -682,7 +683,7 @@ const OrderItemsPreview: React.FC<{ orderId: number }> = ({ orderId }) => {
       ))}
       {items.length > 3 && (
         <div className="px-3 py-1 text-[10px] text-slate-600 text-center">
-          +{items.length - 3} ط£طµظ†ط§ظپ ط£ط®ط±ظ‰
+          +{items.length - 3} أصناف أخرى
         </div>
       )}
     </div>
@@ -714,7 +715,7 @@ const RepeatOrderButton: React.FC<{ orderId: number; onRepeatOrder: (order: Orde
       className="flex-1 rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 px-3 py-2 text-[11px] font-bold text-white transition-all active:scale-95 disabled:opacity-50 shadow-md shadow-emerald-900/30"
     >
       {loading ? <Loader2 size={12} className="inline animate-spin ml-1" /> : <Copy size={12} className="inline ml-1" />}
-      {loading ? "ط¬ط§ط±ظٹ ط§ظ„طھط­ظ…ظٹظ„..." : "طھظƒط±ط§ط± ط§ظ„طلب"}
+      {loading ? "جاري التحميل..." : "تكرار الطلب"}
     </button>
   );
 };
@@ -723,7 +724,6 @@ const RepeatOrderButton: React.FC<{ orderId: number; onRepeatOrder: (order: Orde
 const OrdersTab: React.FC<{ orders: CustomerOrder[]; onSelectOrder: (id: number) => void; onRepeatOrder?: (order: OrderDetail) => void }> = ({ orders, onSelectOrder, onRepeatOrder }) => {
   const [orderDetails, setOrderDetails] = useState<Record<number, OrderDetail>>({});
   const [expandedId, setExpandedId] = useState<number | null>(null);
-  const [experienceOrder, setExperienceOrder] = useState<CustomerOrder | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -732,7 +732,7 @@ const OrdersTab: React.FC<{ orders: CustomerOrder[]; onSelectOrder: (id: number)
     return () => { active = false; };
   }, [orders]);
 
-  if (orders.length === 0) return <EmptyState icon={ShoppingCart} text="ظ„ط§ طھظˆط¬ط¯ طلبط§طھ ط³ط§ط¨ظ‚ط©" />;
+  if (orders.length === 0) return <EmptyState icon={ShoppingCart} text="لا توجد طلبات سابقة" />;
   return (
     <div className="space-y-2">
       {orders.slice(0, 5).map((o) => {
@@ -795,46 +795,23 @@ const OrdersTab: React.FC<{ orders: CustomerOrder[]; onSelectOrder: (id: number)
 
                 <div className="flex gap-2 pt-1">
                   <button onClick={() => onSelectOrder(o.id)} className="flex-1 rounded-lg bg-slate-700 hover:bg-slate-600 px-3 py-2 text-[11px] font-bold text-slate-200 transition-colors">
-                    ط¹ط±ط¶ التفاصيل ظƒط§ظ…ظ„ط©
+                    عرض التفاصيل كاملة
                   </button>
                   {onRepeatOrder && <RepeatOrderButton orderId={o.id} onRepeatOrder={onRepeatOrder} />}
-                  <button onClick={() => setExperienceOrder(o)} className="rounded-lg border border-slate-600 hover:bg-slate-700 px-3 py-2 text-[11px] font-bold text-slate-200 transition-colors">
-                    طھط¬ط±ط¨ط© ط§ظ„ط¹ظ…ظٹظ„
-                  </button>
                 </div>
               </div>
             )}
           </div>
         );
       })}
-      {experienceOrder && <ExperienceModal order={experienceOrder} onClose={() => setExperienceOrder(null)} />}
     </div>
   );
 };
 
-const orderTypeLabel = (type?: string | null) => ({ delivery: "طھظˆطµظٹظ„", dine_in: "ط¯ط§ط®ظ„ ط§ظ„ظ…ط·ط¹ظ…", takeaway: "ط§ط³طھظ„ط§ظ…", call_center: "ظ…ط±ظƒط² ط§ظ„ط§طھطµط§ظ„" }[type || ""] || type || "ط§ظ„ظ…طµط¯ط± ط؛ظٹط± ظ…ط­ط¯ط¯");
+const orderTypeLabel = (type?: string | null) => ({ delivery: "توصيل", dine_in: "داخل المطعم", takeaway: "استلام", call_center: "مركز الاتصال" }[type || ""] || type || "المصدر غير محدد");
 
-const ExperienceModal = ({ order, onClose }: { order: CustomerOrder; onClose: () => void }) => {
-  const [ratings, setRatings] = useState({ food_rating: 5, delivery_rating: 5, speed_rating: 5 });
-  const [notes, setNotes] = useState("");
-  const [state, setState] = useState<"idle" | "saving" | "success" | "error">("idle");
-  useEffect(() => { const key = (e: KeyboardEvent) => e.key === "Escape" && onClose(); document.addEventListener("keydown", key); return () => document.removeEventListener("keydown", key); }, [onClose]);
-  const submit = async () => { setState("saving"); try { await orderService.submitCustomerExperience(order.id, { ...ratings, notes: notes.trim() || undefined, contacted: true }); setState("success"); } catch { setState("error"); } };
-  return <div className="fixed inset-0 z-[500] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="طھط³ط¬ظٹظ„ طھط¬ط±ط¨ط© ط§ظ„ط¹ظ…ظٹظ„">
-    <button className="absolute inset-0 bg-black/70" onClick={onClose} aria-label="ط¥ط؛ظ„ط§ظ‚" />
-    <div className="relative w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
-      <div className="mb-4 flex items-center justify-between"><h3 className="font-black text-white">طھط¬ط±ط¨ط© ط§ظ„ط¹ظ…ظٹظ„ آ· {order.order_number}</h3><button onClick={onClose} aria-label="ط¥ط؛ظ„ط§ظ‚"><X className="text-slate-400" size={18} /></button></div>
-      {(["food_rating", "delivery_rating", "speed_rating"] as const).map((key, index) => <label key={key} className="mb-3 block text-xs font-bold text-slate-300">{["ط¬ظˆط¯ط© ط§ظ„ط·ط¹ط§ظ…", "ط®ط¯ظ…ط© ط§ظ„طھظˆطµظٹظ„", "ط³ط±ط¹ط© ط§ظ„ط®ط¯ظ…ط©"][index]}<select value={ratings[key]} onChange={e => setRatings(v => ({ ...v, [key]: Number(e.target.value) }))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-white focus:border-red-500 focus:outline-none">{[5, 4, 3, 2, 1].map(v => <option key={v} value={v}>{v} / 5</option>)}</select></label>)}
-      <label className="block text-xs font-bold text-slate-300">ملاحظات ط§ظ„مكالمة<textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className="mt-1 w-full resize-none rounded-lg border border-slate-700 bg-slate-950 p-2 text-white focus:border-red-500 focus:outline-none" /></label>
-      {state === "success" && <p role="status" className="mt-3 text-sm font-bold text-emerald-400">طھظ… ط­ظپط¸ طھط¬ط±ط¨ط© ط§ظ„ط¹ظ…ظٹظ„ ط¨ظ†ط¬ط§ط­.</p>}{state === "error" && <p role="alert" className="mt-3 text-sm font-bold text-red-400">طھط¹ط°ط± ط§ظ„ط­ظپط¸. طھط­ظ‚ظ‚ ظ…ظ† ط§ظ„ط§طھطµط§ظ„ ظˆط­ط§ظˆظ„ ظ…ط¬ط¯ط¯ط§ظ‹.</p>}
-      <button onClick={submit} disabled={state === "saving" || state === "success"} className="mt-4 w-full rounded-xl bg-gradient-to-br from-red-600 to-red-700 py-2.5 text-sm font-black text-white hover:from-red-500 hover:to-red-600 disabled:from-slate-700 disabled:to-slate-700">{state === "saving" ? "ط¬ط§ط±ظچ ط§ظ„ط­ظپط¸â€¦" : state === "success" ? "طھظ… ط§ظ„ط­ظپط¸" : "ط­ظپط¸ ط§ظ„طھط¬ط±ط¨ط©"}</button>
-    </div>
-  </div>;
-};
-
-/* â”€â”€â”€ Favorites Tab â”€â”€â”€ */
 const FavoritesTab: React.FC<{ items: FavoriteItem[] }> = ({ items }) => {
-  if (items.length === 0) return <EmptyState icon={Heart} text="ظ„ط§ طھظˆط¬ط¯ ط£طµظ†ط§ظپ ظ…ظپط¶ظ„ط© ط¨ط¹ط¯" />;
+  if (items.length === 0) return <EmptyState icon={Heart} text="لا توجد أصناف مفضلة بعد" />;
   return (
     <div className="space-y-1">
       {items.map((item, idx) => (
@@ -843,10 +820,10 @@ const FavoritesTab: React.FC<{ items: FavoriteItem[] }> = ({ items }) => {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-white truncate">{item.item_name_ar || item.item_name}</p>
             <p className="text-[10px] text-slate-500">
-              طلب {item.order_count} ظ…ط±ط© â€¢ ط¥ط¬ظ…ط§ظ„ظٹ {item.total_quantity} ظ‚ط·ط¹ط©
+              طلب {item.order_count} مرة • إجمالي {item.total_quantity} قطعة
             </p>
             {item.last_ordered_at && (
-              <p className="text-[10px] text-slate-600">ط¢ط®ط± طلب: {new Date(item.last_ordered_at).toLocaleDateString("ar-SA")}</p>
+              <p className="text-[10px] text-slate-600">آخر طلب: {new Date(item.last_ordered_at).toLocaleDateString("ar-SA")}</p>
             )}
           </div>
           <span className="text-xs font-bold text-slate-400 ml-1">{item.order_count}x</span>
@@ -858,7 +835,7 @@ const FavoritesTab: React.FC<{ items: FavoriteItem[] }> = ({ items }) => {
 
 /* â”€â”€â”€ Complaints Tab â”€â”€â”€ */
 const ComplaintsTab: React.FC<{ complaints: CustomerComplaint[]; onSelectComplaint: (id: number) => void; customerId: number }> = ({ complaints, onSelectComplaint, customerId }) => {
-  if (complaints.length === 0) return <EmptyState icon={AlertTriangle} text="ظ„ط§ طھظˆط¬ط¯ ط´ظƒط§ظˆظ‰" />;
+  if (complaints.length === 0) return <EmptyState icon={AlertTriangle} text="لا توجد شكاوى" />;
   return (
     <div className="space-y-2">
       {complaints.map((c) => (
@@ -870,7 +847,7 @@ const ComplaintsTab: React.FC<{ complaints: CustomerComplaint[]; onSelectComplai
           {c.description && <p className="text-[11px] text-slate-400 mb-1 line-clamp-2">{c.description}</p>}
           <div className="flex items-center gap-2 text-[10px] text-slate-500">
             <span>{new Date(c.created_at).toLocaleDateString("ar-SA")}</span>
-            {c.order && <span>â€¢ ط§ظ„طلب {c.order.order_number}</span>}
+            {c.order && <span>• الطلب {c.order.order_number}</span>}
           </div>
         </button>
       ))}
@@ -886,15 +863,15 @@ const AddressesTab: React.FC<{ customerId: number; onAddressSelect?: (addr: Cust
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [selectingId, setSelectingId] = useState<number | null>(null);
-  const [form, setForm] = useState({ label: "ط§ظ„ظ…ظ†ط²ظ„", city: "", area: "", street: "", building_no: "", floor: "", apartment: "", landmark: "", delivery_notes: "" });
+  const [form, setForm] = useState({ label: "المنزل", city: "", area: "", street: "", building_no: "", floor: "", apartment: "", landmark: "", delivery_notes: "" });
   useEffect(() => {
     callCenterService.getCustomerAddresses(customerId).then(r => setAddresses(r.data ?? [])).catch(() => { }).finally(() => setLoading(false));
   }, [customerId]);
   const createAddress = async () => {
-    if (!form.city.trim() && !form.area.trim() && !form.street.trim()) { setError("ط£ط¯ط®ظ„ ط§ظ„ظ…ط¯ظٹظ†ط© ط£ظˆ ط§ظ„ظ…ظ†ط·ظ‚ط© ط£ظˆ ط§ظ„ط´ط§ط±ط¹ ط¹ظ„ظ‰ ط§ظ„ط£ظ‚ظ„"); return; }
+    if (!form.city.trim() && !form.area.trim() && !form.street.trim()) { setError("أدخل المدينة أو المنطقة أو الشارع على الأقل"); return; }
     setSaving(true); setError("");
     try { const response = await callCenterService.createCustomerAddress(customerId, form); setAddresses(current => [...current, response.data]); setShowForm(false); onAddressSelect?.(response.data); }
-    catch (requestError: any) { setError(requestError?.response?.data?.message || "طھط¹ط°ط± ط­ظپط¸ العنوان"); }
+    catch (requestError: any) { setError(requestError?.response?.data?.message || "تعذر حفظ العنوان"); }
     finally { setSaving(false); }
   };
   const selectAddress = async (address: CustomerAddress) => {
@@ -904,48 +881,48 @@ const AddressesTab: React.FC<{ customerId: number; onAddressSelect?: (addr: Cust
     catch (requestError: any) {
       const message = String(requestError?.response?.data?.message || "");
       if (!message.includes("CustomerAddress") && !message.includes("does not exist")) {
-        setError(message || "طھط¹ط°ط± طھط³ط¬ظٹظ„ ط§ط³طھط®ط¯ط§ظ… العنوانطŒ ظˆطھظ… ط§ط¹طھظ…ط§ط¯ظ‡ ظ„ظ„طلب ط§ظ„ط­ط§ظ„ظٹ");
+        setError(message || "تعذر تسجيل استخدام العنوان، وتم اعتماده للطلب الحالي");
       }
     } finally { onAddressSelect?.(address); setSelectingId(null); }
   };
   if (loading) return <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-red-500" /></div>;
   return (
     <div className="space-y-2">
-      {addresses.length === 0 && <EmptyState icon={MapPin} text="ظ„ط§ طھظˆط¬ط¯ ط¹ظ†ط§ظˆظٹظ† ظ…ط³ط¬ظ„ط©" />}
+      {addresses.length === 0 && <EmptyState icon={MapPin} text="لا توجد عناوين مسجلة" />}
       {addresses.map((a) => (
         <div key={a.id} className="bg-gradient-to-br from-slate-800/50 to-slate-800/20 rounded-xl p-3 border border-slate-700/30">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-white">{a.label}</span>
-              {a.is_default && <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">ط§ظپطھط±ط§ط¶ظٹ</span>}
+              {a.is_default && <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">افتراضي</span>}
             </div>
             {onAddressSelect && (
-              <button disabled={selectingId !== null} onClick={() => selectAddress(a)} aria-label={`ط§ط®طھظٹط§ط± ط¹ظ†ظˆط§ظ† ${a.label}`} className="flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-red-600 to-red-700 px-2.5 py-2 text-white transition-all hover:from-red-500 hover:to-red-600 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 active:scale-95 shadow-md shadow-red-700/10">
+              <button disabled={selectingId !== null} onClick={() => selectAddress(a)} aria-label={`اختيار عنوان ${a.label}`} className="flex items-center gap-1.5 rounded-lg bg-gradient-to-br from-red-600 to-red-700 px-2.5 py-2 text-white transition-all hover:from-red-500 hover:to-red-600 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 active:scale-95 shadow-md shadow-red-700/10">
                 {selectingId === a.id ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                <span className="text-[10px] font-black">ط§ط¹طھظ…ط§ط¯</span>
+                <span className="text-[10px] font-black">اعتماد</span>
               </button>
             )}
           </div>
           <div className="text-[11px] text-slate-400 space-y-0.5">
-            {a.city && <p>ط§ظ„ظ…ط¯ظٹظ†ط©: {a.city}</p>}
-            {a.area && <p>ط§ظ„ظ…ظ†ط·ظ‚ط©: {a.area}</p>}
-            {a.street && <p>ط§ظ„ط´ط§ط±ط¹: {a.street}</p>}
-            {(a.building_no || a.floor || a.apartment) && <p>ظ…ط¨ظ†ظ‰ {a.building_no || "â€”"} ط·ط§ط¨ظ‚ {a.floor || "â€”"} ط´ظ‚ط© {a.apartment || "â€”"}</p>}
-            {a.landmark && <p>ط£ظ‚ط±ط¨ ظ…ط¹ظ„ظ…: {a.landmark}</p>}
+            {a.city && <p>المدينة: {a.city}</p>}
+            {a.area && <p>المنطقة: {a.area}</p>}
+            {a.street && <p>الشارع: {a.street}</p>}
+            {(a.building_no || a.floor || a.apartment) && <p>مبنى {a.building_no || "—"} طابق {a.floor || "—"} شقة {a.apartment || "—"}</p>}
+            {a.landmark && <p>أقرب معلم: {a.landmark}</p>}
             {a.delivery_notes && <p className="text-amber-400">ملاحظات: {a.delivery_notes}</p>}
             {a.phone && <p className="flex items-center gap-1"><Phone size={10} />{a.phone}</p>}
-            {a.last_used_at && <p className="text-slate-600">ط¢ط®ط± ط§ط³طھط®ط¯ط§ظ…: {new Date(a.last_used_at).toLocaleDateString("ar-SA")}</p>}
+            {a.last_used_at && <p className="text-slate-600">آخر استخدام: {new Date(a.last_used_at).toLocaleDateString("ar-SA")}</p>}
           </div>
         </div>
       ))}
       {error && !showForm && <p role="alert" className="text-xs font-bold text-red-400">{error}</p>}
       {showForm ? <div className="space-y-3 rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-3">
-        <div className="flex gap-2">{["ط§ظ„ظ…ظ†ط²ظ„", "ط§ظ„ط¹ظ…ظ„"].map(label => <button key={label} onClick={() => setForm(value => ({ ...value, label }))} className={`flex-1 rounded-lg py-2 text-xs font-bold ${form.label === label ? "bg-emerald-600 text-white" : "bg-slate-700 text-slate-300"}`}>{label}</button>)}</div>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">{([['city', 'ط§ظ„ظ…ط¯ظٹظ†ط©'], ['area', 'ط§ظ„ظ…ظ†ط·ظ‚ط©'], ['street', 'ط§ظ„ط´ط§ط±ط¹'], ['building_no', 'ط§ظ„ظ…ط¨ظ†ظ‰'], ['floor', 'ط§ظ„ط·ط§ط¨ظ‚'], ['apartment', 'ط§ظ„ط´ظ‚ط©'], ['landmark', 'ط£ظ‚ط±ط¨ ظ…ط¹ظ„ظ…']] as const).map(([key, label]) => <label key={key} className="text-[11px] font-bold text-slate-400">{label}<input value={form[key]} onChange={e => setForm(value => ({ ...value, [key]: e.target.value }))} className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-2.5 py-2 text-xs text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500" /></label>)}</div>
-        <label className="block text-[11px] font-bold text-slate-400">ملاحظات ط§ظ„طھظˆطµظٹظ„<textarea value={form.delivery_notes} onChange={e => setForm(value => ({ ...value, delivery_notes: e.target.value }))} className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-2.5 py-2 text-xs text-white" /></label>
+        <div className="flex gap-2">{["المنزل", "العمل"].map(label => <button key={label} onClick={() => setForm(value => ({ ...value, label }))} className={`flex-1 rounded-lg py-2 text-xs font-bold ${form.label === label ? "bg-emerald-600 text-white" : "bg-slate-700 text-slate-300"}`}>{label}</button>)}</div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">{([['city', 'المدينة'], ['area', 'المنطقة'], ['street', 'الشارع'], ['building_no', 'المبنى'], ['floor', 'الطابق'], ['apartment', 'الشقة'], ['landmark', 'أقرب معلم']] as const).map(([key, label]) => <label key={key} className="text-[11px] font-bold text-slate-400">{label}<input value={form[key]} onChange={e => setForm(value => ({ ...value, [key]: e.target.value }))} className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-2.5 py-2 text-xs text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500" /></label>)}</div>
+        <label className="block text-[11px] font-bold text-slate-400">ملاحظات التوصيل<textarea value={form.delivery_notes} onChange={e => setForm(value => ({ ...value, delivery_notes: e.target.value }))} className="mt-1 w-full rounded-lg border border-white/10 bg-slate-800 px-2.5 py-2 text-xs text-white" /></label>
         {error && <p role="alert" className="text-xs font-bold text-red-400">{error}</p>}
-        <div className="flex gap-2"><button onClick={createAddress} disabled={saving} className="flex-1 rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-700 py-2.5 text-xs font-black text-white disabled:opacity-50 shadow-md shadow-emerald-900/20">{saving ? "جاري الحفظ..." : "ط­ظپط¸ ظˆط§ط®طھظٹط§ط± العنوان"}</button><button onClick={() => setShowForm(false)} disabled={saving} className="rounded-lg bg-slate-700 px-4 text-xs font-bold text-slate-300">إلغاء</button></div>
-      </div> : <button onClick={() => setShowForm(true)} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-600 py-3 text-xs font-black text-slate-300 hover:border-emerald-500 hover:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"><Plus size={15} /> ط¥ط¶ط§ظپط© ط¹ظ†ظˆط§ظ† ط¬ط¯ظٹط¯</button>}
+        <div className="flex gap-2"><button onClick={createAddress} disabled={saving} className="flex-1 rounded-lg bg-gradient-to-br from-emerald-600 to-emerald-700 py-2.5 text-xs font-black text-white disabled:opacity-50 shadow-md shadow-emerald-900/20">{saving ? "جاري الحفظ..." : "حفظ واختيار العنوان"}</button><button onClick={() => setShowForm(false)} disabled={saving} className="rounded-lg bg-slate-700 px-4 text-xs font-bold text-slate-300">إلغاء</button></div>
+      </div> : <button onClick={() => setShowForm(true)} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-600 py-3 text-xs font-black text-slate-300 hover:border-emerald-500 hover:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"><Plus size={15} /> إضافة عنوان جديد</button>}
     </div>
   );
 };
@@ -980,11 +957,11 @@ const OccasionsTab: React.FC<{ customerId: number }> = ({ customerId }) => {
 
   if (loading) return <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-red-500" /></div>;
 
-  const typeLabel = (t: string) => ({ birthday: "ط¹ظٹط¯ ظ…ظٹظ„ط§ط¯", anniversary: "ط°ظƒط±ظ‰ ط²ظˆط§ط¬", company_founding: "طھط£ط³ظٹط³ ط´ط±ظƒط©", special: "ظ…ظ†ط§ط³ط¨ط© ط®ط§طµط©", reminder: "طھط°ظƒظٹط±" }[t] || t);
+  const typeLabel = (t: string) => ({ birthday: "عيد ميلاد", anniversary: "ذكرى زواج", company_founding: "تأسيس شركة", special: "مناسبة خاصة", reminder: "تذكير" }[t] || t);
 
   return (
     <div className="space-y-2">
-      {occasions.length === 0 && !showForm && <EmptyState icon={Calendar} text="ظ„ط§ طھظˆط¬ط¯ ظ…ظ†ط§ط³ط¨ط§طھ ظ…ط³ط¬ظ„ط©" />}
+      {occasions.length === 0 && !showForm && <EmptyState icon={Calendar} text="لا توجد مناسبات مسجلة" />}
       {occasions.map((o) => (
         <div key={o.id} className="bg-gradient-to-br from-slate-800/50 to-slate-800/20 rounded-xl p-3 border border-slate-700/30">
           <div className="flex items-center justify-between mb-1">
@@ -994,14 +971,14 @@ const OccasionsTab: React.FC<{ customerId: number }> = ({ customerId }) => {
             </div>
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-slate-400">{new Date(o.date).toLocaleDateString("ar-SA")}</span>
-              <button onClick={() => handleDelete(o.id)} aria-label={`حذف ظ…ظ†ط§ط³ط¨ط© ${o.title}`} className="p-2 hover:bg-red-500/10 rounded-lg text-slate-500 hover:text-red-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400">
+              <button onClick={() => handleDelete(o.id)} aria-label={`حذف مناسبة ${o.title}`} className="p-2 hover:bg-red-500/10 rounded-lg text-slate-500 hover:text-red-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400">
                 <Trash2 size={12} />
               </button>
             </div>
           </div>
           {o.notes && <p className="text-[11px] text-slate-400">{o.notes}</p>}
           <div className="flex items-center gap-2 mt-1">
-            {o.repeats_annually && <span className="text-[9px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">ظ…طھظƒط±ط± ط³ظ†ظˆظٹط§ظ‹</span>}
+            {o.repeats_annually && <span className="text-[9px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">متكرر سنوياً</span>}
             {o.preferred_contact_method && <span className="text-[9px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded">{o.preferred_contact_method}</span>}
           </div>
         </div>
@@ -1009,23 +986,23 @@ const OccasionsTab: React.FC<{ customerId: number }> = ({ customerId }) => {
       {showForm ? (
         <div className="bg-slate-800/50 rounded-xl p-3 space-y-2">
           <select value={formData.occasion_type} onChange={e => setFormData(p => ({ ...p, occasion_type: e.target.value }))} className="w-full bg-slate-700 border border-white/10 rounded-lg px-3 py-2 text-xs text-white">
-            <option value="birthday">ط¹ظٹط¯ ظ…ظٹظ„ط§ط¯</option>
-            <option value="anniversary">ط°ظƒط±ظ‰ ط²ظˆط§ط¬</option>
-            <option value="company_founding">طھط£ط³ظٹط³ ط´ط±ظƒط©</option>
-            <option value="special">ظ…ظ†ط§ط³ط¨ط© ط®ط§طµط©</option>
-            <option value="reminder">طھط°ظƒظٹط±</option>
+            <option value="birthday">عيد ميلاد</option>
+            <option value="anniversary">ذكرى زواج</option>
+            <option value="company_founding">تأسيس شركة</option>
+            <option value="special">مناسبة خاصة</option>
+            <option value="reminder">تذكير</option>
           </select>
           <input value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} placeholder="العنوان" className="w-full bg-slate-700 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500" />
           <input value={formData.date} onChange={e => setFormData(p => ({ ...p, date: e.target.value }))} type="date" className="w-full bg-slate-700 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" />
           <input value={formData.notes} onChange={e => setFormData(p => ({ ...p, notes: e.target.value }))} placeholder="ملاحظات" className="w-full bg-slate-700 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500" />
           <div className="flex gap-2">
-            <button onClick={handleCreate} className="flex-1 bg-gradient-to-br from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white rounded-lg py-2 text-xs font-bold transition-all shadow-md shadow-red-700/10">ط­ظپط¸</button>
+            <button onClick={handleCreate} className="flex-1 bg-gradient-to-br from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white rounded-lg py-2 text-xs font-bold transition-all shadow-md shadow-red-700/10">حفظ</button>
             <button onClick={() => setShowForm(false)} className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg py-2 text-xs font-bold transition-colors">إلغاء</button>
           </div>
         </div>
       ) : (
         <button onClick={() => setShowForm(true)} className="w-full flex items-center justify-center gap-1 py-2 bg-slate-800/50 hover:bg-slate-800 rounded-xl text-xs font-bold text-slate-400 transition-all">
-          <Plus size={14} /> ط¥ط¶ط§ظپط© ظ…ظ†ط§ط³ط¨ط©
+          <Plus size={14} /> إضافة مناسبة
         </button>
       )}
     </div>
@@ -1039,13 +1016,13 @@ const LoyaltyTab: React.FC<{ points: number }> = ({ points }) => {
       <section className="rounded-2xl border border-amber-400/20 bg-gradient-to-br from-amber-500/10 to-amber-500/5 p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-black text-amber-300">ط±طµظٹط¯ ط§ظ„ظˆظ„ط§ط، ط§ظ„ظ…ط³ط¬ظ„</p>
-            <p className="mt-1 text-2xl font-black text-white">{points} ظ†ظ‚ط·ط©</p>
+            <p className="text-xs font-black text-amber-300">رصيد الولاء المسجل</p>
+            <p className="mt-1 text-2xl font-black text-white">{points} نقطة</p>
           </div>
           <Star size={30} className="text-amber-300" />
         </div>
-        <button type="button" disabled className="mt-4 w-full cursor-not-allowed rounded-xl bg-slate-700 py-2.5 text-xs font-black text-slate-400">ط®طµظ… ط§ظ„ظ†ظ‚ط§ط· ط؛ظٹط± ظ…طھط§ط­ ط­طھظ‰ ط¶ط¨ط· ط³ظٹط§ط³ط© ط§ظ„طھط­ظˆظٹظ„</button>
-        <div className="mt-3 rounded-lg border border-amber-400/30 bg-slate-950/40 p-2.5 text-[11px] font-bold leading-5 text-amber-100"><AlertTriangle size={13} className="ml-1 inline" /> ظ„ط§ طھظˆط¬ط¯ ط­ط§ظ„ظٹط§ظ‹ ط³ظٹط§ط³ط© طھط­ظˆظٹظ„ ظ†ظ‚ط§ط· ظ…ط¹طھظ…ط¯ط© ظ…ظ† ط§ظ„ط®ط§ط¯ظ…طŒ ظ„ط°ظ„ظƒ ظ„ظ† ظٹظڈظ†ط´ط£ ط®طµظ… ظˆظ„ظ† طھظڈط®طµظ… ظ†ظ‚ط§ط·.</div>
+        <button type="button" disabled className="mt-4 w-full cursor-not-allowed rounded-xl bg-slate-700 py-2.5 text-xs font-black text-slate-400">خصم النقاط غير متاح حتى ضبط سياسة التحويل</button>
+        <div className="mt-3 rounded-lg border border-amber-400/30 bg-slate-950/40 p-2.5 text-[11px] font-bold leading-5 text-amber-100"><AlertTriangle size={13} className="ml-1 inline" /> لا توجد حالياً سياسة تحويل نقاط معتمدة من الخادم، لذلك لن يُنشأ خصم ولن تُخصم نقاط.</div>
       </section>
     </div>
   );
@@ -1073,19 +1050,19 @@ const NotesTab: React.FC<{ customerId: number }> = ({ customerId }) => {
   };
 
   if (loading) return <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-red-500" /></div>;
-  const typeLabel = (t: string) => ({ general: "ط¹ط§ظ…ط©", delivery: "طھظˆطµظٹظ„", warning: "طھط­ط°ظٹط±", preference: "طھظپط¶ظٹظ„", service: "ط®ط¯ظ…ط© ط¹ظ…ظ„ط§ط،", sensitive: "ط­ط³ط§ط³ط©" }[t] || t);
+  const typeLabel = (t: string) => ({ general: "عامة", delivery: "توصيل", warning: "تحذير", preference: "تفضيل", service: "خدمة عملاء", sensitive: "حساسة" }[t] || t);
   const importanceColor = (i: string) => i === "urgent" ? "text-red-400 bg-red-500/10" : i === "high" ? "text-amber-400 bg-amber-500/10" : "text-slate-400 bg-slate-500/10";
 
   return (
     <div className="space-y-2">
-      {notes.length === 0 && !showForm && <EmptyState icon={MessageSquare} text="ظ„ط§ طھظˆط¬ط¯ ملاحظات" />}
+      {notes.length === 0 && !showForm && <EmptyState icon={MessageSquare} text="لا توجد ملاحظات" />}
       {notes.map((n) => (
         <div key={n.id} className="bg-gradient-to-br from-slate-800/50 to-slate-800/20 rounded-xl p-3 border border-slate-700/30">
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
-              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${importanceColor(n.importance)}`}>{n.importance === "urgent" ? "ط¹ط§ط¬ظ„" : n.importance === "high" ? "ظ…ظ‡ظ…" : n.importance === "normal" ? "ط¹ط§ط¯ظٹ" : "ظ…ظ†ط®ظپط¶"}</span>
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${importanceColor(n.importance)}`}>{n.importance === "urgent" ? "عاجل" : n.importance === "high" ? "مهم" : n.importance === "normal" ? "عادي" : "منخفض"}</span>
               <span className="text-[10px] text-slate-500">{typeLabel(n.type)}</span>
-              {n.show_during_order && <span className="text-[9px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">ظٹط¸ظ‡ط± ط£ط«ظ†ط§ط، ط§ظ„طلب</span>}
+              {n.show_during_order && <span className="text-[9px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">يظهر أثناء الطلب</span>}
             </div>
             <span className="text-[10px] text-slate-600">{new Date(n.created_at).toLocaleDateString("ar-SA")}</span>
           </div>
@@ -1095,20 +1072,20 @@ const NotesTab: React.FC<{ customerId: number }> = ({ customerId }) => {
       ))}
       {showForm ? (
         <div className="bg-slate-800/50 rounded-xl p-3 space-y-2">
-          <textarea value={formData.content} onChange={e => setFormData(p => ({ ...p, content: e.target.value }))} placeholder="ظ†طµ ط§ظ„ظ…ظ„ط§ط­ط¸ط©..." rows={3} className="w-full bg-slate-700 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 resize-none" />
-          <div className="flex gap-2">{["ط¹ط§ظ…ط©", "طھظˆطµظٹظ„", "طھط­ط°ظٹط±", "طھظپط¶ظٹظ„"].map((t, i) => <button key={i} onClick={() => setFormData(p => ({ ...p, type: ["general", "delivery", "warning", "preference"][i] }))} className={`flex-1 rounded-lg py-2 text-xs font-bold ${formData.type === ["general", "delivery", "warning", "preference"][i] ? "bg-red-600 text-white" : "bg-slate-700 text-slate-300"}`}>{t}</button>)}</div>
+          <textarea value={formData.content} onChange={e => setFormData(p => ({ ...p, content: e.target.value }))} placeholder="نص الملاحظة..." rows={3} className="w-full bg-slate-700 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 resize-none" />
+          <div className="flex gap-2">{["عامة", "توصيل", "تحذير", "تفضيل"].map((t, i) => <button key={i} onClick={() => setFormData(p => ({ ...p, type: ["general", "delivery", "warning", "preference"][i] }))} className={`flex-1 rounded-lg py-2 text-xs font-bold ${formData.type === ["general", "delivery", "warning", "preference"][i] ? "bg-red-600 text-white" : "bg-slate-700 text-slate-300"}`}>{t}</button>)}</div>
           <label className="flex items-center gap-2 text-xs text-slate-400">
             <input type="checkbox" checked={formData.show_during_order} onChange={e => setFormData(p => ({ ...p, show_during_order: e.target.checked }))} className="rounded bg-slate-700 border-white/10" />
-            ط¥ط¸ظ‡ط§ط± ط£ط«ظ†ط§ط، ط¥ظ†ط´ط§ط، ط§ظ„طلب
+            إظهار أثناء إنشاء الطلب
           </label>
           <div className="flex gap-2">
-            <button onClick={handleCreate} className="flex-1 bg-gradient-to-br from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white rounded-lg py-2 text-xs font-bold transition-all shadow-md shadow-red-700/10">ط­ظپط¸</button>
+            <button onClick={handleCreate} className="flex-1 bg-gradient-to-br from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white rounded-lg py-2 text-xs font-bold transition-all shadow-md shadow-red-700/10">حفظ</button>
             <button onClick={() => setShowForm(false)} className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg py-2 text-xs font-bold transition-colors">إلغاء</button>
           </div>
         </div>
       ) : (
         <button onClick={() => setShowForm(true)} className="w-full flex items-center justify-center gap-1 py-2 bg-slate-800/50 hover:bg-slate-800 rounded-xl text-xs font-bold text-slate-400 transition-all">
-          <Plus size={14} /> ط¥ط¶ط§ظپط© ظ…ظ„ط§ط­ط¸ط©
+          <Plus size={14} /> إضافة ملاحظة
         </button>
       )}
     </div>
@@ -1121,12 +1098,37 @@ const OrderDetailsDrawer: React.FC<{ orderId: number; onBack: () => void; onClos
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [adopting, setAdopting] = useState(false);
-  useEffect(() => { callCenterService.getOrderDetails(orderId).then(r => setOrder(r.data)).catch(() => { }).finally(() => setLoading(false)); }, [orderId]);
+  const [feedback, setFeedback] = useState(feedbackDraftFrom());
+  const [feedbackSaving, setFeedbackSaving] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState("");
+  useEffect(() => {
+    callCenterService.getOrderDetails(orderId).then(r => {
+      setOrder(r.data);
+      if (r.data.feedback) setFeedback(feedbackDraftFrom(r.data.feedback));
+    }).catch(() => { }).finally(() => setLoading(false));
+  }, [orderId]);
 
   const handleAdoptOrder = async () => {
     if (!order || !onReOrder) return;
     setAdopting(true);
     try { onReOrder(order); } finally { setAdopting(false); }
+  };
+
+  const saveFeedback = async () => {
+    if (!order?.customer_id) return setFeedbackMessage("لا يمكن حفظ التقييم دون عميل مرتبط بالطلب.");
+    const validation = feedbackValidationMessage(feedback, order.order_type);
+    if (validation) return setFeedbackMessage(validation);
+    setFeedbackSaving(true);
+    setFeedbackMessage("");
+    try {
+      const response = await callCenterService.saveOrderFeedback(order.customer_id, order.id, feedbackPayload(feedback, order.order_type));
+      setOrder(current => current ? { ...current, feedback: response.data } : current);
+      setFeedbackMessage("تم حفظ التقييم في سجل الطلب.");
+    } catch (error: any) {
+      setFeedbackMessage(error?.response?.data?.message || "تعذر حفظ التقييم.");
+    } finally {
+      setFeedbackSaving(false);
+    }
   };
 
   return (
@@ -1135,12 +1137,12 @@ const OrderDetailsDrawer: React.FC<{ orderId: number; onBack: () => void; onClos
       <div className="absolute top-0 bottom-0 right-0 w-full sm:w-[35vw] sm:min-w-[420px] sm:max-w-[640px] bg-slate-900 border-l border-white/10 shadow-2xl overflow-hidden flex flex-col">
         <div className="flex items-center gap-2 p-4 border-b border-white/5">
           <button onClick={onBack} className="p-1 hover:bg-white/5 rounded-lg"><ChevronLeft size={18} className="text-slate-400" /></button>
-          <h3 className="text-white font-black text-sm">{order?.order_number || "طھظپط§طµظٹظ„ ط§ظ„طلب"}</h3>
+          <h3 className="text-white font-black text-sm">{order?.order_number || "تفاصيل الطلب"}</h3>
           <div className="mr-auto flex gap-2">
             {order && onReOrder && (
               <button onClick={handleAdoptOrder} disabled={adopting} className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-br from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 disabled:from-slate-700 disabled:to-slate-700 text-white rounded-lg text-[10px] font-bold transition-all active:scale-95 shadow-lg shadow-emerald-900/30">
                 {adopting ? <Loader2 size={12} className="animate-spin" /> : <Copy size={12} />}
-                {adopting ? "ط¬ط§ط±ظٹ ط§ظ„ط§ط¹طھظ…ط§ط¯..." : "ط§ط¹طھظ…ط§ط¯ ظˆطھظƒط±ط§ط± ط§ظ„طلب"}
+                {adopting ? "جاري الاعتماد..." : "اعتماد وتكرار الطلب"}
               </button>
             )}
           </div>
@@ -1154,13 +1156,13 @@ const OrderDetailsDrawer: React.FC<{ orderId: number; onBack: () => void; onClos
                   <OrderStatusBadge status={order.status} />
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs text-slate-400">
-                  <p>ط§ظ„طھط§ط±ظٹط®: {new Date(order.created_at).toLocaleDateString("ar-SA")}</p>
-                  <p>الفرع: {order.branch?.name || "â€”"}</p>
-                  <p>ط§ظ„كاشير: {order.cashier?.name || "â€”"}</p>
-                  <p>ط§ظ„ط¹ظ…ظٹظ„: {order.customer_name || "â€”"}</p>
+                  <p>التاريخ: {new Date(order.created_at).toLocaleDateString("ar-SA")}</p>
+                  <p>الفرع: {order.branch?.name || "—"}</p>
+                  <p>الكاشير: {order.cashier?.name || "—"}</p>
+                  <p>العميل: {order.customer_name || "—"}</p>
                 </div>
                 <div className="border-t border-white/5 pt-3">
-                  <h4 className="text-xs font-bold text-slate-400 mb-2">ط§ظ„ط£طµظ†ط§ظپ</h4>
+                  <h4 className="text-xs font-bold text-slate-400 mb-2">الأصناف</h4>
                   <div className="space-y-1">
                     {order.items.map((item) => (
                       <div key={item.id} className="flex items-center justify-between bg-slate-800/30 rounded-lg px-3 py-2">
@@ -1169,19 +1171,44 @@ const OrderDetailsDrawer: React.FC<{ orderId: number; onBack: () => void; onClos
                           <span className="text-xs text-slate-500 mr-2">أ—{item.quantity}</span>
                           {item.notes && <span className="text-[10px] text-slate-500 mr-2">({item.notes})</span>}
                         </div>
-                        <span className="text-sm font-bold text-white">{item.total.toFixed(2)} â‚ھ</span>
+                        <span className="text-sm font-bold text-white">{item.total.toFixed(2)} ₪</span>
                       </div>
                     ))}
                   </div>
                 </div>
                 <div className="border-t border-white/5 pt-3 space-y-1 text-xs">
-                  <div className="flex justify-between"><span className="text-slate-400">ط§ظ„ظ…ط¬ظ…ظˆط¹ الفرعظٹ</span><span className="text-white">{order.subtotal.toFixed(2)} â‚ھ</span></div>
-                  {order.discount_amount > 0 && <div className="flex justify-between"><span className="text-slate-400">ط§ظ„ط®طµظ…</span><span className="text-red-400">-{order.discount_amount.toFixed(2)} â‚ھ</span></div>}
-                  <div className="flex justify-between text-sm font-black"><span className="text-white">ط§ظ„ط¥ط¬ظ…ط§ظ„ظٹ</span><span className="text-white">{order.total.toFixed(2)} â‚ھ</span></div>
+                  <div className="flex justify-between"><span className="text-slate-400">المجموع الفرعي</span><span className="text-white">{order.subtotal.toFixed(2)} ₪</span></div>
+                  {order.discount_amount > 0 && <div className="flex justify-between"><span className="text-slate-400">الخصم</span><span className="text-red-400">-{order.discount_amount.toFixed(2)} ₪</span></div>}
+                  <div className="flex justify-between text-sm font-black"><span className="text-white">الإجمالي</span><span className="text-white">{order.total.toFixed(2)} ₪</span></div>
                 </div>
                 {order.note && <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-400"><MessageSquare size={12} className="inline ml-1" />{order.note}</div>}
+                <section className="rounded-xl border border-amber-400/20 bg-amber-500/5 p-3" aria-labelledby="order-feedback-title">
+                  <div className="flex items-center justify-between">
+                    <div><h4 id="order-feedback-title" className="text-sm font-black text-white">تقييم الطلب</h4><p className="mt-0.5 text-[11px] text-slate-400">محفوظ على الطلب نفسه، ويمكن تحديثه عند متابعة العميل.</p></div>
+                    <Star size={18} className="text-amber-400" />
+                  </div>
+                  <div className="mt-3 space-y-3">
+                    {([
+                      ["food_quality", "جودة الطعام"],
+                      ["service_quality", "جودة الخدمة"],
+                      ...(order.order_type === "delivery" ? [["delivery_speed", "سرعة التوصيل"]] : []),
+                    ] as Array<["food_quality" | "service_quality" | "delivery_speed", string]>).map(([key, label]) => (
+                      <div key={key} className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-bold text-slate-300">{label}</span>
+                        <div className="flex gap-1" role="group" aria-label={label}>
+                          {[1, 2, 3, 4, 5].map(value => <button key={value} type="button" onClick={() => setFeedback(current => ({ ...current, [key]: value }))} aria-label={`${label} ${value} من 5`} aria-pressed={feedback[key] === value} className={`flex h-8 w-8 items-center justify-center rounded-md border text-xs font-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${Number(feedback[key]) >= value ? "border-amber-400/50 bg-amber-400/15 text-amber-300" : "border-white/10 text-slate-500 hover:border-amber-400/30"}`}>{value}</button>)}
+                        </div>
+                      </div>
+                    ))}
+                    <label className="block text-xs font-bold text-slate-300">ملاحظات المتابعة
+                      <textarea value={feedback.notes} onChange={event => setFeedback(current => ({ ...current, notes: event.target.value }))} maxLength={2000} rows={3} className="mt-1.5 w-full resize-y rounded-lg border border-white/10 bg-slate-950/60 p-2.5 text-xs text-white outline-none focus:border-amber-400" placeholder="ملاحظة اختيارية من حديث العميل…" />
+                    </label>
+                    {feedbackMessage && <p role="status" className={`text-xs ${feedbackMessage.startsWith("تم ") ? "text-emerald-300" : "text-rose-300"}`}>{feedbackMessage}</p>}
+                    <button type="button" onClick={saveFeedback} disabled={feedbackSaving || !order.customer_id} className="min-h-10 w-full rounded-lg bg-amber-500 px-3 text-xs font-black text-slate-950 hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400">{feedbackSaving ? "جارٍ حفظ التقييم…" : order.feedback ? "تحديث التقييم" : "حفظ التقييم"}</button>
+                  </div>
+                </section>
               </div>
-            ) : <EmptyState icon={ShoppingCart} text="طھط¹ط°ط± طھط­ظ…ظٹظ„ ط§ظ„طلب" />}
+            ) : <EmptyState icon={ShoppingCart} text="تعذر تحميل الطلب" />}
         </div>
       </div>
     </div>
@@ -1214,7 +1241,7 @@ const ComplaintDetailDrawer: React.FC<{ complaintId: number; onBack: () => void;
       <div className="absolute top-0 bottom-0 right-0 w-full sm:w-[35vw] sm:min-w-[420px] sm:max-w-[640px] bg-slate-900 border-l border-white/10 shadow-2xl overflow-hidden flex flex-col">
         <div className="flex items-center gap-2 p-4 border-b border-white/5">
           <button onClick={onBack} className="p-1 hover:bg-white/5 rounded-lg"><ChevronLeft size={18} className="text-slate-400" /></button>
-          <h3 className="text-white font-black text-sm">طھظپط§طµظٹظ„ ط§ظ„ط´ظƒظˆظ‰</h3>
+          <h3 className="text-white font-black text-sm">تفاصيل الشكوى</h3>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
           {loading ? <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-red-500" /></div>
@@ -1225,7 +1252,7 @@ const ComplaintDetailDrawer: React.FC<{ complaintId: number; onBack: () => void;
                   <ComplaintStatusBadge status={timeline.complaint.status} />
                 </div>
                 <p className="text-xs text-slate-400">{timeline.complaint.description}</p>
-                {timeline.complaint.order && <p className="text-xs text-slate-400">ط§ظ„طلب: {timeline.complaint.order.order_number}</p>}
+                {timeline.complaint.order && <p className="text-xs text-slate-400">الطلب: {timeline.complaint.order.order_number}</p>}
                 <div className="border-t border-white/5 pt-3">
                   <h4 className="text-xs font-bold text-slate-400 mb-3">الجدول الزمني</h4>
                   <div className="space-y-3">
@@ -1238,7 +1265,7 @@ const ComplaintDetailDrawer: React.FC<{ complaintId: number; onBack: () => void;
                         <div className="flex-1 pb-3">
                           <p className="text-xs font-bold text-white">{f.notes}</p>
                           <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
-                            <span>{f.user?.name || "ط§ظ„ظ†ط¸ط§ظ…"}</span>
+                            <span>{f.user?.name || "النظام"}</span>
                             <span>{new Date(f.created_at).toLocaleString("ar-SA")}</span>
                           </div>
                         </div>
@@ -1247,16 +1274,16 @@ const ComplaintDetailDrawer: React.FC<{ complaintId: number; onBack: () => void;
                   </div>
                 </div>
                 <div className="border-t border-white/5 pt-3">
-                  <h4 className="text-xs font-bold text-slate-400 mb-2">ط¥ط¶ط§ظپط© ظ…طھط§ط¨ط¹ط©</h4>
+                  <h4 className="text-xs font-bold text-slate-400 mb-2">إضافة متابعة</h4>
                   <div className="flex gap-2">
-                    <input value={followupText} onChange={e => setFollowupText(e.target.value)} placeholder="ظ†طµ ط§ظ„ظ…طھط§ط¨ط¹ط©..." className="flex-1 bg-slate-700 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500" />
+                    <input value={followupText} onChange={e => setFollowupText(e.target.value)} placeholder="نص المتابعة..." className="flex-1 bg-slate-700 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500" />
                     <button onClick={handleAddFollowup} disabled={addingFollowup || !followupText.trim()} className="px-4 bg-gradient-to-br from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 disabled:from-slate-700 disabled:to-slate-700 text-white rounded-lg text-xs font-bold transition-all shadow-md shadow-red-700/10">
-                      {addingFollowup ? <Loader2 size={14} className="animate-spin" /> : "ط¥ط¶ط§ظپط©"}
+                      {addingFollowup ? <Loader2 size={14} className="animate-spin" /> : "إضافة"}
                     </button>
                   </div>
                 </div>
               </div>
-            ) : <EmptyState icon={AlertTriangle} text="طھط¹ط°ط± طھط­ظ…ظٹظ„ ط§ظ„ط´ظƒظˆظ‰" />}
+            ) : <EmptyState icon={AlertTriangle} text="تعذر تحميل الشكوى" />}
         </div>
       </div>
     </div>
@@ -1282,12 +1309,12 @@ const StatCard: React.FC<{ label: string; value: string; icon: React.ReactNode; 
 
 const OrderStatusBadge: React.FC<{ status: string }> = ({ status }) => {
   const map: Record<string, { color: string; label: string }> = {
-    pending: { color: "text-amber-400 bg-amber-500/10", label: "ظ…ط¹ظ„ظ‚" },
-    preparing: { color: "text-blue-400 bg-blue-500/10", label: "ظ‚ظٹط¯ ط§ظ„طھط­ط¶ظٹط±" },
-    ready: { color: "text-emerald-400 bg-emerald-500/10", label: "ط¬ط§ظ‡ط²" },
-    delivered: { color: "text-emerald-400 bg-emerald-500/10", label: "ظ…ظƒطھظ…ظ„" },
-    cancelled: { color: "text-red-400 bg-red-500/10", label: "ظ…ظ„ط؛ظٹ" },
-    confirmed: { color: "text-blue-400 bg-blue-500/10", label: "ظ…ط¤ظƒط¯" },
+    pending: { color: "text-amber-400 bg-amber-500/10", label: "معلق" },
+    preparing: { color: "text-blue-400 bg-blue-500/10", label: "قيد التحضير" },
+    ready: { color: "text-emerald-400 bg-emerald-500/10", label: "جاهز" },
+    delivered: { color: "text-emerald-400 bg-emerald-500/10", label: "مكتمل" },
+    cancelled: { color: "text-red-400 bg-red-500/10", label: "ملغي" },
+    confirmed: { color: "text-blue-400 bg-blue-500/10", label: "مؤكد" },
   };
   const s = map[status.toLowerCase()] || { color: "text-slate-400 bg-slate-500/10", label: status };
   return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${s.color}`}>{s.label}</span>;
@@ -1295,13 +1322,13 @@ const OrderStatusBadge: React.FC<{ status: string }> = ({ status }) => {
 
 const ComplaintStatusBadge: React.FC<{ status: string }> = ({ status }) => {
   const map: Record<string, { color: string; label: string }> = {
-    new: { color: "text-red-400 bg-red-500/10", label: "ط¬ط¯ظٹط¯" },
+    new: { color: "text-red-400 bg-red-500/10", label: "جديد" },
     open: { color: "text-amber-400 bg-amber-500/10", label: "مفتوح" },
     in_progress: { color: "text-blue-400 bg-blue-500/10", label: "قيد المعالجة" },
-    waiting_customer: { color: "text-purple-400 bg-purple-500/10", label: "ط¨ط§ظ†طھط¸ط§ط± ط§ظ„ط¹ظ…ظٹظ„" },
-    resolved: { color: "text-emerald-400 bg-emerald-500/10", label: "طھظ… ط§ظ„ط­ظ„" },
-    closed: { color: "text-slate-400 bg-slate-500/10", label: "ظ…ط؛ظ„ظ‚" },
-    cancelled: { color: "text-red-400 bg-red-500/10", label: "ظ…ظ„ط؛ظٹ" },
+    waiting_customer: { color: "text-purple-400 bg-purple-500/10", label: "بانتظار العميل" },
+    resolved: { color: "text-emerald-400 bg-emerald-500/10", label: "تم الحل" },
+    closed: { color: "text-slate-400 bg-slate-500/10", label: "مغلق" },
+    cancelled: { color: "text-red-400 bg-red-500/10", label: "ملغي" },
   };
   const s = map[status] || { color: "text-slate-400 bg-slate-500/10", label: status };
   return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${s.color}`}>{s.label}</span>;
@@ -1310,8 +1337,8 @@ const ComplaintStatusBadge: React.FC<{ status: string }> = ({ status }) => {
 function statusBadge(status?: string) {
   switch (status) {
     case "active": return <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">نشط</span>;
-    case "inactive": return <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">ط؛ظٹط± نشط</span>;
-    case "blocked": return <span className="text-[10px] font-bold text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded">ظ…ط­ط¸ظˆط±</span>;
+    case "inactive": return <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">غير نشط</span>;
+    case "blocked": return <span className="text-[10px] font-bold text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded">محظور</span>;
     default: return null;
   }
 }

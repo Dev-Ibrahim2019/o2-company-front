@@ -1,12 +1,12 @@
-﻿import api from "../../../api/axios";
+import api from "../../../api/axios";
 
 import type { CustomerIdentity } from "../../../types/customer";
 
 export type CustomerCategory = "regular" | "important" | "vip" | "new" | "inactive" | "follow_up" | "complaints";
 
 export const CUSTOMER_CATEGORY_LABELS: Record<CustomerCategory, string> = {
-  regular: "╪╣┘à┘è┘ ╪╣╪د╪»┘è", important: "╪╣┘à┘è┘ ┘à┘ç┘à", vip: "VIP", new: "╪╣┘à┘è┘ ╪ش╪»┘è╪»",
-  inactive: "╪╣┘à┘è┘ ╪║┘è╪▒ ┘╪┤╪╖", follow_up: "╪╣┘à┘è┘ ┘è╪ص╪ز╪د╪ش ┘à╪ز╪د╪ذ╪╣╪ر", complaints: "╪╣┘à┘è┘ ┘╪»┘è┘ç ╪┤┘â╪د┘ê┘ë",
+  regular: "عميل عادي", important: "عميل مهم", vip: "VIP", new: "عميل جديد",
+  inactive: "عميل غير نشط", follow_up: "عميل يحتاج متابعة", complaints: "عميل لديه شكاوى",
 };
 
 /** Automatic classification thresholds are intentionally centralized here. */
@@ -140,9 +140,13 @@ export interface CustomerFullProfile {
 
 export interface OrderDetail {
   id: number;
+  customer_id: number | null;
   order_number: string;
   status: string;
   order_type?: string | null;
+  source?: string | null;
+  customer_address_id?: number | null;
+  delivery_address_snapshot?: Record<string, unknown> | null;
   subtotal: number;
   discount_value: number;
   discount_type: string | null;
@@ -157,7 +161,43 @@ export interface OrderDetail {
   created_at: string;
   items: OrderDetailItem[];
   invoice: { id: number; number: string; status: string } | null;
+  feedback?: OrderFeedback | null;
 }
+
+export interface OrderFeedback {
+  id: number;
+  order_id: number;
+  customer_id: number;
+  food_quality: number;
+  service_quality: number;
+  delivery_speed: number | null;
+  notes: string | null;
+  recorded_by: number;
+  recorder?: { id: number; name: string };
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrderFeedbackPayload {
+  food_quality: number;
+  service_quality: number;
+  delivery_speed?: number | null;
+  notes?: string;
+}
+
+export type ActiveOrderScope = "operational_active" | "awaiting_payment" | "kitchen_active" | "delivery_active";
+export interface ActiveCallCenterOrder {
+  id: number;
+  order_number: string;
+  status: string;
+  order_type: string;
+  customer_name: string | null;
+  total: number;
+  branch: { id: number; name: string } | null;
+  created_at: string;
+  scopes: ActiveOrderScope[];
+}
+export type ActiveOrderGroups = Record<ActiveOrderScope, ActiveCallCenterOrder[]>;
 
 export interface OrderDetailItem {
   id: number;
@@ -176,7 +216,28 @@ export interface FavoriteItem {
   item_name_ar: string | null;
   total_quantity: number;
   order_count: number;
+  quantity_sum: number;
+  orders_count: number;
+  total_spent: number;
   last_ordered_at: string;
+}
+
+export interface OrderingInsights {
+  orders_90_days: number;
+  spend_90_days: number;
+  average_order_value: number;
+  preferred_order_type: string | null;
+  preferred_day: number | null;
+  preferred_hour: number | null;
+}
+
+export interface DeliveryQuote {
+  quote_id: string;
+  valid_until: string;
+  delivery_zone_id: number;
+  zone_name: string;
+  fee: number;
+  eta_minutes: number;
 }
 
 export interface CustomerComplaint {
@@ -261,9 +322,58 @@ export interface ApiResponse<T = any> {
   message: string;
   data: T;
 }
+export type CustomerResolutionStatus = "found" | "multiple" | "not_found";
+export interface CustomerResolution {
+  status: CustomerResolutionStatus;
+  normalized_phone: string;
+  customer: CustomerSearchResult | null;
+  candidates: Array<CustomerSearchResult & { orders_max_created_at?: string | null }>;
+}
+export interface NewCallerDraftPayload {
+  call_ticket_id?: number;
+  external_call_id?: string;
+  branch_id: number;
+  order_type: "delivery" | "takeaway";
+  customer_id?: number;
+  customer?: { name: string; phone: string; normalized_phone?: string };
+  address?: {
+    customer_address_id?: number;
+    label?: string;
+    city?: string;
+    area?: string;
+    street?: string;
+    landmark?: string;
+    delivery_notes?: string;
+  };
+  delivery_zone_id?: number;
+  delivery_fee?: number;
+  delivery_address_snapshot?: Record<string, unknown>;
+  items: Array<{ item_id: number; quantity: number; unit_price?: number; notes?: string }>;
+  discount_value?: number;
+  discount_type?: "amount" | "percent";
+  notes?: string;
+}
+export interface CallCenterOrderTransaction {
+  customer: CustomerSearchResult;
+  address: CustomerAddress | null;
+  order: { id: number; order_number: string; total: number; status: string };
+  call_ticket: { id: number; customer_id: number; linked_order_id: number } | null;
+}
 export interface CustomerDirectoryPage { data: Array<Omit<CustomerSearchResult,'address'> & {orders_count:number;open_complaints_count:number;orders_max_created_at?:string|null;address?:CustomerAddress|null}>; current_page:number;last_page:number;per_page:number;total:number; }
 
 export const callCenterService = {
+  getActiveOrders: async (branchId?: number): Promise<ApiResponse<ActiveOrderGroups>> => {
+    const res = await api.get("/call-center/active-orders", { params: branchId ? { branch_id: branchId } : undefined });
+    return res.data;
+  },
+  resolveCustomerByPhone: async (phone: string, signal?: AbortSignal): Promise<ApiResponse<CustomerResolution>> => {
+    const res = await api.get("/call-center/customers/resolve-by-phone", { params: { phone }, signal });
+    return res.data;
+  },
+  createCallCenterOrder: async (payload: NewCallerDraftPayload): Promise<ApiResponse<CallCenterOrderTransaction>> => {
+    const res = await api.post("/call-center/orders", payload);
+    return res.data;
+  },
   searchCustomers: async (q: string, limit = 20): Promise<ApiResponse<CustomerSearchResult[]>> => {
     const res = await api.get("/call-center/customers/search", { params: { q, limit } });
     return res.data;
@@ -299,6 +409,34 @@ export const callCenterService = {
 
   getCustomerFavorites: async (customerId: number): Promise<ApiResponse<FavoriteItem[]>> => {
     const res = await api.get(`/call-center/customers/${customerId}/favorites`);
+    return res.data;
+  },
+
+  getOrderFeedback: async (customerId: number, orderId: number): Promise<ApiResponse<OrderFeedback | null>> => {
+    const res = await api.get(`/call-center/customers/${customerId}/orders/${orderId}/feedback`);
+    return res.data;
+  },
+
+  saveOrderFeedback: async (customerId: number, orderId: number, payload: OrderFeedbackPayload): Promise<ApiResponse<OrderFeedback>> => {
+    const res = await api.put(`/call-center/customers/${customerId}/orders/${orderId}/feedback`, payload);
+    return res.data;
+  },
+
+  getOrderingInsights: async (customerId: number): Promise<ApiResponse<OrderingInsights>> => {
+    const res = await api.get(`/call-center/customers/${customerId}/ordering-insights`);
+    return res.data;
+  },
+
+  getDeliveryQuote: async (customerId: number, addressId: number, branchId: number): Promise<ApiResponse<DeliveryQuote>> => {
+    const res = await api.post("/call-center/delivery/quote", {
+      customer_id: customerId,
+      customer_address_id: addressId,
+      branch_id: branchId,
+    });
+    return res.data;
+  },
+  getDraftDeliveryQuote: async (branchId: number, area: string, city?: string): Promise<ApiResponse<DeliveryQuote>> => {
+    const res = await api.post("/call-center/delivery/quote", { branch_id: branchId, area, city });
     return res.data;
   },
 
@@ -464,8 +602,8 @@ export const callCenterService = {
         const addressResponse = await api.post(
           `/call-center/customers/${customer.id}/addresses`,
           sanitizeCustomerAddress({
-            label: data.address_label || "╪د┘┘à┘╪▓┘",
-            city: data.city || data.area || data.district || "╪║┘è╪▒ ┘à╪ص╪»╪»",
+            label: data.address_label || "المنزل",
+            city: data.city || data.area || data.district || "غير محدد",
             area: data.area,
             district: data.district,
             street: data.street || data.address,
