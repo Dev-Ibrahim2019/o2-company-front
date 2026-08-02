@@ -1052,7 +1052,7 @@ const handlePrintInvoice = async (orderId: number | string) => {
     meta: { name: string; phone: string; note: string },
     paymentsArg?: any[],
     clearAfterSubmit = true,
-    options?: { directPrintFirst?: boolean; cashierDeviceId?: number },
+    options?: { directPrintFirst?: boolean; cashierDeviceId?: number; skipSync?: boolean },
   ): Promise<any> => {
     if (currentCart.length === 0) {
       setPosError("السلة فارغة");
@@ -1174,6 +1174,7 @@ const handlePrintInvoice = async (orderId: number | string) => {
       clearAfterSubmit,
       options?.directPrintFirst,
       options?.cashierDeviceId,
+      options?.skipSync,
     );
 
     if (result) {

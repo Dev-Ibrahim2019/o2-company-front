@@ -194,6 +194,7 @@ export const useCart = () => {
       clearAfterSubmit = true,
       directPrintFirst = false,
       cashierDeviceId?: number,
+      skipSync = false,
     ) => {
       if (cart.length === 0) return null;
 
@@ -224,6 +225,7 @@ export const useCart = () => {
         // ═══════════════════════════════════════════════════
         const orderPayload = {
           ...payload,
+          ...((directPrintFirst || skipSync) ? { skip_sync: true } : {}),
           items: cart
             .filter((c) => !c.is_printed_direct)
             .map((c) => ({

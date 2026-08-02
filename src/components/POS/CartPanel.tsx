@@ -969,6 +969,9 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                     phone: customerPhone,
                     note: invoiceNote,
                   },
+                  undefined,
+                  true,
+                  { skipSync: true },
                 );
               }}
               disabled={currentCart.length === 0}

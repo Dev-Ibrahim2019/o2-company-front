@@ -430,7 +430,6 @@ export const HospitalityPOS: React.FC = () => {
       subledger_type: entityMethod,
       subledger_id: entityId,
     };
-    console.log('[HospitalityPOS] addPayment payload:', paymentPayload);
     setPayments((prev) => [
       ...prev,
       paymentPayload,
@@ -1025,7 +1024,6 @@ export const HospitalityPOS: React.FC = () => {
         return result;
       })
       .filter((p): p is NonNullable<typeof p> => p !== null) as any[];
-    console.log('[HospitalityPOS] apiClosingPayments:', JSON.stringify(apiClosingPayments));
 
     const activeTable =
       cartOrderType === OrderType.DINE_IN ? resolveActiveDineInTable() : null;
@@ -1071,6 +1069,24 @@ export const HospitalityPOS: React.FC = () => {
         );
 
         const pendingOrders = allOrders.filter(o => o.status === 'pending' || o.status === 'pending_confirmation');
+
+        // 3. طباعة مباشرة للأقسام قبل التأكيد
+        if (posInfo?.id) {
+          try {
+            const { printerService } = await import("../../services/printerService");
+            for (const order of pendingOrders) {
+              try {
+                await printerService.directPrint(order.id, posInfo.id);
+              } catch (dpErr) {
+                console.warn(`directPrint فشل للطلب #${order.id}:`, dpErr);
+              }
+            }
+          } catch {
+            // تجاهل أخطاء استيراد printerService
+          }
+        }
+
+        // 4. تأكيد الطلبات المعلقة (إنشاء التذاكر في الـ DB)
         for (const order of pendingOrders) {
           try {
             await orderService.confirm(order.id);
