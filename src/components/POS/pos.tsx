@@ -6,7 +6,7 @@
 // 3. submitOrder يرسل للـ API فعلياً
 // 4. getItemCurrentPrice تقرأ item.price مباشرة (جاي من pivot الفرع)
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useApp } from "../../../store";
 import {
@@ -198,14 +198,25 @@ const handleActivationSuccess = (activatedInfo: any) => {
     cart: currentCart,
     subtotal,
     addToCart: addToCartRaw,
-    updateCartItem,
-    removeFromCart,
+    updateCartItem: updateCartItemRaw,
+    removeFromCart: removeFromCartRaw,
     loadCart,
     clearCart,
     submitOrder: submitOrderApi,
     submitting,
     submitError,
   } = useCart();
+
+  // wrapper لمنع التحديث أثناء التعديل
+  const updateCartItem = (...args: Parameters<typeof updateCartItemRaw>) => {
+    markUserEditing();
+    return updateCartItemRaw(...args);
+  };
+
+  const removeFromCart = (...args: Parameters<typeof removeFromCartRaw>) => {
+    markUserEditing();
+    return removeFromCartRaw(...args);
+  };
 
   // ── UI State ──────────────────────────────────────────────────────────────
   const [activePOSMode, setActivePOSMode] = useState<
@@ -271,6 +282,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
   const [editingApiOrderId, setEditingApiOrderId] = useState<number | null>(
     null,
   );
+  const [cancelledEditForTable, setCancelledEditForTable] = useState<string | null>(null);
   const [tableCartDrafts, setTableCartDrafts] = useState<
     Record<string, TableCartDraft>
   >({});
@@ -503,6 +515,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
     item: MenuItem | any,
     opts?: { quantity?: number; price?: number },
   ) => {
+    markUserEditing();
     addToCartRaw(item, opts);
   };
 
@@ -529,7 +542,6 @@ const handleActivationSuccess = (activatedInfo: any) => {
       subledger_type: entityMethod,
       subledger_id: entityId,
     };
-    console.log('[POS] addPayment payload:', paymentPayload);
     setPayments((prev) => [
       ...prev,
       paymentPayload,
@@ -673,7 +685,10 @@ const handleActivationSuccess = (activatedInfo: any) => {
   const clearActiveCart = () => {
     if (selectedTable) {
       forgetTableDraft(selectedTable.id);
+      setCancelledEditForTable(selectedTable.id);
     }
+    setSelectedTable(null);
+    setManualTable("");
     clearLoadedApiOrder();
   };
 
@@ -708,16 +723,48 @@ const handleActivationSuccess = (activatedInfo: any) => {
 
   const loadApiOrderForTable = async (table: Table, clearWhenMissing = true) => {
     const tableNum = table.table_number || table.number.toString();
-    const order = await orderService.getActiveByTableNumber(tableNum, {
+    const orders = await orderService.getAllActiveByTableNumber(tableNum, {
       branch_id: branchId || 0,
     });
 
-    if (order) {
-      applyApiOrderToCart(order, table);
+    if (orders.length > 0) {
+      // دمج جميع الطلبات في السلة
+      const allItems: ReturnType<typeof apiOrderToCartItems>[number][] = [];
+      let firstOrder: OrderFromApi | null = null;
+      for (const order of orders) {
+        if (!firstOrder) firstOrder = order;
+        allItems.push(...apiOrderToCartItems(order));
+      }
+
+      loadCart(allItems);
+      setEditingApiOrderId(firstOrder!.id);
+      setCartOrderType(toPosOrderType(firstOrder!.order_type));
+      setManualTable(table.table_number || table.number.toString());
+      setCurrentOrderStatus(firstOrder!.status);
+      setInvoiceNote(firstOrder!.note ?? "");
+      setDiscountValue(Number(firstOrder!.discount_value || 0));
+      setDiscountType(firstOrder!.discount_type === "percent" ? "PERCENT" : "AMOUNT");
+      setCustomerName(firstOrder!.customer_name ?? "");
+      setCustomerPhone(firstOrder!.customer_phone ?? "");
+
+      const apiPayments = firstOrder!.payments ?? [];
+      setPayments(
+        apiPayments.map((payment) => ({
+          method: toPosPaymentMethod(payment.payment_method as ApiPaymentMethod),
+          amount: Number(payment.amount || 0),
+          reference: payment.reference_number,
+        })),
+      );
+
+      const primaryMethod = apiPayments[0]?.payment_method ?? firstOrder!.payment_method;
+      if (primaryMethod) {
+        setPaymentMethod(toPosPaymentMethod(primaryMethod as ApiPaymentMethod));
+      }
+
       updateTableStatus(table.id, TableStatus.OCCUPIED, {
-        currentOrderId: String(order.id),
+        currentOrderId: String(firstOrder!.id),
       });
-      return order;
+      return firstOrder;
     }
 
     if (clearWhenMissing) {
@@ -736,6 +783,9 @@ const handleActivationSuccess = (activatedInfo: any) => {
 
     if (!isActiveTable || editingApiOrderId || currentCart.length > 0) return;
 
+    // لا تحمل الطلب إذا المستخدم ألغى التعديل على نفس الطاولة
+    if (cancelledEditForTable === selectedTable.id) return;
+
     void loadApiOrderForTable(selectedTable, false)
       .then((order) => {
         if (!order) return;
@@ -751,7 +801,71 @@ const handleActivationSuccess = (activatedInfo: any) => {
     selectedTable?.status,
     editingApiOrderId,
     currentCart.length,
+    cancelledEditForTable,
   ]);
+
+  // ── مؤشر لمنع التحديث أثناء تعديل المستخدم للسلة ──
+  const userActiveEditRef = useRef(false);
+  const userEditTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastOrderHashRef = useRef<string>("");
+
+  const markUserEditing = () => {
+    userActiveEditRef.current = true;
+    if (userEditTimerRef.current) clearTimeout(userEditTimerRef.current);
+    userEditTimerRef.current = setTimeout(() => {
+      userActiveEditRef.current = false;
+    }, 10000);
+  };
+
+  // تحديث السلة فقط عند وجود تغييرات فعلية بال database
+  useEffect(() => {
+    if (!selectedTable) return;
+    const isActiveTable =
+      selectedTable.status === TableStatus.OCCUPIED ||
+      selectedTable.status === TableStatus.PAYMENT_PENDING;
+    if (!isActiveTable) return;
+
+    const checkForUpdates = async () => {
+      // لو المستخدم عم يعدل بالسلة، ما نتحقق
+      if (userActiveEditRef.current) return;
+
+      try {
+        const tableNum = selectedTable.table_number || selectedTable.number.toString();
+        const orders = await orderService.getAllActiveByTableNumber(tableNum, {
+          branch_id: branchId || 0,
+        });
+
+        // نبني hash بسيط من الطلب لتحديد إذا في تغيير
+        const hash = orders.map(o => `${o.id}:${o.updated_at}:${o.items.length}:${o.status}`).join("|");
+
+        if (hash && hash !== lastOrderHashRef.current) {
+          // في تغيير! نحدث السلة
+          lastOrderHashRef.current = hash;
+
+          if (orders.length === 0) return;
+
+          const allItems: ReturnType<typeof apiOrderToCartItems>[number][] = [];
+          let firstOrder: OrderFromApi | null = null;
+          for (const order of orders) {
+            if (!firstOrder) firstOrder = order;
+            allItems.push(...apiOrderToCartItems(order));
+          }
+
+          loadCart(allItems);
+          setEditingApiOrderId(firstOrder!.id);
+          setCurrentOrderStatus(firstOrder!.status);
+        }
+      } catch {
+        // تجاهل الأخطاء
+      }
+    };
+
+    // تحقق أول مرة واحفظ الـ hash
+    checkForUpdates();
+
+    const interval = setInterval(checkForUpdates, 15000); // كل 15 ثانية نتحقق (خفيف)
+    return () => clearInterval(interval);
+  }, [selectedTable?.id]);
 
   const handleTableInput = (val: string) => {
     setManualTable(val);
@@ -789,6 +903,11 @@ const handleActivationSuccess = (activatedInfo: any) => {
       cacheCurrentTableDraft();
       clearLoadedApiOrder();
       setIsCartOpen(false);
+    }
+
+    // مسح flag الإلغاء عند اختيار طاولة مختلفة
+    if (isSwitchingTables || table.id !== selectedTable?.id) {
+      setCancelledEditForTable(null);
     }
 
     setSelectedTable(table);
@@ -933,6 +1052,7 @@ const handlePrintInvoice = async (orderId: number | string) => {
     meta: { name: string; phone: string; note: string },
     paymentsArg?: any[],
     clearAfterSubmit = true,
+    options?: { directPrintFirst?: boolean; cashierDeviceId?: number },
   ): Promise<any> => {
     if (currentCart.length === 0) {
       setPosError("السلة فارغة");
@@ -1010,7 +1130,6 @@ const handlePrintInvoice = async (orderId: number | string) => {
         return result;
       })
       .filter((p): p is NonNullable<typeof p> => p !== null) as any[];
-    console.log('[POS] apiClosingPayments:', JSON.stringify(apiClosingPayments));
 
     // للطلبات المؤجلة (pending_payment): نتجاوز التحقق من الطاولة ونستخدم order_type = takeaway
     const isDeferredOrder = currentOrderStatus === "pending_payment";
@@ -1053,6 +1172,8 @@ const handlePrintInvoice = async (orderId: number | string) => {
       isClosingOrder,
       editingApiOrderId,
       clearAfterSubmit,
+      options?.directPrintFirst,
+      options?.cashierDeviceId,
     );
 
     if (result) {
@@ -1081,13 +1202,15 @@ const handlePrintInvoice = async (orderId: number | string) => {
       // تنظيف بعد النجاح
       setInvoiceNote("");
       setDiscountValue(0);
-      setManualTable("");
       setCustomerName("");
       setCustomerPhone("");
       setPayments([]);
       setPaymentMethod(PaymentMethod.CASH);
       setEditingApiOrderId(null);
       setShowCustomerModal(false);
+      if (isClosingOrder || !activeTable) {
+        setManualTable("");
+      }
     }
     return result;
   };
@@ -1095,23 +1218,25 @@ const handlePrintInvoice = async (orderId: number | string) => {
   // ── commonCartProps ───────────────────────────────────────────────────────
   // دالة تأجيل الطلب من شاشة البيع — تقوم بتحديث حالة الطاولة محلياً
   const handleDeferFromCart = async () => {
-    if (!editingApiOrderId) return;
+    if (!selectedTable) return;
     try {
-      await orderService.deferOrder(editingApiOrderId);
+      const tableId = selectedTable.id;
+
+      // استخدام الـ endpoint الجديد لتأجيل كل الطلبات كفاتورة وحدة
+      await api.post(`/tables/${tableId}/defer-all`);
+
       // تحديث حالة الطاولة محلياً إلى AVAILABLE
-      if (selectedTable) {
-        updateTableStatus(selectedTable.id, TableStatus.AVAILABLE, {
-          currentOrderId: undefined,
-          seatedAt: undefined,
-          guestCount: undefined,
-        });
-        setSelectedTable(null);
-      }
+      updateTableStatus(selectedTable.id, TableStatus.AVAILABLE, {
+        currentOrderId: undefined,
+        seatedAt: undefined,
+        guestCount: undefined,
+      });
+      setSelectedTable(null);
       clearActiveCart();
       setIsCartOpen(false);
       setPosError(null);
     } catch (err: any) {
-      setPosError(err?.response?.data?.message || "فشل تأجيل الطلب");
+      setPosError(err?.response?.data?.message || "فشل تأجيل الطلبات");
     }
   };
 

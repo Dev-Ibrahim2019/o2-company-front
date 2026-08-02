@@ -1008,16 +1008,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 hallId: String(zone.id),
                 qr_code: table.qr_code,
                 qr_url: table.qr_url,
-                    seatedAt: table.seated_at,
-                customer_count: table.customer_count,
-                current_order_id: table.current_order_id,
-                current_order: order ? {
-                  id: order.id,
-                  order_number: order.order_number,
-                  status: order.status,
-                  total: order.total,
-                  customer_name: order.customer_name,
-                } : null,
+                seatedAt: table.seated_at,
+                guestCount: table.customer_count,
+                currentOrderId: table.current_order_id,
+                mergedWithId: table.merged_with_id ? String(table.merged_with_id) : undefined,
+                mergedWithTableNumber: table.merged_with_table_number || undefined,
+                mergeInfo: table.merge_info || null,
+                orders: table.orders || [],
                 position: { x: (parseInt(table.id) % 10) * 120 + 50, y: Math.floor(parseInt(table.id) / 10) * 120 + 50 },
               });
             });
@@ -1058,16 +1055,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 hallId: String(zone.id),
                 qr_code: table.qr_code,
                 qr_url: table.qr_url,
-                    seatedAt: table.seated_at,
-                    guestCount: table.customer_count,
-                    currentOrderId: table.current_order_id,
-                current_order: order ? {
-                  id: order.id,
-                  order_number: order.order_number,
-                  status: order.status,
-                  total: order.total,
-                  customer_name: order.customer_name,
-                } : null,
+                seatedAt: table.seated_at,
+                guestCount: table.customer_count,
+                currentOrderId: table.current_order_id,
+                mergedWithId: table.merged_with_id ? String(table.merged_with_id) : undefined,
+                mergedWithTableNumber: table.merged_with_table_number || undefined,
+                mergeInfo: table.merge_info || null,
+                orders: table.orders || [],
                 position: { x: (parseInt(table.id) % 10) * 120 + 50, y: Math.floor(parseInt(table.id) / 10) * 120 + 50 },
               });
             });
@@ -1098,7 +1092,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const seatTable = async (tableId: string, guestCount: number) => {
     try {
-      await api.post(`/tables/${tableId}/seat`, { customer_count: guestCount });
+      const count = Math.max(1, guestCount);
+      await api.post(`/tables/${tableId}/seat`, { customer_count: count });
       setTables(prev => {
         // Find the table and its merged group
         const table = prev.find(t => t.id === tableId);
@@ -1670,7 +1665,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           guestCount: undefined,
         });
       } else {
-        updateTableStatus(selectedTable.id, TableStatus.HAS_ORDER, {
+        updateTableStatus(selectedTable.id, TableStatus.OCCUPIED, {
           currentOrderId: orderId,
           seatedAt: selectedTable.seatedAt || new Date()
         });
@@ -2004,16 +1999,13 @@ export const useApp = create<AppState>()(
                     hallId: String(zone.id),
                     qr_code: table.qr_code,
                     qr_url: table.qr_url,
-                    seated_at: table.seated_at,
-                    customer_count: table.customer_count,
-                    current_order_id: table.current_order_id,
-                    current_order: order ? {
-                      id: order.id,
-                      order_number: order.order_number,
-                      status: order.status,
-                      total: order.total,
-                      customer_name: order.customer_name,
-                    } : null,
+                    seatedAt: table.seated_at,
+                    guestCount: table.customer_count,
+                    currentOrderId: table.current_order_id,
+                    mergedWithId: table.merged_with_id ? String(table.merged_with_id) : undefined,
+                    mergedWithTableNumber: table.merged_with_table_number || undefined,
+                    mergeInfo: table.merge_info || null,
+                    orders: table.orders || [],
                     position: { x: (parseInt(table.id) % 10) * 120 + 50, y: Math.floor(parseInt(table.id) / 10) * 120 + 50 },
                   });
                 });
@@ -2050,13 +2042,10 @@ export const useApp = create<AppState>()(
                     seatedAt: table.seated_at ? new Date(table.seated_at) : undefined,
                     guestCount: table.customer_count || undefined,
                     currentOrderId: table.current_order_id || undefined,
-                    current_order: order ? {
-                      id: order.id,
-                      order_number: order.order_number,
-                      status: order.status,
-                      total: order.total,
-                      customer_name: order.customer_name,
-                    } : null,
+                    mergedWithId: table.merged_with_id ? String(table.merged_with_id) : undefined,
+                    mergedWithTableNumber: table.merged_with_table_number || undefined,
+                    mergeInfo: table.merge_info || null,
+                    orders: table.orders || [],
                   };
                 });
               }
@@ -2149,7 +2138,8 @@ export const useApp = create<AppState>()(
       },
       seatTable: async (tableId, guests) => {
         try {
-          await api.post(`/tables/${tableId}/seat`, { customer_count: guests });
+          const count = Math.max(1, guests);
+          await api.post(`/tables/${tableId}/seat`, { customer_count: count });
           set((state) => ({
             tables: state.tables.map((t) =>
               t.id === tableId

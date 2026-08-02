@@ -16,6 +16,7 @@ import { OrderType, OrderStatus, PaymentMethod } from "../../../types";
 interface CartItem {
   uniqueId: string;
   itemId: string;
+  id: number;
   name: string;
   price: number;
   quantity: number;
@@ -81,7 +82,7 @@ interface CartPanelProps {
   removeFromCart: (id: string) => void;
   updateCartItem: (
     uniqueId: string,
-    changes: Partial<{ quantity: number; name: string; price: number }>,
+    changes: Partial<{ quantity: number; name: string; price: number; is_takeaway?: boolean }>,
   ) => void;
   getItemCurrentPrice: (item: any) => number;
   setPosError: (err: string) => void;
@@ -344,8 +345,25 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                       await onDeferOrder();
                     } else {
                       try {
-                        const { orderService } = await import("../../services/orderService");
-                        await orderService.deferOrder(Number(editingOrderId));
+                        const { default: api } = await import("../../api/axios");
+                        // استخدام الـ endpoint الجديد لتأجيل كل الطلبات كفاتورة وحدة
+                        if (manualTable) {
+                          // البحث عن الطاولة ب رقمها
+                          const { data: res } = await api.get('/tables', { params: {} });
+                          const zones = res.data ?? res;
+                          let tableId: string | null = null;
+                          if (Array.isArray(zones)) {
+                            for (const zone of zones) {
+                              if (Array.isArray(zone.tables)) {
+                                const found = zone.tables.find((t: any) => t.table_number === manualTable || String(t.number) === manualTable);
+                                if (found) { tableId = String(found.id); break; }
+                              }
+                            }
+                          }
+                          if (tableId) {
+                            await api.post(`/tables/${tableId}/defer-all`);
+                          }
+                        }
                         clearCart?.();
                         setPosError(null);
                         setIsCartOpen(false);
@@ -444,11 +462,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
               )}
             </>
           )}
-          {discountLoading && (
-            <div className="text-[8px] text-slate-500 animate-pulse">
-              جاري حساب الخصومات...
-            </div>
-          )}
+          
           <div
             className={`pt-1 mt-1 ${calculatedDiscount > 0 ? "border-t border-red-600/20" : ""} flex justify-between items-center`}
           >
@@ -621,6 +635,8 @@ export const CartPanel: React.FC<CartPanelProps> = ({
 
                       }
 
+                      disabled={!!item.is_printed_direct}
+
                       onFocus={() => {
 
                         // عند الدخول للحقل، نضع القيمة الحالية في التعديل للسماح بالإضافة فقط
@@ -672,6 +688,14 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                       className="w-full bg-transparent text-[10px] sm:text-xs font-black text-white outline-none border-b border-transparent focus:border-red-500/30"
 
                     />
+                    {item.created_at && (
+                      <p className="text-[7px] font-bold text-slate-600 mt-0.5">
+                        {(() => {
+                          const diff = Math.floor((new Date().getTime() - new Date(item.created_at).getTime()) / 60000);
+                          return `${diff} دقيقة`;
+                        })()}
+                      </p>
+                    )}
                   </td>
                   <td className="p-2 sm:p-3 text-center text-[10px] sm:text-xs font-bold text-slate-400">
                     {getItemCurrentPrice(item)}
@@ -680,13 +704,14 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                     <div className="flex items-center justify-center gap-0.5">
                       <button
                         onClick={() => {
-                          if (item.quantity > 1) {
+                          if (!item.is_printed_direct && item.quantity > 1) {
                             updateCartItem(item.uniqueId, {
                               quantity: item.quantity - 1,
                             });
                           }
                         }}
-                        className="w-5 h-5 bg-slate-700 rounded text-[10px] font-bold text-white hover:bg-slate-600 flex items-center justify-center"
+                        disabled={!!item.is_printed_direct}
+                        className={`w-5 h-5 bg-slate-700 rounded text-[10px] font-bold text-white flex items-center justify-center ${item.is_printed_direct ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-600'}`}
                       >
                         -
                       </button>
@@ -697,6 +722,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                             ? editingQty[item.uniqueId]
                             : item.quantity
                         }
+                        disabled={!!item.is_printed_direct}
                         onChange={(e) =>
                           handleQuantityChange(
                             item.uniqueId,
@@ -711,11 +737,14 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                       />
                       <button
                         onClick={() => {
-                          updateCartItem(item.uniqueId, {
-                            quantity: item.quantity + 1,
-                          });
+                          if (!item.is_printed_direct) {
+                            updateCartItem(item.uniqueId, {
+                              quantity: item.quantity + 1,
+                            });
+                          }
                         }}
-                        className="w-5 h-5 bg-slate-700 rounded text-[10px] font-bold text-white hover:bg-slate-600 flex items-center justify-center"
+                        disabled={!!item.is_printed_direct}
+                        className={`w-5 h-5 bg-slate-700 rounded text-[10px] font-bold text-white flex items-center justify-center ${item.is_printed_direct ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-600'}`}
                       >
                         +
                       </button>
@@ -725,6 +754,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                     <input
                       type="text"
                       value={Math.round(item.price * item.quantity * 100) / 100}
+                      disabled={!!item.is_printed_direct}
                       onChange={(e) =>
                         handleTotalChange(
                           item.uniqueId,
@@ -740,16 +770,19 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                       <input
                         type="checkbox"
                         checked={item.is_takeaway ?? false}
+                        disabled={!!item.is_printed_direct}
                         onChange={(e) => {
                           updateCartItem(item.uniqueId, { is_takeaway: e.target.checked });
                         }}
-                        className="w-3.5 h-3.5 accent-emerald-500 cursor-pointer"
+                        className={`w-3.5 h-3.5 accent-emerald-500 ${item.is_printed_direct ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
                       />
                     </td>
                   )}
                   <td className="p-2 sm:p-3 text-center">
                     {item.is_printed_direct ? (
-                      <span className="text-emerald-500 text-[8px] font-black">مطبوع</span>
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-600/20 text-emerald-400">
+                        <CheckCircle size={14} />
+                      </span>
                     ) : (
                       <button
                         onClick={() => removeFromCart(item.uniqueId)}
@@ -906,15 +939,10 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                     phone: customerPhone,
                     note: invoiceNote,
                   },
+                  undefined,
+                  true,
+                  { directPrintFirst: true, cashierDeviceId: posInfo?.id },
                 );
-                if (result?.id && posInfo?.id) {
-                  try {
-                    const { printerService } = await import("../../services/printerService");
-                    await printerService.directPrint(result.id, posInfo.id);
-                  } catch (printErr: any) {
-                    console.error("خطأ في الطباعة الفورية:", printErr);
-                  }
-                }
               }}
               disabled={currentCart.length === 0}
               className="py-2.5 sm:py-3 bg-red-600 text-white rounded-xl font-black text-[9px] sm:text-[10px] flex items-center justify-center gap-1.5 hover:bg-red-700 shadow-xl shadow-red-900/20 disabled:opacity-30 transition-all active:scale-95"
@@ -955,7 +983,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                   setPosError("يرجى إدخال رقم الطاولة أولاً");
                   return;
                 }
-                const result = await submitOrder(
+                await submitOrder(
                   OrderStatus.CONFIRMED,
                   paymentMethod,
                   calculatedDiscount,
@@ -966,28 +994,8 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                   },
                   undefined,
                   false,
+                  { directPrintFirst: true, cashierDeviceId: posInfo?.id },
                 );
-                if (result?.id && posInfo?.id) {
-                  try {
-                    const { printerService } = await import("../../services/printerService");
-                    // تجهيز بيانات TW لكل صنف
-                    const itemsWithTw = (result.items || []).map((item: any) => ({
-                      order_item_id: item.id,
-                      is_takeaway: currentCart.find(
-                        (c) => c.itemId === String(item.item_id),
-                      )?.is_takeaway ?? false,
-                    }));
-                    const printResult = await printerService.directPrint(result.id, posInfo.id, itemsWithTw);
-                    if (printResult?.success) {
-                      // تعليم كل صنف في الكارت كـ "مطبوع" مباشرة
-                      for (const cartItem of currentCart) {
-                        updateCartItem(cartItem.uniqueId, { is_printed_direct: true });
-                      }
-                    }
-                  } catch (printErr: any) {
-                    console.error("خطأ في الطباعة:", printErr);
-                  }
-                }
               }}
               disabled={currentCart.length === 0 || currentCart.every((item) => item.is_printed_direct)}
               className="py-2.5 sm:py-3 bg-emerald-600 text-white rounded-xl font-black text-[9px] sm:text-[10px] flex items-center justify-center gap-1.5 hover:bg-emerald-700 shadow-xl shadow-emerald-900/20 disabled:opacity-30 transition-all active:scale-95"
@@ -999,7 +1007,6 @@ export const CartPanel: React.FC<CartPanelProps> = ({
               onClick={async () => {
                 const targetOrderId = editingOrderId || "11";
                 try {
-                  console.log("جاري إرسال طلب الطباعة للطلب رقم:", targetOrderId);
                   const { default: customApi } = await import("../../api/axios");
                   const response = await customApi.post(`/orders/${targetOrderId}/print-invoice`);
                   if (response.data && response.data.success) {

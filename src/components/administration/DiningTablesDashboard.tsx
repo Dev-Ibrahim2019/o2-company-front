@@ -101,7 +101,6 @@ const STATUS_CONFIG: Record<string, { label: string; labelAr: string; color: str
   CLEANING: { label: "Cleaning", labelAr: "تنظيف", color: "text-slate-400", bg: "bg-slate-500/10", border: "border-slate-500/20", dot: "bg-slate-400" },
   OUT_OF_SERVICE: { label: "Out of Service", labelAr: "خارج الخدمة", color: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/20", dot: "bg-red-400" },
   PAID: { label: "Paid", labelAr: "مدفوع", color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20", dot: "bg-emerald-400" },
-  HAS_ORDER: { label: "Has Order", labelAr: "عليه طلب", color: "text-amber-400", bg: "bg-amber-500/10", border: "border-amber-500/20", dot: "bg-amber-400" },
   PENDING_CONFIRMATION: { label: "Pending", labelAr: "بانتظار التأكيد", color: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/50", dot: "bg-red-400", blink: true },
 };
 
@@ -142,7 +141,7 @@ function countByStatus(tables: DiningTableExt[]) {
 function getOccupancyPercent(tables: DiningTableExt[]): number {
   if (tables.length === 0) return 0;
   const occupied = tables.filter(
-    (t) => t.status === "OCCUPIED" || t.status === "PAYMENT_PENDING" || t.status === "HAS_ORDER"
+    (t) => t.status === "OCCUPIED" || t.status === "PAYMENT_PENDING"
   ).length;
   return Math.round((occupied / tables.length) * 100);
 }
@@ -1012,7 +1011,7 @@ const DiningTablesDashboard: React.FC = () => {
     const totalHalls = zones.length;
     const totalTables = zones.reduce((sum, z) => sum + z.tables.length, 0);
     const occupied = zones.reduce(
-      (sum, z) => sum + z.tables.filter((t) => t.status === "OCCUPIED" || t.status === "HAS_ORDER").length,
+      (sum, z) => sum + z.tables.filter((t) => t.status === "OCCUPIED").length,
       0
     );
     const available = zones.reduce(
@@ -1054,9 +1053,9 @@ const DiningTablesDashboard: React.FC = () => {
       name: data.name,
       halls: data.halls,
       totalTables: data.tables.length,
-      occupied: data.tables.filter((t) => t.status === "OCCUPIED" || t.status === "HAS_ORDER").length,
+      occupied: data.tables.filter((t) => t.status === "OCCUPIED").length,
       available: data.tables.filter((t) => t.status === "AVAILABLE").length,
-      occupancy: data.tables.length > 0 ? Math.round((data.tables.filter((t) => t.status === "OCCUPIED" || t.status === "HAS_ORDER").length / data.tables.length) * 100) : 0,
+      occupancy: data.tables.length > 0 ? Math.round((data.tables.filter((t) => t.status === "OCCUPIED").length / data.tables.length) * 100) : 0,
     }));
   }, [zones]);
 
@@ -1101,7 +1100,7 @@ const DiningTablesDashboard: React.FC = () => {
     return {
       ALL: tables.length,
       AVAILABLE: tables.filter((t) => t.status === "AVAILABLE").length,
-      OCCUPIED: tables.filter((t) => t.status === "OCCUPIED" || t.status === "HAS_ORDER").length,
+      OCCUPIED: tables.filter((t) => t.status === "OCCUPIED").length,
       RESERVED: tables.filter((t) => t.status === "RESERVED").length,
       PAYMENT_PENDING: tables.filter((t) => t.status === "PAYMENT_PENDING").length,
       CLEANING: tables.filter((t) => t.status === "CLEANING").length,
@@ -1508,7 +1507,6 @@ const DiningTablesDashboard: React.FC = () => {
                         <div className="flex flex-wrap gap-1.5">
                           {counts.AVAILABLE && <StatBadge count={counts.AVAILABLE} status="AVAILABLE" small />}
                           {counts.OCCUPIED && <StatBadge count={counts.OCCUPIED} status="OCCUPIED" small />}
-                          {counts.HAS_ORDER && <StatBadge count={counts.HAS_ORDER} status="HAS_ORDER" small />}
                           {counts.RESERVED && <StatBadge count={counts.RESERVED} status="RESERVED" small />}
                           {counts.PAYMENT_PENDING && <StatBadge count={counts.PAYMENT_PENDING} status="PAYMENT_PENDING" small />}
                           {counts.CLEANING && <StatBadge count={counts.CLEANING} status="CLEANING" small />}

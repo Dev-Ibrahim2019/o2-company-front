@@ -192,6 +192,8 @@ export const useCart = () => {
       createInvoice = false,
       existingOrderId?: number | null,
       clearAfterSubmit = true,
+      directPrintFirst = false,
+      cashierDeviceId?: number,
     ) => {
       if (cart.length === 0) return null;
 
@@ -229,6 +231,7 @@ export const useCart = () => {
               quantity: c.quantity,
               unit_price: c.price,
               notes: c.notes ?? undefined,
+              is_takeaway: c.is_takeaway ?? false,
             })),
         };
 
@@ -262,6 +265,25 @@ export const useCart = () => {
         setLastOrderId(order.id);
 
         // ═══════════════════════════════════════════════════
+        // PHASE 1.5: طباعة فورية قبل التأكيد (فوري)
+        // ═══════════════════════════════════════════════════
+        if (directPrintFirst && order.id && cashierDeviceId) {
+          try {
+            const { printerService } = await import("../services/printerService");
+            const itemsWithTw = (order.items || []).map((item: any) => ({
+              order_item_id: item.id,
+              is_takeaway: cart.find((c) => c.id === item.item_id)?.is_takeaway ?? false,
+            }));
+            await printerService.directPrint(order.id, cashierDeviceId, itemsWithTw.length > 0 ? itemsWithTw : undefined);
+            // إعادة جلب الطلب بعد الطباعة لتحديث is_printed_direct
+            order = await orderService.getOne(order.id);
+          } catch (dpErr) {
+            console.error("[useCart] directPrint failed, continuing:", dpErr);
+            // نكمل حتى لو فشلت الطباعة
+          }
+        }
+
+        // ═══════════════════════════════════════════════════
         // PHASE 2: إرسال للمطبخ (اختياري)
         // ═══════════════════════════════════════════════════
         // نأكد الطلب إذا كان pending سواء أردنا confirm أو createInvoice
@@ -272,6 +294,7 @@ export const useCart = () => {
           } catch (error) {
             if (createInvoice) {
               // عند الإغلاق، نتجاهل أخطاء التأكيد ونحاول جلب الطلب
+              // الباكند يقوم بتأكيد الطلب تلقائياً عند إنشاء الفاتورة
               try {
                 order = await orderService.getOne(order.id);
               } catch {

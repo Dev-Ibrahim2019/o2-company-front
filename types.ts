@@ -451,8 +451,8 @@ export enum TableStatus {
   PAID = "PAID",
   RESERVED = "RESERVED",
   CLEANING = "CLEANING",
-  HAS_ORDER = "HAS_ORDER",
   PENDING_CONFIRMATION = "PENDING_CONFIRMATION",
+  MERGED = "MERGED",
 }
 
 export interface Hall {
@@ -478,6 +478,17 @@ export interface Table {
   seatedAt?: Date;
   guestCount?: number;
   mergedWithId?: string;
+  mergedWithTableNumber?: string;
+  mergeInfo?: {
+    is_merged: boolean;
+    merged_with_id: string;
+    merged_with_table_number: string;
+    status_text: string;
+    status_color: string;
+    status_icon: string;
+    hint: string;
+  } | null;
+  orders?: { id: string; order_number: string; status: string; total: number; customer_name?: string; items?: { id: number; item_name: string; item_name_ar?: string; quantity: number; unit_price: number; total_price: number }[] }[];
   reservationName?: string;
   reservationTime?: string;
   position: { x: number; y: number };

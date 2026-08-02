@@ -81,6 +81,8 @@ const apiOrderToCartItems = (order: OrderFromApi): CartItem[] =>
     quantity: Number(item.quantity || 0),
     notes: item.notes ?? undefined,
     department_id: item.department_id,
+    is_printed_direct: item.is_printed_direct ?? false,
+    is_takeaway: item.is_takeaway ?? false,
   }));
 
 const localOrderToCartItems = (order: Order): CartItem[] =>
@@ -274,6 +276,25 @@ export const HospitalityPOS: React.FC = () => {
     loadOrderForEdit();
 
     return () => { cancelled = true; };
+  }, [searchParams]);
+
+  // ── معالجة addOrder من الرابط (طلب جديد بسلة فاضية) ──
+  const [isNewOrderMode, setIsNewOrderMode] = useState(false);
+  useEffect(() => {
+    const addOrder = searchParams.get("addOrder");
+    if (!addOrder) return;
+
+    const newSearchParams = new URLSearchParams(searchParams);
+    newSearchParams.delete("addOrder");
+    const newUrl = `${window.location.pathname}${newSearchParams.toString() ? "?" + newSearchParams.toString() : ""}`;
+    window.history.replaceState({}, "", newUrl);
+
+    // نضمن أن السلة فاضية ونفتحها
+    clearLoadedApiOrder();
+    setIsCartOpen(true);
+    setIsNewOrderMode(true);
+    // بعد 1 ثانية نعيد تعيين العلم
+    setTimeout(() => setIsNewOrderMode(false), 1000);
   }, [searchParams]);
 
   // ── جلب بيانات الفاتورة عند تعديل طلب موجود ──
@@ -595,28 +616,64 @@ export const HospitalityPOS: React.FC = () => {
 
   useEffect(() => {
     if (!selectedTable) return;
+    // إذا كان وضع طلب جديد، لا نحمل الأصناف القديمة
+    if (isNewOrderMode) return;
 
     const isActiveTable =
       selectedTable.status === TableStatus.OCCUPIED ||
       selectedTable.status === TableStatus.PAYMENT_PENDING;
 
-    if (!isActiveTable || editingApiOrderId || currentCart.length > 0) return;
+    // إذا كانت السلة مليئة أو في وضع التعديل، لا نفعل شيئاً
+    if (editingApiOrderId || currentCart.length > 0) return;
 
-    void loadApiOrderForTable(selectedTable, false)
-      .then((order) => {
-        if (!order) return;
-        setIsCartOpen(true);
-      })
-      .catch((err) => {
-        console.error("Failed to load selected table order:", err);
-        setPosError("فشل تحميل طلب الطاولة");
-      });
+    if (isActiveTable) {
+      // تحميل جميع الطلبات النشطة للطاولة وعرض أصنافها
+      (async () => {
+        try {
+          const allOrders = await orderService.getAllActiveByTableNumber(
+            selectedTable.table_number || selectedTable.number,
+            { branch_id: branchId || 0 },
+          );
+
+          if (allOrders.length > 0) {
+            const allItems: CartItem[] = [];
+            for (const order of allOrders) {
+              for (const item of order.items) {
+                const isSent = item.is_printed_direct ?? false;
+                allItems.push({
+                  uniqueId: `api-${order.id}-${item.id}-${Math.random().toString(36).substr(2, 9)}`,
+                  itemId: String(item.item_id),
+                  id: item.item_id,
+                  name: item.item_name_ar || item.item_name,
+                  name_ar: item.item_name_ar || item.item_name,
+                  price: Number(item.unit_price || 0),
+                  quantity: Number(item.quantity || 0),
+                  notes: item.notes ?? undefined,
+                  department_id: item.department_id,
+                  is_printed_direct: isSent,
+                  is_takeaway: item.is_takeaway ?? false,
+                });
+              }
+            }
+            if (allItems.length > 0) {
+              loadCart(allItems);
+              setEditingApiOrderId(null);
+            }
+          }
+          setIsCartOpen(true);
+        } catch (err) {
+          console.error("Failed to load table orders:", err);
+          setIsCartOpen(true);
+        }
+      })();
+    } else {
+      setIsCartOpen(true);
+    }
   }, [
     selectedTable?.id,
     selectedTable?.number,
     selectedTable?.status,
-    editingApiOrderId,
-    currentCart.length,
+    isNewOrderMode,
   ]);
 
   const handleTableInput = (val: string) => {
@@ -681,14 +738,58 @@ export const HospitalityPOS: React.FC = () => {
 
     if (isActiveTable) {
       try {
-        const apiOrder = await loadApiOrderForTable(table, false);
-        if (apiOrder) {
-          setIsCartOpen(true);
-          return;
+        // جلب جميع الطلبات النشطة للطاولة وتجميع أصنافها
+        const allOrders = await orderService.getAllActiveByTableNumber(
+          table.table_number || table.number,
+          { branch_id: branchId || 0 },
+        );
+
+        if (allOrders.length > 0) {
+          // تجميع أصناف جميع الطلبات في سلة واحدة
+          const allItems: CartItem[] = [];
+          let hasUnsentItems = false;
+          for (const order of allOrders) {
+            // إضافة الأصناف التي لم ترسل for this order
+            for (const item of order.items) {
+              const isSent = order.tickets?.some((t: any) =>
+                t.items?.some((ti: any) => ti.order_item_id === item.id)
+              );
+              if (!isSent) {
+                hasUnsentItems = true;
+              }
+              // نضيف جميع الأصناف مع ملاحظة إذا أرسلت أو لا
+              allItems.push({
+                uniqueId: `api-${order.id}-${item.id}-${Math.random().toString(36).substr(2, 9)}`,
+                itemId: String(item.item_id),
+                id: item.item_id,
+                name: item.item_name_ar || item.item_name,
+                name_ar: item.item_name_ar || item.item_name,
+                price: Number(item.unit_price || 0),
+                quantity: Number(item.quantity || 0),
+                notes: item.notes ?? undefined,
+                department_id: item.department_id,
+                is_printed_direct: isSent,
+                is_takeaway: item.is_takeaway ?? false,
+              });
+            }
+          }
+
+          if (allItems.length > 0) {
+            loadCart(allItems);
+            setEditingApiOrderId(null);
+            setIsCartOpen(true);
+            return;
+          }
         }
+
+        // لا توجد طلبات نشطة → فتح السلة فاضية
+        setCartOrderType(OrderType.DINE_IN);
+        setManualTable(table.table_number || table.number.toString());
+        setIsCartOpen(true);
+        return;
       } catch (err) {
-        console.error("Failed to load table order:", err);
-        setPosError("فشل تحميل طلب الطاولة");
+        console.error("Failed to load table orders:", err);
+        setPosError("فشل تحميل طلبات الطاولة");
       }
     }
 
@@ -857,9 +958,10 @@ export const HospitalityPOS: React.FC = () => {
     const orderType =
       cartOrderType === OrderType.DINE_IN ? "dine_in" : "takeaway";
 
-    // الضيافة تأكد دائماً
-    const shouldConfirm = status === OrderStatus.CONFIRMED || true;
+    // تأكيد الطلب فقط إذا كان الزر "إرسال الطلب" (CONFIRMED)
+    const shouldConfirm = status === OrderStatus.CONFIRMED;
     const isClosingOrder = status === OrderStatus.DELIVERED;
+    const isSaving = status === OrderStatus.PENDING;
     const selectedPayments = (paymentsArg ?? payments)
       .map((payment) => ({
         ...payment,
@@ -929,6 +1031,170 @@ export const HospitalityPOS: React.FC = () => {
       cartOrderType === OrderType.DINE_IN ? resolveActiveDineInTable() : null;
     if (cartOrderType === OrderType.DINE_IN && !activeTable) return;
 
+    // ── حالة خاصة: إرسال الطلبات المعلقة للأقسام ──
+    // إذا ضغط المستخدم "إرسال الطلب" وكانت السلة تحتوي على أصناف من طلبات موجودة
+    if (shouldConfirm && !editingApiOrderId && activeTable) {
+      try {
+        // 1. فصل الأصناف: جديدة (لم تُحفظ بعد) vs موجودة في طلبات سابقة
+        const unsentItems = currentCart.filter(item => !item.is_printed_direct);
+        const newItems = unsentItems.filter(item => !item.uniqueId.startsWith("api-"));
+
+        // 2. حفظ الأصناف الجديدة فقط كطلب جديد (pending)
+        if (newItems.length > 0) {
+          const savedOrder = await submitOrderApi(
+            {
+              branch_id: branchId || 0,
+              cashier_id: currentUser?.id ? Number(currentUser.id) : undefined,
+              order_type: orderType,
+              table_number: activeTable?.table_number || activeTable?.number.toString(),
+              customer_name: meta.name || undefined,
+              customer_phone: meta.phone || undefined,
+              note: meta.note || undefined,
+              discount_value: discountValue || undefined,
+              discount_type: discountType === "PERCENT" ? "percent" : "amount",
+            },
+            false, // لا تؤكد بعد
+            [],
+            false,
+            null, // طلب جديد
+          );
+          if (!savedOrder) {
+            setPosError("فشل حفظ الأصناف الجديدة");
+            return;
+          }
+        }
+
+        // 3. جلب جميع الطلبات النشطة للطاولة وتأكيد المعلقة منها
+        const allOrders = await orderService.getAllActiveByTableNumber(
+          activeTable.table_number || activeTable.number,
+          { branch_id: branchId || 0 },
+        );
+
+        const pendingOrders = allOrders.filter(o => o.status === 'pending' || o.status === 'pending_confirmation');
+        for (const order of pendingOrders) {
+          try {
+            await orderService.confirm(order.id);
+          } catch (err) {
+            console.warn(`فشل تأكيد الطلب #${order.id}:`, err);
+          }
+        }
+
+        // 4. إعادة تحميل السلة مع الحالة المحدثة
+        const refreshedOrders = await orderService.getAllActiveByTableNumber(
+          activeTable.table_number || activeTable.number,
+          { branch_id: branchId || 0 },
+        );
+
+        if (refreshedOrders.length > 0) {
+          const allItems: CartItem[] = [];
+          for (const order of refreshedOrders) {
+            for (const item of order.items) {
+              const isSent = item.is_printed_direct ?? false;
+              allItems.push({
+                uniqueId: `api-${order.id}-${item.id}-${Math.random().toString(36).substr(2, 9)}`,
+                itemId: String(item.item_id),
+                id: item.item_id,
+                name: item.item_name_ar || item.item_name,
+                name_ar: item.item_name_ar || item.item_name,
+                price: Number(item.unit_price || 0),
+                quantity: Number(item.quantity || 0),
+                notes: item.notes ?? undefined,
+                department_id: item.department_id,
+                is_printed_direct: isSent,
+                is_takeaway: item.is_takeaway ?? false,
+              });
+            }
+          }
+          loadCart(allItems);
+        }
+
+        setPosError(null);
+        return;
+      } catch (err) {
+        console.error("فشل إرسال الطلبات:", err);
+        setPosError("فشل إرسال الطلبات للأقسام");
+        return;
+      }
+    }
+
+    // ── الحالة العادية: حفظ طلب جديد ──
+    if (isSaving && !editingApiOrderId && activeTable) {
+      // فصل الأصناف: جديدة (لم تُحفظ) vs موجودة في طلبات سابقة
+      const unsentItems = currentCart.filter(item => !item.is_printed_direct);
+      const newItems = unsentItems.filter(item => !item.uniqueId.startsWith("api-"));
+
+      // إذا الأصناف المعلقة كلها موجودة بطلبات سابقة، فقط نحفظ ونخرج
+      if (newItems.length === 0 && unsentItems.length > 0) {
+        // الأصناف موجودة بطلبات سابقة، لا نحتاج إنشاء طلب جديد
+        // فقط نحفظ الملاحظات والخصم على الطلب الحالي
+        if (activeTable) {
+          await updateTableStatus(activeTable.id, TableStatus.OCCUPIED, {
+            currentOrderId: editingApiOrderId ? String(editingApiOrderId) : undefined,
+          });
+        }
+        setInvoiceNote("");
+        setDiscountValue(0);
+        setManualTable("");
+        setCustomerName("");
+        setCustomerPhone("");
+        setPayments([]);
+        setPaymentMethod(PaymentMethod.CASH);
+        setEditingApiOrderId(null);
+        setShowCustomerModal(false);
+        setIsCartOpen(false);
+        return;
+      }
+
+      if (newItems.length === 0) {
+        setPosError("جميع الأصناف مرسلة بالفعل");
+        return;
+      }
+
+      // إنشاء طلب جديد فقط بالأصناف الجديدة غير المحفوظة
+      const result = await submitOrderApi(
+        {
+          branch_id: branchId || 0,
+          cashier_id: currentUser?.id ? Number(currentUser.id) : undefined,
+          order_type: orderType,
+          table_number: activeTable?.table_number || activeTable?.number.toString(),
+          customer_name: meta.name || undefined,
+          customer_phone: meta.phone || undefined,
+          note: meta.note || undefined,
+          discount_value: discountValue || undefined,
+          discount_type: discountType === "PERCENT" ? "percent" : "amount",
+          payment_method: isClosingOrder
+            ? normalizeApiPaymentMethod(selectedPaymentMethod)
+            : undefined,
+        },
+        false, // لا تؤكد
+        [],
+        false,
+        null, // طلب جديد
+      );
+
+      if (result) {
+        if (activeTable) {
+          await updateTableStatus(activeTable.id, TableStatus.OCCUPIED, {
+            currentOrderId: String(result.id),
+          });
+          forgetTableDraft(activeTable.id);
+          setSelectedTable(activeTable);
+        }
+        setInvoiceNote("");
+        setDiscountValue(0);
+        setManualTable("");
+        setCustomerName("");
+        setCustomerPhone("");
+        setPayments([]);
+        setPaymentMethod(PaymentMethod.CASH);
+        setEditingApiOrderId(null);
+        setShowCustomerModal(false);
+        setIsCartOpen(false);
+      }
+      return;
+    }
+
+    // ── الحالة العادية مع editingApiOrderId ──
     const result = await submitOrderApi(
       {
         branch_id: branchId || 0,
@@ -944,7 +1210,7 @@ export const HospitalityPOS: React.FC = () => {
           ? normalizeApiPaymentMethod(selectedPaymentMethod)
           : undefined,
       },
-      true,
+      shouldConfirm,
       [],
       false,
       editingApiOrderId,
