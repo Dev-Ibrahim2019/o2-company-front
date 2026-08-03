@@ -11,6 +11,7 @@ import {
 } from "../services/callProvider";
 import { sound } from "../services/soundService";
 import { toast } from "../components/shared/Toast";
+import { callCenterService } from "../components/call-center/services/callCenterService";
 
 export type CallCenterPhase =
   | "waiting"      // في انتظار مكالمة
@@ -58,6 +59,7 @@ interface UseCallCenterCallReturn {
 
 export const useCallCenterCall = (): UseCallCenterCallReturn => {
   const [isOnBreak, setIsOnBreak] = useState(false);
+  const [activeBreakId, setActiveBreakId] = useState<number | null>(null);
   const [session, setSession] = useState<CallSession | null>(null);
   const [phase, setPhase] = useState<CallCenterPhase>("waiting");
   const durationRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -201,18 +203,13 @@ export const useCallCenterCall = (): UseCallCenterCallReturn => {
 
   const setBreak = useCallback(
     (onBreak: boolean) => {
-      setIsOnBreak(onBreak);
-      if (onBreak) {
-        // عند تفعيل البريك، نوقف الاستماع للمكالمات الجديدة
-        provider.stopListening();
-        toast.info("تم تفعيل وضع الاستراحة - لن تستقبل مكالمات جديدة");
-      } else {
-        // عند إلغاء البريك، نبدأ الاستماع مجدداً
-        // سيتم إعادة بدء الاستماع من useEffect
-        toast.info("تم إلغاء وضع الاستراحة - أنت الآن جاهز لاستقبال المكالمات");
-      }
+      void (async()=>{try{
+        if(onBreak){const response=await callCenterService.startAgentBreak();setActiveBreakId(response.data.id);setIsOnBreak(true);provider.stopListening();toast.info("تم بدء الاستراحة وحفظها");}
+        else {if(!activeBreakId) throw new Error("لا توجد استراحة نشطة");await callCenterService.endAgentBreak(activeBreakId);setActiveBreakId(null);setIsOnBreak(false);toast.info("تم إنهاء الاستراحة وحفظ مدتها");}
+        window.dispatchEvent(new Event("call-center:break-updated"));
+      }catch(error:any){toast.error(error?.response?.data?.errors?.break?.[0]||error?.response?.data?.message||"تعذر تحديث الاستراحة");}})();
     },
-    [provider],
+    [activeBreakId, provider],
   );
 
   const simulateCall = useCallback(

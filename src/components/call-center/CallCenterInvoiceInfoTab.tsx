@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Building2,
   Clock,
@@ -12,11 +12,14 @@ import {
   Send,
   Unlock,
   User,
+  Coffee,
+  RefreshCw,
 } from "lucide-react";
 import type { CallTicket } from "../../services/callTicketService";
 import type { OrderFromApi } from "../../services/orderService";
 import type { PaymentEntry } from "../../hooks/useCallCenterCart";
 import type { Branch } from "../../services/branchService";
+import { callCenterService, type AgentBreaksToday } from "./services/callCenterService";
 
 interface CallCenterInvoiceInfoTabProps {
   currentUser: { name?: string | null } | null;
@@ -109,6 +112,18 @@ const Section: React.FC<{
   </section>
 );
 
+const EmployeeBreaksSection: React.FC = () => {
+  const [summary,setSummary]=useState<AgentBreaksToday|null>(null);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState("");
+  const load=useCallback(async()=>{setLoading(true);setError("");try{setSummary((await callCenterService.getAgentBreaksToday()).data);}catch{setError("تعذر تحميل سجل الاستراحات");}finally{setLoading(false);}},[]);
+  useEffect(()=>{void load();const refresh=()=>void load();window.addEventListener("call-center:break-updated",refresh);return()=>window.removeEventListener("call-center:break-updated",refresh);},[load]);
+  return <section className="rounded-2xl border border-white/5 bg-slate-950/40 p-3 sm:p-4" aria-labelledby="breaks-title">
+    <div className="mb-3 flex items-center justify-between"><div className="flex items-center gap-2"><Coffee size={16} className="text-amber-400"/><div><h3 id="breaks-title" className="text-xs font-black text-slate-200">استراحات الموظف اليوم</h3><p className="text-[10px] text-slate-500">سجل محفوظ لمراقبة سير العمليات وتقييم الأداء</p></div></div><button type="button" onClick={()=>void load()} disabled={loading} aria-label="تحديث الاستراحات" className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-slate-400"><RefreshCw size={14} className={loading?"animate-spin":""}/></button></div>
+    {loading?<div className="h-20 animate-pulse rounded-xl bg-slate-800"/>:error?<p className="rounded-xl bg-rose-500/10 p-3 text-xs text-rose-300">{error}</p>:summary?<><div className="mb-3 grid grid-cols-2 gap-2"><div className="rounded-xl bg-slate-800 p-3"><p className="text-[10px] text-slate-500">عدد الاستراحات</p><strong className="text-lg text-white">{summary.breaks_count}</strong></div><div className="rounded-xl bg-slate-800 p-3"><p className="text-[10px] text-slate-500">إجمالي الوقت</p><strong className="text-lg text-white">{summary.total_duration_label}</strong></div></div>{summary.breaks.length?<div className="space-y-2">{summary.breaks.map(item=><div key={item.id} className="flex items-center justify-between rounded-xl border border-white/5 bg-slate-800/60 p-3 text-xs"><div><strong>{item.type_label}</strong><p className="mt-1 text-[10px] text-slate-500">{formatDateTime(item.started_at).time} — {item.ended_at?formatDateTime(item.ended_at).time:"مستمرة الآن"}</p></div><span className={item.status==="active"?"text-amber-300":"text-emerald-300"}>{item.duration_label}</span></div>)}</div>:<p className="rounded-xl border border-dashed border-white/10 p-4 text-center text-xs text-slate-500">لا توجد استراحات مسجلة اليوم</p>}</>:null}
+  </section>;
+};
+
 export const CallCenterInvoiceInfoTab: React.FC<
   CallCenterInvoiceInfoTabProps
 > = ({
@@ -172,6 +187,8 @@ export const CallCenterInvoiceInfoTab: React.FC<
             { icon: User, label: "موظف الكول سنتر", value: agentName },
           ]}
         />
+
+        <EmployeeBreaksSection />
 
         <Section
           title="تفاصيل الفاتورة"

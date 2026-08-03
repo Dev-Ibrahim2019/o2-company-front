@@ -18,6 +18,7 @@ export interface CustomerIdentity {
   id: number;
   code: string;
   name: string;
+  title?: string | null;
   phone: string | null;
   mobile: string | null;
   email?: string | null;

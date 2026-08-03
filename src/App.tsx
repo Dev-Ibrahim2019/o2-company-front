@@ -87,6 +87,7 @@ import { OccasionsPage } from "./components/call-center/OccasionsPage";
 import { TopCustomersTable } from "./components/call-center/TopCustomersTable";
 import { CallCenterEmployees } from "./components/call-center/CallCenterEmployees";
 import { CallCenterPOS } from "./components/call-center/CallCenterPOS";
+import { ActiveOrdersPage } from "./components/call-center/ActiveOrdersPage";
 
 /* ══════════════════════════════════════════════════════════════
  *  حماية الأدوار — تمنع الوصول لمن لا يملك الدور المطلوب
@@ -423,6 +424,7 @@ function AppRoutes() {
               <Route path="/call-center">
                 <Route index element={<CustomerManagementDashboard />} />
                 <Route path="pos" element={<CallCenterPOS />} />
+                <Route path="orders" element={<ActiveOrdersPage />} />
                 <Route path="crm" element={<CrmDirectoryPage />} />
                 <Route path="search" element={<CustomerPhoneSearch />} />
                 <Route path="complaints" element={<ComplaintsManagement />} />

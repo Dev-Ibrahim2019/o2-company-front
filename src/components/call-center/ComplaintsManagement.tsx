@@ -23,16 +23,16 @@ const priorityOptions = [
 ];
 
 const complaintTypes = [
-  { value: "delay", label: "طھط£ط®ظٹط±" },
-  { value: "missing_item", label: "طµظ†ظپ ظ†ط§ظ‚طµ" },
-  { value: "wrong_item", label: "طµظ†ظپ ط®ط§ط·ط¦" },
-  { value: "food_quality", label: "ط¬ظˆط¯ط© ط§ظ„ط·ط¹ط§ظ…" },
-  { value: "packaging", label: "ظ…ط´ظƒظ„ط© ظپظٹ ط§ظ„طھط؛ظ„ظٹظپ" },
-  { value: "delivery", label: "ظ…ط´ظƒظ„ط© ظ…ط¹ ط§ظ„ظ…ظ†ط¯ظˆط¨" },
-  { value: "payment", label: "ظ…ط´ظƒظ„ط© ط¯ظپط¹" },
-  { value: "discount", label: "ظ…ط´ظƒظ„ط© ط®طµظ…" },
-  { value: "service", label: "ط³ظˆط، ط®ط¯ظ…ط©" },
-  { value: "other", label: "ط£ط®ط±ظ‰" },
+  { value: "delay", label: "تأخير" },
+  { value: "missing_item", label: "صنف ناقص" },
+  { value: "wrong_item", label: "صنف خاطئ" },
+  { value: "food_quality", label: "جودة الطعام" },
+  { value: "packaging", label: "مشكلة في التغليف" },
+  { value: "delivery", label: "مشكلة مع المندوب" },
+  { value: "payment", label: "مشكلة دفع" },
+  { value: "discount", label: "مشكلة خصم" },
+  { value: "service", label: "سوء خدمة" },
+  { value: "other", label: "أخرى" },
 ];
 
 export const ComplaintsManagement: React.FC = () => {

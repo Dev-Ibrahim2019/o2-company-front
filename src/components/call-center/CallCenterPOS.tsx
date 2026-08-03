@@ -14,14 +14,16 @@ import {
   callCenterService, type CustomerAddress, type CustomerSearchResult, type OrderDetail,
 } from "./services/callCenterService";
 import {
-  ActiveCallRail, ActiveOrdersBoard, CallCenterCart, CallCenterMenuShell, CustomerContext, MobileWorkspaceNav,
+  ActiveCallRail, CallCenterMenuShell, CustomerContext, MobileWorkspaceNav,
   ProductBuilder, RepeatOrderDialog, type RepeatCandidate, type CallCenterSuccess, type OrderMode, type WorkspaceTab,
 } from "./CallCenterWorkspace";
+import { CallCenterCartPanel } from "./CallCenterCartPanel";
 import type { DeliveryQuote } from "./services/callCenterService";
 import { DEFAULT_EXTENSIONS } from "../../services/callProvider";
 import { branchService, type Branch } from "../../services/branchService";
 import { customerResolutionRequestKey, type CustomerResolutionStatus as ResolutionStatus } from "./customerFlow";
 import { CallCenterInvoiceInfoTab } from "./CallCenterInvoiceInfoTab";
+import { CallCenterCustomerAccountTab } from "./CallCenterCustomerAccountTab";
 import type { OrderFromApi } from "../../services/orderService";
 
 interface CustomerResolutionState {
@@ -73,12 +75,18 @@ export const CallCenterPOS: React.FC = () => {
   const [payments, setPayments] = useState<PaymentEntry[]>([]);
   const [success, setSuccess] = useState<CallCenterSuccess | null>(null);
   const [tab, setTab] = useState<WorkspaceTab>("products");
+  const [cartOpen, setCartOpen] = useState(false);
   const [draftOrderId, setDraftOrderId] = useState<number | null>(null);
   const [currentOrder, setCurrentOrder] = useState<OrderFromApi | null>(null);
   const [invoiceOpenedAt, setInvoiceOpenedAt] = useState(() => new Date().toISOString());
   const [repeatRows, setRepeatRows] = useState<RepeatCandidate[] | null>(null);
   const ticketAttemptRef = useRef<string | null>(null);
   const resolutionRequestRef = useRef<string | null>(null);
+  useEffect(() => {
+    const openPayment = () => setTab("customer");
+    window.addEventListener("call-center:manage-payment", openPayment);
+    return () => window.removeEventListener("call-center:manage-payment", openPayment);
+  }, []);
 
   useEffect(() => {
     void branchService.getAll().then(rows => {
@@ -161,6 +169,12 @@ export const CallCenterPOS: React.FC = () => {
   const identify = async (value: CustomerSearchResult) => {
     try {
       if (ticket.ticket?.customer_id !== value.id) await ticket.linkCustomer(value.id);
+      const fullProfile = await callCenterService.getCustomerFullProfile(value.id);
+      const preferredAddress = fullProfile.data.addresses.find(address=>address.is_default && address.is_active)
+        ?? fullProfile.data.addresses.find(address=>address.is_active)
+        ?? null;
+      setSelectedAddress(preferredAddress);
+      setDeliveryQuote(null);
       setCustomerState(value);
       setCustomerPaneOpen(true);
       setResolution(current => ({ ...current, status:"found", customer:value, candidates:[], error:null }));
@@ -168,6 +182,11 @@ export const CallCenterPOS: React.FC = () => {
     } catch (error:any) {
       setResolution(current => ({ ...current, status:"error", error:error?.response?.data?.message || "تعذر ربط العميل بالمكالمة" }));
     }
+  };
+  const selectOwnedAddress = (address: CustomerAddress | null) => {
+    if (!address) { setSelectedAddress(null); setDeliveryQuote(null); return; }
+    if (!customer || address.customer_id !== customer.id) return void toast.error("العنوان لا يتبع العميل المحدد");
+    setSelectedAddress(address);
   };
 
   const answer = async () => {
@@ -307,7 +326,22 @@ export const CallCenterPOS: React.FC = () => {
     if (calls.phase !== "waiting") await calls.hangup();
   };
 
-  const repeatOrder = (order: OrderDetail) => {
+  const repeatOrder = async (order: OrderDetail) => {
+    if (customer) {
+      try {
+        const fullProfile = await callCenterService.getCustomerFullProfile(customer.id);
+        const activeAddresses = fullProfile.data.addresses.filter(address => address.is_active);
+        const homeAddress = activeAddresses.find(address => address.is_default && address.label === "المنزل")
+          ?? activeAddresses.find(address => address.is_default)
+          ?? activeAddresses.find(address => address.label === "المنزل")
+          ?? activeAddresses[0]
+          ?? null;
+        setSelectedAddress(homeAddress);
+      } catch {
+        toast.error("تعذر تحميل العنوان الافتراضي للعميل");
+      }
+    }
+    setOrderMode(order.order_type === "delivery" ? "delivery" : "takeaway");
     setRepeatRows(order.items.map((old,index) => {
       const item = menu.allItems.find(current => current.id === old.item_id);
       return { key:`${old.id}-${index}`, name:old.item_name_ar||old.item_name||"صنف", quantity:old.quantity, oldPrice:old.price, item:item||null };
@@ -335,28 +369,27 @@ export const CallCenterPOS: React.FC = () => {
     <div className="flex min-h-0 flex-1 gap-4 overflow-hidden bg-slate-950 p-2 sm:p-4">
       {customerPaneOpen&&customer&&<div className="relative hidden min-h-0 w-[320px] shrink-0 overflow-hidden rounded-3xl border border-white/5 bg-[#12151A] xl:flex 2xl:w-[380px]">
         <button onClick={()=>setCustomerPaneOpen(false)} aria-label="إغلاق ملف العميل" className="absolute left-2 top-2 z-20 flex h-9 w-9 items-center justify-center rounded-lg border border-[#2A3039] bg-[#171B21] text-slate-300 hover:bg-[#222B36]"><span aria-hidden="true">×</span></button>
-        <CustomerContext view={tab==="history"?"history":"customer"} customer={customer} newCaller={newCallerActive?newCaller:null} setNewCaller={setNewCaller} selectedAddress={selectedAddress} onAddress={setSelectedAddress} onProfile={()=>setProfileOpen(true)} onRepeat={repeatOrder}/>
+        <CustomerContext customer={customer} newCaller={newCallerActive?newCaller:null} setNewCaller={setNewCaller} selectedAddress={selectedAddress} onAddress={setSelectedAddress} onProfile={()=>setProfileOpen(true)} onRepeat={repeatOrder}/>
       </div>}
       <div className={`${tab==="cart"?"hidden":"flex"} min-h-0 min-w-0 flex-1 lg:flex`}>
         <CallCenterMenuShell tab={tab} setTab={setTab} customerName={customer?.name || newCaller.name || "عميل غير محدد"} phone={customer?.phone||customer?.mobile||newCaller.phone||"بدون مكالمة"} branchName={branches.find(branch=>branch.id===branchId)?.name||"الفرع غير محدد"} query={query} onQuery={setQuery}>
           {tab==="products"&&<ProductBuilder categories={menu.categories} loading={menu.loading} error={menu.error} selectedCategory={category} onCategory={setCategory} query={query} onQuery={setQuery} onAdd={cart.addToCart}/>}
           {tab==="order"&&<CallCenterInvoiceInfoTab currentUser={currentUser} branch={branches.find(branch=>branch.id===branchId)||null} ticket={ticket.ticket} order={currentOrder} payments={payments} openedAt={invoiceOpenedAt} isSubmitting={cart.submitting} closedSuccessfully={Boolean(success)}/>}
-          {tab==="customer"&&<div className={`h-full ${customerPaneOpen?"xl:hidden":""}`}><CustomerContext view="customer" customer={customer} newCaller={newCallerActive?newCaller:null} setNewCaller={setNewCaller} selectedAddress={selectedAddress} onAddress={setSelectedAddress} onProfile={()=>setProfileOpen(true)} onRepeat={repeatOrder}/></div>}
-          {tab==="history"&&<div className={`h-full overflow-y-auto p-3 ${customerPaneOpen?"xl:hidden":""}`}><ActiveOrdersBoard branchId={branchId}/><div className="min-h-[360px]"><CustomerContext view="history" customer={customer} newCaller={newCallerActive?newCaller:null} setNewCaller={setNewCaller} selectedAddress={selectedAddress} onAddress={setSelectedAddress} onProfile={()=>setProfileOpen(true)} onRepeat={repeatOrder}/></div></div>}
+          {tab==="customer"&&<div className=" h-full min-h-0 min-w-0 flex-1 overflow-hidden"><CallCenterCustomerAccountTab customer={customer} newCaller={newCaller} onNewCaller={setNewCaller} onSelectCustomer={identify} selectedAddress={selectedAddress} onSelectAddress={selectOwnedAddress} orderMode={orderMode} deliveryQuote={deliveryQuote} quoteLoading={quoteLoading} quoteError={quoteError} total={Math.max(0,cart.subtotal-discount+(orderMode==="delivery"?(deliveryQuote?.fee||0):0))} payments={payments} onPayments={setPayments} onOpenProfile={()=>setProfileOpen(true)}/></div>}
         </CallCenterMenuShell>
       </div>
       <div className={`${tab==="cart"?"flex":"hidden"} min-h-0 w-full shrink-0 lg:flex lg:w-[450px] xl:w-[500px]`}>
-        <CallCenterCart cart={cart.cart} subtotal={cart.subtotal} update={cart.updateCartItem} remove={cart.removeFromCart} clear={cart.clearCart} orderMode={orderMode} setOrderMode={setOrderMode} selectedAddress={selectedAddress} customerId={customer?.id} branchId={branchId} newCaller={newCallerActive?newCaller:null} discount={discount} setDiscount={setDiscount} deliveryQuote={deliveryQuote} quoteLoading={quoteLoading} quoteError={quoteError} note={note} setNote={setNote} payments={payments} setPayments={setPayments} submitting={cart.submitting} onSaveDraft={()=>void submit(false)} onSubmit={()=>void submit(true)} success={success} onNew={resetAll} orderId={draftOrderId}/>
+        <CallCenterCartPanel cart={cart.cart} subtotal={cart.subtotal} update={cart.updateCartItem} remove={cart.removeFromCart} clear={cart.clearCart} allItems={menu.allItems} addToCart={cart.addToCart} orderMode={orderMode} setOrderMode={setOrderMode} selectedAddress={selectedAddress} branchId={branchId} newCaller={newCallerActive?newCaller:null} discount={discount} setDiscount={setDiscount} deliveryQuote={deliveryQuote} quoteLoading={quoteLoading} quoteError={quoteError} note={note} setNote={setNote} payments={payments} isCartOpen={cartOpen} setIsCartOpen={setCartOpen} submitting={cart.submitting} onSaveDraft={()=>void submit(false)} onSubmit={()=>void submit(true)} success={success} onNew={resetAll} />
       </div>
     </div>
     <MobileWorkspaceNav tab={tab} setTab={setTab} items={cart.cart.reduce((s,i)=>s+i.quantity,0)}/>
     {customerPaneOpen&&customer&&<div className="fixed inset-0 z-[65] hidden items-stretch bg-black/45 md:flex xl:hidden" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setCustomerPaneOpen(false);}}>
       <aside role="dialog" aria-modal="true" aria-label="ملف العميل" className="relative mr-auto flex h-full w-[360px] max-w-[92vw] overflow-hidden border-r border-white/10 bg-[#12151A] shadow-2xl">
         <button autoFocus onClick={()=>setCustomerPaneOpen(false)} aria-label="إغلاق ملف العميل" className="absolute left-3 top-3 z-20 flex h-10 w-10 items-center justify-center rounded-xl border border-[#2A3039] bg-[#171B21] text-slate-200 hover:bg-[#222B36] focus:ring-2 focus:ring-red-600/60"><span aria-hidden="true">×</span></button>
-        <CustomerContext view={tab==="history"?"history":"customer"} customer={customer} newCaller={null} setNewCaller={setNewCaller} selectedAddress={selectedAddress} onAddress={setSelectedAddress} onProfile={()=>setProfileOpen(true)} onRepeat={repeatOrder}/>
+        <CustomerContext customer={customer} newCaller={null} setNewCaller={setNewCaller} selectedAddress={selectedAddress} onAddress={setSelectedAddress} onProfile={()=>setProfileOpen(true)} onRepeat={repeatOrder}/>
       </aside>
     </div>}
-    {customer&&<CustomerProfileDrawer customerId={customer.id} isOpen={profileOpen} onClose={()=>setProfileOpen(false)} onSelectAddress={setSelectedAddress} onRepeatOrder={repeatOrder}/>}
+    {customer&&<CustomerProfileDrawer customerId={customer.id} isOpen={profileOpen} onClose={()=>setProfileOpen(false)} onSelectAddress={selectOwnedAddress} onRepeatOrder={repeatOrder}/>}
     {repeatRows&&<RepeatOrderDialog rows={repeatRows} cartHasItems={cart.cart.length>0} onClose={()=>setRepeatRows(null)} onAdd={addRepeatRows}/>}
     {calls.phase === "incoming" && <div className="pointer-events-none absolute inset-x-0 top-3 z-[80] flex justify-center px-3"><Incoming phone={calls.session?.callerNumber||""} loading={ticket.loading} ticketReady={Boolean(ticket.ticket)} ticketError={ticket.error} onRetryTicket={retryTicket} onAnswer={answer} onReject={reject} onTransfer={async extension => { await calls.transferCall(extension); if(ticket.ticket) await ticket.complete("transferred",extension); }}/></div>}
     {calls.phase === "identifying" && resolution.status === "searching" && <div className="pointer-events-none absolute inset-0 z-[75] bg-black/15"><CustomerSearchLoading phone={calls.session?.callerNumber||""}/></div>}

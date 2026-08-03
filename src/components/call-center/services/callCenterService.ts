@@ -185,7 +185,7 @@ export interface OrderFeedbackPayload {
   notes?: string;
 }
 
-export type ActiveOrderScope = "operational_active" | "awaiting_payment" | "kitchen_active" | "delivery_active";
+export type ActiveOrderScope = "awaiting_payment" | "kitchen_active" | "delivery_active" | "fulfilled_recent";
 export interface ActiveCallCenterOrder {
   id: number;
   order_number: string;
@@ -360,8 +360,19 @@ export interface CallCenterOrderTransaction {
   call_ticket: { id: number; customer_id: number; linked_order_id: number } | null;
 }
 export interface CustomerDirectoryPage { data: Array<Omit<CustomerSearchResult,'address'> & {orders_count:number;open_complaints_count:number;orders_max_created_at?:string|null;address?:CustomerAddress|null}>; current_page:number;last_page:number;per_page:number;total:number; }
+export interface EmployeeBreakDto { id:number;type:string;type_label:string;status:"active"|"ended";started_at:string;ended_at?:string|null;duration_seconds:number;duration_label:string;reason?:string|null; }
+export interface AgentBreaksToday { breaks_count:number;total_duration_seconds:number;total_duration_label:string;breaks:EmployeeBreakDto[]; }
 
 export const callCenterService = {
+  getAgentBreaksToday: async (): Promise<ApiResponse<AgentBreaksToday>> => {
+    const res = await api.get("/call-center/agent/breaks/today"); return res.data;
+  },
+  startAgentBreak: async (breakType="regular"): Promise<ApiResponse<EmployeeBreakDto>> => {
+    const res = await api.post("/call-center/agent/breaks", {break_type:breakType}); return res.data;
+  },
+  endAgentBreak: async (breakId:number): Promise<ApiResponse<EmployeeBreakDto>> => {
+    const res = await api.post(`/call-center/agent/breaks/${breakId}/end`); return res.data;
+  },
   getActiveOrders: async (branchId?: number): Promise<ApiResponse<ActiveOrderGroups>> => {
     const res = await api.get("/call-center/active-orders", { params: branchId ? { branch_id: branchId } : undefined });
     return res.data;
@@ -389,6 +400,11 @@ export const callCenterService = {
 
   updateCustomerClassification: async (customerId: number, category: CustomerCategory): Promise<ApiResponse<{ id: number; category: CustomerCategory }>> => {
     const res = await api.patch(`/call-center/customers/${customerId}/classification`, { category });
+    return res.data;
+  },
+
+  updateCustomerTitle: async (customerId: number, title: string | null): Promise<ApiResponse<{ id: number; title: string | null }>> => {
+    const res = await api.patch(`/call-center/customers/${customerId}/title`, { title });
     return res.data;
   },
 

@@ -14,6 +14,7 @@ import {
   Users,
   Star,
   ShoppingCart,
+  ClipboardList,
   Power,
   ChevronRight,
   ChevronLeft,
@@ -84,6 +85,7 @@ export const CallCenterLayout: React.FC<{ children?: React.ReactNode }> = ({ chi
 
         <nav className="flex-1 space-y-1.5 overflow-y-auto custom-scrollbar">
           <SidebarLink to="/call-center/pos" icon={ShoppingCart} label="إنشاء فاتورة" />
+          <SidebarLink to="/call-center/orders" icon={ClipboardList} label="الطلبات النشطة" />
           <SidebarLink to="/call-center" icon={LayoutDashboard} label="لوحة العمليات" end />
           <SidebarLink to="/call-center/crm" icon={Database} label="العملاء" />
           <SidebarLink to="/call-center/search" icon={Search} label="المكالمات والبحث" />
