@@ -87,6 +87,12 @@ import { OccasionsPage } from "./components/call-center/OccasionsPage";
 import { TopCustomersTable } from "./components/call-center/TopCustomersTable";
 import { CallCenterEmployees } from "./components/call-center/CallCenterEmployees";
 import { CallCenterPOS } from "./components/call-center/CallCenterPOS";
+import { CustomerManagementDashboard as CallCenterDashboard } from "./components/call-center/pages/Dashboard";
+import { SipConfigurationPage as SipConfigV2 } from "./components/call-center/pages/SipConfigPage";
+import { CallCenterPageWithAside } from "./components/call-center/pages/CallCenterPageWithAside";
+import { ActiveOrdersPage } from "./components/call-center/pages/ActiveOrdersPage";
+import { ClosedOrdersPage } from "./components/call-center/pages/ClosedOrdersPage";
+import { OrderDetailPage } from "./components/call-center/pages/OrderDetailPage";
 
 /* ══════════════════════════════════════════════════════════════
  *  حماية الأدوار — تمنع الوصول لمن لا يملك الدور المطلوب
@@ -421,14 +427,19 @@ function AppRoutes() {
           <Route element={<CallCenterGuard />}>
             <Route element={<CallCenterLayout />}>
               <Route path="/call-center">
-                <Route index element={<CustomerManagementDashboard />} />
+                <Route index element={<CallCenterDashboard />} />
                 <Route path="pos" element={<CallCenterPOS />} />
+                <Route path="order" element={<CallCenterPageWithAside />} />
+                <Route path="active-orders" element={<ActiveOrdersPage />} />
+                <Route path="closed-orders" element={<ClosedOrdersPage />} />
+                <Route path="orders/:orderId" element={<OrderDetailPage />} />
                 <Route path="crm" element={<CrmDirectoryPage />} />
                 <Route path="search" element={<CustomerPhoneSearch />} />
                 <Route path="complaints" element={<ComplaintsManagement />} />
                 <Route path="occasions" element={<OccasionsPage />} />
                 <Route path="top-customers" element={<TopCustomersTable />} />
                 <Route path="employees" element={<CallCenterEmployees />} />
+                <Route path="sip-settings" element={<SipConfigV2 />} />
               </Route>
             </Route>
           </Route>

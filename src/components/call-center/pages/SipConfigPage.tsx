@@ -1,0 +1,244 @@
+import React, { useState, useEffect } from "react";
+import { Phone, Server, User, Lock, Wifi, Settings, Save, Loader2, Check, AlertTriangle, Trash2, Edit, Power, Plus } from "lucide-react";
+import { colors, typography, radius, shadows, transitions } from "../design";
+import { Button, Input, Card, Badge, EmptyState, Select } from "../design";
+import api from "../../../api/axios";
+
+interface SipAccount {
+  id: number;
+  account_name: string;
+  username: string;
+  sip_server: string;
+  domain: string | null;
+  transport: "udp" | "tcp" | "tls";
+  register_refresh: number;
+  keep_alive: number;
+  is_active: boolean;
+  is_registered: boolean;
+  created_at: string;
+}
+
+interface SipFormData {
+  account_name: string;
+  username: string;
+  password: string;
+  sip_server: string;
+  domain: string;
+  transport: "udp" | "tcp" | "tls";
+  register_refresh: number;
+  keep_alive: number;
+}
+
+const defaultForm: SipFormData = {
+  account_name: "", username: "", password: "", sip_server: "192.168.2.250", domain: "192.168.2.250",
+  transport: "udp", register_refresh: 300, keep_alive: 15,
+};
+
+export const SipConfigurationPage: React.FC = () => {
+  const [accounts, setAccounts] = useState<SipAccount[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<SipAccount | null>(null);
+  const [form, setForm] = useState<SipFormData>(defaultForm);
+  const [formLoading, setFormLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const fetchAccounts = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get("/call-center/sip-accounts");
+      setAccounts(res.data.data);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || "تعذر تحميل حسابات SIP");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchAccounts(); }, []);
+
+  const validate = (): boolean => {
+    if (!form.account_name.trim()) { setFormError("اسم الحساب مطلوب"); return false; }
+    if (!form.username.trim()) { setFormError("اسم المستخدم مطلوب"); return false; }
+    if (!form.password.trim() && !editing) { setFormError("كلمة المرور مطلوبة"); return false; }
+    if (!form.sip_server.trim()) { setFormError("عنوان SIP Server مطلوب"); return false; }
+    setFormError(null);
+    return true;
+  };
+
+  const handleSubmit = async () => {
+    if (!validate()) return;
+    setFormLoading(true);
+    try {
+      const payload = { ...form };
+      if (editing && !payload.password) delete (payload as any).password;
+      if (editing) {
+        await api.put(`/call-center/sip-accounts/${editing.id}`, payload);
+      } else {
+        await api.post("/call-center/sip-accounts", payload);
+      }
+      await fetchAccounts();
+      setShowForm(false);
+      setEditing(null);
+      setForm(defaultForm);
+    } catch (err: any) {
+      setFormError(err?.response?.data?.message || "تعذر حفظ حساب SIP");
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  const handleEdit = (account: SipAccount) => {
+    setEditing(account);
+    setForm({ account_name: account.account_name, username: account.username, password: "", sip_server: account.sip_server, domain: account.domain || account.sip_server, transport: account.transport, register_refresh: account.register_refresh, keep_alive: account.keep_alive });
+    setShowForm(true);
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("هل أنت متأكد من حذف هذا الحساب؟")) return;
+    try { await api.delete(`/call-center/sip-accounts/${id}`); await fetchAccounts(); }
+    catch (err: any) { setError(err?.response?.data?.message || "تعذر حذف حساب SIP"); }
+  };
+
+  const transportColors: Record<string, string> = { udp: colors.semantic.success, tcp: colors.semantic.info, tls: colors.brand[500] };
+
+  return (
+    <div dir="rtl" style={{ minHeight: "100%", fontFamily: typography.fontFamily.sans }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: typography.size["2xl"], fontWeight: typography.weight.bold, color: colors.neutral[900] }}>إعدادات SIP</h1>
+          <p style={{ fontSize: typography.size.sm, color: colors.neutral[500], marginTop: 4 }}>إدارة حسابات الاتصال الهاتفي عبر SIP</p>
+        </div>
+        <Button icon={<Plus size={16} />} onClick={() => { setEditing(null); setForm(defaultForm); setShowForm(true); }}>حساب جديد</Button>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div style={{ padding: "12px 16px", borderRadius: radius.lg, border: `1px solid ${colors.semantic.errorBorder}`, background: colors.semantic.errorBg, color: "#991b1b", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+          <AlertTriangle size={18} /><span style={{ flex: 1 }}>{error}</span>
+          <button onClick={() => setError(null)} style={{ background: "none", border: "none", color: "#991b1b", cursor: "pointer" }}>✕</button>
+        </div>
+      )}
+
+      {/* Form Modal */}
+      {showForm && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: colors.dark.overlay }} onClick={e => { if (e.target === e.currentTarget) setShowForm(false); }}>
+          <div style={{ width: "100%", maxWidth: 420, maxHeight: "90vh", overflow: "auto", background: "#fff", borderRadius: 20, boxShadow: shadows["2xl"] }}>
+            {/* Modal Header */}
+            <div style={{ padding: "20px 24px", borderBottom: `1px solid ${colors.border.subtle}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <h2 style={{ fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.neutral[900] }}>{editing ? "تعديل حساب SIP" : "حساب SIP جديد"}</h2>
+                <p style={{ fontSize: typography.size.xs, color: colors.neutral[500], marginTop: 2 }}>أدخل بيانات حساب الاتصال</p>
+              </div>
+              <button onClick={() => setShowForm(false)} style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: radius.lg, border: `1px solid ${colors.border.default}`, background: "transparent", color: colors.neutral[400], cursor: "pointer" }}>✕</button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: "20px 24px" }}>
+              {formError && (
+                <div style={{ padding: "10px 12px", borderRadius: radius.lg, background: colors.semantic.errorBg, color: "#991b1b", fontSize: "13px", marginBottom: 16 }}>{formError}</div>
+              )}
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <Input label="اسم الحccount *" value={form.account_name} onChange={e => setForm({ ...form, account_name: e.target.value })} placeholder="مثال: 208" />
+                <Input label="اسم المستخدم / الملحق *" value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} placeholder="مثال: 208" icon={<User size={14} />} />
+                <Input label={editing ? "كلمة المرور (اتركه فارغًا للاحتفاظ بالحالي)" : "كلمة المرور *"} type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="••••••••" icon={<Lock size={14} />} />
+                <Input label="SIP Server *" value={form.sip_server} onChange={e => setForm({ ...form, sip_server: e.target.value })} placeholder="192.168.2.250" icon={<Server size={14} />} />
+                <Input label="النطاق (Domain)" value={form.domain} onChange={e => setForm({ ...form, domain: e.target.value })} placeholder="192.168.2.250" icon={<Wifi size={14} />} />
+
+                {/* Transport */}
+                <div>
+                  <label style={{ display: "block", fontSize: "13px", fontWeight: 500, color: colors.neutral[600], marginBottom: 6 }}>البروتوكول (Transport)</label>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                    {(["udp", "tcp", "tls"] as const).map(p => (
+                      <button key={p} onClick={() => setForm({ ...form, transport: p })} style={{
+                        padding: "10px", borderRadius: radius.lg,
+                        border: `1px solid ${form.transport === p ? transportColors[p] : colors.border.default}`,
+                        background: form.transport === p ? `${transportColors[p]}10` : colors.neutral[50],
+                        color: form.transport === p ? transportColors[p] : colors.neutral[600],
+                        fontSize: "13px", fontWeight: 600, textTransform: "uppercase", cursor: "pointer",
+                        transition: `all ${transitions.fast}`,
+                      }}>{p}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Refresh & Keep-Alive */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <Input label="تحديث التسجيل (ثانية)" type="number" value={String(form.register_refresh)} onChange={e => setForm({ ...form, register_refresh: parseInt(e.target.value) || 300 })} />
+                  <Input label="Keep-Alive (ثانية)" type="number" value={String(form.keep_alive)} onChange={e => setForm({ ...form, keep_alive: parseInt(e.target.value) || 15 })} />
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div style={{ padding: "16px 24px", borderTop: `1px solid ${colors.border.subtle}`, display: "flex", gap: 10 }}>
+              <Button variant="secondary" fullWidth onClick={() => setShowForm(false)}>إلغاء</Button>
+              <Button fullWidth loading={formLoading} icon={<Save size={16} />} onClick={handleSubmit}>{editing ? "تحديث" : "حفظ"}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Accounts Grid */}
+      {loading ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+          {[1, 2, 3].map(i => <div key={i} style={{ height: 180, borderRadius: radius.xl, background: colors.neutral[100], animation: "shimmer 1.5s infinite" }} />)}
+        </div>
+      ) : accounts.length === 0 ? (
+        <EmptyState icon={<Phone size={24} />} title="لا توجد حسابات SIP" description="أضف حساب SIP للبدء في استقبال المكالمات" action={{ label: "إضافة حساب", onClick: () => setShowForm(true) }} />
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+          {accounts.map(account => (
+            <Card key={account.id} hover padding="20px" style={{ position: "relative" }}>
+              {/* Status badge */}
+              <div style={{ position: "absolute", top: 16, left: 16 }}>
+                <Badge variant={account.is_registered ? "success" : "default"} dot>
+                  {account.is_registered ? "مسجل" : "غير مسجل"}
+                </Badge>
+              </div>
+
+              {/* Account info */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                <div style={{
+                  width: 48, height: 48, borderRadius: radius.lg,
+                  background: `${colors.brand[500]}10`, display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: "18px", fontWeight: 800, color: colors.brand[500],
+                }}>
+                  {account.username.slice(0, 2)}
+                </div>
+                <div>
+                  <h3 style={{ fontSize: "15px", fontWeight: 600, color: colors.neutral[900] }}>{account.account_name}</h3>
+                  <p dir="ltr" style={{ fontSize: "13px", color: colors.neutral[500], fontFamily: typography.fontFamily.mono }}>
+                    {account.username}@{account.domain || account.sip_server}
+                  </p>
+                </div>
+              </div>
+
+              {/* Server info */}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 8px", borderRadius: radius.md, background: colors.neutral[50], color: colors.neutral[600], fontSize: "12px" }}>
+                  <Server size={12} /> {account.sip_server}
+                </span>
+                <span style={{
+                  display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 8px", borderRadius: radius.md,
+                  background: `${transportColors[account.transport]}10`, color: transportColors[account.transport],
+                  fontSize: "12px", fontWeight: 600, textTransform: "uppercase",
+                }}>
+                  {account.transport}
+                </span>
+              </div>
+
+              {/* Actions */}
+              <div style={{ display: "flex", gap: 8, borderTop: `1px solid ${colors.border.subtle}`, paddingTop: 12 }}>
+                <Button variant="secondary" size="sm" icon={<Edit size={14} />} fullWidth onClick={() => handleEdit(account)}>تعديل</Button>
+                <Button variant="ghost" size="sm" icon={<Trash2 size={14} />} onClick={() => handleDelete(account.id)} style={{ color: colors.neutral[500] }} />
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};

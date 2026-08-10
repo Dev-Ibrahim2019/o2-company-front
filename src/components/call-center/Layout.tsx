@@ -18,6 +18,9 @@ import {
   ChevronRight,
   ChevronLeft,
   Menu,
+  Phone,
+  ClipboardList,
+  CheckCircle,
 } from "lucide-react";
 
 export const CallCenterLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
@@ -83,14 +86,18 @@ export const CallCenterLayout: React.FC<{ children?: React.ReactNode }> = ({ chi
         </button>
 
         <nav className="flex-1 space-y-1.5 overflow-y-auto custom-scrollbar">
-          <SidebarLink to="/call-center/pos" icon={ShoppingCart} label="إنشاء فاتورة" />
           <SidebarLink to="/call-center" icon={LayoutDashboard} label="لوحة العمليات" end />
+          <SidebarLink to="/call-center/order" icon={ShoppingCart} label="صفحة الطلب" />
+          <SidebarLink to="/call-center/active-orders" icon={ClipboardList} label="الطلبات النشطة" />
+          <SidebarLink to="/call-center/closed-orders" icon={CheckCircle} label="الطلبات المغلقة" />
+          {/* <SidebarLink to="/call-center/pos" icon={Phone} label="إنشاء فاتورة" />
           <SidebarLink to="/call-center/crm" icon={Database} label="العملاء" />
           <SidebarLink to="/call-center/search" icon={Search} label="المكالمات والبحث" />
           <SidebarLink to="/call-center/complaints" icon={MessageSquareWarning} label="الشكاوى والمتابعة" />
           <SidebarLink to="/call-center/occasions" icon={Gift} label="المناسبات" />
           <SidebarLink to="/call-center/top-customers" icon={Star} label="الولاء والعملاء المميزون" />
           <SidebarLink to="/call-center/employees" icon={Users} label="الموظفون" />
+          <SidebarLink to="/call-center/sip-settings" icon={Phone} label="إعدادات SIP" /> */}
         </nav>
 
         <div className="mt-auto border-t border-white/5 pt-4 space-y-2">
