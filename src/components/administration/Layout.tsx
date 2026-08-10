@@ -41,6 +41,7 @@ import {
   Phone,
   FileAudio,
   Printer,
+  Calendar,
 } from "lucide-react";
 
 /* ── روابط التنقل ── */
@@ -145,6 +146,14 @@ const NAV = [
     icon: ReceiptText,
     label: "فواتير المشتريات",
     permission: PERMISSIONS.MANAGE_INVOICES,
+    indent: true,
+    group: "accounting",
+  },
+  {
+    to: "/admin/fiscal-years",
+    icon: Calendar,
+    label: "السنوات المالية",
+    permission: PERMISSIONS.MANAGE_ACCOUNTING,
     indent: true,
     group: "accounting",
   },
@@ -526,6 +535,13 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({
               icon={Users2}
               label="الموظفون والمرتبات"
               indent
+            />
+            <SidebarLink
+              to="/admin/fiscal-years"
+              icon={Calendar}
+              label="السنوات المالية"
+              indent
+              permission={PERMISSIONS.MANAGE_ACCOUNTING}
             />
           </SidebarGroup>
 

@@ -835,7 +835,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
             />
           )}
 
-          {glSubTab === "YEARS" && <FiscalYearsView fiscalYears={[]} />}
+          {glSubTab === "YEARS" && <FiscalYearsView />}
 
           {glSubTab === "COST_CENTERS" && (
             <CostCentersView

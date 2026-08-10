@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, Filter, ChevronDown, ChevronUp, Clock, User,
@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { useApp } from "../../../store";
 import { formatCurrency } from "../../types/salesInvoice";
+import { fiscalYearService } from "../../services/fiscalYearService";
+import type { FiscalYearFromApi } from "../../services/fiscalYearService";
 import type { Shift, BlindDropSubmission, ReconciliationEntry } from "../../types";
 
 interface ShiftClosingRecord {
@@ -69,6 +71,13 @@ export const ShiftClosingsPage = () => {
   const [dateFilter, setDateFilter] = useState(new Date().toISOString().split("T")[0]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [fiscalYearFilter, setFiscalYearFilter] = useState<string>("all");
+  const [fiscalYears, setFiscalYears] = useState<FiscalYearFromApi[]>([]);
+
+  // جلب السنوات المالية
+  useEffect(() => {
+    fiscalYearService.getAll().then(setFiscalYears).catch(() => {});
+  }, []);
 
   const closingRecords = useMemo(() => {
     return (shifts ?? []).map((shift): ShiftClosingRecord => {
@@ -158,6 +167,19 @@ export const ShiftClosingsPage = () => {
       records = records.filter((r) => r.shift.type === typeFilter);
     }
 
+    // فلترة حسب السنة المالية
+    if (fiscalYearFilter !== "all") {
+      const selectedFY = fiscalYears.find((fy) => fy.id.toString() === fiscalYearFilter);
+      if (selectedFY) {
+        const fyStart = new Date(selectedFY.start_date);
+        const fyEnd = new Date(selectedFY.end_date);
+        records = records.filter((r) => {
+          const shiftDate = new Date(r.shift.startTime);
+          return shiftDate >= fyStart && shiftDate <= fyEnd;
+        });
+      }
+    }
+
     if (search) {
       const lower = search.toLowerCase();
       records = records.filter(
@@ -170,7 +192,7 @@ export const ShiftClosingsPage = () => {
     return records.sort(
       (a, b) => new Date(b.shift.startTime).getTime() - new Date(a.shift.startTime).getTime()
     );
-  }, [closingRecords, dateFilter, statusFilter, typeFilter, search]);
+  }, [closingRecords, dateFilter, statusFilter, typeFilter, fiscalYearFilter, fiscalYears, search]);
 
   const summary = useMemo(() => {
     const total = filteredRecords.length;
@@ -375,6 +397,19 @@ export const ShiftClosingsPage = () => {
           <option value="MORNING">صباحي</option>
           <option value="EVENING">مسائي</option>
           <option value="NIGHT">ليلي</option>
+        </select>
+        <select
+          value={fiscalYearFilter}
+          onChange={(e) => setFiscalYearFilter(e.target.value)}
+          className="px-4 py-2 rounded-lg text-sm outline-none"
+          style={{ backgroundColor: "var(--o2-surface-raised)", borderColor: "var(--o2-border)", color: "var(--o2-text)", borderWidth: 1 }}
+        >
+          <option value="all">جميع السنوات المالية</option>
+          {fiscalYears.map((fy) => (
+            <option key={fy.id} value={fy.id.toString()}>
+              {fy.name} {fy.status === "closed" ? "(مغلقة)" : ""}
+            </option>
+          ))}
         </select>
       </div>
 

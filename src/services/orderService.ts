@@ -360,6 +360,11 @@ export interface OrderFromApi {
   order_number: string;
   branch_id: number;
   cashier_id: number | null;
+  shift_id: number | null;
+  opened_by: number | null;
+  closed_by: number | null;
+  printed_by: number | null;
+  printed_at: string | null;
   order_type: OrderType;
   status: OrderStatus;
   table_number: string | null;
@@ -384,6 +389,9 @@ export interface OrderFromApi {
   tickets: ProductionTicketFromApi[];
   payments?: InvoicePaymentResponse[];
   cashier?: { id: number; name: string };
+  opener?: { id: number; name: string };
+  closer?: { id: number; name: string };
+  printer?: { id: number; name: string };
   has_unsent_items?: boolean;
   created_at: string;
   updated_at: string;

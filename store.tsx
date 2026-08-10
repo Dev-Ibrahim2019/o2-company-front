@@ -16,6 +16,7 @@ import {
 } from './types';
 import { TABLES, MENU_ITEMS } from './constants';
 import api from './src/api/axios';
+import { shiftService, type ShiftFromApi } from './src/services/shiftService';
 
 export const AppContext = createContext<any>(null);
 
@@ -84,6 +85,8 @@ interface AppState {
   setCurrentShift: (shift: Shift | null) => void;
   openShift: (shift: Shift) => void;
   closeShift: () => void;
+  rollover: (closingBalance?: number) => Promise<{ closedShift: any; newShift: Shift }>;
+  fetchCurrentShift: () => Promise<void>;
 
   // Employees
   employees: Employee[];
@@ -876,6 +879,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     zustandStore.syncFromContext({ shifts: [closedShift, ...existingShifts] });
 
     addActivityLog(currentUser.id, 'Closed Shift', { expectedBalance, closingBalance, difference: closingBalance - expectedBalance });
+  };
+
+  const rollover = async (closingBalance?: number) => {
+    try {
+      const { shiftService } = await import('./src/services/shiftService');
+      const result = await shiftService.rollover(closingBalance);
+      const newShift: Shift = {
+        id: String(result.new_shift.id),
+        cashierId: String(result.new_shift.opened_by),
+        startTime: new Date(result.new_shift.opened_at),
+        openingBalance: result.new_shift.opening_balance,
+        status: 'OPEN',
+        type: 'MORNING',
+      };
+      setCurrentShift(newShift);
+      return { closedShift: result.closed_shift, newShift };
+    } catch (error) {
+      console.error('Rollover failed:', error);
+      throw error;
+    }
+  };
+
+  const fetchCurrentShift = async () => {
+    try {
+      const { shiftService } = await import('./src/services/shiftService');
+      const result = await shiftService.getCurrent();
+      if (result.shift) {
+        const shift: Shift = {
+          id: String(result.shift.id),
+          cashierId: String(result.shift.opened_by),
+          startTime: new Date(result.shift.opened_at),
+          openingBalance: result.shift.opening_balance,
+          status: 'OPEN',
+          type: 'MORNING',
+        };
+        setCurrentShift(shift);
+      } else {
+        setCurrentShift(null);
+      }
+    } catch (error) {
+      console.error('Failed to fetch current shift:', error);
+    }
   };
 
   const checkIn = (employeeId: string, note?: string) => {
@@ -1913,7 +1958,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addFiscalYear, updateFiscalYear, addCOA, updateCOA, deleteCOA, addCostCenter, updateCostCenter, addJournalEntry, updateJournalEntry, deleteJournalEntry,
       addSupplier, updateSupplier, addBankAccount, updateBankAccount, addCashBox, updateCashBox,
 
-      currentShift, shifts, openShift, closeShift,
+      currentShift, shifts, openShift, closeShift, rollover, fetchCurrentShift,
       financialTransactions, addFinancialTransaction,
       feedbacks, addFeedback, updateFeedback,
       notifications, addNotification, markNotificationRead,
@@ -2190,6 +2235,44 @@ export const useApp = create<AppState>()(
             shifts: [closedShift, ...state.shifts],
           };
         }),
+      rollover: async (closingBalance?: number) => {
+        try {
+          const result = await shiftService.rollover(closingBalance);
+          const newShift: Shift = {
+            id: String(result.new_shift.id),
+            cashierId: String(result.new_shift.opened_by),
+            startTime: new Date(result.new_shift.opened_at),
+            openingBalance: result.new_shift.opening_balance,
+            status: 'OPEN',
+            type: 'MORNING',
+          };
+          set({ currentShift: newShift });
+          return { closedShift: result.closed_shift, newShift };
+        } catch (error) {
+          console.error('Rollover failed:', error);
+          throw error;
+        }
+      },
+      fetchCurrentShift: async () => {
+        try {
+          const result = await shiftService.getCurrent();
+          if (result.shift) {
+            const shift: Shift = {
+              id: String(result.shift.id),
+              cashierId: String(result.shift.opened_by),
+              startTime: new Date(result.shift.opened_at),
+              openingBalance: result.shift.opening_balance,
+              status: 'OPEN',
+              type: 'MORNING',
+            };
+            set({ currentShift: shift });
+          } else {
+            set({ currentShift: null });
+          }
+        } catch (error) {
+          console.error('Failed to fetch current shift:', error);
+        }
+      },
 
       // Employees
       employees: [],

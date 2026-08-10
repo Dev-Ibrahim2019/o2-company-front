@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, Eye, ChevronRight, Layers, Activity,
@@ -721,103 +722,352 @@ export const JournalView: React.FC<JournalViewProps> = ({
 };
 
 // ─────────────────────────────────────────────
-// FiscalYearsView
+// FiscalYearsView — Self-contained with API
 // ─────────────────────────────────────────────
 
-interface FiscalYear { id: string; name: string; startDate: string; endDate: string; status: "OPEN" | "CLOSED" }
+import { useEffect } from "react";
+import { fiscalYearService } from "../../../services/fiscalYearService";
+import { toast } from "../../shared/Toast";
+import type { FiscalYearFromApi } from "../../../services/fiscalYearService";
 
-export const FiscalYearsView: React.FC<{ fiscalYears: FiscalYear[] }> = ({ fiscalYears }) => (
-  <motion.div
-    key="years"
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, y: -10 }}
-    className="h-full overflow-y-auto custom-scrollbar pb-10 space-y-5"
-    dir="rtl"
-  >
-    {/* Summary */}
-    <div className="grid grid-cols-3 gap-4">
-      {[
-        { label: 'السنوات الإجمالية', value: fiscalYears.length, color: 'text-white', bg: 'bg-white/5', border: 'border-white/10' },
-        { label: 'مفتوحة / جارية', value: fiscalYears.filter(f => f.status === 'OPEN').length, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
-        { label: 'مغلقة / مؤرشفة', value: fiscalYears.filter(f => f.status === 'CLOSED').length, color: 'text-slate-400', bg: 'bg-white/5', border: 'border-white/10' },
-      ].map((k, i) => (
-        <div key={i} className={`bg-slate-900/60 border ${k.border} rounded-2xl p-5 text-right`}>
-          <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1">{k.label}</p>
-          <p className={`text-2xl font-black font-mono ${k.color}`}>{k.value}</p>
-        </div>
-      ))}
-    </div>
+const FY_STATUS_CONFIG = {
+  active: { label: "مفتوحة", color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20", icon: CheckCircle2 },
+  closed: { label: "مغلقة", color: "text-slate-500", bg: "bg-white/5", border: "border-white/10", icon: AlertCircle },
+};
 
-    <div className="bg-slate-900/60 border border-white/5 rounded-3xl overflow-hidden">
-      <div className="p-5 border-b border-white/5 flex items-center justify-between">
-        <div>
-          <h3 className="text-base font-black text-white">السنوات المالية</h3>
-          <p className="text-[11px] text-slate-500 mt-0.5">إدارة الفترات المحاسبية والإقفالات</p>
-        </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-black hover:bg-red-700 transition-all">
-          <Plus size={14} /> سنة مالية جديدة
-        </button>
+const formatCurrency = (amount: number | null) => {
+  if (amount === null || amount === undefined) return "0";
+  return amount.toLocaleString("ar-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+export const FiscalYearsView: React.FC = () => {
+  const navigate = useNavigate();
+  const [fiscalYears, setFiscalYears] = useState<FiscalYearFromApi[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showCloseConfirm, setShowCloseConfirm] = useState<FiscalYearFromApi | null>(null);
+  const [closingId, setClosingId] = useState<number | null>(null);
+
+  const fetchFiscalYears = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await fiscalYearService.getAll();
+      setFiscalYears(data);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || "فشل جلب السنوات المالية";
+      setError(msg);
+      toast.error("خطأ", msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchFiscalYears();
+  }, []);
+
+  const handleClose = async (fy: FiscalYearFromApi) => {
+    try {
+      setClosingId(fy.id);
+      await fiscalYearService.close(fy.id);
+      toast.success("تم الإغلاق", `تم إغلاق "${fy.name}" بنجاح`);
+      await fetchFiscalYears();
+      setShowCloseConfirm(null);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || "فشل الإغلاق";
+      toast.error("خطأ", msg);
+    } finally {
+      setClosingId(null);
+    }
+  };
+
+  const handleCreate = async (data: { name: string; start_date: string; end_date: string }) => {
+    await fiscalYearService.create(data);
+    toast.success("تم الإنشاء", `تم إنشاء "${data.name}" بنجاح`);
+    await fetchFiscalYears();
+    setShowCreateModal(false);
+  };
+
+  const openCount = fiscalYears.filter((f) => f.status === "active").length;
+  const closedCount = fiscalYears.filter((f) => f.status === "closed").length;
+
+  return (
+    <motion.div
+      key="years"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      className="h-full overflow-y-auto custom-scrollbar pb-10 space-y-5"
+      dir="rtl"
+    >
+      {/* Summary */}
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: 'السنوات الإجمالية', value: fiscalYears.length, color: 'text-white', bg: 'bg-white/5', border: 'border-white/10' },
+          { label: 'مفتوحة / جارية', value: openCount, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
+          { label: 'مغلقة / مؤرشفة', value: closedCount, color: 'text-slate-400', bg: 'bg-white/5', border: 'border-white/10' },
+        ].map((k, i) => (
+          <div key={i} className={`bg-slate-900/60 border ${k.border} rounded-2xl p-5 text-right`}>
+            <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-1">{k.label}</p>
+            <p className={`text-2xl font-black font-mono ${k.color}`}>{k.value}</p>
+          </div>
+        ))}
       </div>
 
-      <div className="divide-y divide-white/5">
-        {fiscalYears.map((fy, i) => {
-          const start = new Date(fy.startDate);
-          const end = new Date(fy.endDate);
-          const nowDate = new Date();
-          const total = end.getTime() - start.getTime();
-          const elapsed = Math.min(nowDate.getTime() - start.getTime(), total);
-          const progress = fy.status === 'OPEN' ? Math.max(0, Math.min((elapsed / total) * 100, 100)) : 100;
+      <div className="bg-slate-900/60 border border-white/5 rounded-3xl overflow-hidden">
+        <div className="p-5 border-b border-white/5 flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-black text-white">السنوات المالية</h3>
+            <p className="text-[11px] text-slate-500 mt-0.5">إدارة الفترات المحاسبية والإقفالات</p>
+          </div>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-black hover:bg-red-700 transition-all"
+          >
+            <Plus size={14} /> سنة مالية جديدة
+          </button>
+        </div>
 
-          return (
-            <motion.div key={fy.id}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: i * 0.07 }}
-              className="p-5 hover:bg-white/[0.02] transition-colors group"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${fy.status === 'OPEN' ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' : 'bg-white/5 border border-white/10 text-slate-500'}`}>
-                    {fy.status === 'OPEN' ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
+        {loading ? (
+          <div className="py-20 text-center text-slate-500 font-black">جاري التحميل...</div>
+        ) : error ? (
+          <div className="py-20 text-center text-rose-400 font-black">{error}</div>
+        ) : (
+          <div className="divide-y divide-white/5">
+            {fiscalYears.map((fy, i) => {
+              const start = new Date(fy.start_date);
+              const end = new Date(fy.end_date);
+              const nowDate = new Date();
+              const total = end.getTime() - start.getTime();
+              const elapsed = Math.min(nowDate.getTime() - start.getTime(), total);
+              const progress = fy.status === 'active' ? Math.max(0, Math.min((elapsed / total) * 100, 100)) : 100;
+              const cfg = FY_STATUS_CONFIG[fy.status];
+              const StatusIcon = cfg.icon;
+
+              return (
+                <motion.div key={fy.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: i * 0.07 }}
+                  className="p-5 hover:bg-white/[0.02] transition-colors group"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${fy.status === 'active' ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' : 'bg-white/5 border border-white/10 text-slate-500'}`}>
+                        <StatusIcon size={18} />
+                      </div>
+                      <div className="text-right">
+                        <h4 className="text-sm font-black text-white">{fy.name}</h4>
+                        <p className="text-[11px] font-mono text-slate-500">{fy.start_date} — {fy.end_date}</p>
+                        {fy.creator && (
+                          <p className="text-[10px] text-slate-600 mt-0.5">أنشأه: {fy.creator.name}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-left">
+                        <p className="text-[10px] text-slate-500">{fy.shifts_count} وردية</p>
+                        <p className="text-[10px] text-emerald-400/70 font-mono">{formatCurrency(fy.shifts_total_sales_sum)}</p>
+                      </div>
+                      <span className={`px-3 py-1 rounded-xl border text-[10px] font-black ${cfg.color} ${cfg.bg} ${cfg.border}`}>
+                        {cfg.label}
+                      </span>
+                      <button
+                        onClick={() => navigate(`/admin/fiscal-years/${fy.id}`)}
+                        className="px-3 py-1 bg-blue-600/10 border border-blue-500/20 text-blue-400 text-[10px] font-black rounded-xl hover:bg-blue-600 hover:text-white transition-all flex items-center gap-1"
+                      >
+                        <Eye size={12} />
+                        استعراض
+                      </button>
+                      {fy.status === 'active' && (
+                        <button
+                          onClick={() => setShowCloseConfirm(fy)}
+                          className="px-3 py-1 bg-rose-600/10 border border-rose-500/20 text-rose-400 text-[10px] font-black rounded-xl hover:bg-rose-600 hover:text-white transition-all"
+                        >
+                          إقفال السنة
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <h4 className="text-sm font-black text-white">{fy.name}</h4>
-                    <p className="text-[11px] font-mono text-slate-500">{fy.startDate} — {fy.endDate}</p>
+                  <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${progress}%` }}
+                      transition={{ delay: 0.3 + i * 0.05, duration: 0.8, ease: 'easeOut' }}
+                      className={`h-full rounded-full ${fy.status === 'active' ? 'bg-emerald-500' : 'bg-slate-600'}`}
+                    />
                   </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className={`px-3 py-1 rounded-xl border text-[10px] font-black ${fy.status === 'OPEN' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' : 'text-slate-500 bg-white/5 border-white/10'}`}>
-                    {fy.status === 'OPEN' ? 'مفتوحة' : 'مغلقة'}
-                  </span>
-                  {fy.status === 'OPEN' && (
-                    <button className="px-3 py-1 bg-rose-600/10 border border-rose-500/20 text-rose-400 text-[10px] font-black rounded-xl hover:bg-rose-600 hover:text-white transition-all">
-                      إقفال السنة
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progress}%` }}
-                  transition={{ delay: 0.3 + i * 0.05, duration: 0.8, ease: 'easeOut' }}
-                  className={`h-full rounded-full ${fy.status === 'OPEN' ? 'bg-emerald-500' : 'bg-slate-600'}`}
-                />
-              </div>
-              <p className="text-[10px] text-slate-600 font-bold mt-1.5">
-                {fy.status === 'OPEN' ? `${progress.toFixed(0)}% من السنة منقضي` : 'السنة مغلقة ومؤرشفة'}
-              </p>
-            </motion.div>
-          );
-        })}
-        {fiscalYears.length === 0 && (
-          <div className="py-20 text-center text-slate-600 font-black italic">لا توجد سنوات مالية مسجلة</div>
+                  <p className="text-[10px] text-slate-600 font-bold mt-1.5">
+                    {fy.status === 'active' ? `${progress.toFixed(0)}% من السنة منقضي` : 'السنة مغلقة ومؤرشفة'}
+                  </p>
+                </motion.div>
+              );
+            })}
+            {fiscalYears.length === 0 && (
+              <div className="py-20 text-center text-slate-600 font-black italic">لا توجد سنوات مالية مسجلة</div>
+            )}
+          </div>
         )}
       </div>
+
+      {/* Create Modal */}
+      {showCreateModal && (
+        <FYCreateModal
+          onClose={() => setShowCreateModal(false)}
+          onCreate={handleCreate}
+        />
+      )}
+
+      {/* Close Confirm Modal */}
+      {showCloseConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowCloseConfirm(null)}
+        >
+          <div
+            className="bg-slate-900 border border-white/10 rounded-3xl shadow-2xl w-full max-w-sm mx-4 p-6 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mx-auto w-12 h-12 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mb-4">
+              <AlertCircle size={22} className="text-rose-400" />
+            </div>
+            <h3 className="text-lg font-black text-white mb-2">إقفال السنة المالية</h3>
+            <p className="text-sm text-slate-400 mb-1">
+              هل أنت متأكد من إقفال <strong className="text-white">{showCloseConfirm.name}</strong>؟
+            </p>
+            <p className="text-xs text-rose-400 mb-6">لا يمكن التراجع عن هذا الإجراء.</p>
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={() => setShowCloseConfirm(null)}
+                disabled={closingId === showCloseConfirm.id}
+                className="px-4 py-2 text-sm font-black text-slate-400 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={() => handleClose(showCloseConfirm)}
+                disabled={closingId === showCloseConfirm.id}
+                className="px-4 py-2 text-sm font-black text-white bg-rose-600 rounded-xl hover:bg-rose-700 transition-all flex items-center gap-2"
+              >
+                {closingId === showCloseConfirm.id && <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                نعم، إقفال
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </motion.div>
+  );
+};
+
+// ── Create Modal (inside GL dark theme) ──
+
+const FYCreateModal = ({
+  onClose,
+  onCreate,
+}: {
+  onClose: () => void;
+  onCreate: (data: { name: string; start_date: string; end_date: string }) => Promise<void>;
+}) => {
+  const [name, setName] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name || !startDate || !endDate) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await onCreate({ name, start_date: startDate, end_date: endDate });
+    } catch (err: any) {
+      setError(err?.response?.data?.message || "فشل الإنشاء");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-slate-900 border border-white/10 rounded-3xl shadow-2xl w-full max-w-md mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-5 border-b border-white/5">
+          <h2 className="text-base font-black text-white">سنة مالية جديدة</h2>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-white/10 text-slate-400">
+            <X size={18} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          {error && (
+            <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl text-sm font-bold">
+              {error}
+            </div>
+          )}
+          <div>
+            <label className="block text-[11px] text-slate-500 font-black uppercase tracking-widest mb-1.5">الاسم</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="مثال: 2026"
+              className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm placeholder:text-slate-600 focus:outline-none focus:border-red-500/50"
+              required
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[11px] text-slate-500 font-black uppercase tracking-widest mb-1.5">من تاريخ</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-red-500/50"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] text-slate-500 font-black uppercase tracking-widest mb-1.5">إلى تاريخ</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full px-3 py-2.5 bg-white/5 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-red-500/50"
+                required
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={loading}
+              className="px-4 py-2 text-sm font-black text-slate-400 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all"
+            >
+              إلغاء
+            </button>
+            <button
+              type="submit"
+              disabled={loading || !name || !startDate || !endDate}
+              className="px-4 py-2 text-sm font-black text-white bg-red-600 rounded-xl hover:bg-red-700 disabled:opacity-40 transition-all flex items-center gap-2"
+            >
+              {loading && <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+              إنشاء
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
-  </motion.div>
-);
+  );
+};
 
 // ─────────────────────────────────────────────
 // ─────────────────────────────────────────────
