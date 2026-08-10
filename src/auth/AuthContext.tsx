@@ -36,6 +36,8 @@ interface AuthContextType {
   loading: boolean;
   /** تسجيل الدخول عبر API */
   login: (username: string, password: string) => Promise<void>;
+  /** تحديث أدوار المستخدم بعد تسجيل الدخول (لحل timing issue مع Login.tsx) */
+  updateRoles: (roles: string[]) => void;
   /** تسجيل الخروج */
   logout: () => Promise<void>;
   /** تحميل بيانات المستخدم من الـ API (يُستخدم عند تحميل التطبيق) */
@@ -92,6 +94,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchUser();
   }, [fetchUser]);
 
+  /* ── تحديث الأدوار يدوياً (يستخدمها Login.tsx بعد تحديد الأدوار البديلة) ── */
+  const updateRoles = useCallback((roles: string[]) => {
+    setUser((prev) => (prev ? { ...prev, roles } : prev));
+  }, []);
+
   /* ── تسجيل الدخول ── */
   const login = useCallback(async (username: string, password: string) => {
     const { data } = await api.post("/login", { username, password });
@@ -100,11 +107,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const responseData = data.data || data;
 
     const token: string = responseData.token;
-    const roles: string[] = responseData.roles || [];
+    let roles: string[] = responseData.roles || [];
     const permissions: string[] = responseData.permissions || [];
 
-    // الحفظ في localStorage
+    // Save to localStorage
     saveAuthData({ token, roles, permissions, branch_id: responseData.user?.branch_id ?? null });
+
+    // 🛡️ If API returned empty roles/permissions, re-read from localStorage
+    // (Login.tsx may have filled them from the store role mapping)
+    if (roles.length === 0) {
+      roles = getRoles();
+    }
 
     // تحديث الحالة
     setToken(token);
@@ -147,6 +160,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     token,
     loading,
     login,
+    updateRoles,
     logout,
     fetchUser,
     hasRole,

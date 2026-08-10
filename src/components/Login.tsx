@@ -28,12 +28,14 @@ const API_ROLE_TO_STORE_ROLE: Record<string, string> = {
   "cashier": "CASHIER",
   "hospitality": "HOSPITALITY",
   "dept-staff": "DEPARTMENT_STAFF",
+  "call-center": "CALL_CENTER",
 };
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
   const { login: storeLogin, branches, departments } = useApp();
-  const { login: apiLogin, isLoggedIn } = useAuth();
+  const { login: apiLogin, updateRoles, isLoggedIn } = useAuth();
+
 
   // ── حالات تسجيل الدخول عبر API ──
   const [apiMode, setApiMode] = useState(false);
@@ -62,11 +64,31 @@ export const Login: React.FC = () => {
   // ── تحويل المستخدم حسب دوره ──
   const redirectByRole = (roles: string[]) => {
     const primary = roles[0] || "";
-    if (primary === "super-admin" || primary === "accountant" || primary === "branch-manager") {
-      navigate("/admin/dashboard", { replace: true });
+    if (primary === "call-center") {
+      localStorage.removeItem("pos_device_uuid");
+      localStorage.removeItem("pos_register_info");
+      localStorage.removeItem("hospitality_device_uuid");
+      localStorage.removeItem("hospitality_register_info");
+      navigate("/call-center", { replace: true });
     } else if (primary === "hospitality") {
+      localStorage.removeItem("pos_device_uuid");
+      localStorage.removeItem("pos_register_info");
+      localStorage.removeItem("call_center_device_uuid");
+      localStorage.removeItem("call_center_register_info");
       navigate("/Hospitality", { replace: true });
+    } else if (primary === "super-admin" || primary === "accountant" || primary === "branch-manager") {
+      localStorage.removeItem("pos_device_uuid");
+      localStorage.removeItem("pos_register_info");
+      localStorage.removeItem("call_center_device_uuid");
+      localStorage.removeItem("call_center_register_info");
+      localStorage.removeItem("hospitality_device_uuid");
+      localStorage.removeItem("hospitality_register_info");
+      navigate("/admin/dashboard", { replace: true });
     } else {
+      localStorage.removeItem("call_center_device_uuid");
+      localStorage.removeItem("call_center_register_info");
+      localStorage.removeItem("hospitality_device_uuid");
+      localStorage.removeItem("hospitality_register_info");
       navigate("/pos", { replace: true });
     }
   };
@@ -81,9 +103,28 @@ export const Login: React.FC = () => {
       await apiLogin(username, password);
 
       // بعد نجاح API login، اقرأ الأدوار من localStorage
-      const storedRoles = JSON.parse(localStorage.getItem("roles") || "[]");
+      let storedRoles = JSON.parse(localStorage.getItem("roles") || "[]");
       const primaryRole = storedRoles[0] || "cashier";
       const storeRole = (API_ROLE_TO_STORE_ROLE[primaryRole] || "CASHIER") as any;
+
+      // 🛡️ إذا كانت الأدوار فارغة (لعدم وجود Spatie) ← استخدم الدور من جدول users
+      if (storedRoles.length === 0) {
+        const apiRoleMap: Record<string, string[]> = {
+          ADMIN: ["super-admin"],
+          FINANCE: ["accountant"],
+          BRANCH_MANAGER: ["branch-manager"],
+          CASHIER: ["cashier"],
+          HOSPITALITY: ["hospitality"],
+          DEPARTMENT_STAFF: ["dept-staff"],
+          CALL_CENTER: ["call-center"],
+        };
+        const mappedRoles = apiRoleMap[storeRole] || ["cashier"];
+        localStorage.setItem("roles", JSON.stringify(mappedRoles));
+        storedRoles = mappedRoles;
+      }
+
+      // 🛡️ حدّث AuthContext فوراً بالأدوار المصحّحة (حتى يرها RoleGuard فوراً)
+      updateRoles(storedRoles);
 
       // سجّل الدخول في الـ store أيضاً للحفاظ على التوافق
       storeLogin(username, storeRole);

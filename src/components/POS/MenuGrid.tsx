@@ -14,6 +14,7 @@ interface MenuGridProps {
   searchQuery: string;
   addToCart: (item: MenuItem) => void;
   loading?: boolean;
+  categoryScrollable?: boolean;
 }
 
 export const MenuGrid: React.FC<MenuGridProps> = ({
@@ -23,20 +24,8 @@ export const MenuGrid: React.FC<MenuGridProps> = ({
   searchQuery,
   addToCart,
   loading = false,
+  categoryScrollable = false,
 }) => {
-  // ── DEBUG ─────────────────────────────────────────────────────────────────
-  console.log("🟢 [MenuGrid] Rendering with:", {
-    categoriesCount: categories.length,
-    selectedCategory,
-    searchQuery,
-    categories: categories.map(c => ({
-      id: c.id,
-      name: c.name_ar,
-      itemsCount: c.items?.length || 0,
-      items: c.items?.map(i => ({ id: i.id, name: i.name_ar, price: i.price }))
-    }))
-  });
-
   // ── Filtered items ────────────────────────────────────────────────────────
   const filteredItems = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -52,7 +41,6 @@ export const MenuGrid: React.FC<MenuGridProps> = ({
         item.code.toLowerCase().includes(q)
       );
 
-    console.log("🔵 [MenuGrid] Filtered items:", result.length, result.map(i => ({ id: i.id, name: i.name_ar, price: i.price })));
     return result;
   }, [categories, selectedCategory, searchQuery]);
 
@@ -85,9 +73,21 @@ export const MenuGrid: React.FC<MenuGridProps> = ({
   return (
     <>
       {/* ── Category Tabs ── */}
-      <div className="mb-3 shrink-0 sticky top-0 z-10 py-1 -mx-1 px-1">
-        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide pb-1" style={{ WebkitOverflowScrolling: 'touch' }}>
-          {/* زر "الكل" */}
+      <div className={`mb-3 flex shrink-0 gap-1 sticky top-0 z-10 py-1 ${categoryScrollable ? "overflow-x-auto custom-scrollbar" : "flex-wrap"}`}>
+        {/* زر "الكل" */}
+        <button
+          onClick={() => setSelectedCategory('all')}
+          className={`flex items-center gap-1 px-2.5 py-1 rounded-lg whitespace-nowrap text-[8px] font-black transition-all duration-200 border ${selectedCategory === 'all'
+            ? 'bg-red-600 text-white border-red-600 shadow-sm'
+            : 'bg-slate-900 text-slate-500 border-white/5 hover:bg-slate-800'
+            }`}
+        >
+          <span className="text-[10px]">🍽️</span>
+          <span>الكل</span>
+        </button>
+
+        {/* أقسام المنيو */}
+        {categories.map(cat => (
           <button
             onClick={() => setSelectedCategory('all')}
             className={`flex items-center gap-1 px-2 py-1.5 rounded-lg whitespace-nowrap text-[9px] font-black transition-all duration-200 border shrink-0 ${selectedCategory === 'all'

@@ -185,7 +185,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
         return;
       if (currentCart.length === 0) return;
 
-      const targetItem =
+      const targetItem = 
         lastFocusedItemRef.current ||
         currentCart[currentCart.length - 1]?.uniqueId;
       if (!targetItem) return;

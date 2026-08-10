@@ -2,23 +2,14 @@
 // خدمة العملاء — واجهة كاملة للتعامل مع وحدة العملاء
 
 import api from "../api/axios";
+import type { CustomerIdentity } from "../types/customer";
 
-export interface Customer {
-  id: number;
-  name: string;
+export interface Customer extends CustomerIdentity {
   name_en: string | null;
-  code: string;
   tax_number: string | null;
-  phone: string | null;
-  mobile: string | null;
-  email: string | null;
   website: string | null;
-  address: string | null;
-  city: string | null;
   country: string | null;
-  category: string | null;
   currency: string;
-  status: "active" | "inactive" | "blocked";
   risk_level: "low" | "medium" | "high" | "critical";
   credit_limit: number;
   payment_terms: string | null;
@@ -27,15 +18,11 @@ export interface Customer {
   is_opening_balance_posted: boolean;
   notes: string | null;
   gps_link: string | null;
-  branch_id: number | null;
   salesperson_id: number | null;
   balance: number;
   available_credit: number;
   is_over_limit: boolean;
   credit_usage_percent: number;
-  created_at: string;
-  updated_at: string;
-  branch?: { id: number; name: string };
   salesperson?: { id: number; name: string };
 }
 

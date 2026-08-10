@@ -7,7 +7,7 @@ import React, { useState, useEffect } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useApp } from "../../../store";
 import { useAuth, Can } from "../../auth";
-import { PERMISSIONS } from "../../auth/permissions";
+import { CRM_PERMISSIONS, PERMISSIONS } from "../../auth/permissions";
 import { ThemeToggle } from "../shared/ThemeToggle";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -42,6 +42,7 @@ import {
   FileAudio,
   Printer,
   Calendar,
+  Headphones,
 } from "lucide-react";
 
 /* ── روابط التنقل ── */
@@ -198,6 +199,11 @@ const NAV = [
     icon: HeartHandshake,
     label: "أجهزة الضيافة",
     permission: PERMISSIONS.MANAGE_HOSPITALITY_DEVICES,
+  },
+  {
+    to: "/admin/call-center-devices",
+    icon: Headphones,
+    label: "أجهزة الكول سنتر",
   },
   { to: "/admin/printers", icon: Printer, label: "أجهزة الطابعات"},
   {
@@ -404,6 +410,13 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({
             exact
           />
 
+          <SidebarLink
+            to="/admin/crm"
+            icon={HeartHandshake}
+            label="إدارة علاقات العملاء"
+            permission={CRM_PERMISSIONS.ACCESS}
+          />
+
           {/* إدارة الأفرع */}
           <SidebarLink
             to="/admin/branches"
@@ -604,6 +617,11 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({
             icon={HeartHandshake}
             label="أجهزة الضيافة"
             permission={PERMISSIONS.MANAGE_HOSPITALITY_DEVICES}
+          />
+          <SidebarLink
+            to="/admin/call-center-devices"
+            icon={Headphones}
+            label="أجهزة الكول سنتر"
           />
           <SidebarLink to="/admin/printers" icon={Printer} label="أجهزة الطباعة" />
           <SidebarLink

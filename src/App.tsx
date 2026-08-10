@@ -41,6 +41,7 @@ import {
 import { ToastContainer } from "./components/shared/Toast";
 import UsersManagementPage from "./pages/UsersManagementPage";
 import PosRegistersPage from "./pages/PosRegistersPage";
+import CallCenterDevicesPage from "./pages/CallCenterDevicesPage";
 import { PrintersManagement } from "./components/administration/printers-management";
 import HospitalityDevicesPage from "./pages/HospitalityDevicesPage";
 import DiningZonesPage from "./pages/DiningZonesPage";
@@ -69,6 +70,26 @@ import { ExtensionsTestView } from "./components/administration/ExtensionsTestVi
 import { PbxExtensionsTestView } from "./components/administration/PbxExtensionsTestView";
 import { PbxRecordingsView } from "./components/administration/PbxRecordingsView";
 import FreePBXTestPage from "./pages/FreePBXTestPage";
+import {
+  CrmRouteGuard,
+  CrmShell,
+  CrmDashboardPage,
+  CrmCustomersPage,
+  Customer360Page,
+} from "./features/crm";
+
+// ── مكونات الكول سنتر ──
+import { CallCenterLayout } from "./components/call-center/Layout";
+import CallCenterGuard from "./components/call-center/CallCenterGuard";
+import { CustomerManagementDashboard } from "./components/call-center/CustomerManagementDashboard";
+import { CrmDirectoryPage } from "./components/call-center/CrmDirectoryPage";
+import { CustomerPhoneSearch } from "./components/call-center/CustomerPhoneSearch";
+import { ComplaintsManagement } from "./components/call-center/ComplaintsManagement";
+import { OccasionsPage } from "./components/call-center/OccasionsPage";
+import { TopCustomersTable } from "./components/call-center/TopCustomersTable";
+import { CallCenterEmployees } from "./components/call-center/CallCenterEmployees";
+import { CallCenterPOS } from "./components/call-center/CallCenterPOS";
+import { ActiveOrdersPage } from "./components/call-center/ActiveOrdersPage";
 
 /* ══════════════════════════════════════════════════════════════
  *  حماية الأدوار — تمنع الوصول لمن لا يملك الدور المطلوب
@@ -90,6 +111,14 @@ const POS_ROLES = [
 /** الأدوار المسموح بها في مسارات /Hospitality/* */
 const HOSPITALITY_ROLES = [
   ROLES.HOSPITALITY,
+  ROLES.SUPER_ADMIN,
+  ROLES.ACCOUNTANT,
+  ROLES.BRANCH_MANAGER,
+];
+
+/** الأدوار المسموح بها في مسارات /call-center/* */
+const CALL_CENTER_ROLES = [
+  ROLES.CALL_CENTER,
   ROLES.SUPER_ADMIN,
   ROLES.ACCOUNTANT,
   ROLES.BRANCH_MANAGER,
@@ -283,6 +312,16 @@ function AppRoutes() {
         {/* ═══ مسارات الإدارة العامة ═══
             RoleGuard يفحص الدور → AdminLayout يعرض السايد بار → FinanceView يعرض المحتوى
         */}
+        <Route element={<AdminLayout />}>
+          <Route
+            path="/admin/crm"
+            element={<CrmRouteGuard><CrmShell /></CrmRouteGuard>}
+          >
+            <Route index element={<CrmDashboardPage />} />
+            <Route path="customers" element={<CrmCustomersPage />} />
+            <Route path="customers/:customerId/*" element={<Customer360Page />} />
+          </Route>
+        </Route>
         <Route element={<RoleGuard allowedRoles={ADMIN_ROLES} />}>
           <Route element={<AdminLayout />}>
             <Route path="/admin">
@@ -341,6 +380,10 @@ function AppRoutes() {
                 path="hospitality-devices"
                 element={<HospitalityDevicesPage />}
               />
+              <Route
+                path="call-center-devices"
+                element={<CallCenterDevicesPage />}
+              />
               <Route path="dining-zones" element={<DiningZonesPage />} />
               <Route path="dining-dashboard" element={<DiningTablesDashboard />} />
               <Route path="pos" element={<AdminPOSWrapper />} />
@@ -376,6 +419,41 @@ function AppRoutes() {
             </Route>
           </Route>
         </Route>
+
+        {/* ═══ مسارات الكول سنتر ═══
+            RoleGuard يفحص الدور → CallCenterGuard يفحص تفعيل الجهاز → CallCenterLayout يعرض السايد بار
+        */}
+        <Route element={<RoleGuard allowedRoles={CALL_CENTER_ROLES} />}>
+          <Route element={<CallCenterGuard />}>
+            <Route element={<CallCenterLayout />}>
+              <Route path="/call-center">
+                <Route index element={<CustomerManagementDashboard />} />
+                <Route path="pos" element={<CallCenterPOS />} />
+                <Route path="orders" element={<ActiveOrdersPage />} />
+                <Route path="crm" element={<CrmDirectoryPage />} />
+                <Route path="search" element={<CustomerPhoneSearch />} />
+                <Route path="complaints" element={<ComplaintsManagement />} />
+                <Route path="occasions" element={<OccasionsPage />} />
+                <Route path="top-customers" element={<TopCustomersTable />} />
+                <Route path="employees" element={<CallCenterEmployees />} />
+              </Route>
+            </Route>
+          </Route>
+        </Route>
+
+        {/* ── إدارة الشفت ── */}
+        <Route
+          path="/shift"
+          element={React.createElement(ShiftView as any, {
+            currentShift: null,
+            summary: null,
+            shiftLoading: false,
+            currentUserName: "",
+            onOpen: async () => {},
+            onClose: async () => {},
+            onFetchSummary: async () => {},
+          })}
+        />
 
         {/* ── إغلاق اليوم ── */}
         <Route path="/admin/day-close" element={<DayClosePage />} />
