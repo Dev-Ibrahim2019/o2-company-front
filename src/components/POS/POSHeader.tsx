@@ -1,5 +1,6 @@
-import React from 'react';
-import { Search } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, RefreshCw, Loader2 } from 'lucide-react';
+import { useApp } from '../../../store';
 
 interface POSHeaderProps {
   editingOrderId: string | null;
@@ -15,6 +16,24 @@ export const POSHeader: React.FC<POSHeaderProps> = ({
   editingOrderId, isHospitality, activePOSMode, setActivePOSMode,
   searchQuery, setSearchQuery, clearCart,
 }) => {
+  const { currentShift, rollover, userRole } = useApp();
+  const [rolloverLoading, setRolloverLoading] = useState(false);
+  const [showRolloverConfirm, setShowRolloverConfirm] = useState(false);
+
+  const canRollover = userRole === 'super-admin' || userRole === 'admin' || userRole === 'ADMIN';
+
+  const handleRollover = async () => {
+    setRolloverLoading(true);
+    try {
+      await rollover(currentShift?.openingBalance ?? 0);
+      setShowRolloverConfirm(false);
+    } catch (error) {
+      console.error('Rollover failed:', error);
+    } finally {
+      setRolloverLoading(false);
+    }
+  };
+
   return (
     <header className="mb-3 bg-slate-900 p-3 sm:p-5 rounded-2xl border border-white/5 shadow-xl space-y-4">
       <div className="flex flex-col xl:flex-row items-start xl:items-center justify-between gap-3">
@@ -27,6 +46,51 @@ export const POSHeader: React.FC<POSHeaderProps> = ({
           </h2>
           {editingOrderId && (
             <button onClick={clearCart} className="text-[10px] font-black text-red-500 hover:bg-red-500/10 px-3 py-1.5 rounded-xl transition-colors border border-red-500/20">إلغاء</button>
+          )}
+          
+          {/* زر الترحيل */}
+          {canRollover && currentShift && (
+            <div className="relative">
+              <button
+                onClick={() => setShowRolloverConfirm(true)}
+                disabled={rolloverLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black transition-all disabled:opacity-50"
+              >
+                {rolloverLoading ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={12} />
+                )}
+                ترحيل اليومية
+              </button>
+              
+              {/* نافذة التأكيد */}
+              {showRolloverConfirm && (
+                <div className="absolute top-full left-0 mt-2 p-4 bg-slate-800 border border-white/10 rounded-xl shadow-2xl z-50 w-72">
+                  <p className="text-white text-xs font-bold mb-3">
+                    هل أنت متأكد من ترحيل اليومية؟
+                  </p>
+                  <p className="text-slate-400 text-[10px] mb-4">
+                    سيتم إغلاق اليومية الحالية وفتح يومية جديدة. الطلبات المدفوعة ستبقى في اليومية القديمة.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleRollover}
+                      disabled={rolloverLoading}
+                      className="flex-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black transition-all disabled:opacity-50"
+                    >
+                      {rolloverLoading ? 'جاري الترحيل...' : 'تأكيد الترحيل'}
+                    </button>
+                    <button
+                      onClick={() => setShowRolloverConfirm(false)}
+                      className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-[10px] font-black transition-all"
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
 

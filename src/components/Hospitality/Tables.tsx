@@ -36,6 +36,9 @@ import {
   Hash,
   CheckCircle,
   Send,
+  Link2,
+  Unlink,
+  AlertTriangle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -43,6 +46,8 @@ import {
   type OrderFromApi,
   type PaymentMethod as ApiPaymentMethod,
 } from "../../services/orderService";
+import { toast } from "../shared/Toast";
+import api from "../../api/axios";
 
 const formatMoney = (value: number | string | null | undefined) =>
   `${Number(value || 0).toFixed(2)} ₪`;
@@ -166,6 +171,7 @@ export const HospitalityTables: React.FC<{
   const [activeApiOrder, setActiveApiOrder] = useState<OrderFromApi | null>(
     null,
   );
+  const [allTableOrders, setAllTableOrders] = useState<OrderFromApi[]>([]);
   const [activeOrderLoadingTableId, setActiveOrderLoadingTableId] = useState<
     string | null
   >(null);
@@ -173,6 +179,8 @@ export const HospitalityTables: React.FC<{
   const [isMobile, setIsMobile] = useState(
     typeof window !== "undefined" && window.innerWidth < 768
   );
+  const [mergedTableModal, setMergedTableModal] = useState<Table | null>(null);
+  const [unmerging, setUnmerging] = useState(false);
 
   // Live timer ticker
   const [, setTick] = useState(0);
@@ -269,17 +277,17 @@ export const HospitalityTables: React.FC<{
           label: "قيد التنظيف",
           border: "border-slate-600/20",
         };
-      case TableStatus.HAS_ORDER:
-        return {
-          color: "bg-red-600 text-white font-medium animate-pulse-slow",
-          label: "عليها طلب 🔥",
-          border: "border-red-700/40",
-        };
       case TableStatus.PENDING_CONFIRMATION:
         return {
           color: "bg-orange-500 text-white font-medium animate-pulse",
           label: "بانتظار التأكيد 🟡",
           border: "border-orange-600/40",
+        };
+      case TableStatus.MERGED:
+        return {
+          color: "bg-amber-700/70 border-dashed",
+          label: "مدمجة",
+          border: "border-amber-500/50",
         };
       default:
         return {
@@ -315,28 +323,31 @@ export const HospitalityTables: React.FC<{
     setOrderType(OrderType.DINE_IN);
     setShowPopup(table.id);
     setActiveApiOrder(null);
+    setAllTableOrders([]);
     setActiveOrderError(null);
     setActiveOrderLoadingTableId(table.id);
 
     try {
-      const order = await orderService.getActiveByTableNumber(
+      // جلب جميع الطلبات النشطة لهذه الطاولة (بدلاً من آخر طلب فقط)
+      const orders = await orderService.getAllActiveByTableNumber(
         table.table_number || table.number,
         getBranchFilter(currentUser),
       );
-      setActiveApiOrder(order);
+      setAllTableOrders(orders);
+      setActiveApiOrder(orders[0] ?? null);
 
       if (
-        order &&
-        (table.currentOrderId !== String(order.id) ||
+        orders.length > 0 &&
+        (table.currentOrderId !== String(orders[0].id) ||
           table.status !== TableStatus.OCCUPIED)
       ) {
         updateTableStatus(table.id, TableStatus.OCCUPIED, {
-          currentOrderId: String(order.id),
+          currentOrderId: String(orders[0].id),
         });
       }
     } catch (error) {
-      console.error("Failed to load active order for table:", error);
-      setActiveOrderError("فشل تحميل الطلب النشط لهذه الطاولة");
+      console.error("Failed to load active orders for table:", error);
+      setActiveOrderError("فشل تحميل الطلبات لهذه الطاولة");
     } finally {
       setActiveOrderLoadingTableId(null);
     }
@@ -347,35 +358,98 @@ export const HospitalityTables: React.FC<{
     const sourceTable = tables.find((t) => t.id === transferMode.fromId);
     if (!sourceTable) return;
 
-    let orderId = sourceTable.currentOrderId;
-
-    if (!orderId) {
-      try {
-        const sourceNumber = sourceTable.table_number || String(sourceTable.number);
-        const order = await orderService.getActiveByTableNumber(sourceNumber, getBranchFilter(currentUser));
-        if (order) {
-          orderId = String(order.id);
-        }
-      } catch {}
-    }
-
-    if (!orderId) {
-      setTransferError("لا يوجد طلب نشط على الطاولة المصدر");
-      return;
-    }
-
     try {
+      const sourceNumber = sourceTable.table_number || String(sourceTable.number);
       const targetNumber = targetTable.table_number || String(targetTable.number);
-      await orderService.transferOrder(Number(orderId), String(targetNumber));
+
+      // جلب جميع الطلبات النشطة للطاولة المصدر
+      const allOrders = await orderService.getAllActiveByTableNumber(sourceNumber, getBranchFilter(currentUser));
+
+      // نقل الطلبات إن وُجدت
+      if (allOrders.length > 0) {
+        for (const order of allOrders) {
+          try {
+            await orderService.transferOrder(order.id, targetNumber);
+          } catch (err) {
+            console.warn(`فشل نقل الطلب #${order.id}:`, err);
+          }
+        }
+      }
+
+      // تحديث حالة الطاولة الهدف
+      updateTableStatus(targetTable.id, TableStatus.OCCUPIED, {
+        currentOrderId: allOrders.length > 0 ? String(allOrders[0].id) : undefined,
+        guestCount: sourceTable.guestCount,
+      });
+
+      // تفريغ الطاولة المصدر
+      updateTableStatus(sourceTable.id, TableStatus.AVAILABLE, {
+        currentOrderId: undefined,
+        seatedAt: undefined,
+        guestCount: undefined,
+      });
+
       setTransferMode(null);
       setTransferError(null);
       await fetchTables();
+
+      if (allOrders.length > 0) {
+        toast.success(`تم نقل ${allOrders.length} طلب بنجاح`, `من طاولة ${sourceNumber} إلى طاولة ${targetNumber}`);
+      } else {
+        toast.success(`تم نقل الطاولة بنجاح`, `من طاولة ${sourceNumber} إلى طاولة ${targetNumber}`);
+      }
     } catch (err: any) {
-      setTransferError(err?.response?.data?.message || "فشل نقل الطلب");
+      setTransferError(err?.response?.data?.message || "فشل نقل الطلبات");
+    }
+  };
+
+  const handleMergeConfirm = async () => {
+    if (mergeMode.length < 2) {
+      setTransferError("يجب اختيار طاولتين على الأقل للدمج");
+      return;
+    }
+
+    // الطاولة الأخيرة هي الهدف، والباقي يتم نقلها إليها
+    const targetTableId = mergeMode[mergeMode.length - 1];
+    const sourceTableIds = mergeMode.slice(0, -1);
+
+    try {
+      const response = await api.post('/tables/merge', {
+        from_table_ids: sourceTableIds,
+        to_table_id: targetTableId,
+      });
+
+      if (response.data?.success) {
+        toast.success(response.data.message);
+        setMergeMode([]);
+        await fetchTables();
+      } else {
+        setTransferError(response.data?.message || 'فشل دمج الطاولات');
+      }
+    } catch (err: any) {
+      setTransferError(err?.response?.data?.message || 'فشل دمج الطاولات');
+    }
+  };
+
+  const handleUnmergeTable = async (table: Table) => {
+    setUnmerging(true);
+    try {
+      await api.post(`/tables/${table.id}/unmerge`);
+      setMergedTableModal(null);
+      await fetchDiningZones();
+    } catch (err: any) {
+      alert(err?.response?.data?.message || "فشل فك الدمج");
+    } finally {
+      setUnmerging(false);
     }
   };
 
   const handleTableClick = (table: Table) => {
+    if (table.status === TableStatus.MERGED) {
+      setMergedTableModal(table);
+      return;
+    }
+
     if (mode === "pos") {
       setSelectedTable(table);
       setOrderType(OrderType.DINE_IN);
@@ -438,6 +512,27 @@ export const HospitalityTables: React.FC<{
       : null;
   const isLoadingActivePopupOrder =
     !!activePopupTable && activeOrderLoadingTableId === activePopupTable.id;
+
+  // تحديث تلقائي لطلبات الطاولة المفتوحة كل 5 ثواني
+  useEffect(() => {
+    if (!showPopup || !activePopupTable) return;
+    const refreshOrders = async () => {
+      try {
+        const orders = await orderService.getAllActiveByTableNumber(
+          activePopupTable.table_number || activePopupTable.number,
+          getBranchFilter(currentUser),
+        );
+        setAllTableOrders(orders);
+        if (orders.length > 0) {
+          setActiveApiOrder(orders[0]);
+        }
+      } catch {
+        // تجاهل الأخطاء أثناء التحديث الخلفي
+      }
+    };
+    const interval = setInterval(() => { refreshOrders(); }, 5000);
+    return () => clearInterval(interval);
+  }, [showPopup, activePopupTable, currentUser]);
 
   return (
     <div className="h-full flex flex-col space-y-3 sm:space-y-4 lg:space-y-6 bg-slate-950 p-3 sm:p-6 lg:p-8 rounded-2xl sm:rounded-[3rem] overflow-hidden">
@@ -517,10 +612,7 @@ export const HospitalityTables: React.FC<{
             {mergeMode.length > 0 && (
               <div className="flex gap-2">
                 <button
-                  onClick={() => {
-                    mergeTables(mergeMode);
-                    setMergeMode([]);
-                  }}
+                  onClick={handleMergeConfirm}
                   className="bg-blue-600 text-white px-4 sm:px-6 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl font-black text-[10px] sm:text-xs shadow-lg shadow-blue-900/20 flex items-center gap-2"
                 >
                   <Merge size={14} className="sm:hidden" />
@@ -577,7 +669,7 @@ export const HospitalityTables: React.FC<{
                       mergeMode.includes(table.id)
                         ? "ring-2 sm:ring-4 ring-blue-600 ring-offset-2 sm:ring-offset-4 ring-offset-slate-950"
                         : ""
-                    } ${table.mergedWithId ? "opacity-60 border-dashed" : ""} ${config.color} ${config.border} text-white shadow-lg sm:shadow-xl`}
+                    } ${table.mergedWithId || table.status === TableStatus.MERGED ? "opacity-80 border-dashed" : ""} ${config.color} ${config.border} text-white shadow-lg sm:shadow-xl`}
                   >
                     <span className="text-sm sm:text-lg md:text-2xl font-black">{getTableDisplayLabel(table)}</span>
                   <div className="flex flex-col items-center gap-0.5 sm:gap-1">
@@ -586,15 +678,25 @@ export const HospitalityTables: React.FC<{
                         تم الدفع
                       </span>
                     )}
-                    <span className="text-[7px] sm:text-[9px] md:text-[10px] font-black bg-black/20 px-1 sm:px-2 py-0.5 rounded-full">
-                      {table.mergedWithId
-                        ? `مدمجة مع #${tables.find((t) => t.id === table.mergedWithId)?.number}`
-                        : table.status === TableStatus.OCCUPIED ||
-                            table.status === TableStatus.PAID
-                          ? `${table.guestCount || 0} أشخاص`
-                          : `${table.capacity} سعة`}
-                    </span>
-                    {order && !table.mergedWithId && (
+                    {table.status === TableStatus.MERGED && table.mergeInfo ? (
+                      <span className="text-[7px] sm:text-[9px] md:text-[10px] font-black bg-amber-600 text-white px-1 sm:px-2 py-0.5 rounded-full">
+                        مدمجة مع طاولة {table.mergeInfo.merged_with_table_number || table.mergeInfo.mergedWithTableNumber || tables.find(t => t.id === table.mergeInfo?.merged_with_id || table.mergeInfo?.mergedWithId)?.table_number || ""}
+                      </span>
+                    ) : table.mergedWithId ? (
+                      <span className="text-[7px] sm:text-[9px] md:text-[10px] font-black bg-black/20 px-1 sm:px-2 py-0.5 rounded-full">
+                        مدمجة مع طاولة {tables.find((t) => t.id === table.mergedWithId)?.table_number}
+                      </span>
+                    ) : table.status === TableStatus.OCCUPIED ||
+                        table.status === TableStatus.PAID ? (
+                      <span className="text-[7px] sm:text-[9px] md:text-[10px] font-black bg-black/20 px-1 sm:px-2 py-0.5 rounded-full">
+                        {table.guestCount || 0} أشخاص
+                      </span>
+                    ) : (
+                      <span className="text-[7px] sm:text-[9px] md:text-[10px] font-black bg-black/20 px-1 sm:px-2 py-0.5 rounded-full">
+                        {table.capacity} سعة
+                      </span>
+                    )}
+                    {order && table.status !== TableStatus.MERGED && !table.mergedWithId && (
                       <div className="flex flex-col items-center gap-0.5 sm:gap-1">
                         <span className="text-[7px] sm:text-[9px] md:text-[10px] font-black text-white/80">
                           {order.total.toFixed(2)} ₪
@@ -647,7 +749,7 @@ export const HospitalityTables: React.FC<{
                     onClick={() => handleTableClick(table)}
                     className={`absolute rounded-2xl border-2 flex flex-col items-center justify-center gap-1 shadow-2xl transition-all ${
                       mergeMode.includes(table.id) ? "ring-4 ring-blue-600" : ""
-                    } ${table.mergedWithId ? "opacity-60 border-dashed" : ""} ${config.color} ${config.border} text-white`}
+                    } ${table.mergedWithId || table.status === TableStatus.MERGED ? "opacity-80 border-dashed" : ""} ${config.color} ${config.border} text-white`}
                   >
                     <span
                       className="font-black"
@@ -663,20 +765,39 @@ export const HospitalityTables: React.FC<{
                         تم الدفع
                       </span>
                     )}
-                    {zoom > 0.7 && (
+                        {zoom > 0.7 && (
                       <div className="flex flex-col items-center">
-                        <span
-                          className="font-black bg-black/20 px-1.5 py-0.5 rounded-full"
-                          style={{ fontSize: `${8 * zoom}px` }}
-                        >
-                          {table.mergedWithId
-                            ? `مدمجة مع #${tables.find((t) => t.id === table.mergedWithId)?.number}`
-                            : table.status === TableStatus.OCCUPIED ||
-                                table.status === TableStatus.PAID
-                              ? `${table.guestCount || 0} أشخاص`
-                              : `${table.capacity} سعة`}
-                        </span>
-                        {order && !table.mergedWithId && (
+                        {table.status === TableStatus.MERGED && table.mergeInfo ? (
+                          <span
+                            className="font-black bg-amber-600 text-white px-1.5 py-0.5 rounded-full"
+                            style={{ fontSize: `${8 * zoom}px` }}
+                          >
+                            مدمجة مع طاولة {table.mergeInfo.merged_with_table_number || table.mergeInfo.mergedWithTableNumber || tables.find(t => t.id === table.mergeInfo?.merged_with_id || table.mergeInfo?.mergedWithId)?.table_number || ""}
+                          </span>
+                        ) : table.mergedWithId ? (
+                          <span
+                            className="font-black bg-black/20 px-1.5 py-0.5 rounded-full"
+                            style={{ fontSize: `${8 * zoom}px` }}
+                          >
+                            مدمجة مع طاولة {tables.find((t) => t.id === table.mergedWithId)?.table_number}
+                          </span>
+                        ) : table.status === TableStatus.OCCUPIED ||
+                            table.status === TableStatus.PAID ? (
+                          <span
+                            className="font-black bg-black/20 px-1.5 py-0.5 rounded-full"
+                            style={{ fontSize: `${8 * zoom}px` }}
+                          >
+                            {table.guestCount || 0} أشخاص
+                          </span>
+                        ) : (
+                          <span
+                            className="font-black bg-black/20 px-1.5 py-0.5 rounded-full"
+                            style={{ fontSize: `${8 * zoom}px` }}
+                          >
+                            {table.capacity} سعة
+                          </span>
+                        )}
+                        {order && table.status !== TableStatus.MERGED && !table.mergedWithId && (
                           <div className="flex flex-col items-center">
                             <span
                               className="font-black"
@@ -735,11 +856,27 @@ export const HospitalityTables: React.FC<{
                 >
                   -
                 </button>
-                <span className="text-3xl sm:text-4xl font-black text-white w-10 sm:w-12 text-center">
-                  {guestCount}
-                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={guestCount}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (raw === '') {
+                      setGuestCount(0);
+                      return;
+                    }
+                    const val = parseInt(raw);
+                    if (!isNaN(val) && val >= 1 && val <= 99) setGuestCount(val);
+                  }}
+                  onBlur={() => {
+                    if (guestCount < 1) setGuestCount(1);
+                  }}
+                  className="w-20 sm:w-24 text-center text-5xl sm:text-6xl font-black text-white bg-transparent border-b-2 border-white/20 focus:border-red-500 outline-none transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
                 <button
-                  onClick={() => setGuestCount(guestCount + 1)}
+                  onClick={() => setGuestCount(Math.min(99, guestCount + 1))}
                   className="w-10 h-10 sm:w-12 sm:h-12 bg-slate-800 text-white rounded-xl sm:rounded-2xl flex items-center justify-center hover:bg-slate-700 transition-all font-black text-lg sm:text-xl border border-white/5"
                 >
                   +
@@ -751,8 +888,9 @@ export const HospitalityTables: React.FC<{
                   onClick={() => {
                     const table = tables.find((t) => t.id === seatingTableId);
                     if (!table) return;
+                    const count = Math.max(1, guestCount);
                     setSelectedTable(table);
-                    seatTable(seatingTableId, guestCount);
+                    seatTable(seatingTableId, count);
                     setOrderType(OrderType.DINE_IN);
                     setSeatingTableId(null);
                     if (onSelect) {
@@ -842,14 +980,9 @@ export const HospitalityTables: React.FC<{
                     </div>
 
                     {activePopupTable.mergedWithId && (
-                      <div className="bg-blue-600/10 border border-blue-600/20 p-4 rounded-2xl text-center">
-                        <p className="text-blue-500 font-black text-xs">
-                          مدمجة مع طاولة #
-                          {
-                            tables.find(
-                              (t) => t.id === activePopupTable.mergedWithId,
-                            )?.number
-                          }
+                      <div className="bg-amber-600/10 border border-amber-600/20 p-4 rounded-2xl text-center">
+                        <p className="text-amber-500 font-black text-xs">
+                          مدمجة مع طاولة {tables.find((t) => t.id === activePopupTable.mergedWithId)?.table_number}
                         </p>
                       </div>
                     )}
@@ -867,20 +1000,19 @@ export const HospitalityTables: React.FC<{
                       </div>
                     ) : activePopupApiOrder ? (
                       <div className="bg-slate-800/50 p-5 rounded-3xl border border-white/5 flex flex-col gap-4">
+                        {/* ملخص جميع الطلبات */}
                         <div className="flex justify-between items-start gap-4">
                           <div className="space-y-1">
                             <div className="flex items-center gap-2 text-slate-500">
                               <ReceiptText size={14} />
                               <span className="text-[10px] font-black uppercase tracking-widest">
-                                الفاتورة / الطلب
+                                فاتورة الطاولة
                               </span>
                             </div>
-                            <p className="text-sm font-black text-white">
-                              #{activePopupApiOrder.order_number}
-                            </p>
                             <p className="text-[10px] font-bold text-slate-500">
-                              {getApiOrderStatusLabel(activePopupApiOrder.status)} ·{" "}
-                              {formatDateTime(activePopupApiOrder.created_at)}
+                              {allTableOrders.length > 0
+                                ? `${allTableOrders.length} طلب${allTableOrders.length > 1 ? 'ات' : ''} على الطاولة`
+                                : 'لا توجد طلبات'}
                             </p>
                           </div>
                           <div className="text-left">
@@ -891,174 +1023,92 @@ export const HospitalityTables: React.FC<{
                               </span>
                             </div>
                             <p className="text-sm font-black text-red-600">
-                              {formatMoney(activePopupApiOrder.total)}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-2">
-                          <div className="bg-slate-900/60 rounded-2xl border border-white/5 p-3">
-                            <div className="flex items-center gap-1.5 text-slate-500 mb-1">
-                              <ClipboardList size={12} />
-                              <span className="text-[8px] font-black uppercase">
-                                النوع
-                              </span>
-                            </div>
-                            <p className="text-[10px] font-black text-white">
-                              {activePopupApiOrder.order_type === "dine_in"
-                                ? "محلي"
-                                : "سفري"}
-                            </p>
-                          </div>
-                          <div className="bg-slate-900/60 rounded-2xl border border-white/5 p-3">
-                            <div className="flex items-center gap-1.5 text-slate-500 mb-1">
-                              <Hash size={12} />
-                              <span className="text-[8px] font-black uppercase">
-                                الطاولة
-                              </span>
-                            </div>
-                            <p className="text-[10px] font-black text-white">
-                              {getTableDisplayLabel(activePopupTable)}
-                            </p>
-                          </div>
-                          <div className="bg-slate-900/60 rounded-2xl border border-white/5 p-3">
-                            <div className="flex items-center gap-1.5 text-slate-500 mb-1">
-                              {getApiPaymentIcon(
-                                getPrimaryPaymentMethod(activePopupApiOrder),
-                              )}
-                              <span className="text-[8px] font-black uppercase">
-                                الدفع
-                              </span>
-                            </div>
-                            <p className="text-[10px] font-black text-white">
-                              {getApiPaymentLabel(
-                                getPrimaryPaymentMethod(activePopupApiOrder),
+                              {formatMoney(
+                                allTableOrders.reduce((sum, order) => sum + Number(order.total || 0), 0)
                               )}
                             </p>
                           </div>
                         </div>
 
-                        {(activePopupApiOrder.customer_name ||
-                          activePopupApiOrder.customer_phone) && (
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="bg-slate-900/60 rounded-2xl border border-white/5 p-3">
-                              <div className="flex items-center gap-1.5 text-slate-500 mb-1">
-                                <User size={12} />
-                                <span className="text-[8px] font-black uppercase">
-                                  العميل
-                                </span>
-                              </div>
-                              <p className="text-[10px] font-black text-white truncate">
-                                {activePopupApiOrder.customer_name || "---"}
-                              </p>
-                            </div>
-                            <div className="bg-slate-900/60 rounded-2xl border border-white/5 p-3">
-                              <div className="flex items-center gap-1.5 text-slate-500 mb-1">
-                                <Phone size={12} />
-                                <span className="text-[8px] font-black uppercase">
-                                  الهاتف
-                                </span>
-                              </div>
-                              <p className="text-[10px] font-black text-white truncate">
-                                {activePopupApiOrder.customer_phone || "---"}
-                              </p>
-                            </div>
+                        {/* أصناف جميع الطلبات مجمعة */}
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-1.5 text-slate-500">
+                            <ClipboardList size={14} />
+                            <span className="text-[10px] font-black uppercase tracking-widest">
+                              جميع الأصناف
+                            </span>
                           </div>
-                        )}
-
-                        <div className="rounded-2xl border border-white/5 overflow-hidden">
-                          <div className="max-h-56 overflow-y-auto custom-scrollbar">
-                            {activePopupApiOrder.items.map((item) => (
-                              <div
-                                key={item.id}
-                                className="grid grid-cols-[1fr_auto_auto] gap-3 items-center px-3 py-2.5 border-b border-white/5 last:border-b-0 bg-slate-900/40"
-                              >
-                                <div className="min-w-0">
-                                  <p className="text-sm font-black text-white truncate">
-                                    {item.item_name_ar || item.item_name}
-                                  </p>
-                                  {item.notes && (
-                                    <p className="text-[9px] font-bold text-slate-500 truncate">
-                                      {item.notes}
-                                    </p>
-                                  )}
-                                  <p className="text-[9px] font-bold text-slate-500">
-                                    {calculateSittingTime(item.created_at || activePopupApiOrder.created_at)}
-                                  </p>
+                          <div className="rounded-2xl border border-white/5 overflow-hidden">
+                            <div className="max-h-72 overflow-y-auto custom-scrollbar">
+                              {allTableOrders.length === 0 ? (
+                                <div className="text-center py-6 text-slate-500 text-xs font-bold">
+                                  لا توجد أصناف بعد
                                 </div>
-                                <span className="text-sm font-black text-slate-300">
-                                  x{item.quantity}
-                                </span>
-                                <span className="text-sm font-black text-red-400">
-                                  {formatMoney(item.total_price)}
-                                </span>
-                              </div>
-                            ))}
+                              ) : (
+                                allTableOrders.map((order, orderIdx) => (
+                                  <div key={order.id}>
+                                    {/* رأس الطلب */}
+                                    <div className="bg-slate-900/60 px-3 py-1.5 border-b border-dashed border-white/10 text-[8px] font-bold text-slate-400 flex items-center gap-2 flex-wrap">
+                                      <span>طلب #{order.order_number}</span>
+                                      <span>·</span>
+                                      <span>{getApiOrderStatusLabel(order.status)}</span>
+                                      <span>·</span>
+                                      <span>{formatMoney(order.total)}</span>
+                                      <span>·</span>
+                                      <span className="text-slate-500">
+                                        {calculateSittingTime(order.created_at)}
+                                      </span>
+                                    </div>
+                                    {/* أصناف الطلب */}
+                                    {order.items.map((item: any) => {
+                                      // الطلب المُؤكّد (تم إرساله للأقسام) = أرسل
+                                      // الطلب المحفوظ فقط (لم يُؤكّد بعد) = معلق
+                                      const isSent = !['pending', 'pending_confirmation'].includes(order.status);
+                                      return (
+                                        <div
+                                          key={`${order.id}-${item.id}`}
+                                          className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center px-3 py-2 border-b border-white/5 last:border-b-0 bg-slate-900/30"
+                                        >
+                                          <div className="min-w-0">
+                                            <p className="text-xs font-black text-white truncate">
+                                              {item.item_name_ar || item.item_name}
+                                            </p>
+                                            {item.notes && (
+                                              <p className="text-[8px] font-bold text-slate-500 truncate">
+                                                {item.notes}
+                                              </p>
+                                            )}
+                                            {/* <p className="text-[7px] font-bold text-slate-600 mt-0.5">
+                                              {calculateSittingTime(item.created_at || order.created_at)}
+                                            </p> */}
+                                          </div>
+                                          <span className="text-xs font-black text-slate-400">
+                                            x{item.quantity}
+                                          </span>
+                                          <span className="text-xs font-black text-red-400">
+                                            {formatMoney(item.total_price)}
+                                          </span>
+                                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-black ${isSent ? 'bg-emerald-600/20 text-emerald-400' : 'bg-amber-600/20 text-amber-400'}`}>
+                                            <Send size={8} className="ml-0.5" />
+                                            {isSent ? 'أرسل' : 'معلق'}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ))
+                              )}
+                            </div>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-2 pt-1 text-[10px] font-black">
-                          <div className="text-slate-500">
-                            الفرعي{" "}
-                            <span className="text-slate-300">
-                              {formatMoney(activePopupApiOrder.subtotal)}
-                            </span>
-                          </div>
-                          <div className="text-slate-500">
-                            الخصم{" "}
-                            <span className="text-slate-300">
-                              {formatMoney(activePopupApiOrder.discount_amount)}
-                            </span>
-                          </div>
-                          <div className="text-left text-red-500">
-                            الصافي {formatMoney(activePopupApiOrder.total)}
-                          </div>
-                        </div>
-
-                        {activePopupApiOrder.note && (
+                        {allTableOrders.some(o => o.note) && (
                           <p className="bg-slate-900/60 rounded-2xl border border-white/5 p-3 text-[10px] font-bold text-slate-400">
-                            {activePopupApiOrder.note}
+                            {allTableOrders.filter(o => o.note).map(o => o.note).join(' | ')}
                           </p>
                         )}
 
-                        {activePopupApiOrder.status === "pending_confirmation" && (
-                          <button
-                            onClick={async () => {
-                              try {
-                                const res = await fetch(
-                                  `${import.meta.env.VITE_API_URL || "/api"}/orders/${activePopupApiOrder.id}/confirm-customer`,
-                                  {
-                                    method: "POST",
-                                    headers: {
-                                      "Content-Type": "application/json",
-                                      Authorization: `Bearer ${localStorage.getItem("token")}`,
-                                    },
-                                  }
-                                );
-                                const data = await res.json();
-                                if (data.success) {
-                                  setActiveApiOrder({
-                                    ...activePopupApiOrder,
-                                    status: "confirmed",
-                                  });
-                                  updateTableStatus(
-                                    activePopupTable.id,
-                                    TableStatus.HAS_ORDER,
-                                    { currentOrderId: String(activePopupApiOrder.id) }
-                                  );
-                                } else {
-                                  alert(data.message || "فشل تأكيد الطلب");
-                                }
-                              } catch {
-                                alert("حدث خطأ أثناء تأكيد الطلب");
-                              }
-                            }}
-                            className="w-full bg-emerald-600 text-white py-3 rounded-xl font-black text-xs shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2"
-                          >
-                            <CheckCircle size={16} /> تأكيد الطلب
-                          </button>
-                        )}
-
+                        {/* أزرار الإجراءات */}
                         <button
                           onClick={() => {
                             setSelectedTable(activePopupTable);
@@ -1076,12 +1126,11 @@ export const HospitalityTables: React.FC<{
                             setSelectedTable(activePopupTable);
                             setOrderType(OrderType.DINE_IN);
                             setShowPopup(null);
-                            clearCart?.();
-                            handleNavigateToPOS(activePopupTable);
+                            navigate("/Hospitality?addOrder=1");
                           }}
                           className="w-full bg-emerald-600 text-white py-3 rounded-xl font-black text-xs shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2"
                         >
-                          <Plus size={16} /> طلب جديد
+                          <Plus size={16} /> طلب جديد (إضافة طلب آخر)
                         </button>
                       </div>
                     ) : activePopupOrder ? (
@@ -1175,34 +1224,40 @@ export const HospitalityTables: React.FC<{
                     )}
 
                     <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                      <button
-                        onClick={() => {
-                          // السماح بالتفريغ إذا كانت مدفوعة أو مشغولة بدون طلب
-                          const canClear = activePopupTable.status === TableStatus.PAID || 
-                              (activePopupTable.status === TableStatus.OCCUPIED && !activePopupTable.currentOrderId);
-                          if (canClear) {
-                            updateTableStatus(
-                              activePopupTable.id,
-                              TableStatus.AVAILABLE,
-                            );
-                          } else {
-                            alert("لا يمكن تفريغ الطاولة، يوجد طلب نشط عليها");
-                            return;
-                          }
-                        }}
-                        className={`flex flex-col items-center gap-1 sm:gap-2 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-white/5 transition-all ${
+                      {(() => {
+                        const hasActiveOrders = allTableOrders.length > 0;
+                        const canClear = !hasActiveOrders && (
                           activePopupTable.status === TableStatus.PAID ||
                           (activePopupTable.status === TableStatus.OCCUPIED && !activePopupTable.currentOrderId)
-                            ? "bg-slate-800 hover:bg-slate-700"
-                            : "bg-slate-900 opacity-50 cursor-not-allowed"
-                        }`}
-                      >
-                        <Trash2 size={16} className="text-red-500 sm:hidden" />
-                        <Trash2 size={20} className="text-red-500 hidden sm:block" />
-                        <span className="text-[8px] sm:text-[10px] font-black text-slate-300">
-                          تفريغ
-                        </span>
-                      </button>
+                        );
+                        return (
+                          <button
+                            onClick={() => {
+                              if (canClear) {
+                                updateTableStatus(
+                                  activePopupTable.id,
+                                  TableStatus.AVAILABLE,
+                                );
+                              } else {
+                                alert("لا يمكن تفريغ الطاولة، يوجد طلب نشط عليها");
+                                return;
+                              }
+                            }}
+                            disabled={!canClear}
+                            className={`flex flex-col items-center gap-1 sm:gap-2 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-white/5 transition-all ${
+                              canClear
+                                ? "bg-slate-800 hover:bg-slate-700 cursor-pointer"
+                                : "bg-slate-900 opacity-50 cursor-not-allowed"
+                            }`}
+                          >
+                            <Trash2 size={16} className="text-red-500 sm:hidden" />
+                            <Trash2 size={20} className="text-red-500 hidden sm:block" />
+                            <span className="text-[8px] sm:text-[10px] font-black text-slate-300">
+                              تفريغ
+                            </span>
+                          </button>
+                        );
+                      })()}
                       <button
                         onClick={() => {
                           setTransferMode({ fromId: activePopupTable.id });
@@ -1302,6 +1357,129 @@ export const HospitalityTables: React.FC<{
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* Merged Table Modal */}
+      <AnimatePresence>
+        {mergedTableModal && (
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            onClick={() => setMergedTableModal(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-slate-900 w-full max-w-md rounded-[3rem] border border-white/10 shadow-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header - amber for merged */}
+              <div className="p-8 bg-amber-600/70 text-white flex justify-between items-start">
+                <div className="space-y-1">
+                  <h3 className="text-3xl font-black">
+                    طاولة {getTableDisplayLabel(mergedTableModal)}
+                  </h3>
+                  <div className="flex items-center gap-2 text-sm font-bold opacity-80">
+                    <Link2 size={16} /> مدمجة مع طاولة {mergedTableModal.mergeInfo?.merged_with_table_number || mergedTableModal.mergeInfo?.mergedWithTableNumber || tables.find(t => t.id === mergedTableModal.mergeInfo?.merged_with_id || mergedTableModal.mergeInfo?.mergedWithId)?.table_number || "---"}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setMergedTableModal(null)}
+                  className="p-2 hover:bg-black/20 rounded-full transition-colors"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="p-8 space-y-6">
+                {/* Info Grid */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-slate-800/50 p-4 rounded-2xl border border-white/5">
+                    <div className="flex items-center gap-2 text-slate-500 mb-1">
+                      <Link2 size={14} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">
+                        مدمجة مع
+                      </span>
+                    </div>
+                    <p className="text-lg font-black text-amber-400">
+                      طاولة {mergedTableModal.mergeInfo?.merged_with_table_number || mergedTableModal.mergeInfo?.mergedWithTableNumber || tables.find(t => t.id === mergedTableModal.mergeInfo?.merged_with_id || mergedTableModal.mergeInfo?.mergedWithId)?.table_number || "---"}
+                    </p>
+                  </div>
+                  <div className="bg-slate-800/50 p-4 rounded-2xl border border-white/5">
+                    <div className="flex items-center gap-2 text-slate-500 mb-1">
+                      <Users size={14} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">
+                        السعة
+                      </span>
+                    </div>
+                    <p className="text-lg font-black text-white">
+                      {mergedTableModal.capacity} أشخاص
+                    </p>
+                  </div>
+                </div>
+
+                {/* Warning */}
+                <div className="bg-red-500/10 p-4 rounded-2xl border border-red-500/20 flex items-start gap-3">
+                  <AlertTriangle size={20} className="text-red-400 mt-0.5 shrink-0" />
+                  <p className="text-xs font-bold text-red-300 leading-relaxed">
+                    لا يمكن تنفيذ أي عمليات على هذه الطاولة لأنها مدمجة مع طاولة أخرى. يجب فك الدمج أولاً.
+                  </p>
+                </div>
+
+                {/* Orders Info */}
+                {mergedTableModal.orders && mergedTableModal.orders.length > 0 && (
+                  <div className="bg-slate-800/50 p-4 rounded-2xl border border-white/5">
+                    <div className="flex items-center gap-2 text-slate-500 mb-3">
+                      <ReceiptText size={14} />
+                      <span className="text-[10px] font-black uppercase tracking-widest">
+                        الطلبات المحولة ({mergedTableModal.orders.length})
+                      </span>
+                    </div>
+                    <div className="space-y-3">
+                      {mergedTableModal.orders.map((order: any) => (
+                        <div key={order.id} className="bg-slate-900/60 rounded-xl p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-white">#{order.order_number || order.id}</span>
+                            <span className="text-xs font-bold text-green-400">{formatMoney(order.total)}</span>
+                          </div>
+                          {order.items && order.items.length > 0 && (
+                            <div className="space-y-1 pl-3 border-r-2 border-amber-500/30">
+                              {order.items.map((item: any, idx: number) => (
+                                <div key={idx} className="flex items-center justify-between text-[10px]">
+                                  <span className="text-slate-300 font-bold">
+                                    {item.quantity}x {item.item_name_ar || item.item_name}
+                                  </span>
+                                  <span className="text-slate-400 font-bold">{formatMoney(item.total_price)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Unmerge Button */}
+                <button
+                  onClick={() => handleUnmergeTable(mergedTableModal)}
+                  disabled={unmerging}
+                  className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white py-4 rounded-2xl font-black text-sm shadow-lg shadow-purple-900/30 flex items-center justify-center gap-2 transition-all"
+                >
+                  {unmerging ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : (
+                    <Unlink size={18} />
+                  )}
+                  {unmerging ? "جاري فك الدمج..." : "فك الدمج"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 

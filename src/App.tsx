@@ -58,6 +58,8 @@ import { DayClosePage } from "./components/administration/DayClosePage";
 import { ReconciliationBoard } from "./components/administration/ReconciliationBoard";
 import { ShiftClosingsPage } from "./components/administration/ShiftClosingsPage";
 import { BusinessDayClosingPage } from "./components/administration/BusinessDayClosingPage";
+import { FiscalYearsPage } from "./components/administration/FiscalYearsPage";
+import { FiscalYearOverview } from "./components/administration/FiscalYearOverview";
 import { QuotesView } from "./components/quotes/QuotesView";
 import { VouchersView } from "./components/administration/VouchersView";
 import { CustomerVouchersView } from "./components/administration/CustomerVouchersView";
@@ -363,6 +365,8 @@ function AppRoutes() {
               <Route path="discounts" element={<FinanceView />} /> 
               <Route path="shift-day-closing" element={<FinanceView />} />
               <Route path="shift-closings" element={<ShiftClosingsPage />} />
+              <Route path="fiscal-years" element={<FiscalYearsPage />} />
+              <Route path="fiscal-years/:id" element={<FiscalYearOverview />} />
               <Route path="business-day" element={<BusinessDayClosingPage />} />
               <Route path="printers" element={<PrintersManagement />} />
               <Route path="accounting">
@@ -397,6 +401,7 @@ function AppRoutes() {
               <Route path="orders" element={<OrdersView />} />
               <Route path="tables" element={<TablesView />} />
               <Route path="deferred" element={<DeferredTables />} />
+              <Route path="shift" element={<ShiftView />} />
             </Route>
           </Route>
         </Route>

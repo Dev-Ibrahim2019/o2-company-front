@@ -6,7 +6,7 @@ import { CartProvider } from './cart-provider'
 import { Loader2 } from 'lucide-react'
 import { TableWaitingPage } from './TableWaitingPage'
 
-const OCCUPIED_STATUSES = ['OCCUPIED', 'HAS_ORDER', 'PAYMENT_PENDING', 'PENDING_CONFIRMATION']
+const OCCUPIED_STATUSES = ['OCCUPIED', 'PAYMENT_PENDING', 'PENDING_CONFIRMATION']
 
 export function CustomerTableProvider({ children }: { children: React.ReactNode }) {
   const { qrCode } = useParams<{ qrCode: string }>()

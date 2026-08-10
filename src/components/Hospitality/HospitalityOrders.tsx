@@ -169,9 +169,10 @@ export const HospitalityOrders = () => {
 
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
-      const orderDate = new Date(order.created_at);
+      // فلترة حسب الـ shift_id (الأولوية) أو التاريخ كـ fallback
       const isInShift = currentShift
-        ? orderDate >= new Date(currentShift.startTime)
+        ? (order.shift_id && String(order.shift_id) === String(currentShift.id)) ||
+          (new Date(order.created_at) >= new Date(currentShift.startTime))
         : true;
 
       if (!isInShift) return false;

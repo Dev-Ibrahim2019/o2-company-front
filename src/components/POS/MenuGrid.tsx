@@ -89,17 +89,31 @@ export const MenuGrid: React.FC<MenuGridProps> = ({
         {/* أقسام المنيو */}
         {categories.map(cat => (
           <button
-            key={cat.id}
-            onClick={() => setSelectedCategory(String(cat.id))}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg whitespace-nowrap text-[8px] font-black transition-all duration-200 border ${selectedCategory === String(cat.id)
+            onClick={() => setSelectedCategory('all')}
+            className={`flex items-center gap-1 px-2 py-1.5 rounded-lg whitespace-nowrap text-[9px] font-black transition-all duration-200 border shrink-0 ${selectedCategory === 'all'
               ? 'bg-red-600 text-white border-red-600 shadow-sm'
-              : 'bg-slate-900 text-slate-500 border-white/5 hover:bg-slate-800'
+              : 'bg-slate-800 text-slate-400 border-white/5 hover:bg-slate-700'
               }`}
           >
-            <span className="text-[10px]">{cat.icon}</span>
-            <span>{cat.name_ar || cat.name}</span>
+            <span className="text-[10px]">🍽️</span>
+            <span>الكل</span>
           </button>
-        ))}
+
+          {/* أقسام المنيو */}
+          {categories.map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => setSelectedCategory(String(cat.id))}
+              className={`flex items-center gap-1 px-2 py-1.5 rounded-lg whitespace-nowrap text-[9px] font-black transition-all duration-200 border shrink-0 ${selectedCategory === String(cat.id)
+                ? 'bg-red-600 text-white border-red-600 shadow-sm'
+                : 'bg-slate-800 text-slate-400 border-white/5 hover:bg-slate-700'
+                }`}
+            >
+              <span className="text-[10px]">{cat.icon}</span>
+              <span>{cat.name_ar || cat.name}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── Items Grid ── */}
@@ -141,7 +155,7 @@ export const MenuGrid: React.FC<MenuGridProps> = ({
 
                 {/* Badge رقم الصنف */}
                 <div className="absolute top-2 right-2 bg-red-600 text-white px-1.5 py-0.5 rounded-md text-[8px] font-black shadow-lg border border-white/10">
-                  #{item.id}
+                  #{item.code}
                 </div>
               </div>
 

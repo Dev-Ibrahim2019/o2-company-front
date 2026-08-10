@@ -166,6 +166,7 @@ export interface OrderItemPayload {
   quantity: number;
   unit_price: number;
   notes?: string;
+  is_takeaway?: boolean;
 }
 
 export interface CreateOrderPayload {
@@ -359,6 +360,11 @@ export interface OrderFromApi {
   order_number: string;
   branch_id: number;
   cashier_id: number | null;
+  shift_id: number | null;
+  opened_by: number | null;
+  closed_by: number | null;
+  printed_by: number | null;
+  printed_at: string | null;
   order_type: OrderType;
   status: OrderStatus;
   table_number: string | null;
@@ -383,6 +389,9 @@ export interface OrderFromApi {
   tickets: ProductionTicketFromApi[];
   payments?: InvoicePaymentResponse[];
   cashier?: { id: number; name: string };
+  opener?: { id: number; name: string };
+  closer?: { id: number; name: string };
+  printer?: { id: number; name: string };
   has_unsent_items?: boolean;
   created_at: string;
   updated_at: string;
@@ -426,6 +435,32 @@ export const orderService = {
           return bTime - aTime || b.id - a.id;
         })[0] ?? null
     );
+  },
+
+  /** جلب جميع الطلبات النشطة لطاولة معينة (بدلاً من آخر طلب فقط) */
+  getAllActiveByTableNumber: async (
+    tableNumber: string | number,
+    filters?: Omit<OrderQueryFilters, "table_number" | "status">,
+  ): Promise<OrderFromApi[]> => {
+    const normalizedTable = normalizeTableNumber(tableNumber);
+    if (!normalizedTable) return [];
+
+    const orders = await orderService.getAll({
+      ...filters,
+      table_number: normalizedTable,
+    });
+
+    return orders
+      .filter(
+        (order) =>
+          normalizeTableNumber(order.table_number) === normalizedTable &&
+          !CLOSED_ORDER_STATUSES.has(order.status),
+      )
+      .sort((a, b) => {
+        const aTime = Date.parse(a.updated_at || a.created_at);
+        const bTime = Date.parse(b.updated_at || b.created_at);
+        return bTime - aTime || b.id - a.id;
+      });
   },
 
   create: async (payload: CreateOrderPayload): Promise<OrderFromApi> => {
@@ -694,22 +729,18 @@ export const orderService = {
 
     let refreshedOrder = await orderService.getOne(orderId);
 
-    if (primaryPaymentMethod) {
+    // تحديث طريقة الدفع فقط إذا الطلب لسا غير مدفوع
+    if (primaryPaymentMethod && refreshedOrder.status !== 'paid') {
       try {
         const { data } = await api.put(`/orders/${orderId}`, {
           payment_method: primaryPaymentMethod,
-          status: "paid",
         });
         refreshedOrder = data.data as OrderFromApi;
       } catch {
         try {
-          await api.put(`/orders/${orderId}`, {
-            payment_method: primaryPaymentMethod,
-          });
           refreshedOrder = await orderService.getOne(orderId);
         } catch {
-          // Some APIs mark the order paid from the invoice payment endpoint and
-          // reject direct edits after confirmation.
+          // ignore
         }
       }
     }
