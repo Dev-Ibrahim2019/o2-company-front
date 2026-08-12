@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAppContext } from "../../../store";
+import { useApp } from "../../../store";
+import { useVisibilityInterval } from "../../hooks/useVisibilityInterval";
+import { toast } from "../shared/Toast";
 import { TableStatus, OrderType } from "../../../types";
 import type { Table } from "../../../types";
 import { HALLS as DEFAULT_HALLS } from "../../../constants";
@@ -144,7 +146,7 @@ export const TablesView: React.FC<{
     tablesLoading,
     fetchDiningZones,
     fetchTables,
-  } = useAppContext();
+  } = useApp();
 
   const HALLS = diningZones;
 
@@ -223,7 +225,7 @@ export const TablesView: React.FC<{
       if (activeTab === "deferred") loadDeferredOrders();
     } catch (err: any) {
       console.error("[defer] fatal error:", err);
-      alert(err?.response?.data?.message || err?.message || "فشل تأجيل الطلبات");
+      toast.error("فشل تأجيل الطلبات", err?.response?.data?.message || err?.message);
     } finally {
       setDeferringTableId(null);
     }
@@ -238,13 +240,8 @@ export const TablesView: React.FC<{
 
   const mapRef = useRef<HTMLDivElement>(null);
 
-  // تحديث تلقائي للطاولات فقط كل 10 ثواني
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchTables();
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [fetchTables]);
+  // تحديث تلقائي للطاولات فقط كل 10 ثواني — يتوقف تلقائياً لو التبويب بالخلفية
+  useVisibilityInterval(fetchTables, 10000);
 
   useEffect(() => {
     fetchDiningZones();
@@ -396,7 +393,7 @@ export const TablesView: React.FC<{
       setMergedTableModal(null);
       await fetchDiningZones();
     } catch (err: any) {
-      alert(err?.response?.data?.message || "فشل فك الدمج");
+      toast.error("فشل فك الدمج", err?.response?.data?.message);
     } finally {
       setUnmerging(false);
     }
@@ -432,12 +429,12 @@ export const TablesView: React.FC<{
             setTransferMode(null);
             await fetchTables();
           } catch (err: any) {
-            alert(err?.response?.data?.message || "فشل نقل الطلب");
+            toast.error("فشل نقل الطلب", err?.response?.data?.message);
           }
         };
         handleTransfer();
       } else {
-        alert("لا يمكن النقل لهذه الطاولة مشغولة");
+        toast.error("لا يمكن النقل لهذه الطاولة مشغولة");
       }
       return;
     }
@@ -489,26 +486,28 @@ export const TablesView: React.FC<{
   const isLoadingActivePopupOrder =
     !!activePopupTable && activeOrderLoadingTableId === activePopupTable.id;
 
-  // تحديث تلقائي لطلبات الطاولة المفتوحة كل 5 ثواني
-  useEffect(() => {
-    if (!showPopup || !activePopupTable) return;
-    const refreshOrders = async () => {
-      try {
-        const orders = await orderService.getAllActiveByTableNumber(
-          activePopupTable.table_number || activePopupTable.number,
-          getBranchFilter(currentUser),
-        );
-        setAllTableOrders(orders);
-        if (orders.length > 0) {
-          setActiveApiOrder(orders[0]);
-        }
-      } catch {
-        // تجاهل الأخطاء أثناء التحديث الخلفي
+  // تحديث تلقائي لطلبات الطاولة المفتوحة كل 5 ثواني — يتوقف تلقائياً لو
+  // التبويب بالخلفية أو ما فيه popup مفتوح
+  const refreshOpenTableOrders = useCallback(async () => {
+    if (!activePopupTable) return;
+    try {
+      const orders = await orderService.getAllActiveByTableNumber(
+        activePopupTable.table_number || activePopupTable.number,
+        getBranchFilter(currentUser),
+      );
+      setAllTableOrders(orders);
+      if (orders.length > 0) {
+        setActiveApiOrder(orders[0]);
       }
-    };
-    const interval = setInterval(() => { refreshOrders(); }, 5000);
-    return () => clearInterval(interval);
-  }, [showPopup, activePopupTable, currentUser]);
+    } catch {
+      // تجاهل الأخطاء أثناء التحديث الخلفي
+    }
+  }, [activePopupTable, currentUser]);
+
+  useVisibilityInterval(
+    refreshOpenTableOrders,
+    showPopup && activePopupTable ? 5000 : null,
+  );
 
   return (
     <div className="h-full flex flex-col space-y-6 bg-slate-950 p-4 sm:p-6 lg:p-8 rounded-[3rem] overflow-hidden">
@@ -1060,10 +1059,10 @@ export const TablesView: React.FC<{
                                     { currentOrderId: String(activePopupApiOrder.id) }
                                   );
                                 } else {
-                                  alert(data.message || "فشل تأكيد الطلب");
+                                  toast.error(data.message || "فشل تأكيد الطلب");
                                 }
                               } catch {
-                                alert("حدث خطأ أثناء تأكيد الطلب");
+                                toast.error("حدث خطأ أثناء تأكيد الطلب");
                               }
                             }}
                             className="w-full bg-emerald-600 text-white py-3 rounded-xl font-black text-xs shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2"
@@ -1097,12 +1096,12 @@ export const TablesView: React.FC<{
                                     status: "confirmed",
                                     has_unsent_items: false,
                                   });
-                                  alert("تم ترحيل العناصر الجديدة للأقسام");
+                                  toast.success("تم ترحيل العناصر الجديدة للأقسام");
                                 } else {
-                                  alert(data.message || "فشل ترحيل العناصر");
+                                  toast.error(data.message || "فشل ترحيل العناصر");
                                 }
                               } catch {
-                                alert("حدث خطأ أثناء ترحيل العناصر");
+                                toast.error("حدث خطأ أثناء ترحيل العناصر");
                               }
                             }}
                             className="w-full bg-amber-500 text-white py-3 rounded-xl font-black text-xs shadow-lg shadow-amber-900/20 flex items-center justify-center gap-2 animate-pulse"
@@ -1243,7 +1242,7 @@ export const TablesView: React.FC<{
                               TableStatus.AVAILABLE,
                             );
                           } else {
-                            alert("لا يمكن تفريغ الطاولة، يوجد طلب نشط عليها");
+                            toast.error("لا يمكن تفريغ الطاولة، يوجد طلب نشط عليها");
                             return;
                           }
                         }}

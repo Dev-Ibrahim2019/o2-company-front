@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { X, RefreshCw, Hash, AlertCircle, Building2, Image as ImageIcon } from 'lucide-react';
 import { generateNextItemCode, getItemImageUrl, type Item, type ItemFormData } from '../../../services/itemService';
 import type { Branch } from '../../../services/branchService';
+import { toast } from '../../shared/Toast';
 
 interface Department {
     id: number;
@@ -245,11 +246,11 @@ const ItemModal = ({ item, departments, allItems, branches = [], defaultDeptId, 
 
     // ── Submit ────────────────────────────────────────────────────────────────
     const handleSubmit = async () => {
-        if (!form.name.trim())    return alert('الاسم بالإنجليزي مطلوب');
-        if (!form.name_ar.trim()) return alert('الاسم بالعربي مطلوب');
-        if (!form.code?.trim())   return alert('الكود مطلوب — اختر قسماً يملك كوداً');
-        if (!form.department_id)  return alert('يجب اختيار القسم');
-        if (branches.length && branchPrices.length === 0) return alert('يجب اختيار فرع واحد على الأقل للصنف');
+        if (!form.name.trim())    { toast.error('الاسم بالإنجليزي مطلوب'); return; }
+        if (!form.name_ar.trim()) { toast.error('الاسم بالعربي مطلوب'); return; }
+        if (!form.code?.trim())   { toast.error('الكود مطلوب — اختر قسماً يملك كوداً'); return; }
+        if (!form.department_id)  { toast.error('يجب اختيار القسم'); return; }
+        if (branches.length && branchPrices.length === 0) { toast.error('يجب اختيار فرع واحد على الأقل للصنف'); return; }
 
         const normalizedBranchPrices = branchPrices.map((entry) => ({
             branch_id: entry.branch_id,
@@ -275,7 +276,7 @@ const ItemModal = ({ item, departments, allItems, branches = [], defaultDeptId, 
             });
             onClose();
         } catch (e: any) {
-            alert(e.response?.data?.message ?? 'فشل الحفظ');
+            toast.error('فشل الحفظ', e.response?.data?.message);
         } finally {
             setSaving(false);
         }

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { X, ChevronDown } from 'lucide-react';
+import { toast } from '../../shared/Toast';
 
 interface Props {
     dept?: any;
@@ -41,8 +42,8 @@ const DepartmentModal = ({ dept, onSave, onClose }: Props) => {
     const set = (key: string, val: any) => setForm(f => ({ ...f, [key]: val }));
 
     const handleSubmit = async () => {
-        if (!form.name.trim()) return alert('اسم القسم مطلوب');
-        if (!String(form.departmentCode).trim()) return alert('Department code is required');
+        if (!form.name.trim()) { toast.error('اسم القسم مطلوب'); return; }
+        if (!String(form.departmentCode).trim()) { toast.error('Department code is required'); return; }
         setSaving(true);
         try {
             const { departmentCode, ...payload } = form;
@@ -51,7 +52,7 @@ const DepartmentModal = ({ dept, onSave, onClose }: Props) => {
                 code: String(departmentCode).trim(),
             });
         } catch (e: any) {
-            alert(e.response?.data?.message || 'فشل الحفظ');
+            toast.error('فشل الحفظ', e.response?.data?.message);
         } finally {
             setSaving(false);
         }

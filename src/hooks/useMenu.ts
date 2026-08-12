@@ -51,7 +51,6 @@ export const useMenu = (branchId?: number | null) => {
       const { data } = await api.get("/menu", {
         params: { branch_id: id },
       });
-      console.log("🟢 [useMenu] API Response:", data);
       // الاستجابة: { data: { categories: [...] } }
       const rawCategories = data?.data?.categories ?? data?.categories ?? [];
       setCategories(Array.isArray(rawCategories) ? rawCategories : []);
@@ -72,7 +71,6 @@ export const useMenu = (branchId?: number | null) => {
       const { data } = await api.get("/auth/me");
       const userData = data.user || data.data?.user || data;
       const userId = userData.branch_id ?? null;
-      console.log("🟢 [useMenu] Fetched branch_id from API:", userId);
       return userId;
     } catch (err) {
       console.error("🔴 [useMenu] Failed to fetch branch_id:", err);
@@ -104,7 +102,6 @@ export const useMenu = (branchId?: number | null) => {
   // Effect 2: Fetch menu when branchId is resolved
   useEffect(() => {
     if (resolvedBranchId) {
-      console.log("🟢 [useMenu] Fetching menu for branch:", resolvedBranchId);
       fetchMenu(resolvedBranchId);
     }
   }, [resolvedBranchId, fetchMenu]);

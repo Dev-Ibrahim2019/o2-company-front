@@ -6,6 +6,7 @@ import { useEmployees } from '../../../hooks/useEmployees';
 import type { EmployeeFromApi, EmployeePayload } from '../../../services/employeeService';
 import { jobTitleService, type JobTitle } from '../../../services/jobTitleService';
 import api from "../../../api/axios";
+import { toast } from "../../shared/Toast";
 
 import EmployeeCard from './components/EmployeeCard';
 import EmployeeTable from './components/EmployeeTable';
@@ -93,7 +94,7 @@ const EmployeeManagement: React.FC = () => {
                 : await addEmployee(payload);
             closeModal();
         } catch (e: any) {
-            alert(e.response?.data?.message || 'فشل الحفظ');
+            toast.error('فشل الحفظ', e.response?.data?.message);
         }
     };
 

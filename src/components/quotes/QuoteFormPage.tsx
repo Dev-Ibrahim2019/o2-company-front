@@ -7,7 +7,7 @@ import {
   AlertTriangle, ChevronDown, Mail, Phone, Copy, Download,
   Paperclip, Image, Share2, Globe,
 } from "lucide-react";
-import { useApp, useAppContext } from "../../../store";
+import { useApp } from "../../../store";
 import { quoteService } from "../../services/quoteService";
 import { customerService } from "../../services/customerService";
 import { fetchItems, type Item } from "../../services/itemService";
@@ -303,7 +303,7 @@ const QuickAddClientModal = ({
 
 /* ─── Main Component ─── */
 export const QuoteFormPage = ({ editingId, onBack, onSaved }: Props) => {
-  const { branches, currentUser } = useAppContext();
+  const { branches, currentUser } = useApp();
   const isEditing = !!editingId;
 
   const [loading, setLoading] = useState(false);

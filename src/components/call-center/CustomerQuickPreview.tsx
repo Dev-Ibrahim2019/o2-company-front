@@ -1,4 +1,5 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "../shared/Toast";
 import {
   AlertTriangle,
   CalendarHeart,
@@ -150,7 +151,7 @@ export const CustomerQuickPreview: React.FC<Props> = ({
 
   const validateAddress = () => {
     if (address || customer.address) return true;
-    window.alert(
+    toast.error(
       "ظ„ط§ ظٹظˆط¬ط¯ ط¹ظ†ظˆط§ظ† ظ…ط­ظپظˆط¸ ظ„ظ‡ط°ط§ ط§ظ„ط¹ظ…ظٹظ„. ط£ط¶ظپ ط£ظˆ ط§ط®طھط± ط¹ظ†ظˆط§ظ†ط§ظ‹ ظ‚ط¨ظ„ ط¥ظ†ط´ط§ط، ط§ظ„طلب.",
     );
     return false;

@@ -5,7 +5,7 @@
  * 3. تحديث المحتوى عند تغيير الرابط (key prop)
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, Suspense, lazy } from "react";
 import { sound } from "./services/soundService";
 import { Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import {
@@ -16,80 +16,86 @@ import {
 } from "./auth";
 import { ROLES } from "./auth/permissions";
 
-// ── المكونات ──
+// ── مكونات خفيفة/هيكلية تبقى محمّلة فوراً (layouts, guards, providers) ──
 import { Login } from "./components/Login";
 import { AdminLayout } from "./components/administration/Layout";
-import { FinancePortal } from "./components/administration/FinancePortal";
-import { AccountingPortal } from "./components/administration/GL/AccountingPortal";
 import { POSLayout } from "./components/POS/Layout";
-import { POS } from "./components/POS/pos";
-import AdminPOSWrapper from "./components/POS/AdminPOSWrapper";
-import { TablesView } from "./components/POS/Tables";
-import DeferredTables from "./components/POS/DeferredTables";
-import { OrdersView } from "./components/POS/Orders";
-import { ShiftView } from "./components/POS/Shift";
 import { HospitalityLayout } from "./components/Hospitality/Layout";
-import { HospitalityPOS } from "./components/Hospitality/HospitalityPOS";
-import { HospitalityOrders } from "./components/Hospitality/HospitalityOrders";
-import { HospitalityTables } from "./components/Hospitality/Tables";
-import { FinancialInvoicesPage } from "./components/financial/FinancialInvoicesPage";
-import { FinancialInvoiceForm } from "./components/financial/FinancialInvoiceForm";
-import {
-  SalesInvoiceListPage,
-  SalesInvoiceFormPage,
-} from "./components/sales-invoices";
 import { ToastContainer } from "./components/shared/Toast";
-import UsersManagementPage from "./pages/UsersManagementPage";
-import PosRegistersPage from "./pages/PosRegistersPage";
-import CallCenterDevicesPage from "./pages/CallCenterDevicesPage";
-import { PrintersManagement } from "./components/administration/printers-management";
-import HospitalityDevicesPage from "./pages/HospitalityDevicesPage";
-import DiningZonesPage from "./pages/DiningZonesPage";
-import DiningTablesDashboard from "./components/administration/DiningTablesDashboard";
-import MenuPage from "./pages/customer/MenuPage";
 import { CartProvider } from "./components/customer/cart-provider";
-import CartPage from "./pages/customer/CartPage";
-import TablePage from "./pages/customer/TablePage";
 import { CustomerTableProvider } from "./components/customer/CustomerTableProvider";
-import RolesPermissionsPage from "./pages/RolesPermissionsPage";
-import DepartmentsPage from "./components/administration/DepartmentsPage";
 import { ThemeProvider } from "./theme";
-import { DayClosePage } from "./components/administration/DayClosePage";
-import { ReconciliationBoard } from "./components/administration/ReconciliationBoard";
-import { ShiftClosingsPage } from "./components/administration/ShiftClosingsPage";
-import { BusinessDayClosingPage } from "./components/administration/BusinessDayClosingPage";
-import { FiscalYearsPage } from "./components/administration/FiscalYearsPage";
-import { FiscalYearOverview } from "./components/administration/FiscalYearOverview";
-import { QuotesView } from "./components/quotes/QuotesView";
-import { VouchersView } from "./components/administration/VouchersView";
-import { CustomerVouchersView } from "./components/administration/CustomerVouchersView";
-import { SupplierVouchersView } from "./components/administration/SupplierVouchersView";
-import { SupplierPaymentVouchersView } from "./components/administration/SupplierPaymentVouchersView";
-import { PurchaseBillsView } from "./components/administration/PurchaseBillsView";
-import { ExtensionsTestView } from "./components/administration/ExtensionsTestView";
-import { PbxExtensionsTestView } from "./components/administration/PbxExtensionsTestView";
-import { PbxRecordingsView } from "./components/administration/PbxRecordingsView";
-import FreePBXTestPage from "./pages/FreePBXTestPage";
-import {
-  CrmRouteGuard,
-  CrmShell,
-  CrmDashboardPage,
-  CrmCustomersPage,
-  Customer360Page,
-} from "./features/crm";
-
-// ── مكونات الكول سنتر ──
+import { CrmRouteGuard } from "./features/crm";
 import { CallCenterLayout } from "./components/call-center/Layout";
 import CallCenterGuard from "./components/call-center/CallCenterGuard";
-import { CustomerManagementDashboard } from "./components/call-center/CustomerManagementDashboard";
-import { CrmDirectoryPage } from "./components/call-center/CrmDirectoryPage";
-import { CustomerPhoneSearch } from "./components/call-center/CustomerPhoneSearch";
-import { ComplaintsManagement } from "./components/call-center/ComplaintsManagement";
-import { OccasionsPage } from "./components/call-center/OccasionsPage";
-import { TopCustomersTable } from "./components/call-center/TopCustomersTable";
-import { CallCenterEmployees } from "./components/call-center/CallCenterEmployees";
-import { CallCenterPOS } from "./components/call-center/CallCenterPOS";
-import { ActiveOrdersPage } from "./components/call-center/ActiveOrdersPage";
+
+// ── صفحات/مكونات ثقيلة — تُحمَّل فقط عند زيارة الراوت الخاص فيها (code-splitting) ──
+const FinancePortal = lazy(() => import("./components/administration/FinancePortal").then(m => ({ default: m.FinancePortal })));
+const AccountingPortal = lazy(() => import("./components/administration/GL/AccountingPortal").then(m => ({ default: m.AccountingPortal })));
+const POS = lazy(() => import("./components/POS/pos").then(m => ({ default: m.POS })));
+const AdminPOSWrapper = lazy(() => import("./components/POS/AdminPOSWrapper"));
+const TablesView = lazy(() => import("./components/POS/Tables").then(m => ({ default: m.TablesView })));
+const DeferredTables = lazy(() => import("./components/POS/DeferredTables"));
+const OrdersView = lazy(() => import("./components/POS/Orders").then(m => ({ default: m.OrdersView })));
+const ShiftView = lazy(() => import("./components/POS/Shift").then(m => ({ default: m.ShiftView })));
+const HospitalityPOS = lazy(() => import("./components/Hospitality/HospitalityPOS").then(m => ({ default: m.HospitalityPOS })));
+const HospitalityOrders = lazy(() => import("./components/Hospitality/HospitalityOrders").then(m => ({ default: m.HospitalityOrders })));
+const HospitalityTables = lazy(() => import("./components/Hospitality/Tables").then(m => ({ default: m.HospitalityTables })));
+const FinancialInvoicesPage = lazy(() => import("./components/financial/FinancialInvoicesPage").then(m => ({ default: m.FinancialInvoicesPage })));
+const SalesInvoiceListPage = lazy(() => import("./components/sales-invoices").then(m => ({ default: m.SalesInvoiceListPage })));
+const SalesInvoiceFormPage = lazy(() => import("./components/sales-invoices").then(m => ({ default: m.SalesInvoiceFormPage })));
+const UsersManagementPage = lazy(() => import("./pages/UsersManagementPage"));
+const PosRegistersPage = lazy(() => import("./pages/PosRegistersPage"));
+const CallCenterDevicesPage = lazy(() => import("./pages/CallCenterDevicesPage"));
+const PrintersManagement = lazy(() => import("./components/administration/printers-management").then(m => ({ default: m.PrintersManagement })));
+const HospitalityDevicesPage = lazy(() => import("./pages/HospitalityDevicesPage"));
+const DiningZonesPage = lazy(() => import("./pages/DiningZonesPage"));
+const DiningTablesDashboard = lazy(() => import("./components/administration/DiningTablesDashboard"));
+const MenuPage = lazy(() => import("./pages/customer/MenuPage"));
+const CartPage = lazy(() => import("./pages/customer/CartPage"));
+const TablePage = lazy(() => import("./pages/customer/TablePage"));
+const RolesPermissionsPage = lazy(() => import("./pages/RolesPermissionsPage"));
+const DepartmentsPage = lazy(() => import("./components/administration/DepartmentsPage"));
+const DayClosePage = lazy(() => import("./components/administration/DayClosePage").then(m => ({ default: m.DayClosePage })));
+const ReconciliationBoard = lazy(() => import("./components/administration/ReconciliationBoard").then(m => ({ default: m.ReconciliationBoard })));
+const ShiftClosingsPage = lazy(() => import("./components/administration/ShiftClosingsPage").then(m => ({ default: m.ShiftClosingsPage })));
+const BusinessDayClosingPage = lazy(() => import("./components/administration/BusinessDayClosingPage").then(m => ({ default: m.BusinessDayClosingPage })));
+const FiscalYearsPage = lazy(() => import("./components/administration/FiscalYearsPage").then(m => ({ default: m.FiscalYearsPage })));
+const FiscalYearOverview = lazy(() => import("./components/administration/FiscalYearOverview").then(m => ({ default: m.FiscalYearOverview })));
+const QuotesView = lazy(() => import("./components/quotes/QuotesView").then(m => ({ default: m.QuotesView })));
+const VouchersView = lazy(() => import("./components/administration/VouchersView").then(m => ({ default: m.VouchersView })));
+const CustomerVouchersView = lazy(() => import("./components/administration/CustomerVouchersView").then(m => ({ default: m.CustomerVouchersView })));
+const SupplierVouchersView = lazy(() => import("./components/administration/SupplierVouchersView").then(m => ({ default: m.SupplierVouchersView })));
+const SupplierPaymentVouchersView = lazy(() => import("./components/administration/SupplierPaymentVouchersView").then(m => ({ default: m.SupplierPaymentVouchersView })));
+const PurchaseBillsView = lazy(() => import("./components/administration/PurchaseBillsView").then(m => ({ default: m.PurchaseBillsView })));
+const ExtensionsTestView = lazy(() => import("./components/administration/ExtensionsTestView").then(m => ({ default: m.ExtensionsTestView })));
+const PbxExtensionsTestView = lazy(() => import("./components/administration/PbxExtensionsTestView").then(m => ({ default: m.PbxExtensionsTestView })));
+const PbxRecordingsView = lazy(() => import("./components/administration/PbxRecordingsView").then(m => ({ default: m.PbxRecordingsView })));
+const FreePBXTestPage = lazy(() => import("./pages/FreePBXTestPage"));
+const CrmShell = lazy(() => import("./features/crm").then(m => ({ default: m.CrmShell })));
+const CrmDashboardPage = lazy(() => import("./features/crm").then(m => ({ default: m.CrmDashboardPage })));
+const CrmCustomersPage = lazy(() => import("./features/crm").then(m => ({ default: m.CrmCustomersPage })));
+const Customer360Page = lazy(() => import("./features/crm").then(m => ({ default: m.Customer360Page })));
+
+// ── مكونات الكول سنتر ──
+const CustomerManagementDashboard = lazy(() => import("./components/call-center/CustomerManagementDashboard").then(m => ({ default: m.CustomerManagementDashboard })));
+const CrmDirectoryPage = lazy(() => import("./components/call-center/CrmDirectoryPage").then(m => ({ default: m.CrmDirectoryPage })));
+const CustomerPhoneSearch = lazy(() => import("./components/call-center/CustomerPhoneSearch").then(m => ({ default: m.CustomerPhoneSearch })));
+const ComplaintsManagement = lazy(() => import("./components/call-center/ComplaintsManagement").then(m => ({ default: m.ComplaintsManagement })));
+const OccasionsPage = lazy(() => import("./components/call-center/OccasionsPage").then(m => ({ default: m.OccasionsPage })));
+const TopCustomersTable = lazy(() => import("./components/call-center/TopCustomersTable").then(m => ({ default: m.TopCustomersTable })));
+const CallCenterEmployees = lazy(() => import("./components/call-center/CallCenterEmployees").then(m => ({ default: m.CallCenterEmployees })));
+const CallCenterPOS = lazy(() => import("./components/call-center/CallCenterPOS").then(m => ({ default: m.CallCenterPOS })));
+const ActiveOrdersPage = lazy(() => import("./components/call-center/ActiveOrdersPage").then(m => ({ default: m.ActiveOrdersPage })));
+
+/** يظهر أثناء تحميل جزء من الشاشة (route) بشكل كسول */
+function RouteFallback() {
+  return (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
 
 /* ══════════════════════════════════════════════════════════════
  *  حماية الأدوار — تمنع الوصول لمن لا يملك الدور المطلوب
@@ -275,6 +281,7 @@ function NotFoundPage() {
 
 function AppRoutes() {
   return (
+    <Suspense fallback={<RouteFallback />}>
     <Routes>
       {/* ── مسارات عامة ── */}
       <Route path="/login" element={<Login />} />
@@ -468,6 +475,7 @@ function AppRoutes() {
       {/* ── 404 ── */}
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
+    </Suspense>
   );
 }
 

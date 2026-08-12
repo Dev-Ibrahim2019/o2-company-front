@@ -6,9 +6,10 @@
 // 3. submitOrder يرسل للـ API فعلياً
 // 4. getItemCurrentPrice تقرأ item.price مباشرة (جاي من pivot الفرع)
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useApp } from "../../../store";
+import { useVisibilityInterval } from "../../hooks/useVisibilityInterval";
 import {
   OrderType,
   OrderStatus,
@@ -228,6 +229,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [manualTable, setManualTable] = useState("");
   const [isPrinting, setIsPrinting] = useState(false);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
 
   // Auto-dismiss error toast
   useEffect(() => {
@@ -818,54 +820,54 @@ const handleActivationSuccess = (activatedInfo: any) => {
   };
 
   // تحديث السلة فقط عند وجود تغييرات فعلية بال database
-  useEffect(() => {
-    if (!selectedTable) return;
-    const isActiveTable =
-      selectedTable.status === TableStatus.OCCUPIED ||
-      selectedTable.status === TableStatus.PAYMENT_PENDING;
-    if (!isActiveTable) return;
+  const isActiveTableForPolling =
+    !!selectedTable &&
+    (selectedTable.status === TableStatus.OCCUPIED ||
+      selectedTable.status === TableStatus.PAYMENT_PENDING);
 
-    const checkForUpdates = async () => {
-      // لو المستخدم عم يعدل بالسلة، ما نتحقق
-      if (userActiveEditRef.current) return;
+  const checkTableForUpdates = useCallback(async () => {
+    if (!selectedTable || userActiveEditRef.current) return;
 
-      try {
-        const tableNum = selectedTable.table_number || selectedTable.number.toString();
-        const orders = await orderService.getAllActiveByTableNumber(tableNum, {
-          branch_id: branchId || 0,
-        });
+    try {
+      const tableNum = selectedTable.table_number || selectedTable.number.toString();
+      const orders = await orderService.getAllActiveByTableNumber(tableNum, {
+        branch_id: branchId || 0,
+      });
 
-        // نبني hash بسيط من الطلب لتحديد إذا في تغيير
-        const hash = orders.map(o => `${o.id}:${o.updated_at}:${o.items.length}:${o.status}`).join("|");
+      // نبني hash بسيط من الطلب لتحديد إذا في تغيير
+      const hash = orders.map(o => `${o.id}:${o.updated_at}:${o.items.length}:${o.status}`).join("|");
 
-        if (hash && hash !== lastOrderHashRef.current) {
-          // في تغيير! نحدث السلة
-          lastOrderHashRef.current = hash;
+      if (hash && hash !== lastOrderHashRef.current) {
+        // في تغيير! نحدث السلة
+        lastOrderHashRef.current = hash;
 
-          if (orders.length === 0) return;
+        if (orders.length === 0) return;
 
-          const allItems: ReturnType<typeof apiOrderToCartItems>[number][] = [];
-          let firstOrder: OrderFromApi | null = null;
-          for (const order of orders) {
-            if (!firstOrder) firstOrder = order;
-            allItems.push(...apiOrderToCartItems(order));
-          }
-
-          loadCart(allItems);
-          setEditingApiOrderId(firstOrder!.id);
-          setCurrentOrderStatus(firstOrder!.status);
+        const allItems: ReturnType<typeof apiOrderToCartItems>[number][] = [];
+        let firstOrder: OrderFromApi | null = null;
+        for (const order of orders) {
+          if (!firstOrder) firstOrder = order;
+          allItems.push(...apiOrderToCartItems(order));
         }
-      } catch {
-        // تجاهل الأخطاء
+
+        loadCart(allItems);
+        setEditingApiOrderId(firstOrder!.id);
+        setCurrentOrderStatus(firstOrder!.status);
       }
-    };
+    } catch {
+      // تجاهل الأخطاء
+    }
+  }, [selectedTable, branchId]);
 
-    // تحقق أول مرة واحفظ الـ hash
-    checkForUpdates();
+  // تحقق أول مرة عند تغيير الطاولة النشطة
+  useEffect(() => {
+    if (isActiveTableForPolling) {
+      checkTableForUpdates();
+    }
+  }, [selectedTable?.id, isActiveTableForPolling, checkTableForUpdates]);
 
-    const interval = setInterval(checkForUpdates, 15000); // كل 15 ثانية نتحقق (خفيف)
-    return () => clearInterval(interval);
-  }, [selectedTable?.id]);
+  // كل 15 ثانية نتحقق (خفيف) — يتوقف تلقائياً لو التبويب بالخلفية أو ما فيه طاولة نشطة
+  useVisibilityInterval(checkTableForUpdates, isActiveTableForPolling ? 15000 : null);
 
   const handleTableInput = (val: string) => {
     setManualTable(val);
@@ -967,8 +969,12 @@ const handleActivationSuccess = (activatedInfo: any) => {
     }
   };
 
-const handlePrintInvoice = async (orderId: number | string) => {
-  if (!orderId || isPrinting) return;
+const handlePrintInvoice = async (orderId?: number | string | null) => {
+  if (isPrinting) return;
+  if (!orderId) {
+    toast.error("لا يوجد طلب محفوظ لطباعته بعد");
+    return;
+  }
 
   setIsPrinting(true); // استخدام الدالة المعرفة مسبقاً في ملفك
   try {
@@ -1054,10 +1060,14 @@ const handlePrintInvoice = async (orderId: number | string) => {
     clearAfterSubmit = true,
     options?: { directPrintFirst?: boolean; cashierDeviceId?: number; skipSync?: boolean },
   ): Promise<any> => {
+    if (isSubmittingOrder) return null;
     if (currentCart.length === 0) {
       setPosError("السلة فارغة");
       return null;
     }
+
+    setIsSubmittingOrder(true);
+    try {
 
     const orderType =
       cartOrderType === OrderType.DINE_IN ? "dine_in" : "takeaway";
@@ -1214,6 +1224,9 @@ const handlePrintInvoice = async (orderId: number | string) => {
       }
     }
     return result;
+    } finally {
+      setIsSubmittingOrder(false);
+    }
   };
 
   // ── commonCartProps ───────────────────────────────────────────────────────
@@ -1285,6 +1298,7 @@ const handlePrintInvoice = async (orderId: number | string) => {
     setShowCustomerModal,
     handlePrintInvoice,
     isPrinting,
+    isSubmitting: isSubmittingOrder,
     allItems,
     addToCart,
     posInfo,

@@ -5,6 +5,7 @@ import {
 import { useAuth } from "../../auth/AuthContext";
 import { salesInvoiceService } from "../../services/salesInvoiceService";
 import { useApp } from "../../../store";
+import { toast } from "../shared/Toast";
 import type { SalesInvoiceItem, SalesInvoicePayment, SalesInvoiceFormData, EntityType } from "../../types/salesInvoice";
 import { EMPTY_INVOICE_ITEM, INVOICE_TYPES, PAYMENT_METHODS } from "../../types/salesInvoice";
 import { useEntitySearch } from "../../hooks/useEntitySearch";
@@ -238,8 +239,8 @@ export const SalesInvoiceFormPage = ({ invoiceId, onBack, onSaved }: Props) => {
 
   // ── Save ──
   const handleSave = useCallback(async (status: "draft" | "awaiting_approval") => {
-    if (!branchId) { alert("اختر الفرع"); return; }
-    if (items.length === 0 || items.every((i) => !i.item_name)) { alert("أضف صفاً واحداً على الأقل"); return; }
+    if (!branchId) { toast.error("اختر الفرع"); return; }
+    if (items.length === 0 || items.every((i) => !i.item_name)) { toast.error("أضف صفاً واحداً على الأقل"); return; }
     setSaving(true);
     try {
       const data: SalesInvoiceFormData = {
@@ -266,7 +267,7 @@ export const SalesInvoiceFormPage = ({ invoiceId, onBack, onSaved }: Props) => {
       else await salesInvoiceService.create(data);
       onSaved();
     } catch (err: any) {
-      alert(err?.response?.data?.message || "فشل الحفظ");
+      toast.error("فشل الحفظ", err?.response?.data?.message);
     } finally {
       setSaving(false);
     }

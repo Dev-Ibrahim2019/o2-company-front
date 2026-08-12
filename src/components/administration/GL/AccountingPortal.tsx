@@ -653,7 +653,7 @@ export const AccountingPortal: React.FC<{ initialTab?: ActiveTab }> = ({
       0,
     );
     if (Math.abs(totalDebit - totalCredit) > 0.001) {
-      alert("القيد غير متوازن!");
+      toast.error("القيد غير متوازن!");
       return;
     }
     try {

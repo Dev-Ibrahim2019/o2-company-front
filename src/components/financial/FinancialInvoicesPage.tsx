@@ -4,6 +4,7 @@ import {
   Search, ChevronRight, ChevronLeft, FileText, Loader2, Upload,
 } from "lucide-react";
 import { financialInvoiceService } from "../../services/financialInvoiceService";
+import { toast } from "../shared/Toast";
 import type { FinancialInvoice } from "../../types/financialInvoice";
 import { STATUS_LABELS, STATUS_COLORS, CURRENCIES, DEFAULT_CURRENCY } from "../../types/financialInvoice";
 
@@ -55,7 +56,7 @@ export const FinancialInvoicesPage = ({ onOpenForm }: Props) => {
       await financialInvoiceService.approve(id);
       fetchData();
     } catch (err: any) {
-      alert(err?.response?.data?.message || "فشل التعميد");
+      toast.error("فشل التعميد", err?.response?.data?.message);
     }
   };
 
@@ -65,7 +66,7 @@ export const FinancialInvoicesPage = ({ onOpenForm }: Props) => {
       await financialInvoiceService.void(id);
       fetchData();
     } catch (err: any) {
-      alert(err?.response?.data?.message || "فشل الإلغاء");
+      toast.error("فشل الإلغاء", err?.response?.data?.message);
     }
   };
 
@@ -75,7 +76,7 @@ export const FinancialInvoicesPage = ({ onOpenForm }: Props) => {
       await financialInvoiceService.delete(id);
       fetchData();
     } catch (err: any) {
-      alert(err?.response?.data?.message || "فشل الحذف");
+      toast.error("فشل الحذف", err?.response?.data?.message);
     }
   };
 

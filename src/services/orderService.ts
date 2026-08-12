@@ -506,7 +506,6 @@ export const orderService = {
     payload?: InvoicePayload,
   ): Promise<InvoiceFromApi> => {
     const body = payload ?? {};
-    console.log(`[API] POST /orders/${orderId}/invoice`, JSON.stringify(body));
     try {
       const { data } = await api.post(
         `/orders/${orderId}/invoice`,
@@ -586,7 +585,6 @@ export const orderService = {
       subledger_type: payload.subledger_type,
       subledger_id: payload.subledger_id,
     };
-    console.log(`[API] POST /invoices/${invoiceId}/payments`, JSON.stringify(paymentBody));
     const { data } = await api.post(`/invoices/${invoiceId}/payments`, paymentBody);
 
     return data.data as InvoicePaymentResponse;

@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { X, Building2 } from 'lucide-react';
 import api from '../../../api/axios';
+import { toast } from '../../shared/Toast';
 
 interface Department {
     id: number;
@@ -94,7 +95,7 @@ const DepartmentModal = ({ department, branches, onClose, onSaved }: Props) => {
     };
 
     const handleSubmit = async () => {
-        if (!form.name.trim()) return alert('الاسم مطلوب');
+        if (!form.name.trim()) { toast.error('الاسم مطلوب'); return; }
 
         // استخراج الـ IDs المحددة فقط
         const branchIds = branchDrafts.map((b) => b.branch_id);
@@ -114,7 +115,7 @@ const DepartmentModal = ({ department, branches, onClose, onSaved }: Props) => {
             onSaved();
             onClose();
         } catch (e: any) {
-            alert(e.response?.data?.message ?? 'فشل الحفظ');
+            toast.error('فشل الحفظ', e.response?.data?.message);
         } finally {
             setSaving(false);
         }

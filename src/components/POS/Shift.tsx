@@ -5,6 +5,7 @@ import { Clock, Wallet, LogOut, ArrowRightCircle, RefreshCw, Calendar, Loader2, 
 import { useOrders } from '../../hooks/useOrders';
 import { FinancialTransactionType } from '../../../types';
 import { BlindDropModal, type BlindDropData } from './BlindDropModal';
+import { toast } from '../shared/Toast';
 
 const getBranchFilter = (currentUser: unknown) => {
   const user = currentUser as { branch_id?: number | string; branchId?: number | string } | null;
@@ -80,7 +81,7 @@ export const ShiftView: React.FC = () => {
       setShowRolloverConfirm(false);
     } catch (err) {
       console.error("Rollover failed:", err);
-      alert("فشل الترحيل. يرجى المحاولة مرة أخرى.");
+      toast.error("فشل الترحيل. يرجى المحاولة مرة أخرى.");
     } finally {
       setRolloverLoading(false);
     }

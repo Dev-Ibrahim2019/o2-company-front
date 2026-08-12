@@ -2,9 +2,10 @@
  * Hospitality/Tables.tsx — صفحة إدارة الطاولات لقسم الضيافة
  * تصميم متجاوب للجوال: 4 طاولات في الصف
  */
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../../../store";
+import { useVisibilityInterval } from "../../hooks/useVisibilityInterval";
 import { TableStatus, OrderType } from "../../../types";
 import type { Table } from "../../../types";
 import { HALLS as DEFAULT_HALLS } from "../../../constants";
@@ -203,13 +204,8 @@ export const HospitalityTables: React.FC<{
     fetchDiningZones();
   }, [fetchDiningZones]);
 
-  // تحديث تلقائي للطاولات فقط كل 10 ثواني (بدون إعادة تحميل الصفحة)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchTables();
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [fetchTables]);
+  // تحديث تلقائي للطاولات فقط كل 10 ثواني — يتوقف تلقائياً لو التبويب بالخلفية
+  useVisibilityInterval(fetchTables, 10000);
 
   const filteredTables = tables.filter((t) => t.hallId === selectedHallId);
 
@@ -438,7 +434,7 @@ export const HospitalityTables: React.FC<{
       setMergedTableModal(null);
       await fetchDiningZones();
     } catch (err: any) {
-      alert(err?.response?.data?.message || "فشل فك الدمج");
+      toast.error("فشل فك الدمج", err?.response?.data?.message);
     } finally {
       setUnmerging(false);
     }
@@ -513,26 +509,28 @@ export const HospitalityTables: React.FC<{
   const isLoadingActivePopupOrder =
     !!activePopupTable && activeOrderLoadingTableId === activePopupTable.id;
 
-  // تحديث تلقائي لطلبات الطاولة المفتوحة كل 5 ثواني
-  useEffect(() => {
-    if (!showPopup || !activePopupTable) return;
-    const refreshOrders = async () => {
-      try {
-        const orders = await orderService.getAllActiveByTableNumber(
-          activePopupTable.table_number || activePopupTable.number,
-          getBranchFilter(currentUser),
-        );
-        setAllTableOrders(orders);
-        if (orders.length > 0) {
-          setActiveApiOrder(orders[0]);
-        }
-      } catch {
-        // تجاهل الأخطاء أثناء التحديث الخلفي
+  // تحديث تلقائي لطلبات الطاولة المفتوحة كل 5 ثواني — يتوقف تلقائياً لو
+  // التبويب بالخلفية أو ما فيه popup مفتوح
+  const refreshOpenTableOrders = useCallback(async () => {
+    if (!activePopupTable) return;
+    try {
+      const orders = await orderService.getAllActiveByTableNumber(
+        activePopupTable.table_number || activePopupTable.number,
+        getBranchFilter(currentUser),
+      );
+      setAllTableOrders(orders);
+      if (orders.length > 0) {
+        setActiveApiOrder(orders[0]);
       }
-    };
-    const interval = setInterval(() => { refreshOrders(); }, 5000);
-    return () => clearInterval(interval);
-  }, [showPopup, activePopupTable, currentUser]);
+    } catch {
+      // تجاهل الأخطاء أثناء التحديث الخلفي
+    }
+  }, [activePopupTable, currentUser]);
+
+  useVisibilityInterval(
+    refreshOpenTableOrders,
+    showPopup && activePopupTable ? 5000 : null,
+  );
 
   return (
     <div className="h-full flex flex-col space-y-3 sm:space-y-4 lg:space-y-6 bg-slate-950 p-3 sm:p-6 lg:p-8 rounded-2xl sm:rounded-[3rem] overflow-hidden">
@@ -1239,7 +1237,7 @@ export const HospitalityTables: React.FC<{
                                   TableStatus.AVAILABLE,
                                 );
                               } else {
-                                alert("لا يمكن تفريغ الطاولة، يوجد طلب نشط عليها");
+                                toast.error("لا يمكن تفريغ الطاولة، يوجد طلب نشط عليها");
                                 return;
                               }
                             }}

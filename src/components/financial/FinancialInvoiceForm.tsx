@@ -4,6 +4,7 @@ import {
   ReceiptText, CheckCircle, FileDown,
 } from "lucide-react";
 import { financialInvoiceService } from "../../services/financialInvoiceService";
+import { toast } from "../shared/Toast";
 import { useApp } from "../../../store";
 import type {
   FinancialInvoiceFormData,
@@ -177,14 +178,14 @@ export const FinancialInvoiceForm = ({ invoiceId, onBack, onSaved }: Props) => {
   };
 
   const handleSave = async (status: "draft" | "pending") => {
-    if (!branchId) { alert("اختر الفرع"); return; }
-    if (items.length === 0 || items.every(i => !i.item_name)) { alert("أضف صفاً واحداً على الأقل"); return; }
+    if (!branchId) { toast.error("اختر الفرع"); return; }
+    if (items.length === 0 || items.every(i => !i.item_name)) { toast.error("أضف صفاً واحداً على الأقل"); return; }
     setSaving(true);
     try {
       // Validate payments amounts to satisfy backend minimum amount requirement (>= 0.01)
       if (payments.length > 0) {
         const invalid = payments.some(p => p.amount == null || Number(p.amount) < 0.01);
-        if (invalid) { alert("تأكد من أن كل دفعة لا تقل عن 0.01"); setSaving(false); return; }
+        if (invalid) { toast.error("تأكد من أن كل دفعة لا تقل عن 0.01"); setSaving(false); return; }
       }
       const data: FinancialInvoiceFormData = {
         type: invoiceType,
@@ -208,7 +209,7 @@ export const FinancialInvoiceForm = ({ invoiceId, onBack, onSaved }: Props) => {
       else await financialInvoiceService.create(data);
       onSaved();
     } catch (err: any) {
-      alert(err?.response?.data?.message || "فشل الحفظ");
+      toast.error("فشل الحفظ", err?.response?.data?.message);
     } finally { setSaving(false); }
   };
 

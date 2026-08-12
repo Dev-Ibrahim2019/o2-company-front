@@ -261,4 +261,6 @@ if (errors.length > 0) {
   errors.forEach(e => console.log(e));
 }
 
-process.exit(failed > 0 ? 1 : 0);
+if (failed > 0) {
+  throw new Error(`discountEngine test suite: ${failed} assertion(s) failed`);
+}

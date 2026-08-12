@@ -6,6 +6,7 @@ import {
     Tag, Package, ExternalLink,
 } from "lucide-react";
 import { financeService } from "../../../services/financeService";
+import { toast } from "../../shared/Toast";
 import type {
     StatementEntry, StatementType, StatementFilters, SaleItem,
 } from "../../../services/financeService";
@@ -583,7 +584,7 @@ const EmployeeStatement: React.FC<EmployeeStatementProps> = ({
         }
         if (!entry.source_id) {
             if (resolvedEntityType === "supplier") {
-                window.alert("تفاصيل مستند المورد غير متاحة حالياً");
+                toast.info("تفاصيل مستند المورد غير متاحة حالياً");
             }
             return;
         }

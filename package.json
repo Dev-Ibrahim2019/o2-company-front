@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "vitest run src/components/call-center/customerFlow.test.ts src/components/call-center/customerProfileOverview.test.ts",
+    "test": "vitest run --exclude \"**/discountEngine.test.ts\"",
     "preview": "vite preview"
   },
   "dependencies": {

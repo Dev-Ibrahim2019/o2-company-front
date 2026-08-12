@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "../shared/Toast";
 import {
   AlertCircle,
   Archive,
@@ -578,12 +579,6 @@ export default function SalesInvoicesPage() {
 
   const load = useCallback(async () => {
     const branchId = branchFilter(currentUser);
-    console.log(
-      "Fetching invoices with branchId:",
-      branchId,
-      "currentUser:",
-      currentUser,
-    );
     setLoading(true);
     setError(null);
 
@@ -656,7 +651,7 @@ export default function SalesInvoicesPage() {
       (r) => r.status === "draft" || r.status === "awaiting_approval",
     );
     if (approvable.length === 0) {
-      alert("لم تختر أي فاتورة بانتظار التعميد");
+      toast.error("لم تختر أي فاتورة بانتظار التعميد");
       return;
     }
     if (!confirm(`هل تريد تعميد ${approvable.length} فاتورة دفعة واحدة؟`)) return;
@@ -668,11 +663,11 @@ export default function SalesInvoicesPage() {
       const result = await salesInvoiceService.bulkApprove(invoiceIds);
       const approved = (result as any)?.approved ?? invoiceIds.length;
       const skipped = (result as any)?.skipped ?? 0;
-      alert(`تم تعميد ${approved} فاتورة${skipped > 0 ? ` (تم تخطي ${skipped})` : ""}`);
+      toast.success(`تم تعميد ${approved} فاتورة${skipped > 0 ? ` (تم تخطي ${skipped})` : ""}`);
       setSelectedIds(new Set());
       await load();
     } catch (e: any) {
-      alert(e?.response?.data?.message || "فشل التعميد المجمّع");
+      toast.error("فشل التعميد المجمّع", e?.response?.data?.message);
     } finally {
       setBulkActionLoading(false);
     }
@@ -681,7 +676,7 @@ export default function SalesInvoicesPage() {
   const handleBulkPostJournal = async () => {
     const payable = selectedRows.filter((r) => r.paidTotal > 0 && !postedInvoiceIds.includes(r.id));
     if (payable.length === 0) {
-      alert("لم تختر أي فاتورة مدفوعة غير مرحّلة");
+      toast.error("لم تختر أي فاتورة مدفوعة غير مرحّلة");
       return;
     }
     if (!confirm(`هل تريد ترحيل ${payable.length} فاتورة دفعة واحدة؟`)) return;
@@ -694,10 +689,10 @@ export default function SalesInvoicesPage() {
       const posted = (result as any)?.posted ?? invoiceIds.length;
       const skipped = (result as any)?.skipped ?? 0;
       setPostedInvoiceIds((prev) => [...new Set([...prev, ...invoiceIds])]);
-      alert(`تم ترحيل ${posted} فاتورة${skipped > 0 ? ` (تم تخطي ${skipped})` : ""}`);
+      toast.success(`تم ترحيل ${posted} فاتورة${skipped > 0 ? ` (تم تخطي ${skipped})` : ""}`);
       setSelectedIds(new Set());
     } catch (e: any) {
-      alert(e?.response?.data?.message || "فشل الترحيل المجمّع");
+      toast.error("فشل الترحيل المجمّع", e?.response?.data?.message);
     } finally {
       setBulkActionLoading(false);
     }
@@ -705,7 +700,7 @@ export default function SalesInvoicesPage() {
 
   const handleGroupInvoices = async () => {
     if (selectedRows.length < 2) {
-      alert("اختر فاتورتين على الأقل لتجميعهما");
+      toast.error("اختر فاتورتين على الأقل لتجميعهما");
       return;
     }
     const totals = selectedRows.reduce((sum, r) => sum + r.total, 0);
@@ -717,11 +712,11 @@ export default function SalesInvoicesPage() {
         selectedRows.map((r) => ensureInvoiceForRow(r))
       );
       await salesInvoiceService.bulkApprove(invoiceIds);
-      alert("تم تجميع الفواتير بنجاح");
+      toast.success("تم تجميع الفواتير بنجاح");
       setSelectedIds(new Set());
       await load();
     } catch (e: any) {
-      alert(e?.response?.data?.message || "فشل تجميع الفواتير");
+      toast.error("فشل تجميع الفواتير", e?.response?.data?.message);
     } finally {
       setBulkActionLoading(false);
     }

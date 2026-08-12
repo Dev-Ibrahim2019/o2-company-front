@@ -97,8 +97,9 @@ interface CartPanelProps {
   customerName: string;
   customerPhone: string;
   setShowCustomerModal: (show: boolean) => void;
-  handlePrintInvoice?: () => void;
+  handlePrintInvoice?: (orderId?: string | number | null) => void;
   isPrinting?: boolean;
+  isSubmitting?: boolean;
   onCloseCart?: () => void;
   onDeferOrder?: () => Promise<void>;
   isDeferred?: boolean;
@@ -152,6 +153,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
   setShowCustomerModal,
   handlePrintInvoice,
   isPrinting = false,
+  isSubmitting = false,
   allItems = [],
   onCloseCart,
   onDeferOrder,
@@ -1000,28 +1002,14 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                   { directPrintFirst: true, cashierDeviceId: posInfo?.id },
                 );
               }}
-              disabled={currentCart.length === 0 || currentCart.every((item) => item.is_printed_direct)}
+              disabled={currentCart.length === 0 || currentCart.every((item) => item.is_printed_direct) || isSubmitting}
               className="py-2.5 sm:py-3 bg-emerald-600 text-white rounded-xl font-black text-[9px] sm:text-[10px] flex items-center justify-center gap-1.5 hover:bg-emerald-700 shadow-xl shadow-emerald-900/20 disabled:opacity-30 transition-all active:scale-95"
             >
-              <CheckCircle size={14} />
+              {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
               تنفيذ
             </button>
             <button
-              onClick={async () => {
-                const targetOrderId = editingOrderId || "11";
-                try {
-                  const { default: customApi } = await import("../../api/axios");
-                  const response = await customApi.post(`/orders/${targetOrderId}/print-invoice`);
-                  if (response.data && response.data.success) {
-                    alert("نجاح الطباعة: " + response.data.message);
-                  } else {
-                    alert("تنبيه: " + (response.data?.message || "لم يتم تنفيذ الأمر بشكل صحيح"));
-                  }
-                } catch (error: any) {
-                  console.error("خطأ في عملية الطباعة:", error);
-                  alert("فشل أمر الطباعة: " + (error.response?.data?.message || error.message || "تحقق من اتصال الطابعة بالشبكة"));
-                }
-              }}
+              onClick={() => handlePrintInvoice?.(editingOrderId)}
               disabled={currentCart.length === 0 || isPrinting}
               className="py-2.5 sm:py-3 bg-blue-600 text-white rounded-xl font-black text-[9px] sm:text-[10px] flex items-center justify-center gap-1.5 hover:bg-blue-700 shadow-xl shadow-blue-900/20 disabled:opacity-30 transition-all active:scale-95"
             >

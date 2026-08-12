@@ -97,7 +97,7 @@ class MockCallProvider implements CallProvider {
     });
   }
 
-  async transfer(callId: string, target: string): Promise<void> {
+  async transfer(callId: string, _target: string): Promise<void> {
     // محاكاة تحويل المكالمة - تنهي المكالمة الحالية
     const call = this.activeCalls.get(callId);
     const duration = call?.startTime
@@ -111,7 +111,6 @@ class MockCallProvider implements CallProvider {
       timestamp: new Date(),
       duration,
     });
-    console.log(`📞 تم تحويل المكالمة ${callId} إلى الملحق ${target}`);
   }
 
   getDuration(callId: string): number {

@@ -156,7 +156,9 @@ export const SalesInvoiceListPage = ({ onOpenForm }: Props) => {
     try {
       const s = await salesInvoiceService.getStats(params);
       setStats(s);
-    } catch {}
+    } catch (err) {
+      console.error("Failed to load sales invoice stats", err);
+    }
   }, []);
 
   const fetchPosInvoices = useCallback(async () => {

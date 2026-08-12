@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useApp } from "../../../store";
 import { orderService } from "../../services/orderService";
 import type { OrderFromApi } from "../../services/orderService";
+import { toast } from "../shared/Toast";
 import {
   Clock,
   CreditCard,
@@ -91,7 +92,7 @@ export default function DeferredTables() {
       await orderService.cancel(orderId);
       setOrders((prev) => prev.filter((o) => o.id !== orderId));
     } catch (err: any) {
-      alert(err?.response?.data?.message || "فشل إلغاء الطلب");
+      toast.error("فشل إلغاء الطلب", err?.response?.data?.message);
     }
   };
 

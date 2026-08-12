@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Save, Trash2, X } from "lucide-react";
 import { orderService } from "../../services/orderService";
+import { toast } from "../shared/Toast";
 import type {
   DiscountType,
   OrderFromApi,
@@ -380,7 +381,7 @@ export const InvoiceEditModal = ({
                             const code = codeInput?.value.trim();
                             if (!code) return;
                             // TODO: Implement item lookup by code
-                            alert(`سيتم جلب الصنف بالكود: ${code}`);
+                            toast.info(`سيتم جلب الصنف بالكود: ${code}`);
                             codeInput.value = "";
                           }
                         }}
@@ -397,7 +398,7 @@ export const InvoiceEditModal = ({
 
                           // This would typically call a service to get item by code
                           // For now, we'll focus on the structure
-                          alert(`سيتم جلب الصنف بالكود: ${code}`);
+                          toast.info(`سيتم جلب الصنف بالكود: ${code}`);
                           codeInput.value = "";
                         }}
                         className="px-3 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700"

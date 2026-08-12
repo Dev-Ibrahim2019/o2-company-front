@@ -199,6 +199,7 @@ export const HospitalityPOS: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [manualTable, setManualTable] = useState("");
   const [isPrinting, setIsPrinting] = useState(false);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
 
   // ── Customer State ────────────────────────────────────────────────────────
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
@@ -949,10 +950,14 @@ export const HospitalityPOS: React.FC = () => {
     meta: { name: string; phone: string; note: string },
     paymentsArg?: any[],
   ) => {
+    if (isSubmittingOrder) return;
     if (currentCart.length === 0) {
       setPosError("السلة فارغة");
       return;
     }
+
+    setIsSubmittingOrder(true);
+    try {
 
     const orderType =
       cartOrderType === OrderType.DINE_IN ? "dine_in" : "takeaway";
@@ -1070,30 +1075,30 @@ export const HospitalityPOS: React.FC = () => {
 
         const pendingOrders = allOrders.filter(o => o.status === 'pending' || o.status === 'pending_confirmation');
 
-        // 3. طباعة مباشرة للأقسام قبل التأكيد
+        // 3. طباعة مباشرة للأقسام قبل التأكيد (بالتوازي، مش وحدة وراء وحدة)
         if (posInfo?.id) {
           try {
             const { printerService } = await import("../../services/printerService");
-            for (const order of pendingOrders) {
-              try {
-                await printerService.directPrint(order.id, posInfo.id);
-              } catch (dpErr) {
-                console.warn(`directPrint فشل للطلب #${order.id}:`, dpErr);
-              }
-            }
+            await Promise.allSettled(
+              pendingOrders.map((order) =>
+                printerService.directPrint(order.id, posInfo.id).catch((dpErr) => {
+                  console.warn(`directPrint فشل للطلب #${order.id}:`, dpErr);
+                }),
+              ),
+            );
           } catch {
             // تجاهل أخطاء استيراد printerService
           }
         }
 
-        // 4. تأكيد الطلبات المعلقة (إنشاء التذاكر في الـ DB)
-        for (const order of pendingOrders) {
-          try {
-            await orderService.confirm(order.id);
-          } catch (err) {
-            console.warn(`فشل تأكيد الطلب #${order.id}:`, err);
-          }
-        }
+        // 4. تأكيد الطلبات المعلقة (إنشاء التذاكر في الـ DB) — بالتوازي
+        await Promise.allSettled(
+          pendingOrders.map((order) =>
+            orderService.confirm(order.id).catch((err) => {
+              console.warn(`فشل تأكيد الطلب #${order.id}:`, err);
+            }),
+          ),
+        );
 
         // 4. إعادة تحميل السلة مع الحالة المحدثة
         const refreshedOrders = await orderService.getAllActiveByTableNumber(
@@ -1261,6 +1266,9 @@ export const HospitalityPOS: React.FC = () => {
       setShowCustomerModal(false);
       setIsCartOpen(false);
     }
+    } finally {
+      setIsSubmittingOrder(false);
+    }
   };
 
   // ── commonCartProps ───────────────────────────────────────────────────────
@@ -1304,6 +1312,7 @@ export const HospitalityPOS: React.FC = () => {
     setShowCustomerModal,
     handlePrintInvoice,
     isPrinting,
+    isSubmitting: isSubmittingOrder,
     onCloseCart: clearActiveCart,
     allItems,
     addToCart,

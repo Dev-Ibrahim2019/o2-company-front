@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 import { X, Eye, EyeOff } from 'lucide-react';
 import api from '../../../api/axios';
+import { toast } from '../../shared/Toast';
 
 interface User {
     id?: number;
@@ -49,7 +50,8 @@ const UserModal = ({ user, roles, branches, onClose, onSaved }: Props) => {
 
     const handleSubmit = async () => {
         if (!form.name.trim() || !form.username.trim() || !form.email.trim()) {
-            return alert('الاسم واسم المستخدم والبريد الإلكتروني مطلوبة');
+            toast.error('الاسم واسم المستخدم والبريد الإلكتروني مطلوبة');
+            return;
         }
 
         const payload: any = {
@@ -72,13 +74,13 @@ const UserModal = ({ user, roles, branches, onClose, onSaved }: Props) => {
             if (user) {
                 await api.put(`/users/${user.id}`, payload);
             } else {
-                if (!form.password) return alert('كلمة المرور مطلوبة للمستخدم الجديد');
+                if (!form.password) { toast.error('كلمة المرور مطلوبة للمستخدم الجديد'); return; }
                 await api.post('/users', payload);
             }
             onSaved();
             onClose();
         } catch (e: any) {
-            alert(e.response?.data?.message ?? 'فشل الحفظ');
+            toast.error('فشل الحفظ', e.response?.data?.message);
         } finally {
             setSaving(false);
         }
