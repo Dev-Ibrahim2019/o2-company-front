@@ -5,6 +5,12 @@
 		},
 		{
 			"path": "../../../../../Herd/o2-system-backend"
+		},
+		{
+			"path": "../O2-Gaza-Project"
+		},
+		{
+			"path": "../../../../../Herd/o2-cloud-integration"
 		}
 	]
 }

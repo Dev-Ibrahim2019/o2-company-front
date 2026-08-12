@@ -87,18 +87,6 @@ export const MenuGrid: React.FC<MenuGridProps> = ({
         </button>
 
         {/* أقسام المنيو */}
-        {categories.map(cat => (
-          <button
-            onClick={() => setSelectedCategory('all')}
-            className={`flex items-center gap-1 px-2 py-1.5 rounded-lg whitespace-nowrap text-[9px] font-black transition-all duration-200 border shrink-0 ${selectedCategory === 'all'
-              ? 'bg-red-600 text-white border-red-600 shadow-sm'
-              : 'bg-slate-800 text-slate-400 border-white/5 hover:bg-slate-700'
-              }`}
-          >
-            <span className="text-[10px]">🍽️</span>
-            <span>الكل</span>
-          </button>
-
           {/* أقسام المنيو */}
           {categories.map(cat => (
             <button
@@ -114,7 +102,6 @@ export const MenuGrid: React.FC<MenuGridProps> = ({
             </button>
           ))}
         </div>
-      </div>
 
       {/* ── Items Grid ── */}
       <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4 overflow-y-auto pr-1 pb-6 custom-scrollbar">
