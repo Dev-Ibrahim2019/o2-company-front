@@ -120,7 +120,7 @@ export const CallCenterPageWithAside: React.FC = () => {
   const pageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const scrollContainer = pageRef.current?.closest(".overflow-y-auto");
+    const scrollContainer = pageRef.current?.querySelector(".overflow-y-auto") as HTMLElement;
     if (!scrollContainer) return;
     const handleScroll = () => setIsScrolled(scrollContainer.scrollTop > 60);
     scrollContainer.addEventListener("scroll", handleScroll, { passive: true });
@@ -439,7 +439,7 @@ export const CallCenterPageWithAside: React.FC = () => {
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
-    <div ref={pageRef} dir="rtl" style={{ minHeight: "100%", fontFamily: typography.fontFamily.sans, display: "flex", flexDirection: "column" }}>
+    <div ref={pageRef} dir="rtl" style={{ height: "100vh", overflow: "hidden", fontFamily: typography.fontFamily.sans, display: "flex", flexDirection: "column" }}>
 
       {/* ══════════════════════════════════════════════════════════════════
           STICKY CUSTOMER INFO BAR — Transparent pill overlay on scroll
@@ -534,13 +534,13 @@ export const CallCenterPageWithAside: React.FC = () => {
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════
-          TOP SECTION — TWO COLUMNS
-          RTL: first child → RIGHT, second child → LEFT
+          TWO-COLUMN LAYOUT — RTL: RIGHT (customer) | LEFT (chart + POS)
+          Each column scrolls independently
       ══════════════════════════════════════════════════════════════════ */}
-      <div style={{ display: "flex", gap: 16, flex: 1 }}>
+      <div className="flex gap-4 flex-1 min-h-0" style={{ height: "calc(100vh - 40px)" }}>
 
-        {/* ── ASIDE (RIGHT in RTL) — Customer Search + Tabs + Current Order ── */}
-        <aside style={{ width: 380, flexShrink: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* ══════════════════ RIGHT COLUMN — Customer ══════════════════ */}
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto custom-scrollbar pr-1 gap-3" dir="rtl">
 
           {/* ── Customer Search ── */}
           <Card padding="20px">
@@ -678,102 +678,136 @@ export const CallCenterPageWithAside: React.FC = () => {
             )}
           </Card>
 
-          {/* ── Current Order Table ── */}
-          <Card padding="20px" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <h2 style={{ fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.neutral[900] }}>
-                جدول الطلب الحالي
-              </h2>
-              {cart.length > 0 && (
-                <Button variant="ghost" size="xs" icon={<Trash2 size={12} />} onClick={clearCart} style={{ color: colors.semantic.error }}>تفريغ</Button>
-              )}
-            </div>
-
-            {cart.length === 0 ? (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: colors.neutral[500] }}>
-                <ShoppingCart size={32} style={{ marginBottom: 8, opacity: 0.5 }} />
-                <p style={{ fontSize: "13px" }}>السلة فارغة</p>
-              </div>
-            ) : (
-              <>
-                <div style={{ flex: 1, overflowY: "auto", maxHeight: 250 }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
-                    <thead>
+          {/* ── Orders Table (Last 5) ── */}
+          <Card padding="16px" style={{ marginBottom: 0 }}>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: typography.size.sm }}>
+                <thead>
+                  <tr>
+                    {["الاسم", "التاريخ", "العنوان", "الاجمالي", "الاجراء"].map(h => (
+                      <th key={h} style={{ padding: "8px 10px", textAlign: "right", fontWeight: typography.weight.bold, color: colors.neutral[500], borderBottom: `2px solid ${colors.border.subtle}`, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {mockOrders.map(order => (
+                    <React.Fragment key={order.id}>
                       <tr style={{ borderBottom: `1px solid ${colors.border.subtle}` }}>
-                        {["#", "الصنف", "الكمية", "السعر", "المجموع", ""].map(h => (
-                          <th key={h} style={{ padding: "8px", textAlign: "right", fontWeight: 600, color: colors.neutral[600] }}>{h}</th>
-                        ))}
+                        <td style={{ padding: "12px", color: colors.neutral[800] }}>{order.customer_name || "\u2014"}</td>
+                        <td style={{ padding: "12px", color: colors.neutral[600] }}>{formatDate(order.created_at)}</td>
+                        <td style={{ padding: "12px", color: colors.neutral[600] }}>{order.delivery_address || "\u2014"}</td>
+                        <td style={{ padding: "12px", fontWeight: typography.weight.bold, color: colors.neutral[900] }}>{formatCurrency(order.total)}</td>
+                        <td style={{ padding: "12px" }}>
+                          <button
+                            onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}
+                            style={{
+                              display: "inline-flex", alignItems: "center", gap: 6,
+                              padding: "6px 14px", borderRadius: radius.lg,
+                              border: "1.5px solid #16a34a", background: "transparent",
+                              color: "#16a34a", fontSize: "12px", fontWeight: 600, cursor: "pointer",
+                              transition: "all 0.2s",
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.background = "#16a34a"; e.currentTarget.style.color = "#fff"; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#16a34a"; }}
+                          >
+                            <Eye size={14} />
+                            {"\u062A\u0641\u0627\u0635\u064A\u0644"}
+                          </button>
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {cart.map((item, idx) => (
-                        <tr key={item.id} style={{ borderBottom: `1px solid ${colors.border.subtle}` }}>
-                          <td style={{ padding: "8px", color: colors.neutral[500] }}>{idx + 1}</td>
-                          <td style={{ padding: "8px" }}>
-                            <p style={{ fontWeight: 500, color: colors.neutral[800] }}>{item.name_ar || item.name}</p>
-                            <input
-                              value={item.notes || ""}
-                              onChange={e => setCart(prev => prev.map(c => c.id === item.id ? { ...c, notes: e.target.value } : c))}
-                              placeholder="ملاحظات"
-                              style={{ width: "100%", fontSize: "11px", border: "none", background: "transparent", outline: "none", color: colors.neutral[500], marginTop: 2 }}
-                            />
-                          </td>
-                          <td style={{ padding: "8px" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                              <button onClick={() => updateQuantity(item.id, -1)} style={{ width: 22, height: 22, borderRadius: "50%", border: `1px solid ${colors.border.default}`, background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                <Minus size={10} />
-                              </button>
-                              <input
-                                type="number"
-                                value={item.quantity}
-                                onChange={e => updateCartQuantityDirect(item.id, parseInt(e.target.value) || 0)}
-                                style={{ width: 36, textAlign: "center", fontWeight: 600, fontSize: "12px", border: `1px solid ${colors.border.default}`, borderRadius: 4, outline: "none" }}
-                              />
-                              <button onClick={() => updateQuantity(item.id, 1)} style={{ width: 22, height: 22, borderRadius: "50%", border: `1px solid ${colors.border.default}`, background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                <Plus size={10} />
-                              </button>
+                      {expandedOrder === order.id && (
+                        <tr>
+                          <td colSpan={5} style={{ padding: 0 }}>
+                            <div style={{
+                              margin: "8px 12px", padding: "16px", borderRadius: radius.lg,
+                              border: "2px solid #16a34a", background: "#f0fdf4",
+                            }}>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                  <h3 style={{ fontSize: "14px", fontWeight: typography.weight.bold, color: colors.neutral[900] }}>
+                                    {"\u062A\u0641\u0627\u0635\u064A\u0644 \u0627\u0644\u0623\u0648\u0631\u062F #"}{order.order_number}
+                                  </h3>
+                                  <span style={{ fontSize: "11px", color: colors.neutral[500] }}>{order.customer_name}</span>
+                                  <span style={{ fontSize: "11px", color: colors.neutral[500] }}>{formatDate(order.created_at)}</span>
+                                  <span style={{ fontSize: "11px", color: colors.neutral[500] }}>{order.delivery_address}</span>
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <span style={{ fontSize: "12px", fontWeight: typography.weight.bold, color: "#16a34a" }}>{formatCurrency(order.total)}</span>
+                                  <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: radius.full, background: "#dcfce7", color: "#166534", fontWeight: 600 }}>
+                                    {order.items.length} {"\u0635\u0646\u0641"}
+                                  </span>
+                                </div>
+                              </div>
+                              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginBottom: 16 }}>
+                                <thead>
+                                  <tr>
+                                    {["\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0643\u0645\u064A\u0629", "\u0633\u0639\u0631 \u0627\u0644\u0648\u062D\u062F\u0629", "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A"].map(h => (
+                                      <th key={h} style={{ padding: "8px 10px", textAlign: "right", fontWeight: typography.weight.bold, color: "#fff", background: "#16a34a", fontSize: "11px" }}>
+                                        {h}
+                                      </th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {order.items.map((item, idx) => (
+                                    <tr key={idx} style={{ borderBottom: `1px solid ${colors.border.subtle}`, background: "#fff" }}>
+                                      <td style={{ padding: "8px 10px", color: colors.neutral[800] }}>{item.item_name_ar || item.item_name}</td>
+                                      <td style={{ padding: "8px 10px", color: colors.neutral[600] }}>{item.quantity}</td>
+                                      <td style={{ padding: "8px 10px", color: colors.neutral[600] }}>{formatCurrency(item.price)}</td>
+                                      <td style={{ padding: "8px 10px", fontWeight: typography.weight.bold, color: colors.neutral[800] }}>{formatCurrency(item.total || item.price * item.quantity)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+
+                              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                                <div style={{ flex: 1, minWidth: 240, padding: "12px", borderRadius: radius.lg, background: "#fff", border: `1px solid ${colors.border.subtle}` }}>
+                                  <h4 style={{ fontSize: "13px", fontWeight: typography.weight.bold, marginBottom: 6, color: colors.neutral[700] }}>
+                                    {"\u062A\u0642\u064A\u064A\u0645 \u0627\u0644\u062E\u062F\u0645\u0629"}
+                                  </h4>
+                                  <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+                                    {[1, 2, 3, 4, 5].map(s => (
+                                      <button key={s} onClick={() => setServiceRatings(prev => ({ ...prev, [order.id]: s }))} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+                                        <Star size={22} color={(serviceRatings[order.id] || 0) >= s ? "#facc15" : colors.neutral[300]} fill={(serviceRatings[order.id] || 0) >= s ? "#facc15" : "none"} />
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div style={{ flex: 1, minWidth: 240, padding: "12px", borderRadius: radius.lg, background: "#fff", border: `1px solid ${colors.border.subtle}` }}>
+                                  <h4 style={{ fontSize: "13px", fontWeight: typography.weight.bold, marginBottom: 6, color: colors.neutral[700] }}>
+                                    {"\u062A\u0642\u064A\u064A\u0645 \u0627\u0644\u062F\u0644\u064A\u0641\u0631\u064A"}
+                                  </h4>
+                                  <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+                                    {[1, 2, 3, 4, 5].map(s => (
+                                      <button key={s} onClick={() => setDeliveryRatings(prev => ({ ...prev, [order.id]: s }))} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+                                        <Star size={22} color={(deliveryRatings[order.id] || 0) >= s ? "#facc15" : colors.neutral[300]} fill={(deliveryRatings[order.id] || 0) >= s ? "#facc15" : "none"} />
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
+                                <button onClick={() => setExpandedOrder(null)} style={{ padding: "6px 24px", borderRadius: radius.lg, border: `1px solid ${colors.neutral[300]}`, background: "#fff", color: colors.neutral[600], fontSize: "12px", fontWeight: 500, cursor: "pointer" }}>
+                                  {"\u0625\u0644\u063A\u0627\u0621"}
+                                </button>
+                              </div>
                             </div>
                           </td>
-                          <td style={{ padding: "8px" }}>{formatCurrency(item.price)}</td>
-                          <td style={{ padding: "8px", fontWeight: 600 }}>{formatCurrency(item.price * item.quantity)}</td>
-                          <td style={{ padding: "8px" }}>
-                            <button onClick={() => removeFromCart(item.id)} style={{ color: colors.semantic.error, background: "none", border: "none", cursor: "pointer" }}>
-                              <Trash2 size={14} />
-                            </button>
-                          </td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Cart Summary */}
-                <div style={{ borderTop: `1px solid ${colors.border.subtle}`, paddingTop: 12, marginTop: 12 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                    <span style={{ fontSize: "12px", color: colors.neutral[600] }}>الإجمالي الفرعي</span>
-                    <span style={{ fontSize: "13px", fontWeight: 600, color: colors.neutral[800] }}>{formatCurrency(cartSubtotal)}</span>
-                  </div>
-                  {manualDiscount > 0 && (
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, color: colors.semantic.error }}>
-                      <span style={{ fontSize: "12px" }}>الخصم</span>
-                      <span style={{ fontSize: "13px", fontWeight: 600 }}>-{formatCurrency(manualDiscount)}</span>
-                    </div>
-                  )}
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, paddingTop: 8, borderTop: `1px solid ${colors.border.subtle}` }}>
-                    <span style={{ fontSize: "14px", fontWeight: typography.weight.bold, color: colors.neutral[900] }}>الإجمالي</span>
-                    <span style={{ fontSize: "18px", fontWeight: typography.weight.bold, color: colors.brand[500] }}>{formatCurrency(total)}</span>
-                  </div>
-                  <Button variant="primary" fullWidth size="lg" icon={submitting ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle size={16} />} onClick={submitOrder} disabled={submitting || cart.length === 0}>
-                    {submitting ? "جارٍ الإرسال..." : "إتمام الطلب"}
-                  </Button>
-                </div>
-              </>
-            )}
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Card>
-        </aside>
+        </div>
 
-        {/* ── MAIN CONTENT (LEFT in RTL) — Chart + Orders ── */}
-        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+        {/* ══════════════════ LEFT COLUMN — Chart + POS ══════════════════ */}
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto custom-scrollbar pl-1 gap-3" dir="rtl">
 
           {/* ── Last 5 Meals Chart ── */}
           <Card padding="20px">
@@ -801,450 +835,272 @@ export const CallCenterPageWithAside: React.FC = () => {
             </div>
           </Card>
 
-          {/* ── Last 5 Orders ── */}
-          <Card padding="20px">
-            <h2 style={{ fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.neutral[900], marginBottom: 16 }}>
-              آخر 5 أوردات لهذا العميل
-            </h2>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
-                <thead>
-                  <tr>
-                    {["اسم المتصل", "تاريخ الطلب", "مكان الاستلام", "المبلغ الإجمالي", "عرض التفاصيل"].map(h => (
-                      <th key={h} style={{ padding: "10px 12px", textAlign: "right", fontWeight: typography.weight.bold, color: "#fff", background: "#16a34a", fontSize: "12px", whiteSpace: "nowrap" }}>
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {mockOrders.map(order => (
-                    <React.Fragment key={order.id}>
-                      <tr style={{ borderBottom: `1px solid ${colors.border.subtle}` }}>
-                        <td style={{ padding: "12px", color: colors.neutral[800] }}>{order.customer_name || "—"}</td>
-                        <td style={{ padding: "12px", color: colors.neutral[600] }}>{formatDate(order.created_at)}</td>
-                        <td style={{ padding: "12px", color: colors.neutral[600] }}>{order.delivery_address || "—"}</td>
-                        <td style={{ padding: "12px", fontWeight: typography.weight.bold, color: colors.neutral[900] }}>{formatCurrency(order.total)}</td>
-                        <td style={{ padding: "12px" }}>
-                          <button
-                            onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}
-                            style={{
-                              display: "inline-flex", alignItems: "center", gap: 6,
-                              padding: "6px 14px", borderRadius: radius.lg,
-                              border: "1.5px solid #16a34a", background: "transparent",
-                              color: "#16a34a", fontSize: "12px", fontWeight: 600, cursor: "pointer",
-                              transition: "all 0.2s",
-                            }}
-                            onMouseEnter={e => { e.currentTarget.style.background = "#16a34a"; e.currentTarget.style.color = "#fff"; }}
-                            onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#16a34a"; }}
-                          >
-                            <Eye size={14} />
-                            تفاصيل
-                          </button>
-                        </td>
-                      </tr>
-                      {expandedOrder === order.id && (
-                        <tr>
-                          <td colSpan={5} style={{ padding: 0 }}>
-                            <div style={{
-                              margin: "8px 12px", padding: "16px", borderRadius: radius.lg,
-                              border: "2px solid #16a34a", background: "#f0fdf4",
-                            }}>
-                              {/* Header */}
-                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                                  <h3 style={{ fontSize: "14px", fontWeight: typography.weight.bold, color: colors.neutral[900] }}>
-                                    تفاصيل الأورد #{order.order_number}
-                                  </h3>
-                                  <span style={{ fontSize: "11px", color: colors.neutral[500] }}>{order.customer_name}</span>
-                                  <span style={{ fontSize: "11px", color: colors.neutral[500] }}>{formatDate(order.created_at)}</span>
-                                  <span style={{ fontSize: "11px", color: colors.neutral[500] }}>{order.delivery_address}</span>
-                                </div>
-                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                  <span style={{ fontSize: "12px", fontWeight: typography.weight.bold, color: "#16a34a" }}>{formatCurrency(order.total)}</span>
-                                  <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: radius.full, background: "#dcfce7", color: "#166534", fontWeight: 600 }}>
-                                    {order.items.length} صنف
-                                  </span>
-                                </div>
-                              </div>
+          {/* ══════════════════ POS SECTION — Menu + Cart (Dark Theme) ══════════════════ */}
+          <div className="bg-slate-950 rounded-2xl border border-white/10 flex flex-col lg:flex-row gap-0 overflow-hidden" style={{ flex: 1, minHeight: 500 }}>
 
-                              {/* Items Table */}
-                              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginBottom: 16 }}>
-                                <thead>
-                                  <tr>
-                                    {["الصنف", "الكمية", "سعر الوحدة", "الإجمالي"].map(h => (
-                                      <th key={h} style={{ padding: "8px 10px", textAlign: "right", fontWeight: typography.weight.bold, color: "#fff", background: "#16a34a", fontSize: "11px" }}>
-                                        {h}
-                                      </th>
-                                    ))}
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {order.items.map((item, idx) => (
-                                    <tr key={idx} style={{ borderBottom: `1px solid ${colors.border.subtle}`, background: "#fff" }}>
-                                      <td style={{ padding: "8px 10px", color: colors.neutral[800] }}>{item.item_name_ar || item.item_name}</td>
-                                      <td style={{ padding: "8px 10px", color: colors.neutral[600] }}>{item.quantity}</td>
-                                      <td style={{ padding: "8px 10px", color: colors.neutral[600] }}>{formatCurrency(item.price)}</td>
-                                      <td style={{ padding: "8px 10px", fontWeight: typography.weight.bold, color: colors.neutral[800] }}>{formatCurrency(item.total || item.price * item.quantity)}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-
-                              {/* Ratings */}
-                              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-                                {/* Service Rating */}
-                                <div style={{ flex: 1, minWidth: 240, padding: "12px", borderRadius: radius.lg, background: "#fff", border: `1px solid ${colors.border.subtle}` }}>
-                                  <h4 style={{ fontSize: "13px", fontWeight: typography.weight.bold, marginBottom: 6, color: colors.neutral[700] }}>
-                                    تقييم الخدمة
-                                  </h4>
-                                  <p style={{ fontSize: "11px", color: colors.neutral[500], marginBottom: 8 }}>كائن بالأوردر #{order.order_number}</p>
-                                  <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
-                                    {[1, 2, 3, 4, 5].map(s => (
-                                      <button
-                                        key={s}
-                                        onClick={() => setServiceRatings(prev => ({ ...prev, [order.id]: s }))}
-                                        style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
-                                      >
-                                        <Star
-                                          size={22}
-                                          color={(serviceRatings[order.id] || 0) >= s ? "#facc15" : colors.neutral[300]}
-                                          fill={(serviceRatings[order.id] || 0) >= s ? "#facc15" : "none"}
-                                        />
-                                      </button>
-                                    ))}
-                                  </div>
-                                  <textarea
-                                    style={{ width: "100%", height: 50, padding: 8, borderRadius: radius.lg, border: `1px solid ${colors.border.default}`, fontSize: "12px", resize: "none", outline: "none" }}
-                                    placeholder="ملاحظات عن الخدمة"
-                                  />
-                                </div>
-
-                                {/* Delivery Rating */}
-                                <div style={{ flex: 1, minWidth: 240, padding: "12px", borderRadius: radius.lg, background: "#fff", border: `1px solid ${colors.border.subtle}` }}>
-                                  <h4 style={{ fontSize: "13px", fontWeight: typography.weight.bold, marginBottom: 6, color: colors.neutral[700] }}>
-                                    تقييم الدليفري
-                                  </h4>
-                                  <p style={{ fontSize: "11px", color: colors.neutral[500], marginBottom: 8 }}>التوصيل</p>
-                                  <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
-                                    {[1, 2, 3, 4, 5].map(s => (
-                                      <button
-                                        key={s}
-                                        onClick={() => setDeliveryRatings(prev => ({ ...prev, [order.id]: s }))}
-                                        style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
-                                      >
-                                        <Star
-                                          size={22}
-                                          color={(deliveryRatings[order.id] || 0) >= s ? "#facc15" : colors.neutral[300]}
-                                          fill={(deliveryRatings[order.id] || 0) >= s ? "#facc15" : "none"}
-                                        />
-                                      </button>
-                                    ))}
-                                  </div>
-                                  <textarea
-                                    style={{ width: "100%", height: 50, padding: 8, borderRadius: radius.lg, border: `1px solid ${colors.border.default}`, fontSize: "12px", resize: "none", outline: "none" }}
-                                    placeholder="ملاحظات عن الدليفري"
-                                  />
-                                </div>
-                              </div>
-
-                              {/* Collapse Button */}
-                              <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
-                                <button
-                                  onClick={() => setExpandedOrder(null)}
-                                  style={{
-                                    padding: "6px 24px", borderRadius: radius.lg,
-                                    border: `1px solid ${colors.neutral[300]}`, background: "#fff",
-                                    color: colors.neutral[600], fontSize: "12px", fontWeight: 500, cursor: "pointer",
-                                  }}
-                                >
-                                  إلغاء
-                                </button>
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Card>
-        </div>
-      </div>
-
-      {/* ══════════════════════════════════════════════════════════════════
-          BOTTOM SECTION — POS (Menu + Cart) — Dark Theme matching real POS
-      ══════════════════════════════════════════════════════════════════ */}
-      <div className="bg-slate-950 rounded-2xl mt-4 border border-white/10 flex flex-col lg:flex-row gap-0 overflow-hidden" style={{ minHeight: 500 }}>
-
-        {/* ── LEFT: Menu Area ── */}
-        <div className="flex-1 flex flex-col min-w-0 p-3 sm:p-4">
-          {/* Search Bar */}
-          <div className="flex items-center gap-2 mb-3">
-            <div className="flex-1 relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-              <input
-                type="text"
-                value={menuSearchQuery}
-                onChange={e => setMenuSearchQuery(e.target.value)}
-                placeholder="ابحث عن صنف بالاسم أو الكود..."
-                className="w-full pl-9 pr-3 py-2.5 bg-slate-900 border border-white/10 rounded-xl text-sm font-bold text-white outline-none focus:ring-1 focus:ring-red-600 placeholder:text-slate-600"
-              />
-            </div>
-            <div className="flex bg-slate-800 p-1 rounded-lg">
-              <span className="text-[10px] font-black text-slate-400 px-2 py-1">{filteredItems.length} صنف</span>
-            </div>
-          </div>
-
-          {/* Category Tabs */}
-          <div className="mb-3 flex shrink-0 gap-1 overflow-x-auto custom-scrollbar py-1">
-            <button
-              onClick={() => setSelectedCategory("all")}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg whitespace-nowrap text-[8px] font-black transition-all duration-200 border ${selectedCategory === "all" ? "bg-red-600 text-white border-red-600 shadow-sm" : "bg-slate-900 text-slate-500 border-white/5 hover:bg-slate-800"}`}
-            >
-              <span className="text-[10px]">🍽️</span>
-              <span>الكل</span>
-            </button>
-            {categories.map((cat, i) => (
-              <button
-                key={i}
-                onClick={() => setSelectedCategory(cat)}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg whitespace-nowrap text-[8px] font-black transition-all duration-200 border ${selectedCategory === cat ? "bg-red-600 text-white border-red-600 shadow-sm" : "bg-slate-900 text-slate-500 border-white/5 hover:bg-slate-800"}`}
-              >
-                <span>{cat}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* Items Grid */}
-          <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3 overflow-y-auto pr-1 pb-6 custom-scrollbar">
-            {menuLoading ? (
-              <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-600 gap-3">
-                <Loader2 size={32} className="animate-spin" />
-                <p className="font-black text-sm">جاري تحميل المنيو...</p>
+            {/* Menu Area */}
+            <div className="flex-1 flex flex-col min-w-0 p-3 sm:p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex-1 relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    value={menuSearchQuery}
+                    onChange={e => setMenuSearchQuery(e.target.value)}
+                    placeholder="ابحث عن صنف بالاسم أو الكود..."
+                    className="w-full pl-9 pr-3 py-2.5 bg-slate-900 border border-white/10 rounded-xl text-sm font-bold text-white outline-none focus:ring-1 focus:ring-red-600 placeholder:text-slate-600"
+                  />
+                </div>
+                <div className="flex bg-slate-800 p-1 rounded-lg">
+                  <span className="text-[10px] font-black text-slate-400 px-2 py-1">{filteredItems.length} صنف</span>
+                </div>
               </div>
-            ) : filteredItems.length === 0 ? (
-              <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-600 gap-3">
-                <Package size={40} strokeWidth={1} />
-                <p className="font-black text-xs">{menuSearchQuery ? "لا توجد نتائج مطابقة" : "لا توجد أصناف متاحة"}</p>
-              </div>
-            ) : (
-              filteredItems.map(item => (
-                <div
-                  key={item.id}
-                  onClick={() => addToCart(item)}
-                  className="group cursor-pointer flex flex-col gap-2"
+
+              {/* Category Tabs */}
+              <div className="mb-3 flex shrink-0 gap-1 overflow-x-auto custom-scrollbar py-1">
+                <button
+                  onClick={() => setSelectedCategory("all")}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg whitespace-nowrap text-[8px] font-black transition-all duration-200 border ${selectedCategory === "all" ? "bg-red-600 text-white border-red-600 shadow-sm" : "bg-slate-900 text-slate-500 border-white/5 hover:bg-slate-800"}`}
                 >
-                  <div className="aspect-square relative rounded-2xl overflow-hidden bg-slate-900 border border-white/5 group-hover:border-red-600/50 transition-all duration-300 shadow-lg">
-                    {item.image ? (
-                      <img
-                        src={item.image}
-                        alt={item.name_ar || item.name}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-in-out"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                      />
-                    ) : null}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                    <div className="absolute top-2 right-2 bg-red-600 text-white px-1.5 py-0.5 rounded-md text-[8px] font-black shadow-lg border border-white/10">#{item.id}</div>
-                    {!item.image && (
-                      <div className="absolute inset-0 flex items-center justify-center text-slate-700">
-                        <Package size={32} strokeWidth={1} />
-                      </div>
-                    )}
+                  <span className="text-[10px]">🍽️</span>
+                  <span>الكل</span>
+                </button>
+                {categories.map((cat, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg whitespace-nowrap text-[8px] font-black transition-all duration-200 border ${selectedCategory === cat ? "bg-red-600 text-white border-red-600 shadow-sm" : "bg-slate-900 text-slate-500 border-white/5 hover:bg-slate-800"}`}
+                  >
+                    <span>{cat}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Items Grid */}
+              <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3 overflow-y-auto pr-1 pb-6 custom-scrollbar">
+                {menuLoading ? (
+                  <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-600 gap-3">
+                    <Loader2 size={32} className="animate-spin" />
+                    <p className="font-black text-sm">جاري تحميل المنيو...</p>
                   </div>
-                  <div className="px-1">
-                    <h4 className="font-black text-slate-100 text-[9px] leading-tight group-hover:text-red-500 transition-colors line-clamp-2">{item.name_ar || item.name}</h4>
-                    <div className="flex items-center justify-between mt-0.5">
-                      <span className="text-[10px] font-black text-red-500">{item.price > 0 ? `${item.price.toFixed(2)} ₪` : "—"}</span>
+                ) : filteredItems.length === 0 ? (
+                  <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-600 gap-3">
+                    <Package size={40} strokeWidth={1} />
+                    <p className="font-black text-xs">{menuSearchQuery ? "لا توجد نتائج مطابقة" : "لا توجد أصناف متاحة"}</p>
+                  </div>
+                ) : (
+                  filteredItems.map(item => (
+                    <div
+                      key={item.id}
+                      onClick={() => addToCart(item)}
+                      className="group cursor-pointer flex flex-col gap-2"
+                    >
+                      <div className="aspect-square relative rounded-2xl overflow-hidden bg-slate-900 border border-white/5 group-hover:border-red-600/50 transition-all duration-300 shadow-lg">
+                        {item.image ? (
+                          <img
+                            src={item.image}
+                            alt={item.name_ar || item.name}
+                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-in-out"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                          />
+                        ) : null}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <div className="absolute top-2 right-2 bg-red-600 text-white px-1.5 py-0.5 rounded-md text-[8px] font-black shadow-lg border border-white/10">#{item.id}</div>
+                        {!item.image && (
+                          <div className="absolute inset-0 flex items-center justify-center text-slate-700">
+                            <Package size={32} strokeWidth={1} />
+                          </div>
+                        )}
+                      </div>
+                      <div className="px-1">
+                        <h4 className="font-black text-slate-100 text-[9px] leading-tight group-hover:text-red-500 transition-colors line-clamp-2">{item.name_ar || item.name}</h4>
+                        <div className="flex items-center justify-between mt-0.5">
+                          <span className="text-[10px] font-black text-red-500">{item.price > 0 ? `${item.price.toFixed(2)} ₪` : "—"}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Cart Panel */}
+            <div className="w-full lg:w-[450px] xl:w-[500px] bg-slate-900 border-r border-white/10 flex flex-col overflow-hidden shrink-0">
+              {/* Cart Header */}
+              <div className="p-3 sm:p-4 border-b border-white/5 space-y-3 bg-slate-900/50 backdrop-blur-md sticky top-0 z-10">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <ShoppingCart className="text-red-500" size={16} />
+                    <h3 className="text-xs sm:text-sm font-black text-white">تفاصيل الفاتورة</h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {customer && (
+                      <span className="text-[9px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">{customer.name}</span>
+                    )}
+                    <div className="flex bg-slate-800 p-1 rounded-lg">
+                      {[{ id: "takeaway" as const, label: "فوري" }, { id: "dine_in" as const, label: "محلي" }].map(type => (
+                        <button
+                          key={type.id}
+                          className={`px-1.5 sm:px-2 py-1 text-[7px] sm:text-[8px] font-black rounded-md transition-all whitespace-nowrap ${orderType === type.id ? "bg-red-600 text-white shadow-lg" : "text-slate-500 hover:text-slate-300"}`}
+                          onClick={() => setOrderType(type.id)}
+                        >
+                          {type.label}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-        </div>
 
-        {/* ── RIGHT: Cart Panel (Dark Theme) ── */}
-        <div className="w-full lg:w-[450px] xl:w-[500px] bg-slate-900 border-r border-white/10 flex flex-col overflow-hidden shrink-0">
-          {/* Cart Header */}
-          <div className="p-3 sm:p-4 border-b border-white/5 space-y-3 bg-slate-900/50 backdrop-blur-md sticky top-0 z-10">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <ShoppingCart className="text-red-500" size={16} />
-                <h3 className="text-xs sm:text-sm font-black text-white">تفاصيل الفاتورة</h3>
+                <div className="bg-red-600/10 border border-red-600/20 p-2 px-3 rounded-lg flex flex-col gap-1">
+                  {manualDiscount > 0 && (
+                    <>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">{"\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0641\u0631\u0639\u064A"}</span>
+                        <span className="text-sm font-black text-slate-300">{cartSubtotal.toFixed(2)} ₪</span>
+                      </div>
+                      <div className="flex justify-between items-center text-red-500">
+                        <span className="text-[8px] font-black uppercase tracking-widest">{"\u0627\u0644\u062E\u0635\u0645"}</span>
+                        <span className="text-sm font-black">-{manualDiscount.toFixed(2)} ₪</span>
+                      </div>
+                    </>
+                  )}
+                  <div className={`pt-1 mt-1 ${manualDiscount > 0 ? "border-t border-red-600/20" : ""} flex justify-between items-center`}>
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{manualDiscount > 0 ? "\u0627\u0644\u0635\u0627\u0641\u064A \u0627\u0644\u0646\u0647\u0627\u0626\u064A" : "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u0643\u0644\u064A"}</span>
+                    <div className="text-left">
+                      <span className="text-xl sm:text-2xl lg:text-3xl font-black text-red-600">{total.toFixed(2)}</span>
+                      <span className="text-[11px] font-black text-red-600 mr-1">₪</span>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                {customer && (
-                  <span className="text-[9px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">{customer.name}</span>
+
+              {/* Cart Items Header */}
+              <div className="bg-slate-900 border-b border-white/5">
+                <table className="w-full text-right border-collapse min-w-[350px]">
+                  <thead>
+                    <tr className="border-b border-white/5">
+                      {["#", "\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0633\u0639\u0631", "\u0627\u0644\u0643\u0645\u064A\u0629", "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A", ""].map((h, i) => (
+                        <th key={i} className={`p-2 sm:p-3 text-[8px] sm:text-[10px] font-black text-slate-500 uppercase tracking-widest ${i === 4 ? "text-left" : i === 3 ? "text-center" : ""}`}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                </table>
+              </div>
+
+              {/* Cart Items (scrollable) */}
+              <div className="flex-1 overflow-y-auto custom-scrollbar min-h-[100px]">
+                {cart.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-6 text-slate-700 gap-2">
+                    <div className="w-14 h-14 bg-slate-800 rounded-full flex items-center justify-center shadow-inner">
+                      <ShoppingCart size={24} strokeWidth={1.5} />
+                    </div>
+                    <p className="font-black text-lg">{"\u0627\u0644\u0641\u0627\u062A\u0648\u0631\u0629 \u0641\u0627\u0631\u063A\u0629"}</p>
+                    <p className="text-[10px] text-slate-600">{"\u0627\u0636\u063a\u0637 \u0639\u0644\u0649 \u0623\u064A \u0635\u0646\u0641 \u0641\u064A \u0627\u0644\u0645\u0646\u064A\u0648 \u0644\u0625\u0636\u0627\u0641\u062A\u0647"}</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-right border-collapse min-w-[350px]">
+                      <tbody className="divide-y divide-white/5">
+                        {cart.map((item, index) => (
+                          <tr key={item.id} className="group hover:bg-white/5 transition-colors">
+                            <td className="p-2 sm:p-3 text-[8px] sm:text-[10px] font-black text-slate-600">{index + 1}</td>
+                            <td className="p-2 sm:p-3">
+                              <input
+                                type="text"
+                                value={item.notes || ""}
+                                onChange={e => setCart(prev => prev.map(c => c.id === item.id ? { ...c, notes: e.target.value } : c))}
+                                placeholder={item.name_ar || item.name}
+                                className="w-full bg-transparent text-[10px] sm:text-xs font-black text-white outline-none border-b border-transparent focus:border-red-500/30 placeholder:text-white"
+                              />
+                            </td>
+                            <td className="p-2 sm:p-3 text-center text-[10px] sm:text-xs font-bold text-slate-400">{item.price.toFixed(2)}</td>
+                            <td className="p-2 sm:p-3">
+                              <div className="flex items-center justify-center gap-0.5">
+                                <button onClick={() => updateQuantity(item.id, -1)} className="w-5 h-5 bg-slate-700 rounded text-[10px] font-bold text-white hover:bg-slate-600 flex items-center justify-center">-</button>
+                                <input
+                                  type="text"
+                                  value={item.quantity}
+                                  onChange={e => { const val = parseInt(e.target.value); if (!isNaN(val)) updateCartQuantityDirect(item.id, val); }}
+                                  className="w-8 bg-transparent text-center text-[10px] sm:text-xs font-black text-white outline-none"
+                                />
+                                <button onClick={() => updateQuantity(item.id, 1)} className="w-5 h-5 bg-slate-700 rounded text-[10px] font-bold text-white hover:bg-slate-600 flex items-center justify-center">+</button>
+                              </div>
+                            </td>
+                            <td className="p-2 sm:p-3 text-left">
+                              <span className="text-[10px] sm:text-xs font-black text-red-500">{(item.price * item.quantity).toFixed(2)}</span>
+                            </td>
+                            <td className="p-2 sm:p-3 text-center">
+                              <button onClick={() => removeFromCart(item.id)} className="p-1.5 text-slate-600 hover:text-red-500 transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100">
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
-                <div className="flex bg-slate-800 p-1 rounded-lg">
-                  {[{ id: "takeaway" as const, label: "فوري" }, { id: "dine_in" as const, label: "محلي" }].map(type => (
+              </div>
+
+              {/* Cart Footer */}
+              <div className="p-3 sm:p-4 bg-slate-950 border-t border-white/10 space-y-2">
+                <div className="flex gap-2">
+                  <div className="flex-1 bg-slate-900 px-3 py-1.5 rounded-xl border border-white/5 flex flex-col gap-0.5">
+                    <div className="flex items-center gap-1 text-slate-500 shrink-0">
+                      <span className="text-[8px] font-black uppercase tracking-widest">{"\u0627\u0644\u0645\u0644\u0627\u062D\u0638\u0629"}</span>
+                    </div>
+                    <textarea value={invoiceNote} onChange={e => setInvoiceNote(e.target.value)} placeholder="..." className="w-full bg-transparent text-[9px] sm:text-[10px] font-black outline-none text-white placeholder:text-slate-700 h-12 sm:h-16 resize-none" />
+                  </div>
+                  <div className="w-28 sm:w-32 bg-slate-900 px-3 py-1.5 rounded-xl border border-white/5 flex flex-col gap-0.5">
+                    <div className="flex items-center gap-1 text-slate-500 shrink-0">
+                      <span className="text-[8px] font-black uppercase tracking-widest">{"\u0627\u0644\u062E\u0635\u0645"}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        value={discountValue || ""}
+                        onChange={e => setDiscountValue(parseFloat(e.target.value) || 0)}
+                        placeholder="0"
+                        className="flex-1 min-w-0 bg-transparent text-center text-[10px] sm:text-xs font-black text-white outline-none"
+                      />
+                      <button onClick={() => setDiscountType(discountType === "AMOUNT" ? "PERCENT" : "AMOUNT")} className="text-[9px] font-black text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded hover:text-slate-200 transition-colors">
+                        {discountType === "AMOUNT" ? "₪" : "%"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-1.5 pt-1">
+                  {[{ id: "cash", label: "💵 نقداً" }, { id: "card", label: "💳 بطاقة" }, { id: "wallet", label: "📱 محفظة" }].map(pm => (
                     <button
-                      key={type.id}
-                      className={`px-1.5 sm:px-2 py-1 text-[7px] sm:text-[8px] font-black rounded-md transition-all whitespace-nowrap ${orderType === type.id ? "bg-red-600 text-white shadow-lg" : "text-slate-500 hover:text-slate-300"}`}
-                      onClick={() => setOrderType(type.id)}
+                      key={pm.id}
+                      onClick={() => setPaymentMethod(pm.id)}
+                      className={`flex-1 py-2 text-[9px] sm:text-[10px] font-black rounded-lg transition-all ${paymentMethod === pm.id ? "bg-red-600 text-white shadow-lg shadow-red-900/30" : "bg-slate-800 text-slate-500 hover:text-slate-300 border border-white/5"}`}
                     >
-                      {type.label}
+                      {pm.label}
                     </button>
                   ))}
                 </div>
-              </div>
-            </div>
 
-            {/* Total Amount */}
-            <div className="bg-red-600/10 border border-red-600/20 p-2 px-3 rounded-lg flex flex-col gap-1">
-              {manualDiscount > 0 && (
-                <>
-                  <div className="flex justify-between items-center">
-                    <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">الإجمالي الفرعي</span>
-                    <span className="text-sm font-black text-slate-300">{cartSubtotal.toFixed(2)} ₪</span>
-                  </div>
-                  <div className="flex justify-between items-center text-red-500">
-                    <span className="text-[8px] font-black uppercase tracking-widest">الخصم</span>
-                    <span className="text-sm font-black">-{manualDiscount.toFixed(2)} ₪</span>
-                  </div>
-                </>
-              )}
-              <div className={`pt-1 mt-1 ${manualDiscount > 0 ? "border-t border-red-600/20" : ""} flex justify-between items-center`}>
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{manualDiscount > 0 ? "الصافي النهائي" : "الإجمالي الكلي"}</span>
-                <div className="text-left">
-                  <span className="text-xl sm:text-2xl lg:text-3xl font-black text-red-600">{total.toFixed(2)}</span>
-                  <span className="text-[11px] font-black text-red-600 mr-1">₪</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Cart Items Table Header */}
-          <div className="bg-slate-900 border-b border-white/5">
-            <table className="w-full text-right border-collapse min-w-[350px]">
-              <thead>
-                <tr className="border-b border-white/5">
-                  {["#", "الصنف", "السعر", "الكمية", "الإجمالي", ""].map((h, i) => (
-                    <th key={i} className={`p-2 sm:p-3 text-[8px] sm:text-[10px] font-black text-slate-500 uppercase tracking-widest ${i === 4 ? "text-left" : i === 3 ? "text-center" : ""}`}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-            </table>
-          </div>
-
-          {/* Cart Items (scrollable) */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar min-h-[100px]">
-            {cart.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-6 text-slate-700 gap-2">
-                <div className="w-14 h-14 bg-slate-800 rounded-full flex items-center justify-center shadow-inner">
-                  <ShoppingCart size={24} strokeWidth={1.5} />
-                </div>
-                <p className="font-black text-lg">الفاتورة فارغة</p>
-                <p className="text-[10px] text-slate-600">اضغط على أي صنف في المنيو لإضافته</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-right border-collapse min-w-[350px]">
-                  <tbody className="divide-y divide-white/5">
-                    {cart.map((item, index) => (
-                      <tr key={item.id} className="group hover:bg-white/5 transition-colors">
-                        <td className="p-2 sm:p-3 text-[8px] sm:text-[10px] font-black text-slate-600">{index + 1}</td>
-                        <td className="p-2 sm:p-3">
-                          <input
-                            type="text"
-                            value={item.notes || ""}
-                            onChange={e => setCart(prev => prev.map(c => c.id === item.id ? { ...c, notes: e.target.value } : c))}
-                            placeholder={item.name_ar || item.name}
-                            className="w-full bg-transparent text-[10px] sm:text-xs font-black text-white outline-none border-b border-transparent focus:border-red-500/30 placeholder:text-white"
-                          />
-                        </td>
-                        <td className="p-2 sm:p-3 text-center text-[10px] sm:text-xs font-bold text-slate-400">{item.price.toFixed(2)}</td>
-                        <td className="p-2 sm:p-3">
-                          <div className="flex items-center justify-center gap-0.5">
-                            <button onClick={() => updateQuantity(item.id, -1)} className="w-5 h-5 bg-slate-700 rounded text-[10px] font-bold text-white hover:bg-slate-600 flex items-center justify-center">-</button>
-                            <input
-                              type="text"
-                              value={item.quantity}
-                              onChange={e => { const val = parseInt(e.target.value); if (!isNaN(val)) updateCartQuantityDirect(item.id, val); }}
-                              className="w-8 bg-transparent text-center text-[10px] sm:text-xs font-black text-white outline-none"
-                            />
-                            <button onClick={() => updateQuantity(item.id, 1)} className="w-5 h-5 bg-slate-700 rounded text-[10px] font-bold text-white hover:bg-slate-600 flex items-center justify-center">+</button>
-                          </div>
-                        </td>
-                        <td className="p-2 sm:p-3 text-left">
-                          <span className="text-[10px] sm:text-xs font-black text-red-500">{(item.price * item.quantity).toFixed(2)}</span>
-                        </td>
-                        <td className="p-2 sm:p-3 text-center">
-                          <button onClick={() => removeFromCart(item.id)} className="p-1.5 text-slate-600 hover:text-red-500 transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100">
-                            <Trash2 size={14} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* Cart Footer */}
-          <div className="p-3 sm:p-4 bg-slate-950 border-t border-white/10 space-y-2">
-            {/* Note & Discount */}
-            <div className="flex gap-2">
-              <div className="flex-1 bg-slate-900 px-3 py-1.5 rounded-xl border border-white/5 flex flex-col gap-0.5">
-                <div className="flex items-center gap-1 text-slate-500 shrink-0">
-                  <span className="text-[8px] font-black uppercase tracking-widest">الملاحظة</span>
-                </div>
-                <textarea value={invoiceNote} onChange={e => setInvoiceNote(e.target.value)} placeholder="..." className="w-full bg-transparent text-[9px] sm:text-[10px] font-black outline-none text-white placeholder:text-slate-700 h-12 sm:h-16 resize-none" />
-              </div>
-              <div className="w-28 sm:w-32 bg-slate-900 px-3 py-1.5 rounded-xl border border-white/5 flex flex-col gap-0.5">
-                <div className="flex items-center gap-1 text-slate-500 shrink-0">
-                  <span className="text-[8px] font-black uppercase tracking-widest">الخصم</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number"
-                    value={discountValue || ""}
-                    onChange={e => setDiscountValue(parseFloat(e.target.value) || 0)}
-                    placeholder="0"
-                    className="flex-1 min-w-0 bg-transparent text-center text-[10px] sm:text-xs font-black text-white outline-none"
-                  />
-                  <button onClick={() => setDiscountType(discountType === "AMOUNT" ? "PERCENT" : "AMOUNT")} className="text-[9px] font-black text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded hover:text-slate-200 transition-colors">
-                    {discountType === "AMOUNT" ? "₪" : "%"}
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    onClick={() => { if (cart.length === 0) return; submitOrder(); }}
+                    disabled={cart.length === 0 || submitting}
+                    className="py-2.5 sm:py-3 bg-slate-800 text-white rounded-xl font-black text-[9px] sm:text-[10px] flex items-center justify-center gap-1.5 hover:bg-slate-700 disabled:opacity-30 transition-all active:scale-95"
+                  >
+                    {submitting ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                    {"\u062D\u0641\u0638"}
+                  </button>
+                  <button
+                    onClick={() => { if (cart.length === 0) return; submitOrder(); }}
+                    disabled={cart.length === 0 || submitting}
+                    className="py-2.5 sm:py-3 bg-red-600 text-white rounded-xl font-black text-[9px] sm:text-[10px] flex items-center justify-center gap-1.5 hover:bg-red-700 shadow-xl shadow-red-900/20 disabled:opacity-30 transition-all active:scale-95"
+                  >
+                    {submitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                    {submitting ? "\u062C\u0627\u0631\u064D \u0627\u0644\u0625\u0631\u0633\u0627\u0644..." : "\u062A\u0646\u0641\u064A\u0630"}
                   </button>
                 </div>
               </div>
-            </div>
-
-            {/* Payment Methods */}
-            <div className="flex gap-1.5 pt-1">
-              {[{ id: "cash", label: "💵 نقداً" }, { id: "card", label: "💳 بطاقة" }, { id: "wallet", label: "📱 محفظة" }].map(pm => (
-                <button
-                  key={pm.id}
-                  onClick={() => setPaymentMethod(pm.id)}
-                  className={`flex-1 py-2 text-[9px] sm:text-[10px] font-black rounded-lg transition-all ${paymentMethod === pm.id ? "bg-red-600 text-white shadow-lg shadow-red-900/30" : "bg-slate-800 text-slate-500 hover:text-slate-300 border border-white/5"}`}
-                >
-                  {pm.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Action Buttons */}
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <button
-                onClick={() => { if (cart.length === 0) return; submitOrder(); }}
-                disabled={cart.length === 0 || submitting}
-                className="py-2.5 sm:py-3 bg-slate-800 text-white rounded-xl font-black text-[9px] sm:text-[10px] flex items-center justify-center gap-1.5 hover:bg-slate-700 disabled:opacity-30 transition-all active:scale-95"
-              >
-                {submitting ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                حفظ
-              </button>
-              <button
-                onClick={() => { if (cart.length === 0) return; submitOrder(); }}
-                disabled={cart.length === 0 || submitting}
-                className="py-2.5 sm:py-3 bg-red-600 text-white rounded-xl font-black text-[9px] sm:text-[10px] flex items-center justify-center gap-1.5 hover:bg-red-700 shadow-xl shadow-red-900/20 disabled:opacity-30 transition-all active:scale-95"
-              >
-                {submitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-                {submitting ? "جارٍ الإرسال..." : "تنفيذ"}
-              </button>
             </div>
           </div>
         </div>
