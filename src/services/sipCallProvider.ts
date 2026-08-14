@@ -1,6 +1,6 @@
 import {
   UserAgent,
-  UserAgentRegisterer,
+  Registerer,
   Inviter,
   Invitation,
   SessionState,
@@ -25,7 +25,7 @@ interface ActiveCall {
 
 export class SipCallProvider implements CallProvider {
   private userAgent: UserAgent | null = null;
-  private registerer: UserAgentRegisterer | null = null;
+  private registerer: Registerer | null = null;
   private listeners: Array<(call: CallEvent) => void> = [];
   private activeCalls: Map<string, ActiveCall> = new Map();
   private config: SipConfig | null = null;
@@ -93,7 +93,7 @@ export class SipCallProvider implements CallProvider {
       throw new Error("UserAgent not initialized");
     }
 
-    this.registerer = new UserAgentRegisterer(this.userAgent);
+    this.registerer = new Registerer(this.userAgent);
 
     this.registerer.stateChange.addListener((state) => {
       console.log(`[SIP] Registration state: ${state}`);

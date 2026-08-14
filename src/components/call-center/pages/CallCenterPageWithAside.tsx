@@ -7,6 +7,7 @@ import {
 import { colors, typography, radius, shadows, transitions } from "../design/tokens";
 import { Button, Badge, Card, SearchInput } from "../design/components";
 import api from "../../../api/axios";
+import { getBranchId } from "../../../auth/authStorage";
 import { toast } from "../../shared/Toast";
 
 // ============================================================================
@@ -239,27 +240,44 @@ export const CallCenterPageWithAside: React.FC = () => {
   const loadMenuItems = async () => {
     setMenuLoading(true);
     try {
-      const res = await api.get("/menu", { params: { branch_id: 1 } });
-      const data = res.data?.data || res.data || [];
-      const items: MenuItem[] = [];
-      if (Array.isArray(data)) {
-        data.forEach((cat: any) => {
-          if (cat.items) {
-            cat.items.forEach((item: any) => {
-              items.push({
-                id: item.id,
-                name: item.name,
-                name_ar: item.name_ar,
-                price: item.price,
-                category: cat.name,
-                image: item.image,
-                is_available: item.is_available !== false,
-                code: item.code,
-              });
-            });
-          }
-        });
+      let branchId = getBranchId();
+
+      if (!branchId) {
+        try {
+          const me = await api.get("/auth/me");
+          branchId = Number(me.data?.user?.branch_id ?? me.data?.branch_id ?? me.data?.data?.user?.branch_id ?? 0) || null;
+        } catch {
+          branchId = null;
+        }
       }
+
+      const effectiveBranchId = branchId ?? 1;
+      const res = await api.get("/menu", { params: { branch_id: effectiveBranchId } });
+      const responseData = res.data?.data ?? res.data ?? {};
+      const categories = Array.isArray(responseData)
+        ? responseData
+        : Array.isArray(responseData.categories)
+          ? responseData.categories
+          : [];
+
+      const items: MenuItem[] = [];
+      categories.forEach((cat: any) => {
+        const catItems = Array.isArray(cat?.items) ? cat.items : [];
+        catItems.forEach((item: any) => {
+          const isAvailable = item.is_available !== false && item.is_availble !== false;
+          items.push({
+            id: item.id,
+            name: item.name,
+            name_ar: item.name_ar ?? item.name,
+            price: Number(item.price ?? 0),
+            category: cat.name,
+            image: item.image ?? item.image_url,
+            is_available: isAvailable,
+            code: item.code,
+          });
+        });
+      });
+
       setMenuItems(items);
     } catch {
       setMenuItems([]);
@@ -394,7 +412,7 @@ export const CallCenterPageWithAside: React.FC = () => {
     setSubmitting(true);
     try {
       const payload = {
-        branch_id: 1,
+        branch_id: getBranchId() ?? 1,
         order_type: orderType,
         customer_id: customer?.id,
         customer_name: customerName || customer?.name,

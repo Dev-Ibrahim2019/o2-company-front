@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
-import { UserAgent, UserAgentRegisterer, Inviter, Invitation, SessionState } from "sip.js";
+import { UserAgent, Registerer, Inviter, Invitation, SessionState } from "sip.js";
 import api from "../../api/axios";
 
 interface SipConfig {
@@ -66,7 +66,7 @@ export const SipProvider: React.FC<SipProviderProps> = ({ children }) => {
   const [activeAccount, setActiveAccount] = useState<SipAccount | null>(null);
 
   const userAgentRef = useRef<UserAgent | null>(null);
-  const registererRef = useRef<UserAgentRegisterer | null>(null);
+  const registererRef = useRef<Registerer | null>(null);
   const incomingCallHandlersRef = useRef<Set<(call: any) => void>>(new Set());
 
   const initialize = useCallback(async (config: SipConfig) => {
@@ -130,7 +130,7 @@ export const SipProvider: React.FC<SipProviderProps> = ({ children }) => {
       userAgentRef.current = userAgent;
 
       // Register
-      const registerer = new UserAgentRegisterer(userAgent);
+      const registerer = new Registerer(userAgent);
       registerer.stateChange.addListener((state) => {
         console.log(`[SIP] Registration state: ${state}`);
         setIsRegistered(state === "Registered");
@@ -155,7 +155,7 @@ export const SipProvider: React.FC<SipProviderProps> = ({ children }) => {
     }
 
     try {
-      const registerer = new UserAgentRegisterer(userAgentRef.current);
+      const registerer = new Registerer(userAgentRef.current);
       registerer.stateChange.addListener((state) => {
         console.log(`[SIP] Registration state: ${state}`);
         setIsRegistered(state === "Registered");
