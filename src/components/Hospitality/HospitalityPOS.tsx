@@ -1076,18 +1076,34 @@ export const HospitalityPOS: React.FC = () => {
         const pendingOrders = allOrders.filter(o => o.status === 'pending' || o.status === 'pending_confirmation');
 
         // 3. طباعة مباشرة للأقسام قبل التأكيد (بالتوازي، مش وحدة وراء وحدة)
-        if (posInfo?.id) {
+        if (!posInfo?.id) {
+          // لا نوقف تأكيد الطلبات، لكن يجب أن يعرف الموظف أن الطباعة لن تحدث
+          console.warn("directPrint skipped: no posInfo.id in this session");
+          setPosError("تعذّرت الطباعة الفورية: جهاز الكاشير غير محدد لهذه الجلسة");
+        } else {
           try {
             const { printerService } = await import("../../services/printerService");
-            await Promise.allSettled(
-              pendingOrders.map((order) =>
-                printerService.directPrint(order.id, posInfo.id).catch((dpErr) => {
-                  console.warn(`directPrint فشل للطلب #${order.id}:`, dpErr);
-                }),
-              ),
+            const results = await Promise.allSettled(
+              pendingOrders.map((order) => printerService.directPrint(order.id, posInfo.id)),
             );
+            const failedCount = results.reduce((count, r, i) => {
+              if (r.status === "rejected") {
+                console.warn(`directPrint فشل للطلب #${pendingOrders[i].id}:`, r.reason);
+                return count + 1;
+              }
+              if (!r.value?.success) {
+                console.warn(`directPrint فشل للطلب #${pendingOrders[i].id}:`, r.value?.message);
+                return count + 1;
+              }
+              return count;
+            }, 0);
+            if (failedCount > 0) {
+              setPosError(
+                `فشلت طباعة ${failedCount} من ${pendingOrders.length} طلب — تحقق من الطابعات`,
+              );
+            }
           } catch {
-            // تجاهل أخطاء استيراد printerService
+            setPosError("تعذّر الاتصال بخدمة الطباعة");
           }
         }
 

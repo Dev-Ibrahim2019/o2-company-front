@@ -982,7 +982,10 @@ const handlePrintInvoice = async (orderId?: number | string | null) => {
     const response = await api.post(`/orders/${orderId}/print-invoice`);
 
     if (response.data && response.data.success) {
-      toast.success(response.data.message || "تم الاتصال بالمسار بنجاح!");
+      toast.success(response.data.message || "تم إرسال أمر الطباعة إلى الطابعة");
+    } else {
+      // نجاح الطلب (200) لا يعني نجاح الطباعة الفعلية — نظهر رسالة الفشل الحقيقية بدل تجاهلها بصمت
+      toast.error(response.data?.message || "لم تتم الطباعة، تحقق من الطابعة والاتصال");
     }
   } catch (error: any) {
     console.error("Print Error:", error);

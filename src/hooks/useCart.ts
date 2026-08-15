@@ -6,6 +6,7 @@
 
 import { useState, useCallback } from "react";
 import api from "../api/axios";
+import { toast } from "../components/shared/Toast";
 import {
   orderService,
   type OrderFromApi,
@@ -281,19 +282,38 @@ export const useCart = () => {
         // ═══════════════════════════════════════════════════
         // PHASE 1.5: طباعة فورية قبل التأكيد (فوري)
         // ═══════════════════════════════════════════════════
-        if (directPrintFirst && order.id && cashierDeviceId) {
-          try {
-            const { printerService } = await import("../services/printerService");
-            const itemsWithTw = (order.items || []).map((item: any) => ({
-              order_item_id: item.id,
-              is_takeaway: cart.find((c) => c.id === item.item_id)?.is_takeaway ?? false,
-            }));
-            await printerService.directPrint(order.id, cashierDeviceId, itemsWithTw.length > 0 ? itemsWithTw : undefined);
-            // إعادة جلب الطلب بعد الطباعة لتحديث is_printed_direct
-            order = await orderService.getOne(order.id);
-          } catch (dpErr) {
-            console.error("[useCart] directPrint failed, continuing:", dpErr);
-            // نكمل حتى لو فشلت الطباعة
+        if (directPrintFirst && order.id) {
+          if (!cashierDeviceId) {
+            // لا نوقف حفظ الطلب، لكن يجب أن يعرف الكاشير أن الطباعة لن تحدث
+            console.warn("[useCart] directPrint skipped: no cashierDeviceId in this session");
+            toast.error("تعذّرت الطباعة الفورية: جهاز الكاشير غير محدد لهذه الجلسة");
+          } else {
+            try {
+              const { printerService } = await import("../services/printerService");
+              const itemsWithTw = (order.items || []).map((item: any) => ({
+                order_item_id: item.id,
+                is_takeaway: cart.find((c) => c.id === item.item_id)?.is_takeaway ?? false,
+              }));
+              const printResult = await printerService.directPrint(
+                order.id,
+                cashierDeviceId,
+                itemsWithTw.length > 0 ? itemsWithTw : undefined,
+              );
+              if (!printResult?.success) {
+                toast.error(printResult?.message || "فشلت الطباعة الفورية على الطابعة");
+              }
+              // إعادة جلب الطلب بعد الطباعة لتحديث is_printed_direct
+              order = await orderService.getOne(order.id);
+            } catch (dpErr: any) {
+              console.error("[useCart] directPrint failed, continuing:", dpErr);
+              // نكمل حفظ الطلب حتى لو فشلت الطباعة، لكن نبلّغ الكاشير بالفشل بدل إخفائه
+              const msg =
+                dpErr?.response?.data?.message ||
+                (dpErr?.code === "ECONNABORTED"
+                  ? "انتهت مهلة الاتصال بالطابعة"
+                  : "تعذّر الاتصال بخدمة الطباعة، تحقق من الشبكة");
+              toast.error(`فشلت الطباعة الفورية: ${msg}`);
+            }
           }
         }
 

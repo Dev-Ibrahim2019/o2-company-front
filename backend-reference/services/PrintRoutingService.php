@@ -3,169 +3,233 @@
 namespace App\Services;
 
 use App\Models\Printer;
-use App\Models\PrintRoute;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
 /**
  * خدمة التوجيه الذكي للطباعة
  * ─────────────────────────────
- * الخوارزمية: عند استلام فاتورة/أمر تشغيل:
- * 1. Loop على كل صنف في الطلب
- * 2. فحص item_id مباشرة (أعلى أولوية)
- * 3. إذا لم يجد → فحص category_id
- * 4. إذا لم يجد → استخدام الطابعة الافتراضية للفرع
- * 5. تجميع الأصناف الموجهة لنفس الطابعة في مصفوفة
- * 6. إرسال كل مجموعة عبر TCP Socket
+ * ⚠️ ملاحظة توافق (2026-07-19): تم نقل التوجيه من جدول `print_routes` المنفصل
+ * ليصبح مدمجاً داخل سجل الطابعة نفسه (شاهد Printer::$linked_pos_register_id,
+ * $department_ids, $item_ids, $print_on_direct — وشاشة الإدارة src/components/
+ * administration/printers-management.tsx بالفرونت). القواعد القديمة المبنية على
+ * جدول PrintRoute لم تعد تُنشأ من أي واجهة، لذلك أُزيل الاعتماد عليها هنا؛
+ * إن كانت قاعدة بياناتكم لا تزال تحتوي بيانات قديمة بذلك الجدول راجعوا الفريق
+ * قبل حذفه نهائياً.
+ *
+ * الخوارزمية الحالية لكل صنف في الطلب:
+ * 1. طابعة تطابق item_id ضمن item_ids الخاص بها (أعلى أولوية)
+ * 2. طابعة تطابق department_id ضمن department_ids الخاص بها
+ * 3. إن كان الطلب صادراً عن جهاز كاشير معروف (direct-print) → طابعة
+ *    linked_pos_register_id == cashierDeviceId و print_on_direct = true
+ * 4. طابعة افتراضية نشطة للفرع (بدون تقييد بنوع معيّن — كانت القيود على
+ *    type=KITCHEN فقط تمنع اختيار طابعات الكاشير/البار كافتراضية)
  */
 class PrintRoutingService
 {
     /**
      * معالجة طباعة فاتورة/أمر تشغيل
      *
-     * @param int    $branchId    معرّف الفرع
-     * @param array  $items       الأصناف: [{item_id, name, quantity, category_id, ...}]
-     * @param int|null $userId    معرّف المستخدم/الجهاز المرسل (null = غير معروف)
-     * @return array             مصفوفة الطابعات مع الأصناف الموجهة لكل منها
+     * @param int      $branchId         معرّف الفرع
+     * @param array    $items            الأصناف: [{item_id, name, quantity, department_id, ...}]
+     * @param int|null $cashierDeviceId  معرّف جهاز الكاشير المرسل (POS register)، مطلوب لتفعيل طابعات print_on_direct المرتبطة بجهاز محدد
+     * @return array                     مصفوفة الطابعات مع الأصناف الموجهة لكل منها
      */
-    public function routeOrder(int $branchId, array $items, ?int $userId = null): array
+    public function routeOrder(int $branchId, array $items, ?int $cashierDeviceId = null): array
     {
-        // 1. جلب جميع القواعد الفعالة للفرع
-        $routes = $this->getActiveRoutes($branchId);
+        $branchPrinters = Printer::where('branch_id', $branchId)
+            ->where('is_active', true)
+            ->get();
 
-        // 2. تجميع الأصناف حسب الطابعة
+        // تجميع الأصناف حسب الطابعة
         $printerGroups = [];
 
         foreach ($items as $item) {
-            $printerId = $this->resolvePrinterForItem(
-                $item,
-                $routes,
-                $userId,
-                $branchId
-            );
+            $printer = $this->resolvePrinterForItem($item, $branchPrinters, $cashierDeviceId);
 
-            if ($printerId === null) {
-                // لا توجد قاعدة → تجاهل (أو استخدم افتراضي)
-                Log::warning("No print route found for item {$item['item_id']} in branch {$branchId}");
+            if ($printer === null) {
+                // لا توجد طابعة مطابقة → لا نُسقط الصنف بصمت، بل نسجّله بوضوح
+                // ليظهر بأي أداة مراقبة (وليس فقط بملف اللوغ) أن الفاتورة نُشرت جزئياً
+                Log::warning("No printer resolved for item {$item['item_id']} in branch {$branchId}");
                 continue;
             }
 
-            if (!isset($printerGroups[$printerId])) {
-                $printerGroups[$printerId] = [];
+            if (!isset($printerGroups[$printer->id])) {
+                $printerGroups[$printer->id] = ['printer' => $printer, 'items' => []];
             }
 
-            $printerGroups[$printerId][] = $item;
+            $printerGroups[$printer->id]['items'][] = $item;
         }
 
-        // 3. جلب بيانات الطابعات النهائية
         $result = [];
-        foreach ($printerGroups as $printerId => $groupItems) {
-            $printer = Printer::find($printerId);
-            if ($printer && $printer->is_active) {
-                $result[] = [
-                    'printer' => $printer,
-                    'items'   => $groupItems,
-                    'count'   => count($groupItems),
-                ];
-            }
+        foreach ($printerGroups as $group) {
+            $result[] = [
+                'printer' => $group['printer'],
+                'items'   => $group['items'],
+                'count'   => count($group['items']),
+            ];
         }
 
         return $result;
     }
 
     /**
-     * تحديد الطابعة المناسبة لصنف معين
-     * ─────────────────────────────────────
-     * الأولوية:
-     *   1. قاعدة الصنف المحدد (scope=ITEM, item_id=...)
-     *   2. قاعدة القسم (scope=CATEGORY, category_id=...)
-     *   3. الطابعة الافتراضية للفرع
+     * تحديد الطابعة المناسبة لصنف معين من بين طابعات الفرع النشطة
      *
-     * @return int|null معرّف الطابعة أو null
+     * @param array                        $item
+     * @param \Illuminate\Support\Collection<int, Printer> $branchPrinters
+     * @param int|null                     $cashierDeviceId
+     * @return Printer|null
      */
     private function resolvePrinterForItem(
         array $item,
-        Collection $routes,
-        ?int $userId,
-        int $branchId
-    ): ?int {
+        \Illuminate\Support\Collection $branchPrinters,
+        ?int $cashierDeviceId
+    ): ?Printer {
         $itemId = $item['item_id'];
-        $categoryId = $item['category_id'] ?? null;
+        $departmentId = $item['department_id'] ?? null;
 
-        // ── المستوى 1: بحث دقيق عن الصنف ───────────────────
-        $itemRoute = $routes->first(function ($route) use ($itemId, $userId) {
-            return $route->scope === 'ITEM'
-                && $route->item_id == $itemId
-                && $this->matchesUser($route, $userId);
-        });
-
-        if ($itemRoute) {
-            Log::info("Route matched: ITEM #{$itemId} → Printer #{$itemRoute->printer_id}");
-            return $itemRoute->printer_id;
+        // ── المستوى 1: طابعة مرتبطة بهذا الصنف تحديداً ──────
+        $itemPrinter = $branchPrinters->first(
+            fn (Printer $p) => in_array($itemId, $p->item_ids ?? [], false)
+        );
+        if ($itemPrinter) {
+            Log::info("Route matched: ITEM #{$itemId} → Printer #{$itemPrinter->id}");
+            return $itemPrinter;
         }
 
-        // ── المستوى 2: بحث بالقسم ──────────────────────────
-        if ($categoryId) {
-            $categoryRoute = $routes->first(function ($route) use ($categoryId, $userId) {
-                return $route->scope === 'CATEGORY'
-                    && $route->category_id == $categoryId
-                    && $this->matchesUser($route, $userId);
-            });
-
-            if ($categoryRoute) {
-                Log::info("Route matched: CATEGORY #{$categoryId} → Printer #{$categoryRoute->printer_id}");
-                return $categoryRoute->printer_id;
+        // ── المستوى 2: طابعة مرتبطة بقسم هذا الصنف ──────────
+        if ($departmentId) {
+            $departmentPrinter = $branchPrinters->first(
+                fn (Printer $p) => in_array($departmentId, $p->department_ids ?? [], false)
+            );
+            if ($departmentPrinter) {
+                Log::info("Route matched: DEPARTMENT #{$departmentId} → Printer #{$departmentPrinter->id}");
+                return $departmentPrinter;
             }
         }
 
-        // ── المستوى 3: الطابعة الافتراضية ──────────────────
-        $defaultPrinter = Printer::where('branch_id', $branchId)
-            ->where('is_active', true)
-            ->where('type', 'KITCHEN')
-            ->first();
+        // ── المستوى 3: طابعة الكاشير المرسل (طباعة فورية) ───
+        if ($cashierDeviceId) {
+            $registerPrinter = $branchPrinters->first(
+                fn (Printer $p) => $p->print_on_direct
+                    && $p->linked_pos_register_id == $cashierDeviceId
+            );
+            if ($registerPrinter) {
+                Log::info("Route matched: POS register #{$cashierDeviceId} → Printer #{$registerPrinter->id}");
+                return $registerPrinter;
+            }
+        }
 
+        // ── المستوى 4: طابعة افتراضية للفرع ──────────────────
+        // لا نقيّد بنوع معيّن هنا: القيد السابق (type=KITCHEN فقط) كان يمنع
+        // اختيار أي طابعة كاشير/بار كافتراضية ويُسقط أصنافها بصمت.
+        $defaultPrinter = $branchPrinters->first();
         if ($defaultPrinter) {
             Log::info("Default printer fallback: Printer #{$defaultPrinter->id}");
-            return $defaultPrinter->id;
+            return $defaultPrinter;
         }
 
         return null;
     }
 
     /**
-     * فحص تطابق المستخدم مع القاعدة
-     * null في القاعدة = كل الأجهزة
+     * إرسال أمر طباعة لعدة طابعات دفعة واحدة، بالتوازي (Non-blocking sockets)
+     * ──────────────────────────────────────────────────────────────────────
+     * سبب البطء الشديد سابقاً: fsockopen كانت تُستدعى بشكل متسلسل لكل طابعة
+     * (blocking, timeout=5s لكل واحدة)، فطلب فيه 3 طابعات وواحدة منها غير
+     * متاحة كان يُبقي طلب الـ HTTP كاملاً معلّقاً حتى 10-15 ثانية قبل ما يرجع
+     * رد للفرونت (اللي أصلاً ما كان عنده أي timeout ليقطع الانتظار).
+     * هون بنفتح كل الاتصالات دفعة وحدة (non-blocking) وبنستخدم stream_select
+     * لانتظارها معاً، فزمن الانتظار الكلي = أبطأ طابعة وحدة، مش مجموع كلهم.
+     *
+     * @param array $groups نتيجة routeOrder(): [{printer, items, count}, ...]
+     * @return array نتيجة الإرسال لكل طابعة
      */
-    private function matchesUser(PrintRoute $route, ?int $userId): bool
+    public function sendToPrinters(array $groups, int $connectTimeoutSec = 3): array
     {
-        // القاعدة عامة (لكل الأجهزة)
-        if ($route->user_id === null) {
-            return true;
+        if (empty($groups)) {
+            return [];
         }
 
-        // القاعدة محددة لمستخدم معين
-        if ($userId !== null && $route->user_id == $userId) {
-            return true;
+        $pending = [];
+        $results = [];
+
+        // 1) فتح كل الاتصالات كـ non-blocking بالتوازي
+        foreach ($groups as $group) {
+            $printer = $group['printer'];
+            $ip = $printer->ip_address;
+            $port = (int) $printer->port;
+
+            $fp = @stream_socket_client(
+                "tcp://{$ip}:{$port}",
+                $errno,
+                $errstr,
+                $connectTimeoutSec,
+                STREAM_CLIENT_ASYNC_CONNECT
+            );
+
+            if (!$fp) {
+                $results[] = [
+                    'success' => false,
+                    'printer' => $printer->name,
+                    'message' => "فشل الاتصال: {$errstr} ({$errno})",
+                ];
+                continue;
+            }
+
+            $pending[(int) $fp] = [
+                'fp'      => $fp,
+                'printer' => $printer,
+                'content' => $this->buildPrintContent($printer, $group['items']),
+                'count'   => $group['count'],
+            ];
         }
 
-        return false;
+        // 2) انتظار جاهزية الكتابة على كل الاتصالات معاً (بحد أقصى واحد لا مجموع)
+        $deadline = microtime(true) + $connectTimeoutSec;
+        while (!empty($pending) && microtime(true) < $deadline) {
+            $write = array_column($pending, 'fp');
+            $read = $except = [];
+            $remaining = max(0, $deadline - microtime(true));
+
+            if (stream_select($read, $write, $except, (int) $remaining, (int) (($remaining - (int) $remaining) * 1e6)) === false) {
+                break;
+            }
+
+            foreach ($write as $fp) {
+                $key = (int) $fp;
+                $job = $pending[$key];
+                unset($pending[$key]);
+
+                fwrite($fp, $job['content']);
+                fclose($fp);
+
+                Log::info("Print job sent to {$job['printer']->name}, {$job['count']} items");
+                $results[] = [
+                    'success'     => true,
+                    'printer'     => $job['printer']->name,
+                    'message'     => 'تم الإرسال بنجاح',
+                    'items_count' => $job['count'],
+                ];
+            }
+        }
+
+        // 3) أي طابعة ما ردّت بالمهلة المسموحة → فشل صريح، مش تجاهل صامت
+        foreach ($pending as $job) {
+            fclose($job['fp']);
+            Log::error("Print timeout on {$job['printer']->name} after {$connectTimeoutSec}s");
+            $results[] = [
+                'success' => false,
+                'printer' => $job['printer']->name,
+                'message' => 'انتهت مهلة الاتصال بالطابعة',
+            ];
+        }
+
+        return $results;
     }
 
     /**
-     * جلب القواعد الفعالة مع الترتيب حسب الأولوية
-     */
-    private function getActiveRoutes(int $branchId): Collection
-    {
-        return PrintRoute::where('branch_id', $branchId)
-            ->where('is_active', true)
-            ->orderByDesc('priority')
-            ->get();
-    }
-
-    /**
-     * إرسال أمر طباعة لطابعة SNBC عبر TCP Socket
-     * ──────────────────────────────────────────────
-     * SNBC تستخدم بروتوكول ESC/POS عبر المنفذ 9100
+     * إرسال أمر طباعة لطابعة واحدة (يُستخدم لطباعة تجريبية أو طابعة مفردة فقط)
      *
      * @param Printer $printer  الطابعة المستهدفة
      * @param array   $items    الأصناف الموجهة لهذه الطابعة
@@ -173,44 +237,17 @@ class PrintRoutingService
      */
     public function sendToPrinter(Printer $printer, array $items): array
     {
-        $ip = $printer->ip_address;
-        $port = (int) $printer->port;
+        $results = $this->sendToPrinters([[
+            'printer' => $printer,
+            'items'   => $items,
+            'count'   => count($items),
+        ]]);
 
-        // بناء محتوى الطباعة (ESC/POS format)
-        $content = $this->buildPrintContent($printer, $items);
-
-        try {
-            $fp = fsockopen($ip, $port, $errno, $errstr, 5);
-
-            if (!$fp) {
-                return [
-                    'success' => false,
-                    'printer' => $printer->name,
-                    'message' => "فشل الاتصال: {$errstr} ({$errno})",
-                ];
-            }
-
-            // إرسال المحتوى
-            fwrite($fp, $content);
-            fclose($fp);
-
-            Log::info("Print job sent to {$printer->name} ({$ip}:{$port}), " . count($items) . " items");
-
-            return [
-                'success' => true,
-                'printer' => $printer->name,
-                'message' => 'تم الإرسال بنجاح',
-                'items_count' => count($items),
-            ];
-        } catch (\Exception $e) {
-            Log::error("Print error on {$printer->name}: " . $e->getMessage());
-
-            return [
-                'success' => false,
-                'printer' => $printer->name,
-                'message' => $e->getMessage(),
-            ];
-        }
+        return $results[0] ?? [
+            'success' => false,
+            'printer' => $printer->name,
+            'message' => 'فشل غير متوقع',
+        ];
     }
 
     /**

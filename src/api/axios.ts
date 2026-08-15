@@ -13,6 +13,8 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || "/api",
   headers: { "Content-Type": "application/json" },
   withCredentials: true,
+  // بدون timeout كان أي طلب طباعة عالق (طابعة غير متاحة) يعلّق الواجهة إلى الأبد
+  timeout: 20000,
 });
 
 /* ══════════════════════════════════════════════════════════════
