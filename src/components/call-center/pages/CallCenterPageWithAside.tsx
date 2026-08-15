@@ -613,97 +613,23 @@ export const CallCenterPageWithAside: React.FC = () => {
             </div>
           </Card>
 
-          {/* ── Orders Tabs ── */}
-          <Card padding="20px" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <h2 style={{ fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.neutral[900] }}>
-                الطلبات لهذا العميل
+          {/* ── Last 5 Orders Table ── */}
+          <Card padding="20px">
+            <div style={{ display: "flex", alignItems: "", justifyContent: "", marginBottom: 16 }}>
+              <h2 style={{
+                fontSize: typography.size.lg, fontWeight: typography.weight.bold,
+                color: "#10b981", padding: "8px 20px", borderRadius: radius.full,
+                background: "#ecfdf5", border: "1px solid #d1fae5",
+              }}>
+                آخر 5 أوردرات لهذا العميل
               </h2>
             </div>
-
-            {/* Tabs */}
-            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-              {[
-                { id: "inquiries", label: "استائشات" },
-                { id: "favorites", label: "مفضلات" },
-                { id: "meals", label: "وجبات" },
-              ].map(tab => (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} style={{
-                  padding: "6px 14px", borderRadius: radius.full, fontSize: "12px", fontWeight: 500,
-                  background: activeTab === tab.id ? colors.brand[500] : colors.neutral[100],
-                  color: activeTab === tab.id ? "#fff" : colors.neutral[600],
-                  border: "none", cursor: "pointer",
-                }}>{tab.label}</button>
-              ))}
-            </div>
-
-            <SearchInput value={tabSearchQuery} onChange={setTabSearchQuery} placeholder="بحث عن صنف :" />
-
-            {/* Favorites Tab */}
-            {activeTab === "favorites" && (
-              <div style={{ flex: 1, overflowY: "auto", marginTop: 12 }}>
-                <h3 style={{ fontSize: "13px", fontWeight: typography.weight.bold, color: colors.brand[500], marginBottom: 12, textAlign: "center" }}>
-                  المنتجات المفضلة
-                </h3>
-                {filteredFavorites.length === 0 ? (
-                  <p style={{ textAlign: "center", color: colors.neutral[500], fontSize: "13px" }}>لا توجد مفضلات</p>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {filteredFavorites.map(fav => (
-                      <div key={fav.item_id} style={{
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        padding: "10px 12px", borderRadius: radius.lg,
-                        border: `1px solid ${colors.border.subtle}`, background: colors.neutral[50],
-                      }}>
-                        <div>
-                          <p style={{ fontSize: "13px", fontWeight: 500, color: colors.neutral[800] }}>{fav.item_name_ar || fav.item_name}</p>
-                          <p style={{ fontSize: "11px", color: colors.neutral[500] }}>طلبات: {fav.orders_count}</p>
-                        </div>
-                        <Button variant="primary" size="xs" icon={<Plus size={12} />} onClick={() => addFavoriteToCart(fav)}>
-                          إضافة
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Meals/Inquiries Tab */}
-            {activeTab === "meals" && (
-              <div style={{ flex: 1, overflowY: "auto", marginTop: 12 }}>
-                {filteredRecentOrders.length === 0 ? (
-                  <p style={{ textAlign: "center", color: colors.neutral[500], fontSize: "13px", marginTop: 20 }}>لا توجد وجبات سابقة</p>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {filteredRecentOrders.map(order => (
-                      <div key={order.id} style={{
-                        padding: "10px 12px", borderRadius: radius.lg,
-                        border: `1px solid ${colors.border.subtle}`, background: colors.neutral[50],
-                      }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <div>
-                            <p style={{ fontSize: "13px", fontWeight: 500, color: colors.neutral[800] }}>طلب #{order.order_number}</p>
-                            <p style={{ fontSize: "11px", color: colors.neutral[500] }}>{formatDate(order.created_at)}</p>
-                          </div>
-                          <span style={{ fontSize: "13px", fontWeight: typography.weight.bold, color: colors.brand[500] }}>{formatCurrency(order.total)}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </Card>
-
-          {/* ── Orders Table (Last 5) ── */}
-          <Card padding="16px" style={{ marginBottom: 0 }}>
             <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: typography.size.sm }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
                 <thead>
-                  <tr>
-                    {["الاسم", "التاريخ", "العنوان", "الاجمالي", "الاجراء"].map(h => (
-                      <th key={h} style={{ padding: "8px 10px", textAlign: "right", fontWeight: typography.weight.bold, color: colors.neutral[500], borderBottom: `2px solid ${colors.border.subtle}`, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  <tr style={{ borderBottom: "2px solid #e5e7eb" }}>
+                    {["اسم المعلن", "تاريخ الطلب", "مكان الاستلام", "المبلغ الإجمالي", "عرض التفاصيل"].map(h => (
+                      <th key={h} style={{ padding: "12px 16px", textAlign: "right", fontWeight: 600, color: "#6b7280", fontSize: "12px" }}>
                         {h}
                       </th>
                     ))}
@@ -712,26 +638,26 @@ export const CallCenterPageWithAside: React.FC = () => {
                 <tbody>
                   {mockOrders.map(order => (
                     <React.Fragment key={order.id}>
-                      <tr style={{ borderBottom: `1px solid ${colors.border.subtle}` }}>
-                        <td style={{ padding: "12px", color: colors.neutral[800] }}>{order.customer_name || "\u2014"}</td>
-                        <td style={{ padding: "12px", color: colors.neutral[600] }}>{formatDate(order.created_at)}</td>
-                        <td style={{ padding: "12px", color: colors.neutral[600] }}>{order.delivery_address || "\u2014"}</td>
-                        <td style={{ padding: "12px", fontWeight: typography.weight.bold, color: colors.neutral[900] }}>{formatCurrency(order.total)}</td>
-                        <td style={{ padding: "12px" }}>
+                      <tr style={{ borderBottom: "1px solid #f3f4f6" }}>
+                        <td style={{ padding: "14px 16px", color: "#111827", fontWeight: 500 }}>{order.customer_name || "—"}</td>
+                        <td style={{ padding: "14px 16px", color: "#6b7280" }}>{formatDate(order.created_at)}</td>
+                        <td style={{ padding: "14px 16px", color: "#6b7280" }}>{order.delivery_address || "—"}</td>
+                        <td style={{ padding: "14px 16px", fontWeight: 600, color: "#111827" }}>{formatCurrency(order.total)}</td>
+                        <td style={{ padding: "14px 16px" }}>
                           <button
                             onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}
                             style={{
                               display: "inline-flex", alignItems: "center", gap: 6,
-                              padding: "6px 14px", borderRadius: radius.lg,
-                              border: "1.5px solid #16a34a", background: "transparent",
-                              color: "#16a34a", fontSize: "12px", fontWeight: 600, cursor: "pointer",
+                              padding: "6px 16px", borderRadius: radius.full,
+                              border: "1.5px solid #10b981", background: "transparent",
+                              color: "#10b981", fontSize: "12px", fontWeight: 600, cursor: "pointer",
                               transition: "all 0.2s",
                             }}
-                            onMouseEnter={e => { e.currentTarget.style.background = "#16a34a"; e.currentTarget.style.color = "#fff"; }}
-                            onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#16a34a"; }}
+                            onMouseEnter={e => { e.currentTarget.style.background = "#10b981"; e.currentTarget.style.color = "#fff"; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#10b981"; }}
                           >
                             <Eye size={14} />
-                            {"\u062A\u0641\u0627\u0635\u064A\u0644"}
+                            تفاصيل
                           </button>
                         </td>
                       </tr>
@@ -739,30 +665,31 @@ export const CallCenterPageWithAside: React.FC = () => {
                         <tr>
                           <td colSpan={5} style={{ padding: 0 }}>
                             <div style={{
-                              margin: "8px 12px", padding: "16px", borderRadius: radius.lg,
-                              border: "2px solid #16a34a", background: "#f0fdf4",
+                              margin: "8px 16px", padding: "20px", borderRadius: radius.lg,
+                              border: "1px solid #d1fae5", background: "#f0fdf4",
                             }}>
-                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
                                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                                   <h3 style={{ fontSize: "14px", fontWeight: typography.weight.bold, color: colors.neutral[900] }}>
-                                    {"\u062A\u0641\u0627\u0635\u064A\u0644 \u0627\u0644\u0623\u0648\u0631\u062F #"}{order.order_number}
+                                    تفاصيل الطلب #{order.order_number}
                                   </h3>
                                   <span style={{ fontSize: "11px", color: colors.neutral[500] }}>{order.customer_name}</span>
                                   <span style={{ fontSize: "11px", color: colors.neutral[500] }}>{formatDate(order.created_at)}</span>
                                   <span style={{ fontSize: "11px", color: colors.neutral[500] }}>{order.delivery_address}</span>
                                 </div>
                                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                  <span style={{ fontSize: "12px", fontWeight: typography.weight.bold, color: "#16a34a" }}>{formatCurrency(order.total)}</span>
+                                  <span style={{ fontSize: "12px", fontWeight: typography.weight.bold, color: "#10b981" }}>{formatCurrency(order.total)}</span>
                                   <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: radius.full, background: "#dcfce7", color: "#166534", fontWeight: 600 }}>
-                                    {order.items.length} {"\u0635\u0646\u0641"}
+                                    {order.items.length} صنف
                                   </span>
                                 </div>
                               </div>
+
                               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginBottom: 16 }}>
                                 <thead>
                                   <tr>
-                                    {["\u0627\u0644\u0635\u0646\u0641", "\u0627\u0644\u0643\u0645\u064A\u0629", "\u0633\u0639\u0631 \u0627\u0644\u0648\u062D\u062F\u0629", "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A"].map(h => (
-                                      <th key={h} style={{ padding: "8px 10px", textAlign: "right", fontWeight: typography.weight.bold, color: "#fff", background: "#16a34a", fontSize: "11px" }}>
+                                    {["الصنف", "الكمية", "سعر الوحدة", "الإجمالي"].map(h => (
+                                      <th key={h} style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, color: "#fff", background: "#10b981", fontSize: "11px" }}>
                                         {h}
                                       </th>
                                     ))}
@@ -770,46 +697,46 @@ export const CallCenterPageWithAside: React.FC = () => {
                                 </thead>
                                 <tbody>
                                   {order.items.map((item, idx) => (
-                                    <tr key={idx} style={{ borderBottom: `1px solid ${colors.border.subtle}`, background: "#fff" }}>
-                                      <td style={{ padding: "8px 10px", color: colors.neutral[800] }}>{item.item_name_ar || item.item_name}</td>
-                                      <td style={{ padding: "8px 10px", color: colors.neutral[600] }}>{item.quantity}</td>
-                                      <td style={{ padding: "8px 10px", color: colors.neutral[600] }}>{formatCurrency(item.price)}</td>
-                                      <td style={{ padding: "8px 10px", fontWeight: typography.weight.bold, color: colors.neutral[800] }}>{formatCurrency(item.total || item.price * item.quantity)}</td>
+                                    <tr key={idx} style={{ borderBottom: "1px solid #e5e7eb", background: "#fff" }}>
+                                      <td style={{ padding: "10px 12px", color: "#111827" }}>{item.item_name_ar || item.item_name}</td>
+                                      <td style={{ padding: "10px 12px", color: "#6b7280" }}>{item.quantity}</td>
+                                      <td style={{ padding: "10px 12px", color: "#6b7280" }}>{formatCurrency(item.price)}</td>
+                                      <td style={{ padding: "10px 12px", fontWeight: 600, color: "#111827" }}>{formatCurrency(item.total || item.price * item.quantity)}</td>
                                     </tr>
                                   ))}
                                 </tbody>
                               </table>
 
-                              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-                                <div style={{ flex: 1, minWidth: 240, padding: "12px", borderRadius: radius.lg, background: "#fff", border: `1px solid ${colors.border.subtle}` }}>
-                                  <h4 style={{ fontSize: "13px", fontWeight: typography.weight.bold, marginBottom: 6, color: colors.neutral[700] }}>
-                                    {"\u062A\u0642\u064A\u064A\u0645 \u0627\u0644\u062E\u062F\u0645\u0629"}
+                              <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 16 }}>
+                                <div style={{ flex: 1, minWidth: 240, padding: "16px", borderRadius: radius.lg, background: "#fff", border: "1px solid #e5e7eb" }}>
+                                  <h4 style={{ fontSize: "13px", fontWeight: 600, marginBottom: 8, color: "#374151" }}>
+                                    تقييم الخدمة
                                   </h4>
-                                  <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+                                  <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
                                     {[1, 2, 3, 4, 5].map(s => (
-                                      <button key={s} onClick={() => setServiceRatings(prev => ({ ...prev, [order.id]: s }))} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-                                        <Star size={22} color={(serviceRatings[order.id] || 0) >= s ? "#facc15" : colors.neutral[300]} fill={(serviceRatings[order.id] || 0) >= s ? "#facc15" : "none"} />
+                                      <button key={s} onClick={() => setServiceRatings(prev => ({ ...prev, [order.id]: s }))} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}>
+                                        <Star size={22} color={(serviceRatings[order.id] || 0) >= s ? "#facc15" : "#d1d5db"} fill={(serviceRatings[order.id] || 0) >= s ? "#facc15" : "none"} />
                                       </button>
                                     ))}
                                   </div>
                                 </div>
-                                <div style={{ flex: 1, minWidth: 240, padding: "12px", borderRadius: radius.lg, background: "#fff", border: `1px solid ${colors.border.subtle}` }}>
-                                  <h4 style={{ fontSize: "13px", fontWeight: typography.weight.bold, marginBottom: 6, color: colors.neutral[700] }}>
-                                    {"\u062A\u0642\u064A\u064A\u0645 \u0627\u0644\u062F\u0644\u064A\u0641\u0631\u064A"}
+                                <div style={{ flex: 1, minWidth: 240, padding: "16px", borderRadius: radius.lg, background: "#fff", border: "1px solid #e5e7eb" }}>
+                                  <h4 style={{ fontSize: "13px", fontWeight: 600, marginBottom: 8, color: "#374151" }}>
+                                    تقييم التوصيل
                                   </h4>
-                                  <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+                                  <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
                                     {[1, 2, 3, 4, 5].map(s => (
-                                      <button key={s} onClick={() => setDeliveryRatings(prev => ({ ...prev, [order.id]: s }))} style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-                                        <Star size={22} color={(deliveryRatings[order.id] || 0) >= s ? "#facc15" : colors.neutral[300]} fill={(deliveryRatings[order.id] || 0) >= s ? "#facc15" : "none"} />
+                                      <button key={s} onClick={() => setDeliveryRatings(prev => ({ ...prev, [order.id]: s }))} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}>
+                                        <Star size={22} color={(deliveryRatings[order.id] || 0) >= s ? "#facc15" : "#d1d5db"} fill={(deliveryRatings[order.id] || 0) >= s ? "#facc15" : "none"} />
                                       </button>
                                     ))}
                                   </div>
                                 </div>
                               </div>
 
-                              <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
-                                <button onClick={() => setExpandedOrder(null)} style={{ padding: "6px 24px", borderRadius: radius.lg, border: `1px solid ${colors.neutral[300]}`, background: "#fff", color: colors.neutral[600], fontSize: "12px", fontWeight: 500, cursor: "pointer" }}>
-                                  {"\u0625\u0644\u063A\u0627\u0621"}
+                              <div style={{ display: "flex", justifyContent: "center" }}>
+                                <button onClick={() => setExpandedOrder(null)} style={{ padding: "8px 24px", borderRadius: radius.lg, border: "1px solid #e5e7eb", background: "#fff", color: "#6b7280", fontSize: "12px", fontWeight: 500, cursor: "pointer" }}>
+                                  إلغاء
                                 </button>
                               </div>
                             </div>
@@ -822,6 +749,54 @@ export const CallCenterPageWithAside: React.FC = () => {
               </table>
             </div>
           </Card>
+
+          {/* ── Details Section ── */}
+          <Card padding="20px">
+            <h2 style={{ fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.neutral[900], marginBottom: 16 }}>
+              التفاصيل
+            </h2>
+
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 16 }}>
+              <span style={{ fontSize: "14px", color: colors.neutral[600] }}>تقييم العميل:</span>
+              <div style={{ display: "flex", gap: 4 }}>
+                {[1, 2, 3, 4, 5].map(s => (
+                  <button key={s} onClick={() => setServiceRatings(prev => ({ ...prev, ["customer"]: s }))} style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}>
+                    <Star size={28} color={(serviceRatings["customer"] || 0) >= s ? "#facc15" : "#d1d5db"} fill={(serviceRatings["customer"] || 0) >= s ? "#facc15" : "none"} />
+                  </button>
+                ))}
+              </div>
+              <span style={{ fontSize: "12px", color: "#9ca3af" }}>لم يتم التقييم بعد</span>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: "14px", color: colors.neutral[600], marginBottom: 8, textAlign: "center" }}>
+                ملاحظات حول الطلب السابق:
+              </label>
+              <textarea
+                value={invoiceNote}
+                onChange={e => setInvoiceNote(e.target.value)}
+                placeholder="أدخل ملاحظاتك هنا..."
+                style={{
+                  width: "100%", minHeight: 120, padding: "12px", fontSize: "14px",
+                  border: "1px solid #e5e7eb", borderRadius: radius.lg, outline: "none",
+                  resize: "vertical", fontFamily: "inherit",
+                }}
+              />
+            </div>
+
+            <button
+              onClick={saveCustomerData}
+              style={{
+                width: "100%", padding: "12px 24px", fontSize: "14px", fontWeight: 600,
+                background: "#10b981", color: "#fff", border: "none",
+                borderRadius: radius.lg, cursor: "pointer", transition: "all 0.2s",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = "#059669"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "#10b981"; }}
+            >
+              حفظ التفاصيل
+            </button>
+          </Card>
         </div>
 
         {/* ══════════════════ LEFT COLUMN — Chart + POS ══════════════════ */}
@@ -831,7 +806,7 @@ export const CallCenterPageWithAside: React.FC = () => {
           <Card padding="20px">
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <h2 style={{ fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.neutral[900] }}>
-                آخر 5 وجبة طلبت
+                الاكثر طلبا
               </h2>
               <Badge variant="brand">تتبعي</Badge>
             </div>
