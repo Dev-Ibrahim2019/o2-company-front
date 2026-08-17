@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { X, Eye, EyeOff } from 'lucide-react';
 import api from '../../../api/axios';
 import { toast } from '../../shared/Toast';
+import { ROLE_LABELS } from '../../../auth/permissions';
 
 interface User {
     id?: number;
@@ -159,7 +160,7 @@ const UserModal = ({ user, roles, branches, onClose, onSaved }: Props) => {
                             className={inputCls}
                         >
                             {roles.map((r) => (
-                                <option key={r.id} value={r.name}>{r.name}</option>
+                                <option key={r.id} value={r.name}>{ROLE_LABELS[r.name] || r.name}</option>
                             ))}
                         </select>
                     </Field>

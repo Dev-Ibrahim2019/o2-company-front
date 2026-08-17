@@ -90,7 +90,7 @@ interface AppState {
   employees: Employee[];
   setEmployees: (employees: Employee[]) => void;
   addEmployee: (employee: Employee) => void;
-  updateEmployee: (employee: Employee) => void;
+  updateEmployee: (id: string, employee: Partial<Employee>) => void;
   deleteEmployee: (id: string) => void;
 
   // Job Titles
@@ -455,9 +455,9 @@ export const useApp = create<AppState>()(
       setEmployees: (employees) => set({ employees }),
       addEmployee: (employee) =>
         set((state) => ({ employees: [...state.employees, employee] })),
-      updateEmployee: (employee) =>
+      updateEmployee: (id, employee) =>
         set((state) => ({
-          employees: state.employees.map((e) => (e.id === employee.id ? employee : e)),
+          employees: state.employees.map((e) => (e.id === id ? { ...e, ...employee } : e)),
         })),
       deleteEmployee: (id) =>
         set((state) => ({
@@ -871,6 +871,7 @@ export const useApp = create<AppState>()(
         activityLogs: state.activityLogs,
         branches: state.branches,
         departments: state.departments,
+        employees: state.employees,
         blindDropSubmissions: state.blindDropSubmissions,
         reconciliationEntries: state.reconciliationEntries,
         dayCloseState: state.dayCloseState,

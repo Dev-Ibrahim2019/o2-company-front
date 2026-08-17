@@ -43,6 +43,17 @@ export const ROLES = {
 /** نوع يمثل جميع قيم الأدوار الممكنة */
 export type RoleKey = (typeof ROLES)[keyof typeof ROLES];
 
+/** الأسماء العربية المعروضة للأدوار — استخدمها في أي مكان يُعرض فيه اسم الدور للمستخدم */
+export const ROLE_LABELS: Record<string, string> = {
+  [ROLES.SUPER_ADMIN]: "مدير النظام",
+  [ROLES.BRANCH_MANAGER]: "مدير الفرع",
+  [ROLES.ACCOUNTANT]: "محاسب",
+  [ROLES.CASHIER]: "كاشير",
+  [ROLES.HOSPITALITY]: "ضيافة",
+  [ROLES.DEPT_STAFF]: "موظف قسم",
+  [ROLES.CALL_CENTER]: "كول سنتر",
+};
+
 /* ══════════════════════════════════════════════════════════════
  *  الصلاحيات (Permissions)
  *  ─────────────────────────

@@ -2,7 +2,9 @@
 // نسخة محدّثة - تقبل formData و onChange كـ props
 
 import React from "react";
-import { useApp } from "../../../../store";
+import { useBranch } from "../../../hooks/useBranch";
+import { useDepartments } from "../../../hooks/useDepartments";
+import { useJobTitles } from "../../../hooks/useJobTitles";
 import {
   Building2,
   Briefcase,
@@ -22,7 +24,9 @@ interface Props {
 }
 
 const EmployeeContainer: React.FC<Props> = ({ formData, onChange }) => {
-  const { branches, departments, jobTitles } = useApp();
+  const { branches } = useBranch();
+  const { departments } = useDepartments();
+  const { jobTitles } = useJobTitles();
   const set = (key: string, value: any) => onChange({ ...formData, [key]: value });
 
   return (

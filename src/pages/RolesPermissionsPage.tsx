@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import api from "../api/axios";
-import { PERMISSIONS } from "../auth/permissions";
+import { PERMISSIONS, ROLE_LABELS } from "../auth/permissions";
 import { Can } from "../auth";
 import {
   Shield,
@@ -88,15 +88,6 @@ const PERMISSION_GROUPS: { title: string; icon: React.ElementType; items: string
     items: [PERMISSIONS.MANAGE_POS_REGISTERS, PERMISSIONS.ACCESS_POS_INTERFACE, PERMISSIONS.MANAGE_HOSPITALITY_DEVICES, PERMISSIONS.MANAGE_DINING_ZONES],
   },
 ];
-
-const ROLE_LABELS: Record<string, string> = {
-  "super-admin": "مدير النظام",
-  "branch-manager": "مدير الفرع",
-  "accountant": "محاسب",
-  "cashier": "كاشير",
-  "hospitality": "ضيافة",
-  "dept-staff": "موظف قسم",
-};
 
 const PERMISSION_LABELS: Record<string, string> = {
   [PERMISSIONS.MANAGE_BRANCHES]: "إدارة الأفراع",
