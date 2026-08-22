@@ -43,6 +43,10 @@ import {
   Printer,
   Calendar,
   Headphones,
+  Cpu,
+  LayoutGrid,
+  Store,
+  Blocks,
 } from "lucide-react";
 
 /* ── روابط التنقل ── */
@@ -227,6 +231,108 @@ const NAV = [
   },
 ];
 
+/* ── سياق واجهة الـ Sidebar ──
+   مُعرَّف خارج AdminLayout كي لا يُعاد إنشاء SidebarLink/SidebarGroup كنوع جديد
+   في كل رندر (وهو ما كان يتسبب بإعادة تركيبهما وإغلاق/فتح المجموعات بشكل مفاجئ) */
+interface SidebarUIContextValue {
+  collapsed: boolean;
+  closeMobileSidebar: () => void;
+  openGroups: Record<string, boolean>;
+  toggleGroup: (key: string) => void;
+}
+
+const SidebarUIContext = React.createContext<SidebarUIContextValue>({
+  collapsed: false,
+  closeMobileSidebar: () => {},
+  openGroups: {},
+  toggleGroup: () => {},
+});
+
+/* ── مكوّن رابط Sidebar ── */
+const SidebarLink: React.FC<{
+  to: string;
+  icon: React.ElementType;
+  label: string;
+  indent?: boolean;
+  exact?: boolean;
+  permission?: string;
+}> = ({ to, icon: Icon, label, indent, exact, permission }) => {
+  const { collapsed, closeMobileSidebar } = React.useContext(SidebarUIContext);
+  const link = (
+    <NavLink
+      to={to}
+      end={exact}
+      onClick={closeMobileSidebar}
+      className={({ isActive }) =>
+        `w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
+          isActive
+            ? "bg-red-600 text-white shadow-lg shadow-red-900/30"
+            : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+        } ${collapsed ? "justify-center px-0" : ""} ${indent && !collapsed ? "pr-7" : ""}`
+      }
+    >
+      <Icon size={indent ? 16 : 20} />
+      {!collapsed && (
+        <span className="font-semibold text-sm whitespace-nowrap overflow-hidden">
+          {label}
+        </span>
+      )}
+    </NavLink>
+  );
+  return permission ? <Can permission={permission}>{link}</Can> : link;
+};
+
+/* ── مكوّن مجموعة Sidebar ── */
+const SidebarGroup: React.FC<{
+  icon: React.ElementType;
+  label: string;
+  groupKey: string;
+  permission?: string;
+  children: React.ReactNode;
+}> = ({ icon: Icon, label, groupKey, permission, children: groupChildren }) => {
+  const { collapsed, openGroups, toggleGroup } = React.useContext(SidebarUIContext);
+  const isOpen = openGroups[groupKey] || false;
+  const group = (
+    <div className="space-y-1">
+      <button
+        onClick={() => toggleGroup(groupKey)}
+        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
+          isOpen
+            ? "bg-red-600/20 text-red-300"
+            : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+        } ${collapsed ? "justify-center px-0" : ""}`}
+      >
+        <Icon size={20} />
+        {!collapsed && (
+          <>
+            <span className="font-semibold text-sm whitespace-nowrap overflow-hidden flex-1 text-right">
+              {label}
+            </span>
+            <ChevronDown
+              size={14}
+              className={`transition-transform shrink-0 ${isOpen ? "rotate-180" : ""}`}
+            />
+          </>
+        )}
+      </button>
+      <AnimatePresence>
+        {isOpen && !collapsed && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden mr-4 pr-3 border-r border-white/5 space-y-1"
+          >
+            {groupChildren}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+  return permission ? <Can permission={permission}>{group}</Can> : group;
+};
+
 export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({
   children,
 }) => {
@@ -251,109 +357,41 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({
       setOpenGroups((p) => ({ ...p, accounting: true }));
     if (path.includes("item-tree") || path.includes("items-index"))
       setOpenGroups((p) => ({ ...p, items: true }));
+    if (path.includes("/admin/employees") || path.includes("orgstructure"))
+      setOpenGroups((p) => ({ ...p, hr: true }));
+    if (path.includes("/admin/branches") || path.includes("/admin/departments"))
+      setOpenGroups((p) => ({ ...p, orgUnits: true }));
+    if (path.includes("/admin/audit") || path.includes("/admin/archive"))
+      setOpenGroups((p) => ({ ...p, logs: true }));
+    if (path.includes("/admin/users") || path.includes("/admin/permissions"))
+      setOpenGroups((p) => ({ ...p, usersPerms: true }));
+    if (path.includes("/freepbx/test") || path.includes("pbx-extensions"))
+      setOpenGroups((p) => ({ ...p, pbx: true }));
+    if (
+      path.includes("hospitality-devices") ||
+      path.includes("call-center-devices") ||
+      path.includes("printers")
+    )
+      setOpenGroups((p) => ({ ...p, devices: true }));
+    if (path.includes("dining-zones") || path.includes("dining-dashboard"))
+      setOpenGroups((p) => ({ ...p, dining: true }));
+    if (path.includes("/admin/pos") || path.includes("pbx-recordings"))
+      setOpenGroups((p) => ({ ...p, posOps: true }));
+    if (path.includes("extensions-test"))
+      setOpenGroups((p) => ({ ...p, extensions: true }));
   }, []);
 
   const collapsed = !isSidebarOpen;
 
-  /* ── مكوّن رابط Sidebar ── */
-  const SidebarLink = ({
-    to,
-    icon: Icon,
-    label,
-    indent,
-    exact,
-    permission,
-  }: {
-    to: string;
-    icon: React.ElementType;
-    label: string;
-    indent?: boolean;
-    exact?: boolean;
-    permission?: string;
-  }) => {
-    const link = (
-      <NavLink
-        to={to}
-        end={exact}
-        onClick={() => {
-          if (window.innerWidth <= 1024) setIsSidebarOpen(false);
-        }}
-        className={({ isActive }) =>
-          `w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
-            isActive
-              ? "bg-red-600 text-white shadow-lg shadow-red-900/30"
-              : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-          } ${collapsed ? "justify-center px-0" : ""} ${indent && !collapsed ? "pr-7" : ""}`
-        }
-      >
-        <Icon size={indent ? 16 : 20} />
-        {!collapsed && (
-          <span className="font-semibold text-sm whitespace-nowrap overflow-hidden">
-            {label}
-          </span>
-        )}
-      </NavLink>
-    );
-    return permission ? <Can permission={permission}>{link}</Can> : link;
+  const closeMobileSidebar = () => {
+    if (window.innerWidth <= 1024) setIsSidebarOpen(false);
   };
-
-  /* ── مكوّن مجموعة Sidebar ── */
-  const SidebarGroup = ({
-    icon: Icon,
-    label,
-    groupKey,
-    permission,
-    children: groupChildren,
-  }: {
-    icon: React.ElementType;
-    label: string;
-    groupKey: string;
-    permission?: string;
-    children: React.ReactNode;
-  }) => {
-    const isOpen = openGroups[groupKey] || false;
-    const group = (
-      <div className="space-y-1">
-        <button
-          onClick={() =>
-            setOpenGroups((p) => ({ ...p, [groupKey]: !p[groupKey] }))
-          }
-          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
-            isOpen
-              ? "bg-red-600/20 text-red-300"
-              : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-          } ${collapsed ? "justify-center px-0" : ""}`}
-        >
-          <Icon size={20} />
-          {!collapsed && (
-            <>
-              <span className="font-semibold text-sm whitespace-nowrap overflow-hidden flex-1 text-right">
-                {label}
-              </span>
-              <ChevronDown
-                size={14}
-                className={`transition-transform shrink-0 ${isOpen ? "rotate-180" : ""}`}
-              />
-            </>
-          )}
-        </button>
-        <AnimatePresence>
-          {isOpen && !collapsed && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="overflow-hidden mr-4 pr-3 border-r border-white/5 space-y-1"
-            >
-              {groupChildren}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    );
-    return permission ? <Can permission={permission}>{group}</Can> : group;
-  };
+  const toggleGroup = (key: string) =>
+    setOpenGroups((p) => ({ ...p, [key]: !p[key] }));
+  const sidebarUIValue = React.useMemo(
+    () => ({ collapsed, closeMobileSidebar, openGroups, toggleGroup }),
+    [collapsed, openGroups],
+  );
 
   return (
     <div
@@ -373,7 +411,7 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({
       </AnimatePresence>
 
       <aside
-        className={`fixed top-0 right-0 h-full bg-slate-900 border-l border-white/5 flex flex-col p-4 shadow-2xl transition-all duration-300 z-50 ${isSidebarOpen ? "w-64 translate-x-0" : "w-64 translate-x-full lg:w-20 lg:translate-x-0"}`}
+        className={`fixed top-0 right-0 h-full bg-slate-900 border-l border-white/5 flex flex-col p-4 shadow-2xl transition-all duration-300 z-50 ${isSidebarOpen ? "w-80 translate-x-0" : "w-80 translate-x-full lg:w-20 lg:translate-x-0"}`}
       >
         {/* Logo */}
         <div
@@ -402,6 +440,7 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({
 
         {/* Nav */}
         <nav className="flex-1 space-y-1.5 overflow-y-auto custom-scrollbar">
+          <SidebarUIContext.Provider value={sidebarUIValue}>
           {/* لوحة المعلومات */}
           <SidebarLink
             to="/admin/dashboard"
@@ -417,21 +456,44 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({
             permission={CRM_PERMISSIONS.ACCESS}
           />
 
-          {/* إدارة الأفرع */}
-          <SidebarLink
-            to="/admin/branches"
-            icon={Building2}
-            label="إدارة الأفرع"
-            permission={PERMISSIONS.MANAGE_BRANCHES}
-          />
+          {/* الفروع والأقسام */}
+          <SidebarGroup icon={Building2} label="الفروع والأقسام" groupKey="orgUnits">
+            <SidebarLink
+              to="/admin/branches"
+              icon={Building2}
+              label="إدارة الأفرع"
+              indent
+              permission={PERMISSIONS.MANAGE_BRANCHES}
+            />
+            <SidebarLink
+              to="/admin/departments"
+              icon={Layers}
+              label="إدارة الأقسام"
+              indent
+              permission={PERMISSIONS.MANAGE_DEPARTMENTS}
+            />
+          </SidebarGroup>
 
-          {/* إدارة الأقسام */}
-          <SidebarLink
-            to="/admin/departments"
-            icon={Layers}
-            label="إدارة الأقسام"
-            permission={PERMISSIONS.MANAGE_DEPARTMENTS}
-          />
+          {/* إدارة الموظفين والهيكل التنظيمي */}
+          <SidebarGroup
+            icon={Users2}
+            label="إدارة الموظفين والهيكل التنظيمي"
+            groupKey="hr"
+            permission={PERMISSIONS.MANAGE_EMPLOYEES}
+          >
+            <SidebarLink
+              to="/admin/employees"
+              icon={Users2}
+              label="إدارة الموظفين"
+              indent
+            />
+            <SidebarLink
+              to="/admin/orgstructure"
+              icon={Building2}
+              label="الهيكل التنظيمي"
+              indent
+            />
+          </SidebarGroup>
 
           {/* إدارة الأصناف */}
           <SidebarGroup
@@ -453,14 +515,6 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({
               indent
             />
           </SidebarGroup>
-
-          {/* إدارة الموظفين */}
-          <SidebarLink
-            to="/admin/employees"
-            icon={Users2}
-            label="إدارة الموظفين"
-            permission={PERMISSIONS.MANAGE_EMPLOYEES}
-          />
 
           {/* المحاسبة والمالية */}
           <SidebarGroup
@@ -565,84 +619,149 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({
             label="مركز التقارير"
             permission={PERMISSIONS.VIEW_REPORTS}
           />
-          <SidebarLink
-            to="/admin/audit"
-            icon={FileText}
-            label="سجل التدقيق"
-            permission={PERMISSIONS.VIEW_AUDIT_LOG}
-          />
-          <SidebarLink
-            to="/admin/archive"
-            icon={Archive}
-            label="أرشيف العمليات"
-            permission={PERMISSIONS.VIEW_ARCHIVE}
-          />
+
+          {/* السجلات والأرشيف */}
+          <SidebarGroup icon={Archive} label="السجلات والأرشيف" groupKey="logs">
+            <SidebarLink
+              to="/admin/audit"
+              icon={FileText}
+              label="سجل التدقيق"
+              indent
+              permission={PERMISSIONS.VIEW_AUDIT_LOG}
+            />
+            <SidebarLink
+              to="/admin/archive"
+              icon={Archive}
+              label="أرشيف العمليات"
+              indent
+              permission={PERMISSIONS.VIEW_ARCHIVE}
+            />
+          </SidebarGroup>
+
+          {/* إدارة الطاولات والقاعات */}
+          <SidebarGroup
+            icon={LayoutGrid}
+            label="إدارة الطاولات والقاعات"
+            groupKey="dining"
+            permission={PERMISSIONS.MANAGE_DINING_ZONES}
+          >
+            <SidebarLink
+              to="/admin/dining-zones"
+              icon={Grid3X3}
+              label="القاعات والطاولات"
+              indent
+            />
+            <SidebarLink
+              to="/admin/dining-dashboard"
+              icon={LayoutDashboard}
+              label="لوحة إدارة الطاولات"
+              indent
+            />
+          </SidebarGroup>
+
+          {/* نقاط البيع والتشغيل */}
+          <SidebarGroup icon={Store} label="نقاط البيع والتشغيل" groupKey="posOps">
+            <SidebarLink
+              to="/admin/pos"
+              icon={Monitor}
+              label="واجهة الكاشير"
+              indent
+              permission={PERMISSIONS.ACCESS_POS_INTERFACE}
+            />
+            <SidebarLink
+              to="/admin/pos-registers"
+              icon={Monitor}
+              label="نقاط البيع"
+              indent
+              permission={PERMISSIONS.MANAGE_POS_REGISTERS}
+            />
+            <SidebarLink
+              to="/admin/pbx-recordings"
+              icon={FileAudio}
+              label="تسجيلات المكالمات"
+              indent
+              permission={PERMISSIONS.MANAGE_SETTINGS}
+            />
+          </SidebarGroup>
+
+          {/* إدارة الأجهزة */}
+          <SidebarGroup icon={Cpu} label="إدارة الأجهزة" groupKey="devices">
+            <SidebarLink
+              to="/admin/hospitality-devices"
+              icon={HeartHandshake}
+              label="أجهزة الضيافة"
+              indent
+              permission={PERMISSIONS.MANAGE_HOSPITALITY_DEVICES}
+            />
+            <SidebarLink
+              to="/admin/call-center-devices"
+              icon={Headphones}
+              label="أجهزة الكول سنتر"
+              indent
+            />
+            <SidebarLink
+              to="/admin/printers"
+              icon={Printer}
+              label="أجهزة الطباعة"
+              indent
+            />
+          </SidebarGroup>
+
+          {/* إعدادات PBX */}
+          <SidebarGroup icon={Phone} label="إعدادات PBX" groupKey="pbx">
+            <SidebarLink to="/freepbx/test" icon={Radio} label="اختبار FreePBX" indent />
+            <SidebarLink
+              to="/admin/pbx-extensions"
+              icon={Phone}
+              label="امتدادات PBX"
+              indent
+              permission={PERMISSIONS.MANAGE_SETTINGS}
+            />
+          </SidebarGroup>
+
+          {/* المستخدمون والصلاحيات */}
+          <SidebarGroup
+            icon={Shield}
+            label="المستخدمون والصلاحيات"
+            groupKey="usersPerms"
+            permission={PERMISSIONS.MANAGE_USERS}
+          >
+            <SidebarLink
+              to="/admin/users"
+              icon={Users2}
+              label="إدارة المستخدمين"
+              indent
+            />
+            <SidebarLink
+              to="/admin/permissions"
+              icon={Shield}
+              label="الأدوار والصلاحيات"
+              indent
+            />
+          </SidebarGroup>
+
           <SidebarLink
             to="/admin/settings"
             icon={Settings}
             label="الإعدادات العامة"
             permission={PERMISSIONS.MANAGE_SETTINGS}
           />
-          <SidebarLink
-            to="/admin/orgstructure"
-            icon={Building2}
-            label="الهيكل التنظيمي"
-            permission={PERMISSIONS.MANAGE_EMPLOYEES}
-          />
 
-          {/* ── إدارة المستخدمين ── */}
-          <SidebarLink
-            to="/admin/users"
-            icon={Users2}
-            label="إدارة المستخدمين"
-            permission={PERMISSIONS.MANAGE_USERS}
-          />
-          <SidebarLink
-            to="/admin/permissions"
-            icon={Shield}
-            label="الأدوار والصلاحيات"
-            permission={PERMISSIONS.MANAGE_USERS}
-          />
-          <SidebarLink
-            to="/admin/pos-registers"
-            icon={Monitor}
-            label="نقاط البيع"
-            permission={PERMISSIONS.MANAGE_POS_REGISTERS}
-          />
-          <SidebarLink to="/freepbx/test" icon={Radio} label="اختبار FreePBX" />
-          <SidebarLink to="/admin/pbx-extensions" icon={Phone} label="امتدادات PBX" permission={PERMISSIONS.MANAGE_SETTINGS} />
-          <SidebarLink to="/admin/pbx-recordings" icon={FileAudio} label="تسجيلات المكالمات" permission={PERMISSIONS.MANAGE_SETTINGS} />
-          <SidebarLink
-            to="/admin/hospitality-devices"
-            icon={HeartHandshake}
-            label="أجهزة الضيافة"
-            permission={PERMISSIONS.MANAGE_HOSPITALITY_DEVICES}
-          />
-          <SidebarLink
-            to="/admin/call-center-devices"
-            icon={Headphones}
-            label="أجهزة الكول سنتر"
-          />
-          <SidebarLink to="/admin/printers" icon={Printer} label="أجهزة الطباعة" />
-          <SidebarLink
-            to="/admin/dining-zones"
-            icon={Grid3X3}
-            label="القاعات والطاولات"
-            permission={PERMISSIONS.MANAGE_DINING_ZONES}
-          />
-          <SidebarLink to="/admin/dining-dashboard" icon={LayoutDashboard} label="لوحة إدارة الطاولات" permission={PERMISSIONS.MANAGE_DINING_ZONES} />
-          <SidebarLink
-            to="/admin/pos"
-            icon={Monitor}
-            label="واجهة الكاشير"
-            permission={PERMISSIONS.ACCESS_POS_INTERFACE}
-          />
-          <SidebarLink
-            to="/admin/extensions-test"
-            icon={Puzzle}
-            label="اختبار الإضافات"
+          {/* الإضافات والخدمات */}
+          <SidebarGroup
+            icon={Blocks}
+            label="الإضافات والخدمات"
+            groupKey="extensions"
             permission={PERMISSIONS.MANAGE_SETTINGS}
-          />
+          >
+            <SidebarLink
+              to="/admin/extensions-test"
+              icon={Puzzle}
+              label="اختبار الإضافات"
+              indent
+            />
+          </SidebarGroup>
+          </SidebarUIContext.Provider>
         </nav>
 
         {/* Footer */}
@@ -674,7 +793,7 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({
 
       {/* Main content */}
       <main
-        className={`flex-1 h-full overflow-hidden transition-all duration-300 ${isSidebarOpen ? "lg:mr-64" : "lg:mr-20"}`}
+        className={`flex-1 h-full overflow-hidden transition-all duration-300 ${isSidebarOpen ? "lg:mr-80" : "lg:mr-20"}`}
       >
         <div className="h-full flex flex-col">
           <header className="lg:hidden p-4 flex items-center justify-between border-b border-white/5 bg-slate-900/50">
