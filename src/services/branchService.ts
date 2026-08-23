@@ -13,6 +13,7 @@ export interface Branch {
   isMainBranch?: boolean;
   closingTime: string;
   openingTime: string;
+  static_ip?: string;
 }
 
 async function unwrapBranches(payload: any): Promise<Branch[]> {

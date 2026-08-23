@@ -174,7 +174,9 @@ export const CartPanel: React.FC<CartPanelProps> = ({
   const roundMoney = (value: number) =>
     Math.round((Number(value) || 0) * 100) / 100;
 
-  // ── Keyboard shortcuts: +/- to adjust quantity of last focused item ──
+  // ── اختصارات لوحة المفاتيح للكاشير (حسب الورقة المرجعية) ──
+  // وضع "فوري" (Takeaway):  -  طباعة   /  فاتورة جديدة   *  تحديد كمية   F2  حفظ   F7  إغلاق
+  // وضع "محلي" (Dine-in):   F12 طباعة   F2 حفظ           F7 إغلاق        F3 فاتورة جديدة
   const lastFocusedItemRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -185,9 +187,142 @@ export const CartPanel: React.FC<CartPanelProps> = ({
         e.target instanceof HTMLTextAreaElement
       )
         return;
-      if (currentCart.length === 0) return;
 
-      const targetItem = 
+      const isTakeaway = !isHospitality && cartOrderType === OrderType.TAKEAWAY;
+      const isDineIn = !isHospitality && cartOrderType === OrderType.DINE_IN;
+
+      const doPrint = () => {
+        if (currentCart.length === 0 || isPrinting) return;
+        handlePrintInvoice?.(editingOrderId);
+      };
+
+      const doNewInvoice = () => {
+        clearCart?.();
+      };
+
+      const doSaveTakeaway = () => {
+        if (currentCart.length === 0) return;
+        submitOrder(OrderStatus.PENDING, paymentMethod, calculatedDiscount, {
+          name: customerName,
+          phone: customerPhone,
+          note: invoiceNote,
+        });
+      };
+
+      const doSaveDineIn = () => {
+        if (currentCart.length === 0) return;
+        if (!manualTable) {
+          setPosError("يرجى إدخال رقم الطاولة أولاً");
+          return;
+        }
+        submitOrder(
+          OrderStatus.PENDING,
+          paymentMethod,
+          calculatedDiscount,
+          { name: customerName, phone: customerPhone, note: invoiceNote },
+          undefined,
+          true,
+          { skipSync: true },
+        );
+      };
+
+      const doCloseTakeaway = () => {
+        if (currentCart.length === 0) return;
+        submitOrder(
+          OrderStatus.DELIVERED,
+          paymentMethod,
+          calculatedDiscount,
+          { name: customerName, phone: customerPhone, note: invoiceNote },
+          undefined,
+          true,
+          { directPrintFirst: true, cashierDeviceId: posInfo?.id },
+        );
+      };
+
+      const doCloseDineIn = () => {
+        if (currentCart.length === 0) return;
+        if (!manualTable) {
+          setPosError("يرجى إدخال رقم الطاولة أولاً");
+          return;
+        }
+        if (
+          !customerName ||
+          (customerName === "صندوق مبيعات" && paymentMethod !== PaymentMethod.CASH)
+        ) {
+          setShowCustomerModal(true);
+          return;
+        }
+        submitOrder(OrderStatus.DELIVERED, paymentMethod, calculatedDiscount, {
+          name: customerName,
+          phone: customerPhone,
+          note: invoiceNote,
+        });
+      };
+
+      const focusQuantity = () => {
+        const targetItem =
+          lastFocusedItemRef.current ||
+          currentCart[currentCart.length - 1]?.uniqueId;
+        if (!targetItem) return;
+        const el = document.getElementById(
+          `qty-input-${targetItem}`,
+        ) as HTMLInputElement | null;
+        el?.focus();
+        el?.select();
+      };
+
+      if (isTakeaway) {
+        if (e.key === "-" || e.key === "_") {
+          e.preventDefault();
+          doPrint();
+          return;
+        }
+        if (e.key === "/") {
+          e.preventDefault();
+          doNewInvoice();
+          return;
+        }
+        if (e.key === "*") {
+          e.preventDefault();
+          focusQuantity();
+          return;
+        }
+        if (e.key === "F2") {
+          e.preventDefault();
+          doSaveTakeaway();
+          return;
+        }
+        if (e.key === "F7") {
+          e.preventDefault();
+          doCloseTakeaway();
+          return;
+        }
+      } else if (isDineIn) {
+        if (e.key === "F12") {
+          e.preventDefault();
+          doPrint();
+          return;
+        }
+        if (e.key === "F2") {
+          e.preventDefault();
+          doSaveDineIn();
+          return;
+        }
+        if (e.key === "F7") {
+          e.preventDefault();
+          doCloseDineIn();
+          return;
+        }
+        if (e.key === "F3") {
+          e.preventDefault();
+          doNewInvoice();
+          return;
+        }
+      }
+
+      // زيادة/إنقاص كمية آخر صنف تم التركيز عليه (سلوك عام لا يرتبط بورقة الاختصارات)
+      if (currentCart.length === 0) return;
+      const targetItem =
         lastFocusedItemRef.current ||
         currentCart[currentCart.length - 1]?.uniqueId;
       if (!targetItem) return;
@@ -196,7 +331,8 @@ export const CartPanel: React.FC<CartPanelProps> = ({
         e.preventDefault();
         const item = currentCart.find((c) => c.uniqueId === targetItem);
         if (item) updateCartItem(targetItem, { quantity: item.quantity + 1 });
-      } else if (e.key === "-" || e.key === "_") {
+      } else if (!isTakeaway && (e.key === "-" || e.key === "_")) {
+        // زر الطرح مخصص للطباعة بوضع "فوري"، وبباقي الأوضاع يبقى لإنقاص الكمية
         e.preventDefault();
         const item = currentCart.find((c) => c.uniqueId === targetItem);
         if (item && item.quantity > 1) {
@@ -207,7 +343,26 @@ export const CartPanel: React.FC<CartPanelProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [currentCart, updateCartItem]);
+  }, [
+    currentCart,
+    updateCartItem,
+    clearCart,
+    handlePrintInvoice,
+    editingOrderId,
+    isPrinting,
+    submitOrder,
+    isHospitality,
+    cartOrderType,
+    manualTable,
+    paymentMethod,
+    calculatedDiscount,
+    customerName,
+    customerPhone,
+    invoiceNote,
+    posInfo,
+    setPosError,
+    setShowCustomerModal,
+  ]);
 
   const filteredSearchItems = useMemo(() => {
     if (!inlineSearch || inlineSearch.length < 1) return [];
@@ -641,6 +796,8 @@ export const CartPanel: React.FC<CartPanelProps> = ({
 
                       onFocus={() => {
 
+                        lastFocusedItemRef.current = item.uniqueId;
+
                         // عند الدخول للحقل، نضع القيمة الحالية في التعديل للسماح بالإضافة فقط
 
                         if (editingNames[item.uniqueId] === undefined) {
@@ -718,6 +875,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                         -
                       </button>
                       <input
+                        id={`qty-input-${item.uniqueId}`}
                         type="text"
                         value={
                           editingQty[item.uniqueId] !== undefined
@@ -725,6 +883,9 @@ export const CartPanel: React.FC<CartPanelProps> = ({
                             : item.quantity
                         }
                         disabled={!!item.is_printed_direct}
+                        onFocus={() => {
+                          lastFocusedItemRef.current = item.uniqueId;
+                        }}
                         onChange={(e) =>
                           handleQuantityChange(
                             item.uniqueId,
