@@ -204,6 +204,15 @@ export const HospitalityTables: React.FC<{
     fetchDiningZones();
   }, [fetchDiningZones]);
 
+  // القاعات بتوصل بشكل غير متزامن بعد أول رندر (كانت فاضية وقت تهيئة selectedHallId)،
+  // فبنزامن الاختيار تلقائياً أول ما توصل أو لو القاعة المختارة صارت غير موجودة
+  useEffect(() => {
+    if (HALLS.length === 0) return;
+    if (!HALLS.some((hall) => hall.id === selectedHallId)) {
+      setSelectedHallId(HALLS[0].id);
+    }
+  }, [HALLS, selectedHallId]);
+
   // تحديث تلقائي للطاولات فقط كل 10 ثواني — يتوقف تلقائياً لو التبويب بالخلفية
   useVisibilityInterval(fetchTables, 10000);
 
