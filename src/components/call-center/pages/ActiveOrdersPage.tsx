@@ -319,6 +319,11 @@ const OrderCard: React.FC<{ order: ActiveCallCenterOrder; onClick: () => void }>
               <User size={12} /> {order.customer_name}
             </span>
           )}
+          {order.customer_phone && (
+            <span style={{ display: "flex", alignItems: "center", gap: 4 }} dir="ltr">
+              <Phone size={12} /> {order.customer_phone}
+            </span>
+          )}
           <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <Clock size={12} /> {timeAgo(order.created_at)}
           </span>

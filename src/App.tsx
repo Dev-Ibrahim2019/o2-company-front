@@ -87,7 +87,7 @@ import { OccasionsPage } from "./components/call-center/OccasionsPage";
 import { TopCustomersTable } from "./components/call-center/TopCustomersTable";
 import { CallCenterEmployees } from "./components/call-center/CallCenterEmployees";
 import { CallCenterPOS } from "./components/call-center/CallCenterPOS";
-import { CustomerManagementDashboard as CallCenterDashboard } from "./components/call-center/pages/Dashboard";
+import { CallCenterDashboard } from "./components/call-center/pages/CallCenterDashboard";
 import { SipConfigurationPage as SipConfigV2 } from "./components/call-center/pages/SipConfigPage";
 import { CallCenterPageWithAside } from "./components/call-center/pages/CallCenterPageWithAside";
 import { ActiveOrdersPage } from "./components/call-center/pages/ActiveOrdersPage";

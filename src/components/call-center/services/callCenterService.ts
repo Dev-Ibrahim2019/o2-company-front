@@ -191,7 +191,9 @@ export interface ActiveCallCenterOrder {
   order_number: string;
   status: string;
   order_type: string;
+  customer_id: number | null;
   customer_name: string | null;
+  customer_phone: string | null;
   total: number;
   branch: { id: number; name: string } | null;
   created_at: string;
@@ -288,6 +290,56 @@ export interface CustomerAlert {
   message: string;
   complaint_id: number;
   created_at: string;
+}
+
+export type TimelineEntryType = "call" | "complaint" | "order";
+export interface CustomerTimelineEntry {
+  type: TimelineEntryType;
+  id: number;
+  occurred_at: string;
+  status: string;
+  // call
+  call_type?: string | null;
+  disposition?: string | null;
+  duration_seconds?: number | null;
+  satisfaction_rating?: number | null;
+  agent?: { id: number; name: string } | null;
+  linked_order_id?: number | null;
+  // complaint
+  title?: string;
+  priority?: string;
+  // order
+  order_number?: string;
+  order_type?: string | null;
+  total?: number;
+}
+
+export interface AgentPerformanceRow {
+  agent_id: number;
+  agent_name: string;
+  total_calls: number;
+  completed_calls: number;
+  average_handle_time_minutes: number | null;
+  complaint_calls: number;
+  complaint_rate: number;
+  avg_satisfaction: number | null;
+}
+export interface AgentPerformanceReport {
+  period: { from: string; to: string };
+  missed_calls_total: number;
+  agents: AgentPerformanceRow[];
+}
+
+export interface CannedResponse {
+  id: number;
+  title: string;
+  category: string | null;
+  body: string;
+  branch_id: number | null;
+  is_active: boolean;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface DashboardAnalytics {
@@ -452,6 +504,36 @@ export const callCenterService = {
 
   getCustomerAlerts: async (customerId: number): Promise<ApiResponse<CustomerAlert[]>> => {
     const res = await api.get(`/call-center/customers/${customerId}/alerts`);
+    return res.data;
+  },
+
+  getCustomerTimeline: async (customerId: number, limit = 30): Promise<ApiResponse<CustomerTimelineEntry[]>> => {
+    const res = await api.get(`/call-center/customers/${customerId}/timeline`, { params: { limit } });
+    return res.data;
+  },
+
+  getAgentPerformance: async (params?: { branch_id?: number; from?: string; to?: string }): Promise<ApiResponse<AgentPerformanceReport>> => {
+    const res = await api.get("/call-center/reports/performance", { params });
+    return res.data;
+  },
+
+  getCannedResponses: async (params?: { search?: string; category?: string }): Promise<ApiResponse<CannedResponse[]>> => {
+    const res = await api.get("/call-center/canned-responses", { params });
+    return res.data;
+  },
+
+  createCannedResponse: async (data: { title: string; category?: string; body: string; branch_id?: number }): Promise<ApiResponse<CannedResponse>> => {
+    const res = await api.post("/call-center/canned-responses", data);
+    return res.data;
+  },
+
+  updateCannedResponse: async (id: number, data: Partial<{ title: string; category: string; body: string; is_active: boolean }>): Promise<ApiResponse<CannedResponse>> => {
+    const res = await api.patch(`/call-center/canned-responses/${id}`, data);
+    return res.data;
+  },
+
+  deleteCannedResponse: async (id: number): Promise<ApiResponse<void>> => {
+    const res = await api.delete(`/call-center/canned-responses/${id}`);
     return res.data;
   },
 

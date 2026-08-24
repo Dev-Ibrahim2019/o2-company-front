@@ -1,39 +1,76 @@
-﻿import React, { useEffect, useState } from "react";
-import { AlertTriangle, Plus, Search, Loader2, X, MessageSquare, Filter } from "lucide-react";
-import type { CustomerComplaint, ComplaintFollowup } from "./services/callCenterService";
+import React, { useEffect, useState } from "react";
+import { Plus, Loader2, X, MessageSquare } from "lucide-react";
+import type { CustomerComplaint } from "./services/callCenterService";
 import { callCenterService } from "./services/callCenterService";
+import { colors, typography, radius, shadows, transitions, zIndex } from "./design/tokens";
+import { Button, Badge, SearchInput, EmptyState, Skeleton } from "./design/components";
 
 const statusOptions = [
-  { value: "", label: "ظƒظ„ ط§ظ„ط­ط§ظ„ط§طھ" },
-  { value: "new", label: "ط¬ط¯ظٹط¯" },
-  { value: "open", label: "مفتوح" },
+  { value: "", label: "كل الحالات" },
+  { value: "new", label: "جديدة" },
+  { value: "open", label: "مفتوحة" },
   { value: "in_progress", label: "قيد المعالجة" },
-  { value: "waiting_customer", label: "ط¨ط§ظ†طھط¸ط§ط± ط§ظ„ط¹ظ…ظٹظ„" },
-  { value: "resolved", label: "طھظ… ط§ظ„ط­ظ„" },
-  { value: "closed", label: "ظ…ط؛ظ„ظ‚" },
-  { value: "cancelled", label: "ظ…ظ„ط؛ظٹ" },
+  { value: "waiting_customer", label: "بانتظار العميل" },
+  { value: "resolved", label: "تم الحل" },
+  { value: "closed", label: "مغلقة" },
+  { value: "cancelled", label: "ملغاة" },
 ];
 
 const priorityOptions = [
-  { value: "", label: "ظƒظ„ ط§ظ„ط£ظˆظ„ظˆظٹط§طھ" },
+  { value: "", label: "كل الأولويات" },
   { value: "low", label: "منخفضة" },
   { value: "normal", label: "متوسطة" },
   { value: "high", label: "عالية" },
-  { value: "critical", label: "ط­ط±ط¬ط©" },
+  { value: "critical", label: "حرجة" },
 ];
 
 const complaintTypes = [
-  { value: "delay", label: "طھط£ط®ظٹط±" },
-  { value: "missing_item", label: "طµظ†ظپ ظ†ط§ظ‚طµ" },
-  { value: "wrong_item", label: "طµظ†ظپ ط®ط§ط·ط¦" },
-  { value: "food_quality", label: "ط¬ظˆط¯ط© ط§ظ„ط·ط¹ط§ظ…" },
-  { value: "packaging", label: "ظ…ط´ظƒظ„ط© ظپظٹ ط§ظ„طھط؛ظ„ظٹظپ" },
-  { value: "delivery", label: "ظ…ط´ظƒظ„ط© ظ…ط¹ ط§ظ„ظ…ظ†ط¯ظˆط¨" },
-  { value: "payment", label: "ظ…ط´ظƒظ„ط© ط¯ظپط¹" },
-  { value: "discount", label: "ظ…ط´ظƒظ„ط© ط®طµظ…" },
-  { value: "service", label: "ط³ظˆط، ط®ط¯ظ…ط©" },
-  { value: "other", label: "ط£ط®ط±ظ‰" },
+  { value: "delay", label: "تأخير" },
+  { value: "missing_item", label: "صنف ناقص" },
+  { value: "wrong_item", label: "صنف خاطئ" },
+  { value: "food_quality", label: "جودة الطعام" },
+  { value: "packaging", label: "مشكلة في التغليف" },
+  { value: "delivery", label: "مشكلة مع المندوب" },
+  { value: "payment", label: "مشكلة دفع" },
+  { value: "discount", label: "مشكلة خصم" },
+  { value: "service", label: "سوء خدمة" },
+  { value: "other", label: "أخرى" },
 ];
+
+const statusMeta: Record<string, { variant: "default" | "success" | "warning" | "error" | "info" | "brand"; label: string }> = {
+  new: { variant: "brand", label: "جديدة" },
+  open: { variant: "warning", label: "مفتوحة" },
+  in_progress: { variant: "info", label: "قيد المعالجة" },
+  waiting_customer: { variant: "default", label: "بانتظار العميل" },
+  resolved: { variant: "success", label: "تم الحل" },
+  closed: { variant: "default", label: "مغلقة" },
+  cancelled: { variant: "error", label: "ملغاة" },
+};
+
+const priorityMeta: Record<string, { variant: "default" | "success" | "warning" | "error" | "info" | "brand"; label: string }> = {
+  low: { variant: "default", label: "منخفضة" },
+  normal: { variant: "info", label: "متوسطة" },
+  high: { variant: "warning", label: "عالية" },
+  critical: { variant: "error", label: "حرجة" },
+};
+
+const ComplaintStatusBadge: React.FC<{ status: string }> = ({ status }) => {
+  const meta = statusMeta[status] ?? { variant: "default" as const, label: status };
+  return <Badge variant={meta.variant} dot>{meta.label}</Badge>;
+};
+
+const ComplaintPriorityBadge: React.FC<{ priority: string }> = ({ priority }) => {
+  const meta = priorityMeta[priority] ?? { variant: "default" as const, label: priority };
+  return <Badge variant={meta.variant}>{meta.label}</Badge>;
+};
+
+const selectStyle: React.CSSProperties = {
+  height: 36, padding: "0 12px",
+  fontSize: typography.size.sm, fontWeight: typography.weight.medium,
+  color: colors.neutral[700], background: "#fff",
+  border: `1px solid ${colors.border.default}`,
+  borderRadius: radius.lg, outline: "none", cursor: "pointer",
+};
 
 export const ComplaintsManagement: React.FC = () => {
   const [complaints, setComplaints] = useState<CustomerComplaint[]>([]);
@@ -48,82 +85,94 @@ export const ComplaintsManagement: React.FC = () => {
   const load = async () => {
     setLoading(true);
     try {
-      const params: any = { per_page: 50 };
+      const params: { status?: string; priority?: string; type?: string; search?: string; per_page: number } = { per_page: 50 };
       if (status) params.status = status;
       if (priority) params.priority = priority;
       if (type) params.type = type;
       if (search) params.search = search;
       const res = await callCenterService.getComplaints(params);
       setComplaints(res.data?.data ?? []);
-    } catch { } finally {
+    } catch {
+      // handled by the empty-state below
+    } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { load(); }, [status, priority, type, search]);
+  useEffect(() => {
+    const t = setTimeout(load, search ? 300 : 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, priority, type, search]);
 
   return (
-    <div className="space-y-4" dir="rtl">
-      <div className="flex items-center justify-between">
+    <div dir="rtl" style={{ maxWidth: 1100, margin: "0 auto" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 20, gap: 12 }}>
         <div>
-          <h2 className="text-lg font-black text-white">ط§ظ„ط´ظƒط§ظˆظ‰ ظˆط§ظ„ظ…طھط§ط¨ط¹ط©</h2>
-          <p className="text-xs text-slate-400">ط¥ط¯ط§ط±ط© ط´ظƒط§ظˆظ‰ ط§ظ„ط¹ظ…ظ„ط§ط، ظˆظ…طھط§ط¨ط¹طھظ‡ط§</p>
+          <h1 style={{ fontSize: typography.size["2xl"], fontWeight: typography.weight.extrabold, color: colors.neutral[900] }}>الشكاوى والمتابعة</h1>
+          <p style={{ fontSize: typography.size.sm, color: colors.neutral[500], marginTop: 4 }}>إدارة شكاوى العملاء ومتابعتها حتى الحل</p>
         </div>
-        <button onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-1.5 px-4 py-2 bg-red-600 text-white rounded-xl text-xs font-bold hover:bg-red-700 transition-all">
-          <Plus size={14} /> ط´ظƒظˆظ‰ ط¬ط¯ظٹط¯ط©
-        </button>
+        <Button variant="primary" icon={<Plus size={14} />} onClick={() => setShowCreateModal(true)}>
+          شكوى جديدة
+        </Button>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-2">
-        <select value={status} onChange={e => setStatus(e.target.value)}
-          className="bg-slate-800 border border-white/10 rounded-lg px-3 py-1.5 text-xs font-bold text-white focus:outline-none focus:border-red-500/50">
-          {statusOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+        <select value={status} onChange={(e) => setStatus(e.target.value)} style={selectStyle} aria-label="تصفية بالحالة">
+          {statusOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-        <select value={priority} onChange={e => setPriority(e.target.value)}
-          className="bg-slate-800 border border-white/10 rounded-lg px-3 py-1.5 text-xs font-bold text-white focus:outline-none focus:border-red-500/50">
-          {priorityOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        <select value={priority} onChange={(e) => setPriority(e.target.value)} style={selectStyle} aria-label="تصفية بالأولوية">
+          {priorityOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-        <select value={type} onChange={e => setType(e.target.value)}
-          className="bg-slate-800 border border-white/10 rounded-lg px-3 py-1.5 text-xs font-bold text-white focus:outline-none focus:border-red-500/50">
-          <option value="">ظƒظ„ ط§ظ„ط£ظ†ظˆط§ط¹</option>
-          {complaintTypes.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        <select value={type} onChange={(e) => setType(e.target.value)} style={selectStyle} aria-label="تصفية بالنوع">
+          <option value="">كل الأنواع</option>
+          {complaintTypes.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-        <div className="relative flex-1 min-w-[200px]">
-          <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="ط¨ط­ط« ظپظٹ ط§ظ„ط´ظƒط§ظˆظ‰..."
-            className="w-full bg-slate-800 border border-white/10 rounded-lg py-1.5 pr-8 pl-3 text-xs text-white focus:outline-none focus:border-red-500/50 placeholder-slate-500" />
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <SearchInput value={search} onChange={setSearch} placeholder="بحث في الشكاوى..." />
         </div>
       </div>
 
       {/* List */}
       {loading ? (
-        <div className="flex justify-center py-12"><Loader2 size={24} className="animate-spin text-red-500" /></div>
-      ) : complaints.length === 0 ? (
-        <div className="flex flex-col items-center py-12 text-slate-500">
-          <AlertTriangle size={32} className="mb-2" />
-          <p className="text-sm">ظ„ط§ طھظˆط¬ط¯ ط´ظƒط§ظˆظ‰</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {[1, 2, 3, 4].map((i) => <Skeleton key={i} height={84} borderRadius={radius.xl} />)}
         </div>
+      ) : complaints.length === 0 ? (
+        <EmptyState icon={<MessageSquare size={24} />} title="لا توجد شكاوى" description="لا توجد شكاوى مطابقة لعوامل التصفية الحالية" />
       ) : (
-        <div className="space-y-2">
-          {complaints.map(c => (
-            <button key={c.id} onClick={() => setSelectedComplaint(c)}
-              className="w-full bg-slate-900 border border-white/5 rounded-xl p-4 text-right hover:border-white/10 transition-all">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-black text-white">{c.title}</span>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {complaints.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => setSelectedComplaint(c)}
+              style={{
+                width: "100%", textAlign: "right", background: "#fff",
+                border: `1px solid ${colors.border.subtle}`, borderRadius: radius.xl,
+                padding: 16, cursor: "pointer", transition: `all ${transitions.fast}`,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = colors.border.default; e.currentTarget.style.boxShadow = shadows.sm; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = colors.border.subtle; e.currentTarget.style.boxShadow = "none"; }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  <span style={{ fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.neutral[900], overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</span>
                   <ComplaintStatusBadge status={c.status} />
                 </div>
                 <ComplaintPriorityBadge priority={c.priority} />
               </div>
-              {c.description && <p className="text-xs text-slate-400 mb-2 line-clamp-2">{c.description}</p>}
-              <div className="flex items-center gap-3 text-[10px] text-slate-500">
+              {c.description && (
+                <p style={{ fontSize: typography.size.sm, color: colors.neutral[500], marginBottom: 8, overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+                  {c.description}
+                </p>
+              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: typography.size.xs, color: colors.neutral[400] }}>
                 <span>#{c.id}</span>
-                <span>{new Date(c.created_at).toLocaleDateString("ar-SA")}</span>
+                <span>{new Date(c.created_at).toLocaleDateString("ar-EG")}</span>
                 {c.customer && <span>{c.customer.name}</span>}
                 {c.order && <span>طلب: {c.order.order_number}</span>}
-                <span className={c.type ? "" : "hidden"}>{complaintTypes.find(t => t.value === c.type)?.label || c.type}</span>
+                {c.type && <span>{complaintTypes.find((t) => t.value === c.type)?.label || c.type}</span>}
               </div>
             </button>
           ))}
@@ -141,13 +190,22 @@ export const ComplaintsManagement: React.FC = () => {
   );
 };
 
-/* â”€â”€â”€ Detail Modal â”€â”€â”€ */
+/* ─── Detail Modal ─── */
+
+interface ComplaintTimelineFollowup {
+  id: number;
+  notes: string | null;
+  user?: { name: string } | null;
+  created_at: string;
+  old_status?: string | null;
+  new_status?: string | null;
+}
 
 const ComplaintDetailModal: React.FC<{ complaint: CustomerComplaint; onClose: () => void; onReload: () => void }> = ({ complaint, onClose, onReload }) => {
   const [tab, setTab] = useState<"details" | "timeline">("details");
   const [followupNotes, setFollowupNotes] = useState("");
   const [sending, setSending] = useState(false);
-  const [timeline, setTimeline] = useState<{ complaint: any; followups: any[] } | null>(null);
+  const [timeline, setTimeline] = useState<{ followups: ComplaintTimelineFollowup[] } | null>(null);
   const [loadingTimeline, setLoadingTimeline] = useState(false);
 
   const loadTimeline = async () => {
@@ -155,18 +213,23 @@ const ComplaintDetailModal: React.FC<{ complaint: CustomerComplaint; onClose: ()
     try {
       const res = await callCenterService.getComplaintTimeline(complaint.id);
       setTimeline(res.data);
-    } catch { } finally {
+    } catch {
+      // keep previous timeline state
+    } finally {
       setLoadingTimeline(false);
     }
   };
 
-  useEffect(() => { if (tab === "timeline") loadTimeline(); }, [tab]);
+  useEffect(() => { if (tab === "timeline") void loadTimeline(); }, [tab]);
 
   const handleStatusChange = async (newStatus: string) => {
     try {
       await callCenterService.updateComplaint(complaint.id, { status: newStatus });
       onReload();
-    } catch { }
+      onClose();
+    } catch {
+      // surfaced by the parent list refresh failing silently is acceptable here
+    }
   };
 
   const handleAddFollowup = async () => {
@@ -175,78 +238,95 @@ const ComplaintDetailModal: React.FC<{ complaint: CustomerComplaint; onClose: ()
     try {
       await callCenterService.addFollowup(complaint.id, { notes: followupNotes, action: "note_added", followup_type: "note" });
       setFollowupNotes("");
-      loadTimeline();
-    } catch { } finally {
+      void loadTimeline();
+    } catch {
+      // keep the note for the agent to retry
+    } finally {
       setSending(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" dir="rtl">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b border-white/5">
-          <h3 className="text-white font-black text-sm">{complaint.title}</h3>
-          <button onClick={onClose} className="p-1 hover:bg-white/5 rounded-lg"><X size={16} className="text-slate-400" /></button>
+    <div style={{ position: "fixed", inset: 0, zIndex: zIndex.modal, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} dir="rtl" role="dialog" aria-modal="true" aria-label={complaint.title}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: colors.surface.overlay }} />
+      <div style={{ position: "relative", width: "100%", maxWidth: 520, maxHeight: "85vh", display: "flex", flexDirection: "column", background: "#fff", borderRadius: radius["2xl"], boxShadow: shadows.xl, overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: 16, borderBottom: `1px solid ${colors.border.subtle}` }}>
+          <h3 style={{ fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.neutral[900] }}>{complaint.title}</h3>
+          <button onClick={onClose} aria-label="إغلاق" style={{ padding: 6, background: colors.neutral[100], border: "none", borderRadius: radius.md, cursor: "pointer", color: colors.neutral[500] }}>
+            <X size={16} />
+          </button>
         </div>
 
-        <div className="flex border-b border-white/5">
-          <button onClick={() => setTab("details")} className={`flex-1 py-2.5 text-xs font-bold border-b-2 transition-all ${tab === "details" ? "border-red-500 text-white" : "border-transparent text-slate-400"}`}>التفاصيل</button>
-          <button onClick={() => setTab("timeline")} className={`flex-1 py-2.5 text-xs font-bold border-b-2 transition-all ${tab === "timeline" ? "border-red-500 text-white" : "border-transparent text-slate-400"}`}>الجدول الزمني</button>
+        <div style={{ display: "flex", borderBottom: `1px solid ${colors.border.subtle}` }}>
+          {(["details", "timeline"] as const).map((key) => (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              style={{
+                flex: 1, padding: "10px 0", fontSize: typography.size.xs, fontWeight: typography.weight.bold,
+                background: "transparent", border: "none", cursor: "pointer",
+                color: tab === key ? colors.brand[600] : colors.neutral[400],
+                borderBottom: `2px solid ${tab === key ? colors.brand[500] : "transparent"}`,
+              }}
+            >
+              {key === "details" ? "التفاصيل" : "الجدول الزمني"}
+            </button>
+          ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
           {tab === "details" ? (
             <>
-              <div className="flex items-center gap-2">
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <ComplaintStatusBadge status={complaint.status} />
                 <ComplaintPriorityBadge priority={complaint.priority} />
               </div>
-              <p className="text-xs text-slate-400">{complaint.description || "â€”"}</p>
-              <div className="text-xs text-slate-400 space-y-1">
-                <p>ط§ظ„ظ†ظˆط¹: {complaintTypes.find(t => t.value === complaint.type)?.label || complaint.type}</p>
-                <p>ط§ظ„ط­ط³ط§ط³ظٹط©: {complaint.is_sensitive ? "ط­ط³ط§ط³ط©" : "ط¹ط§ط¯ظٹط©"}</p>
-                {complaint.customer && <p>ط§ظ„ط¹ظ…ظٹظ„: {complaint.customer.name}</p>}
-                {complaint.order && <p>ط§ظ„طلب: {complaint.order.order_number}</p>}
-                {complaint.resolution_notes && <p>ملاحظات ط§ظ„ط­ظ„: {complaint.resolution_notes}</p>}
+              <p style={{ fontSize: typography.size.sm, color: colors.neutral[600] }}>{complaint.description || "—"}</p>
+              <div style={{ fontSize: typography.size.xs, color: colors.neutral[500], display: "flex", flexDirection: "column", gap: 4 }}>
+                <span>النوع: {complaintTypes.find((t) => t.value === complaint.type)?.label || complaint.type}</span>
+                <span>الحساسية: {complaint.is_sensitive ? "حساسة" : "عادية"}</span>
+                {complaint.customer && <span>العميل: {complaint.customer.name}</span>}
+                {complaint.order && <span>الطلب: {complaint.order.order_number}</span>}
+                {complaint.resolution_notes && <span>ملاحظات الحل: {complaint.resolution_notes}</span>}
               </div>
-              <div className="flex gap-2">
-                <StatusActions currentStatus={complaint.status} onSelect={handleStatusChange} />
-              </div>
+              <StatusActions currentStatus={complaint.status} onSelect={handleStatusChange} />
             </>
           ) : (
             <>
-              {loadingTimeline ? <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-red-500" /></div>
-                : timeline ? (
-                  <div className="space-y-3">
-                    {timeline.followups.map((f, idx) => (
-                      <div key={f.id} className="flex gap-3">
-                        <div className="flex flex-col items-center">
-                          <div className={`w-2 h-2 rounded-full ${idx === 0 ? "bg-red-500" : "bg-slate-600"}`} />
-                          {idx < timeline.followups.length - 1 && <div className="w-px flex-1 bg-slate-700 my-1" />}
-                        </div>
-                        <div className="flex-1 pb-3">
-                          <p className="text-xs font-bold text-white">{f.notes}</p>
-                          <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
-                            <span>{f.user?.name || "ط§ظ„ظ†ط¸ط§ظ…"}</span>
-                            <span>{new Date(f.created_at).toLocaleString("ar-SA")}</span>
-                            {f.old_status && f.new_status && (
-                              <span>({f.old_status} â†’ {f.new_status})</span>
-                            )}
-                          </div>
+              {loadingTimeline ? (
+                <div style={{ display: "flex", justifyContent: "center", padding: 32 }}><Loader2 size={20} className="animate-spin" color={colors.brand[500]} /></div>
+              ) : timeline ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {timeline.followups.map((f, idx) => (
+                    <div key={f.id} style={{ display: "flex", gap: 10 }}>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: idx === 0 ? colors.brand[500] : colors.neutral[300] }} />
+                        {idx < timeline.followups.length - 1 && <div style={{ width: 1, flex: 1, background: colors.border.subtle, margin: "4px 0" }} />}
+                      </div>
+                      <div style={{ paddingBottom: 12 }}>
+                        <p style={{ fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.neutral[900] }}>{f.notes}</p>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: typography.size.xs, color: colors.neutral[400], marginTop: 2 }}>
+                          <span>{f.user?.name || "النظام"}</span>
+                          <span>{new Date(f.created_at).toLocaleString("ar-EG")}</span>
+                          {f.old_status && f.new_status && <span>({f.old_status} ← {f.new_status})</span>}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                ) : <p className="text-center text-slate-500 text-xs">ظ„ط§ طھظˆط¬ط¯ ظ…طھط§ط¨ط¹ط§طھ</p>}
+                    </div>
+                  ))}
+                </div>
+              ) : <p style={{ textAlign: "center", fontSize: typography.size.sm, color: colors.neutral[400] }}>لا توجد متابعات</p>}
 
-              <div className="border-t border-white/5 pt-3 mt-3">
-                <textarea value={followupNotes} onChange={e => setFollowupNotes(e.target.value)} placeholder="ط£ط¶ظپ ظ…طھط§ط¨ط¹ط©..."
-                  className="w-full bg-slate-800 border border-white/10 rounded-xl p-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500/50 resize-none h-20" />
-                <button onClick={handleAddFollowup} disabled={sending || !followupNotes.trim()}
-                  className="mt-2 w-full py-2 bg-red-600 text-white rounded-xl text-xs font-bold hover:bg-red-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                  {sending ? "ط¬ط§ط±ظٹ ط§ظ„إرسال..." : "ط¥ط¶ط§ظپط© ظ…طھط§ط¨ط¹ط©"}
-                </button>
+              <div style={{ borderTop: `1px solid ${colors.border.subtle}`, paddingTop: 12 }}>
+                <textarea
+                  value={followupNotes}
+                  onChange={(e) => setFollowupNotes(e.target.value)}
+                  placeholder="أضف متابعة..."
+                  aria-label="متابعة جديدة"
+                  style={{ width: "100%", height: 76, padding: 10, fontSize: typography.size.sm, border: `1px solid ${colors.border.default}`, borderRadius: radius.lg, outline: "none", resize: "none", fontFamily: typography.fontFamily.sans }}
+                />
+                <Button variant="primary" fullWidth onClick={handleAddFollowup} disabled={sending || !followupNotes.trim()} loading={sending} style={{ marginTop: 8 }}>
+                  إضافة متابعة
+                </Button>
               </div>
             </>
           )}
@@ -256,7 +336,7 @@ const ComplaintDetailModal: React.FC<{ complaint: CustomerComplaint; onClose: ()
   );
 };
 
-/* â”€â”€â”€ Create Modal â”€â”€â”€ */
+/* ─── Create Modal ─── */
 
 const CreateComplaintModal: React.FC<{ onClose: () => void; onCreated: () => void }> = ({ onClose, onCreated }) => {
   const [title, setTitle] = useState("");
@@ -268,110 +348,89 @@ const CreateComplaintModal: React.FC<{ onClose: () => void; onCreated: () => voi
   const [isSensitive, setIsSensitive] = useState(false);
   const [sending, setSending] = useState(false);
 
+  const inputStyle: React.CSSProperties = {
+    width: "100%", padding: "9px 12px", fontSize: typography.size.sm,
+    border: `1px solid ${colors.border.default}`, borderRadius: radius.lg, outline: "none",
+    fontFamily: typography.fontFamily.sans, color: colors.neutral[900],
+  };
+
   const handleSubmit = async () => {
     if (!title.trim() || !customerId) return;
     setSending(true);
     try {
       await callCenterService.createComplaint({
-        customer_id: parseInt(customerId),
+        customer_id: parseInt(customerId, 10),
         title: title.trim(),
         description,
         type,
         priority,
         is_sensitive: isSensitive,
-        order_id: orderId ? parseInt(orderId) : undefined,
+        order_id: orderId ? parseInt(orderId, 10) : undefined,
       });
       onCreated();
-    } catch { } finally {
+    } catch {
+      // form stays open so the agent can retry
+    } finally {
       setSending(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" dir="rtl">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-slate-900 border border-white/10 rounded-2xl shadow-2xl w-full max-w-md p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-white font-black text-sm">ط´ظƒظˆظ‰ ط¬ط¯ظٹط¯ط©</h3>
-          <button onClick={onClose} className="p-1 hover:bg-white/5 rounded-lg"><X size={16} className="text-slate-400" /></button>
+    <div style={{ position: "fixed", inset: 0, zIndex: zIndex.modal, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} dir="rtl" role="dialog" aria-modal="true" aria-label="شكوى جديدة">
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: colors.surface.overlay }} />
+      <div style={{ position: "relative", width: "100%", maxWidth: 440, background: "#fff", borderRadius: radius["2xl"], boxShadow: shadows.xl, padding: 20, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <h3 style={{ fontSize: typography.size.base, fontWeight: typography.weight.bold, color: colors.neutral[900] }}>شكوى جديدة</h3>
+          <button onClick={onClose} aria-label="إغلاق" style={{ padding: 6, background: colors.neutral[100], border: "none", borderRadius: radius.md, cursor: "pointer", color: colors.neutral[500] }}>
+            <X size={16} />
+          </button>
         </div>
-        <input value={customerId} onChange={e => setCustomerId(e.target.value)} placeholder="ط±ظ‚ظ… ط§ظ„ط¹ظ…ظٹظ„ *" type="number"
-          className="w-full bg-slate-800 border border-white/10 rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500/50" />
-        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="ط¹ظ†ظˆط§ظ† ط§ظ„ط´ظƒظˆظ‰ *"
-          className="w-full bg-slate-800 border border-white/10 rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500/50" />
-        <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="ط§ظ„ظˆطµظپ"
-          className="w-full bg-slate-800 border border-white/10 rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500/50 resize-none h-20" />
-        <div className="flex gap-2">
-          <select value={type} onChange={e => setType(e.target.value)} className="flex-1 bg-slate-800 border border-white/10 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-red-500/50">
-            {complaintTypes.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        <input value={customerId} onChange={(e) => setCustomerId(e.target.value)} placeholder="رقم العميل *" type="number" aria-label="رقم العميل" style={inputStyle} />
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="عنوان الشكوى *" aria-label="عنوان الشكوى" style={inputStyle} />
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="الوصف" aria-label="وصف الشكوى" style={{ ...inputStyle, height: 76, resize: "none" }} />
+        <div style={{ display: "flex", gap: 8 }}>
+          <select value={type} onChange={(e) => setType(e.target.value)} style={{ ...selectStyle, flex: 1 }} aria-label="نوع الشكوى">
+            {complaintTypes.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          <select value={priority} onChange={e => setPriority(e.target.value)} className="flex-1 bg-slate-800 border border-white/10 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-red-500/50">
-            {priorityOptions.filter(o => o.value).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          <select value={priority} onChange={(e) => setPriority(e.target.value)} style={{ ...selectStyle, flex: 1 }} aria-label="أولوية الشكوى">
+            {priorityOptions.filter((o) => o.value).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </div>
-        <input value={orderId} onChange={e => setOrderId(e.target.value)} placeholder="ط±ظ‚ظ… ط§ظ„طلب (ط§ط®طھظٹط§ط±ظٹ)" type="number"
-          className="w-full bg-slate-800 border border-white/10 rounded-xl p-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500/50" />
-        <label className="flex items-center gap-2 text-xs text-slate-400">
-          <input type="checkbox" checked={isSensitive} onChange={e => setIsSensitive(e.target.checked)} className="rounded bg-slate-800 border-white/10" />
-          ط´ظƒظˆظ‰ ط­ط³ط§ط³ط© (طھطھطلب ط§ظ‡طھظ…ط§ظ… ط®ط§طµ)
+        <input value={orderId} onChange={(e) => setOrderId(e.target.value)} placeholder="رقم الطلب (اختياري)" type="number" aria-label="رقم الطلب" style={inputStyle} />
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: typography.size.xs, color: colors.neutral[600] }}>
+          <input type="checkbox" checked={isSensitive} onChange={(e) => setIsSensitive(e.target.checked)} style={{ accentColor: colors.brand[500] }} />
+          شكوى حساسة (تتطلب اهتماماً خاصاً)
         </label>
-        <button onClick={handleSubmit} disabled={sending || !title.trim() || !customerId}
-          className="w-full py-2.5 bg-red-600 text-white rounded-xl text-xs font-bold hover:bg-red-700 transition-all disabled:opacity-50">
-          {sending ? "ط¬ط§ط±ظٹ ط§ظ„ط¥ظ†ط´ط§ط،..." : "ط¥ظ†ط´ط§ط، ط§ظ„ط´ظƒظˆظ‰"}
-        </button>
+        <Button variant="primary" fullWidth onClick={handleSubmit} disabled={sending || !title.trim() || !customerId} loading={sending}>
+          إنشاء الشكوى
+        </Button>
       </div>
     </div>
   );
 };
 
-/* â”€â”€â”€ Helpers â”€â”€â”€ */
+/* ─── Status Actions ─── */
 
-const ComplaintStatusBadge: React.FC<{ status: string }> = ({ status }) => {
-  const map: Record<string, { color: string; label: string }> = {
-    new: { color: "text-red-400 bg-red-500/10", label: "ط¬ط¯ظٹط¯" },
-    open: { color: "text-amber-400 bg-amber-500/10", label: "مفتوح" },
-    in_progress: { color: "text-blue-400 bg-blue-500/10", label: "قيد المعالجة" },
-    waiting_customer: { color: "text-purple-400 bg-purple-500/10", label: "ط¨ط§ظ†طھط¸ط§ط± ط§ظ„ط¹ظ…ظٹظ„" },
-    resolved: { color: "text-emerald-400 bg-emerald-500/10", label: "طھظ… ط§ظ„ط­ظ„" },
-    closed: { color: "text-slate-400 bg-slate-500/10", label: "ظ…ط؛ظ„ظ‚" },
-    cancelled: { color: "text-red-400 bg-red-500/10", label: "ظ…ظ„ط؛ظٹ" },
-  };
-  const s = map[status] || { color: "text-slate-400 bg-slate-500/10", label: status };
-  return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${s.color}`}>{s.label}</span>;
-};
-
-const ComplaintPriorityBadge: React.FC<{ priority: string }> = ({ priority }) => {
-  const map: Record<string, { color: string; label: string }> = {
-    low: { color: "text-slate-400 bg-slate-500/10", label: "منخفضة" },
-    normal: { color: "text-blue-400 bg-blue-500/10", label: "متوسطة" },
-    high: { color: "text-amber-400 bg-amber-500/10", label: "عالية" },
-    critical: { color: "text-red-400 bg-red-500/10", label: "ط­ط±ط¬ط©" },
-  };
-  const s = map[priority] || { color: "text-slate-400 bg-slate-500/10", label: priority };
-  return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${s.color}`}>{s.label}</span>;
+const statusTransitions: Record<string, { value: string; label: string }[]> = {
+  new: [{ value: "open", label: "فتح الشكوى" }],
+  open: [{ value: "in_progress", label: "بدء المعالجة" }, { value: "waiting_customer", label: "بانتظار العميل" }],
+  in_progress: [{ value: "resolved", label: "تم الحل" }, { value: "waiting_customer", label: "بانتظار العميل" }],
+  waiting_customer: [{ value: "in_progress", label: "استئناف المعالجة" }, { value: "resolved", label: "تم الحل" }],
+  resolved: [{ value: "closed", label: "إغلاق" }, { value: "open", label: "إعادة فتح" }],
+  closed: [{ value: "open", label: "إعادة فتح" }],
+  cancelled: [{ value: "open", label: "إعادة فتح" }],
 };
 
 const StatusActions: React.FC<{ currentStatus: string; onSelect: (status: string) => void }> = ({ currentStatus, onSelect }) => {
-  const transitions: Record<string, { value: string; label: string }[]> = {
-    new: [{ value: "open", label: "ظپطھط­ ط§ظ„ط´ظƒظˆظ‰" }],
-    open: [{ value: "in_progress", label: "ط¨ط¯ط، ط§ظ„ظ…ط¹ط§ظ„ط¬ط©" }, { value: "waiting_customer", label: "ط¨ط§ظ†طھط¸ط§ط± ط§ظ„ط¹ظ…ظٹظ„" }],
-    in_progress: [{ value: "resolved", label: "طھظ… ط§ظ„ط­ظ„" }, { value: "waiting_customer", label: "ط¨ط§ظ†طھط¸ط§ط± ط§ظ„ط¹ظ…ظٹظ„" }],
-    waiting_customer: [{ value: "in_progress", label: "ط§ط³طھط¦ظ†ط§ظپ ط§ظ„ظ…ط¹ط§ظ„ط¬ط©" }, { value: "resolved", label: "طھظ… ط§ظ„ط­ظ„" }],
-    resolved: [{ value: "closed", label: "ط¥ط؛ظ„ط§ظ‚" }, { value: "open", label: "ط¥ط¹ط§ط¯ط© ظپطھط­" }],
-    closed: [{ value: "open", label: "ط¥ط¹ط§ط¯ط© ظپطھط­" }],
-    cancelled: [{ value: "open", label: "ط¥ط¹ط§ط¯ط© ظپطھط­" }],
-  };
-
-  const actions = transitions[currentStatus] || [];
+  const actions = statusTransitions[currentStatus] || [];
+  if (actions.length === 0) return null;
   return (
-    <div className="flex gap-2">
-      {actions.map(a => (
-        <button key={a.value} onClick={() => onSelect(a.value)}
-          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-xs font-bold text-white transition-all">
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      {actions.map((a) => (
+        <Button key={a.value} variant="secondary" size="sm" onClick={() => onSelect(a.value)}>
           {a.label}
-        </button>
+        </Button>
       ))}
     </div>
   );
 };
-

@@ -146,6 +146,9 @@ export const useMenu = (branchId?: number | null) => {
     allItems,
     loading,
     error,
+    // The branch id this hook actually resolved (parameter → localStorage → /auth/me),
+    // so callers don't have to re-derive it themselves from a stale localStorage read.
+    branchId: resolvedBranchId,
     refetch: () => resolvedBranchId && fetchMenu(resolvedBranchId),
     findByCode,
   };

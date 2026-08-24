@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { X, User, ShoppingCart, Star, MapPin, MessageSquare, AlertTriangle, CreditCard, Phone, Mail, Calendar, Clock, Store, Package, ChevronLeft, Loader2, FileText, Percent, Ban, Plus, Heart, Flag, Bell, ExternalLink, Trash2, Edit3, Check, Copy, RefreshCw, Award, TrendingUp, AlertCircle, Building2, Headphones, UtensilsCrossed, Users, Activity, ChevronDown, ChevronUp, Timer, Truck } from "lucide-react";
-import type { CustomerProfile, CustomerOrder, CustomerComplaint, FavoriteItem, OrderDetail, ComplaintFollowup, CustomerAddress, CustomerOccasion, CustomerNote, CustomerSearchResult } from "./services/callCenterService";
+import { X, User, ShoppingCart, Star, MapPin, MessageSquare, AlertTriangle, CreditCard, Phone, Mail, Calendar, Clock, Store, Package, ChevronLeft, Loader2, FileText, Percent, Ban, Plus, Heart, Flag, Bell, ExternalLink, Trash2, Edit3, Check, Copy, RefreshCw, Award, TrendingUp, AlertCircle, Building2, Headphones, UtensilsCrossed, Users, Activity, ChevronDown, ChevronUp, Timer, Truck, History, PhoneCall } from "lucide-react";
+import type { CustomerProfile, CustomerOrder, CustomerComplaint, FavoriteItem, OrderDetail, ComplaintFollowup, CustomerAddress, CustomerOccasion, CustomerNote, CustomerSearchResult, CustomerTimelineEntry } from "./services/callCenterService";
 import { callCenterService, CUSTOMER_CATEGORY_LABELS, type CustomerCategory } from "./services/callCenterService";
 import { feedbackDraftFrom, feedbackPayload, feedbackValidationMessage } from "./feedbackFlow";
+import { CALL_TYPE_LABELS, type CallType } from "../../services/callTicketService";
 
 interface Props {
   isOpen?: boolean;
@@ -14,7 +15,7 @@ interface Props {
   onApplyLoyaltyDiscount?: (amount: number) => void;
 }
 
-type Tab = "overview" | "orders" | "addresses" | "occasions" | "complaints" | "loyalty" | "notes" | "finance";
+type Tab = "overview" | "timeline" | "orders" | "addresses" | "occasions" | "complaints" | "loyalty" | "notes" | "finance";
 
 const useDialogFocus = (open: boolean, onClose: () => void) => {
   const ref = useRef<HTMLDivElement>(null);
@@ -108,6 +109,7 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
 
   const tabs: { key: Tab; label: string; icon: React.ElementType; badge?: string | number }[] = [
     { key: "overview", label: "نظرة عامة", icon: User },
+    { key: "timeline", label: "السجل الموحد", icon: History },
     { key: "orders", label: "الطلبات", icon: ShoppingCart, badge: badges.orders },
     { key: "addresses", label: "العناوين", icon: MapPin },
     { key: "occasions", label: "المناسبات", icon: Calendar, badge: badges.occasions },
@@ -269,6 +271,8 @@ export const CustomerProfileDrawer: React.FC<Props> = ({ isOpen = true, customer
             </div>
           ) : activeTab === "overview" && profile ? (
             <OverviewTab profile={profile} favorite={favorites[0]} orders={orders} onSelectOrder={setSelectedOrderId} onRepeatOrder={onRepeatOrder ? (order) => { onRepeatOrder(order); onClose(); } : undefined} />
+          ) : activeTab === "timeline" ? (
+            <TimelineTab customerId={customerId} />
           ) : activeTab === "orders" ? (
             <OrdersTab orders={orders} onSelectOrder={setSelectedOrderId} onRepeatOrder={onRepeatOrder ? (order) => { onRepeatOrder(order); onClose(); } : undefined} />
           ) : activeTab === "addresses" ? (
@@ -303,6 +307,64 @@ const FinanceTab: React.FC<{ profile: CustomerProfile }> = ({ profile }) => {
       <StatCard label="حالة الحد" value={profile.is_over_limit ? "متجاوز" : "ضمن الحد"} icon={<Check size={14} />} highlight={profile.is_over_limit} />
     </div> : <EmptyState icon={CreditCard} text="لا يوجد ملف مالي مفعل لهذا العميل" />}
   </div>;
+};
+
+/* ─── Unified Interaction Timeline (calls + complaints + orders) ─── */
+const TimelineTab: React.FC<{ customerId: number }> = ({ customerId }) => {
+  const [entries, setEntries] = useState<CustomerTimelineEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError(false);
+    callCenterService.getCustomerTimeline(customerId)
+      .then((res) => { if (active) setEntries(res.data ?? []); })
+      .catch(() => { if (active) setError(true); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [customerId]);
+
+  if (loading) return <div className="space-y-2">{[1, 2, 3, 4].map((i) => <div key={i} className="h-16 rounded-xl bg-slate-800/50 animate-pulse" />)}</div>;
+  if (error) return <EmptyState icon={AlertTriangle} text="تعذر تحميل السجل الموحد" />;
+  if (entries.length === 0) return <EmptyState icon={History} text="لا يوجد سجل تفاعلات بعد" />;
+
+  return (
+    <div className="space-y-2">
+      {entries.map((entry) => {
+        const meta = entry.type === "call"
+          ? { icon: <PhoneCall size={13} />, color: "text-violet-300 bg-violet-500/10 border-violet-500/20", label: "مكالمة" }
+          : entry.type === "complaint"
+            ? { icon: <AlertTriangle size={13} />, color: "text-red-300 bg-red-500/10 border-red-500/20", label: "شكوى" }
+            : { icon: <ShoppingCart size={13} />, color: "text-emerald-300 bg-emerald-500/10 border-emerald-500/20", label: "طلب" };
+
+        return (
+          <div key={`${entry.type}-${entry.id}`} className="flex items-start gap-3 rounded-xl border border-slate-700/30 bg-slate-800/30 p-3">
+            <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg border ${meta.color}`}>{meta.icon}</span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold text-white">
+                  {entry.type === "call" ? (entry.call_type ? `مكالمة — ${CALL_TYPE_LABELS[entry.call_type as CallType] ?? entry.call_type}` : "مكالمة")
+                    : entry.type === "complaint" ? entry.title
+                    : `طلب #${entry.order_number}`}
+                </span>
+                <span className="shrink-0 text-[10px] text-slate-500">{new Date(entry.occurred_at).toLocaleString("ar-SA", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-slate-400">
+                <span className="rounded-full bg-slate-900/60 px-2 py-0.5">{entry.status}</span>
+                {entry.type === "call" && entry.agent?.name && <span>الموظف: {entry.agent.name}</span>}
+                {entry.type === "call" && entry.duration_seconds != null && <span>{Math.round(entry.duration_seconds / 60)} د</span>}
+                {entry.type === "call" && entry.satisfaction_rating != null && <span className="inline-flex items-center gap-0.5"><Star size={10} fill="#f59e0b" color="#f59e0b" />{entry.satisfaction_rating}</span>}
+                {entry.type === "order" && entry.total != null && <span className="font-bold text-slate-300">{entry.total.toFixed(2)} ₪</span>}
+                {entry.type === "complaint" && entry.priority && <span>الأولوية: {entry.priority}</span>}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 };
 
 /* â”€â”€â”€ Restructured Overview Tab v2 â”€â”€â”€ */

@@ -4,6 +4,21 @@ import {
   type OrderFromApi,
   type PaymentMethod,
 } from "./orderService";
+import { settlementService, type PaymentEntryDto } from "./settlementService";
+
+// Cache for payment method type -> DB id (payment_method_id), same mapping
+// SettlementEngine expects server-side — resolved once per session.
+let paymentMethodIdCache: Record<string, number> | null = null;
+async function resolvePaymentMethodId(method: string): Promise<number> {
+  if (!paymentMethodIdCache) {
+    const methods = await settlementService.getPaymentMethods();
+    paymentMethodIdCache = {};
+    for (const m of methods) paymentMethodIdCache[m.type] = m.id;
+  }
+  const id = paymentMethodIdCache[method];
+  if (!id) throw new Error(`طريقة الدفع '${method}' غير موجودة في قاعدة البيانات.`);
+  return id;
+}
 
 export interface CallCenterPayment {
   method: PaymentMethod;
@@ -55,6 +70,11 @@ export const callCenterOrderWorkflow = {
     return response.data.data as OrderFromApi;
   },
 
+  // ملاحظة: الدفع يتم بنداء واحد ذري إلى /orders/{order}/settle (SettlementEngine)
+  // بدل إنشاء الفاتورة ثم تسجيل كل دفعة بطلب منفصل — بحيث إذا فشل تسجيل أي
+  // دفعة أو ربطها بالصندوق يتم التراجع عن العملية بالكامل (DB transaction واحدة
+  // على الخادم)، والدفعة تُربط تلقائياً بالعميل وبصندوق الكول سنتر النشط
+  // (المُحدَّد عبر جهاز الوكيل المُفعَّل، المرسل في هيدر X-Device-UUID).
   async checkout(
     orderId: number,
     payments: CallCenterPayment[],
@@ -64,6 +84,7 @@ export const callCenterOrderWorkflow = {
       phone?: string;
     },
   ): Promise<OrderFromApi> {
+    void customer; // العميل مرتبط بالطلب مسبقاً (customer_id) — السطر محفوظ لتوافق التوقيع الحالي
     const order = await orderService.getOne(orderId);
     const total = roundMoney(Number(order.total));
     const normalized = payments
@@ -86,13 +107,11 @@ export const callCenterOrderWorkflow = {
       );
     }
 
-    const closed = await orderService.closeOrderWithPayments(orderId, {
-      customer_id: customer.id,
-      customer_name: customer.name,
-      customer_phone: customer.phone,
-      payments: normalized.map((payment) => ({
-        method: payment.method,
-        payment_method: payment.method,
+    const paymentEntries: PaymentEntryDto[] = await Promise.all(
+      normalized.map(async (payment) => ({
+        payment_method_id: await resolvePaymentMethodId(
+          payment.entity_type ?? payment.subledger_type ?? payment.method,
+        ),
         amount: payment.amount,
         reference_number: payment.reference,
         entity_type: payment.entity_type,
@@ -100,13 +119,13 @@ export const callCenterOrderWorkflow = {
         subledger_type: payment.subledger_type,
         subledger_id: payment.subledger_id,
       })),
-    });
+    );
 
-    const paidOrder = await orderService.getOne(closed.id);
-    if (paidOrder.status !== "paid") {
+    const settled = await settlementService.settle(orderId, paymentEntries);
+    if (settled.order.status !== "paid") {
       throw new Error("لا يمكن إرسال الطلب للمطبخ قبل اكتمال الدفع");
     }
 
-    return orderService.confirm(paidOrder.id);
+    return orderService.confirm(settled.order.id);
   },
 };

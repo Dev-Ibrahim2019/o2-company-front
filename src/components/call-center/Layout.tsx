@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useApp } from "../../../store";
 import { useAuth } from "../../auth";
-import { ThemeToggle } from "../shared/ThemeToggle";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Headphones,
   LayoutDashboard,
@@ -22,10 +21,14 @@ import {
   ClipboardList,
   CheckCircle,
 } from "lucide-react";
+import { colors, typography, radius, shadows, transitions } from "./design/tokens";
+
+const FULL_BLEED_PATHS = new Set(["/call-center", "/call-center/pos"]);
 
 export const CallCenterLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
-  const { currentUser, userRole } = useApp();
+  const { currentUser } = useApp();
   const { logout: authLogout } = useAuth();
+  const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);
 
   useEffect(() => {
@@ -35,105 +38,189 @@ export const CallCenterLayout: React.FC<{ children?: React.ReactNode }> = ({ chi
   }, []);
 
   const collapsed = !isSidebarOpen;
+  const isFullBleed = FULL_BLEED_PATHS.has(location.pathname);
 
   const SidebarLink = ({ to, icon: Icon, label, end = false }: {
     to: string; icon: React.ElementType; label: string; end?: boolean;
-  }) => {
-    return (
-      <NavLink
-        to={to}
-        end={end}
-        onClick={() => { if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
-        className={({ isActive }) =>
-          `w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${isActive
-            ? "bg-[#E20004] text-white shadow-lg shadow-red-950/30"
-            : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-          } ${collapsed ? "justify-center px-0" : ""}`
-        }
-      >
-        <Icon size={20} />
-        {!collapsed && <span className="font-semibold text-sm whitespace-nowrap overflow-hidden">{label}</span>}
-      </NavLink>
-    );
-  };
+  }) => (
+    <NavLink
+      to={to}
+      end={end}
+      onClick={() => { if (window.innerWidth <= 1024) setIsSidebarOpen(false); }}
+      style={({ isActive }) => ({
+        display: "flex", alignItems: "center", gap: 12,
+        padding: collapsed ? "10px 0" : "10px 14px",
+        justifyContent: collapsed ? "center" : "flex-start",
+        borderRadius: radius.lg,
+        fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
+        color: isActive ? "#fff" : colors.neutral[500],
+        background: isActive ? colors.brand[500] : "transparent",
+        boxShadow: isActive ? shadows.sm : "none",
+        transition: `all ${transitions.fast}`,
+        textDecoration: "none",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+      })}
+      className="cc-sidebar-link"
+    >
+      <Icon size={18} style={{ flexShrink: 0 }} />
+      {!collapsed && <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{label}</span>}
+    </NavLink>
+  );
 
   return (
-    <div className="flex h-screen bg-slate-950 overflow-hidden text-slate-100 font-['Tajawal']" dir="rtl">
+    <div
+      dir="rtl"
+      style={{
+        display: "flex", height: "100vh", overflow: "hidden",
+        background: colors.surface.page,
+        color: colors.neutral[900],
+        fontFamily: typography.fontFamily.sans,
+      }}
+    >
       <AnimatePresence>
-        {isSidebarOpen && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+        {isSidebarOpen && window.innerWidth <= 1024 && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={() => setIsSidebarOpen(false)}
-            className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-40 lg:hidden" />
+            style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.35)", zIndex: 40 }}
+            className="lg:hidden"
+          />
         )}
       </AnimatePresence>
 
-      <aside className={`fixed top-0 right-0 h-full bg-slate-900 border-l border-white/5 flex flex-col p-4 shadow-2xl transition-all duration-300 z-50 ${isSidebarOpen ? "w-64 translate-x-0" : "w-64 translate-x-full lg:w-20 lg:translate-x-0"}`}>
-        <div className={`mb-8 flex items-center gap-3 ${!isSidebarOpen ? "justify-center" : "px-4"}`}>
-          <div className="w-10 h-10 bg-[#E20004] rounded-xl flex items-center justify-center text-white font-bold shadow-lg shadow-red-950/20 shrink-0">
-            <Headphones size={24} />
+      <aside
+        style={{
+          position: "fixed", top: 0, right: 0, height: "100%",
+          background: colors.surface.raised,
+          borderLeft: `1px solid ${colors.border.subtle}`,
+          display: "flex", flexDirection: "column",
+          padding: 16,
+          boxShadow: shadows.lg,
+          transition: `all ${transitions.normal}`,
+          zIndex: 50,
+        }}
+        className={`cc-sidebar ${isSidebarOpen ? "cc-sidebar-open" : "cc-sidebar-closed"}`}
+      >
+        <div style={{ marginBottom: 28, display: "flex", alignItems: "center", gap: 12, padding: collapsed ? 0 : "0 6px", justifyContent: collapsed ? "center" : "flex-start" }}>
+          <div style={{
+            width: 38, height: 38, borderRadius: radius.lg, flexShrink: 0,
+            background: `linear-gradient(135deg, ${colors.brand[500]}, ${colors.brand[700]})`,
+            display: "flex", alignItems: "center", justifyContent: "center", color: "#fff",
+            boxShadow: shadows.sm,
+          }}>
+            <Headphones size={20} />
           </div>
-          {isSidebarOpen && (
-            <div>
-              <h1 className="text-xl font-black text-white tracking-tight">الكول سنتر</h1>
-              <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">Call Center</p>
+          {!collapsed && (
+            <div style={{ overflow: "hidden" }}>
+              <h1 style={{ fontSize: typography.size.lg, fontWeight: typography.weight.extrabold, color: colors.neutral[900], letterSpacing: "-0.01em" }}>الكول سنتر</h1>
+              <p style={{ fontSize: 9, fontWeight: typography.weight.bold, color: colors.neutral[400], textTransform: "uppercase", letterSpacing: "0.08em" }}>Call Center</p>
             </div>
           )}
         </div>
 
-        <button onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="absolute -left-3 top-20 w-6 h-6 bg-[#E20004] rounded-full hidden lg:flex items-center justify-center text-white shadow-lg hover:scale-110 transition-transform z-50">
-          {isSidebarOpen ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+        <button
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          aria-label={isSidebarOpen ? "طي القائمة الجانبية" : "فتح القائمة الجانبية"}
+          className="hidden lg:flex"
+          style={{
+            position: "absolute", left: -12, top: 76, width: 24, height: 24,
+            borderRadius: "50%", background: colors.brand[500], color: "#fff",
+            alignItems: "center", justifyContent: "center", border: "none", cursor: "pointer",
+            boxShadow: shadows.md, zIndex: 60,
+          }}
+        >
+          {isSidebarOpen ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
         </button>
 
-        <nav className="flex-1 space-y-1.5 overflow-y-auto custom-scrollbar">
+        <nav style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, overflowY: "auto" }}>
           <SidebarLink to="/call-center" icon={LayoutDashboard} label="لوحة العمليات" end />
           <SidebarLink to="/call-center/order" icon={ShoppingCart} label="صفحة الطلب" />
           <SidebarLink to="/call-center/active-orders" icon={ClipboardList} label="الطلبات النشطة" />
           <SidebarLink to="/call-center/closed-orders" icon={CheckCircle} label="الطلبات المغلقة" />
-          {/* <SidebarLink to="/call-center/pos" icon={Phone} label="إنشاء فاتورة" />
           <SidebarLink to="/call-center/crm" icon={Database} label="العملاء" />
           <SidebarLink to="/call-center/search" icon={Search} label="المكالمات والبحث" />
           <SidebarLink to="/call-center/complaints" icon={MessageSquareWarning} label="الشكاوى والمتابعة" />
           <SidebarLink to="/call-center/occasions" icon={Gift} label="المناسبات" />
           <SidebarLink to="/call-center/top-customers" icon={Star} label="الولاء والعملاء المميزون" />
           <SidebarLink to="/call-center/employees" icon={Users} label="الموظفون" />
-          <SidebarLink to="/call-center/sip-settings" icon={Phone} label="إعدادات SIP" /> */}
+          <SidebarLink to="/call-center/sip-settings" icon={Phone} label="إعدادات SIP" />
         </nav>
 
-        <div className="mt-auto border-t border-white/5 pt-4 space-y-2">
-          <ThemeToggle compact={collapsed} />
-          <div className={`px-4 py-2 transition-all duration-300 ${!isSidebarOpen && "lg:opacity-0 lg:w-0 lg:overflow-hidden"}`}>
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest truncate">
-              مركز الاتصال
-            </p>
-            <p className="text-sm font-black text-slate-100 truncate">{currentUser?.name}</p>
-          </div>
-          <button onClick={() => authLogout()}
-            className={`w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors ${!isSidebarOpen ? "lg:justify-center lg:px-0" : ""}`}>
-            <Power size={20} />
-            <span className={`font-semibold text-sm transition-all duration-300 ${!isSidebarOpen && "lg:opacity-0 lg:w-0 lg:overflow-hidden"}`}>تسجيل الخروج</span>
+        <div style={{ marginTop: "auto", borderTop: `1px solid ${colors.border.subtle}`, paddingTop: 12 }}>
+          {!collapsed && (
+            <div style={{ padding: "6px 10px", marginBottom: 4 }}>
+              <p style={{ fontSize: 9, fontWeight: typography.weight.bold, color: colors.neutral[400], textTransform: "uppercase", letterSpacing: "0.08em" }}>مركز الاتصال</p>
+              <p style={{ fontSize: typography.size.sm, fontWeight: typography.weight.bold, color: colors.neutral[800], overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{currentUser?.name}</p>
+            </div>
+          )}
+          <button
+            onClick={() => authLogout()}
+            style={{
+              width: "100%", display: "flex", alignItems: "center", gap: 12,
+              padding: collapsed ? "10px 0" : "10px 14px",
+              justifyContent: collapsed ? "center" : "flex-start",
+              color: colors.semantic.error, background: "transparent", border: "none",
+              borderRadius: radius.lg, cursor: "pointer", fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
+              transition: `background ${transitions.fast}`,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = colors.semantic.errorBg; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            <Power size={18} />
+            {!collapsed && <span>تسجيل الخروج</span>}
           </button>
         </div>
       </aside>
 
-      <main className={`flex-1 h-full overflow-hidden transition-all duration-300 ${isSidebarOpen ? "lg:mr-64" : "lg:mr-20"}`}>
-        <div className="h-full flex flex-col">
-          <header className="lg:hidden p-4 flex items-center justify-between border-b border-white/5 bg-slate-900/50">
-            <button onClick={() => setIsSidebarOpen(true)} className="p-2 bg-slate-800 rounded-xl text-slate-400 hover:text-white transition-all">
-              <Menu size={20} />
+      <main
+        style={{ flex: 1, height: "100%", overflow: "hidden", transition: `margin ${transitions.normal}` }}
+        className={`cc-main ${isSidebarOpen ? "cc-main-open" : "cc-main-closed"}`}
+      >
+        <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+          <header
+            className="lg:hidden"
+            style={{
+              padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between",
+              borderBottom: `1px solid ${colors.border.subtle}`, background: colors.surface.raised,
+            }}
+          >
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              aria-label="فتح القائمة"
+              style={{ padding: 8, background: colors.neutral[100], borderRadius: radius.lg, border: "none", color: colors.neutral[600], cursor: "pointer" }}
+            >
+              <Menu size={18} />
             </button>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-[#E20004] rounded-lg flex items-center justify-center text-white font-bold shadow-lg shadow-red-950/20">
-                <Headphones size={18} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ width: 30, height: 30, borderRadius: radius.md, background: colors.brand[500], display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
+                <Headphones size={16} />
               </div>
-              <h1 className="text-lg font-black text-white tracking-tight">الكول سنتر</h1>
+              <h1 style={{ fontSize: typography.size.base, fontWeight: typography.weight.extrabold, color: colors.neutral[900] }}>الكول سنتر</h1>
             </div>
           </header>
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6">
+          <div
+            style={isFullBleed
+              ? { flex: 1, overflow: "hidden" }
+              : { flex: 1, overflow: "auto", padding: 20 }}
+          >
             {children || <Outlet />}
           </div>
         </div>
       </main>
+
+      <style>{`
+        .cc-sidebar { width: 256px; transform: translateX(100%); }
+        .cc-sidebar-open { transform: translateX(0); }
+        .cc-main-open, .cc-main-closed { margin-right: 0; }
+        @media (min-width: 1025px) {
+          .cc-sidebar { transform: translateX(0); }
+          .cc-sidebar-closed { width: 76px; }
+          .cc-sidebar-open { width: 256px; }
+          .cc-main-closed { margin-right: 76px; }
+          .cc-main-open { margin-right: 256px; }
+        }
+      `}</style>
     </div>
   );
 };
