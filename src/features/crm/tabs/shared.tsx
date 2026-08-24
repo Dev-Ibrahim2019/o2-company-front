@@ -36,6 +36,29 @@ export function SectionFrame({ state, children, empty = "لا توجد بيان�
 }
 export function DomainTable({ columns, rows, empty }: { columns: { key: string; label: string; render?: (v: unknown, row: Row) => React.ReactNode }[]; rows: Row[]; empty: string }) {
   if (!rows.length) return <CrmState kind="empty" title={empty} />;
-  return <div className="crm-table-wrap"><table><thead><tr>{columns.map(c => <th key={c.key}>{c.label}</th>)}</tr></thead><tbody>{rows.map((row, i) => <tr key={String(row.id ?? i)}>{columns.map(c => <td key={c.key}>{c.render ? c.render(row[c.key], row) : text(row[c.key])}</td>)}</tr>)}</tbody></table></div>;
+  return (
+    <div className="crmx-root crmx-scrollbar overflow-x-auto rounded-2xl border border-[var(--crmx-border)]">
+      <table className="w-full min-w-[560px] border-collapse text-right">
+        <thead>
+          <tr className="border-b border-[var(--crmx-border)] bg-[#FAFBFC]">
+            {columns.map((c) => (
+              <th key={c.key} className="whitespace-nowrap px-4 py-3 text-[12px] font-bold text-[var(--crmx-text-secondary)]">{c.label}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => (
+            <tr key={String(row.id ?? i)} className="crmx-table-row border-b border-[var(--crmx-border)] last:border-0">
+              {columns.map((c) => (
+                <td key={c.key} className="whitespace-nowrap px-4 py-3 text-[13px] text-[var(--crmx-text)]">
+                  {c.render ? c.render(row[c.key], row) : text(row[c.key])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 export { StatusChip };

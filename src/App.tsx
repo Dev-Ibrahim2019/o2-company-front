@@ -75,7 +75,9 @@ import {
   CrmShell,
   CrmDashboardPage,
   CrmCustomersPage,
+  CrmCustomerFormPage,
   Customer360Page,
+  CrmOrdersPage,
 } from "./features/crm";
 
 // ── مكونات الكول سنتر ──
@@ -309,19 +311,30 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       >
+        {/* ═══ CRM ═══
+            CrmRouteGuard يفحص crm.access → CrmShell قشرة مستقلة كاملة
+            (سايدبار + main خاص بها) — بدون AdminLayout كـ ancestor، حتى لا
+            تُعرض قشرتان فوق بعضهما. راجع تقرير فصل CRM Shell عن Admin Shell.
+        */}
+        <Route
+          path="/admin/crm"
+          element={<CrmRouteGuard><CrmShell /></CrmRouteGuard>}
+        >
+          <Route index element={<CrmDashboardPage />} />
+          <Route path="customers" element={<CrmCustomersPage />} />
+          <Route path="customers/new" element={<CrmCustomerFormPage />} />
+          <Route path="customers/:customerId/edit" element={<CrmCustomerFormPage />} />
+          <Route path="customers/:customerId/*" element={<Customer360Page />} />
+          {/* Read-only order monitoring — CRM never creates/edits orders,
+              see the Order Domain Audit. Same page, different `mode`. */}
+          <Route path="orders" element={<CrmOrdersPage mode="all" />} />
+          <Route path="orders/active" element={<CrmOrdersPage mode="active" />} />
+          <Route path="orders/delayed" element={<CrmOrdersPage mode="delayed" />} />
+        </Route>
+
         {/* ═══ مسارات الإدارة العامة ═══
             RoleGuard يفحص الدور → AdminLayout يعرض السايد بار → FinanceView يعرض المحتوى
         */}
-        <Route element={<AdminLayout />}>
-          <Route
-            path="/admin/crm"
-            element={<CrmRouteGuard><CrmShell /></CrmRouteGuard>}
-          >
-            <Route index element={<CrmDashboardPage />} />
-            <Route path="customers" element={<CrmCustomersPage />} />
-            <Route path="customers/:customerId/*" element={<Customer360Page />} />
-          </Route>
-        </Route>
         <Route element={<RoleGuard allowedRoles={ADMIN_ROLES} />}>
           <Route element={<AdminLayout />}>
             <Route path="/admin">

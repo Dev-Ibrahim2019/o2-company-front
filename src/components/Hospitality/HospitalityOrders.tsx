@@ -166,6 +166,12 @@ export const HospitalityOrders = () => {
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyOrderId, setBusyOrderId] = useState<number | null>(null);
   const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
+  // إغلاق الفاتورة يطلب اسم/هاتف الزبون أولاً — orderService.pay()/settle
+  // لا يستقبل بيانات العميل، فيتم تحديث نفس الطلب أولاً (customer_name/
+  // customer_phone) قبل استدعاء pay() على نفس order.id.
+  const [closeTarget, setCloseTarget] = useState<OrderFromApi | null>(null);
+  const [closeName, setCloseName] = useState("");
+  const [closePhone, setClosePhone] = useState("");
 
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
@@ -204,19 +210,43 @@ export const HospitalityOrders = () => {
 
   const refreshOrders = useCallback(() => refetch(branchFilter), [branchFilter, refetch]);
 
-  const closeOrder = async (order: OrderFromApi) => {
+  const openCloseDialog = (order: OrderFromApi) => {
     if (isClosedOrder(order.status)) return;
+    setActionError(null);
+    setCloseName(order.customer_name ?? "");
+    setClosePhone(order.customer_phone ?? "");
+    setCloseTarget(order);
+  };
+
+  const confirmCloseOrder = async () => {
+    const order = closeTarget;
+    if (!order) return;
+
+    const name = closeName.trim();
+    if (!name) {
+      setActionError("يرجى إدخال اسم الزبون");
+      return;
+    }
+    const phone = closePhone.trim();
 
     setActionError(null);
     setBusyOrderId(order.id);
     try {
+      // نحدّث بيانات العميل على نفس الطلب أولاً — orderService.pay()/settle
+      // لا يستقبل customer_name/customer_phone، ويعتمد SettlementEngine على
+      // القيم المخزّنة بالفعل على الـ Order لربط/إنشاء العميل.
+      if (name !== (order.customer_name ?? "") || phone !== (order.customer_phone ?? "")) {
+        await orderService.update(order.id, {
+          customer_name: name,
+          customer_phone: phone || undefined,
+        });
+      }
       await orderService.pay(order.id, {
         payment_method: order.payment_method ?? "cash",
         amount: order.total,
-        customer_name: order.customer_name ?? undefined,
-        customer_phone: order.customer_phone ?? undefined,
         note: order.note ?? undefined,
       });
+      setCloseTarget(null);
       await refreshOrders();
       setActiveTab("CLOSED");
     } catch (e: unknown) {
@@ -561,7 +591,7 @@ export const HospitalityOrders = () => {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                closeOrder(order);
+                                openCloseDialog(order);
                               }}
                               disabled={busy}
                               className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-black text-[10px] flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-40 transition-all shadow-lg shadow-red-900/20"
@@ -595,6 +625,60 @@ export const HospitalityOrders = () => {
           </div>
         )}
       </div>
+
+      {/* بيانات الزبون قبل إغلاق الفاتورة — يُحدَّث نفس الطلب (order.id) قبل التسوية */}
+      {closeTarget && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-xs overflow-hidden p-6 space-y-5">
+            <div className="text-center space-y-1.5">
+              <h3 className="text-lg font-black text-white">إغلاق الفاتورة</h3>
+              <p className="text-slate-500 font-bold text-xs">
+                طلب #{closeTarget.order_number} — {formatMoney(closeTarget.total)}
+              </p>
+            </div>
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest mr-2">اسم الزبون</label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={closeName}
+                  onChange={(e) => setCloseName(e.target.value)}
+                  placeholder="أدخل اسم الزبون..."
+                  className="w-full p-3 bg-slate-800 border border-white/5 rounded-xl outline-none focus:ring-2 focus:ring-red-600 font-black text-xs text-white"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest mr-2">رقم الهاتف (اختياري)</label>
+                <input
+                  type="tel"
+                  value={closePhone}
+                  onChange={(e) => setClosePhone(e.target.value)}
+                  placeholder="05xxxxxxxx"
+                  dir="ltr"
+                  className="w-full p-3 bg-slate-800 border border-white/5 rounded-xl outline-none focus:ring-2 focus:ring-red-600 font-black text-xs text-white text-center"
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={confirmCloseOrder}
+                disabled={busyOrderId === closeTarget.id}
+                className="w-full bg-red-600 text-white py-3 rounded-2xl font-black text-xs shadow-lg shadow-red-900/20 active:scale-95 transition-all disabled:opacity-50"
+              >
+                {busyOrderId === closeTarget.id ? "جارٍ الإغلاق..." : "تأكيد وإغلاق الفاتورة"}
+              </button>
+              <button
+                onClick={() => setCloseTarget(null)}
+                disabled={busyOrderId === closeTarget.id}
+                className="w-full bg-slate-800 text-slate-400 py-3 rounded-2xl font-black text-xs active:scale-95 transition-all disabled:opacity-50"
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

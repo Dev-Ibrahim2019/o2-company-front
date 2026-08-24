@@ -1,0 +1,78 @@
+/* Design tokens + the small set of effects Tailwind utilities can't express
+   (keyframes, scrollbar styling). Everything else uses Tailwind utility
+   classes with arbitrary values referencing these variables. Scoped to
+   .crmx-root so it never leaks outside the redesigned Customers page. */
+.crmx-root {
+  /* O2 CRM design tokens — single source of truth for every CRM screen.
+     Values match the approved brand palette; soft/-text pairs are derived
+     tints/shades of the same hue for accessible badge contrast. */
+  --crmx-bg: #F3F5F9;
+  --crmx-card: #FFFFFF;
+
+  /* Brand navy — CRM shell/sidebar, headings-on-dark */
+  --crmx-navy: #132749;
+  --crmx-navy-hover: #0E1D38;
+  --crmx-navy-soft: #E9EDF5;
+
+  /* Brand green — primary actions, active nav state, positive metrics */
+  --crmx-primary: #79B949;
+  --crmx-primary-hover: #6AA43D;
+  --crmx-primary-soft: #EDF6E4;
+  --crmx-primary-text: #4F7E2B;
+
+  --crmx-success: #79B949;
+  --crmx-success-soft: #EDF6E4;
+  --crmx-success-text: #4F7E2B;
+  --crmx-danger: #EF4444;
+  --crmx-danger-soft: #FDECEC;
+  --crmx-danger-text: #C4281F;
+  --crmx-warning: #F39A25;
+  --crmx-warning-soft: #FEF2E2;
+  --crmx-warning-text: #B06A0F;
+  --crmx-accent: #7956C7;
+  --crmx-accent-soft: #F0EBFA;
+  --crmx-accent-text: #5B3A9E;
+  --crmx-info: #2563EB;
+  --crmx-info-soft: #E8EFFD;
+  --crmx-info-text: #1D4ED8;
+
+  --crmx-text: #162033;
+  --crmx-text-secondary: #667085;
+  --crmx-text-muted: #98A2B3;
+  --crmx-border: #E7EBF0;
+  --crmx-neutral-soft: #F1F2F6;
+
+  --crmx-shadow-sm: 0 1px 2px rgba(22, 32, 51, 0.04);
+  --crmx-shadow-md: 0 8px 24px rgba(19, 39, 73, 0.08);
+
+  background: var(--crmx-bg);
+  color: var(--crmx-text);
+  min-height: 100%;
+}
+.crmx-root * { box-sizing: border-box; }
+
+@keyframes crmx-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.crmx-skeleton {
+  background: linear-gradient(90deg, #EEF1F4 25%, #F7F9FB 37%, #EEF1F4 63%);
+  background-size: 400% 100%;
+  animation: crmx-shimmer 1.4s ease infinite;
+  border-radius: 8px;
+}
+
+@keyframes crmx-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.crmx-drawer-panel { animation: crmx-slide-in .25s ease-out; }
+
+.crmx-table-row:hover { background: #FAFBFC; }
+
+.crmx-scrollbar::-webkit-scrollbar { height: 8px; width: 8px; }
+.crmx-scrollbar::-webkit-scrollbar-thumb { background: #D8DEE5; border-radius: 8px; }
+
+.crmx-sidebar-scroll::-webkit-scrollbar { width: 6px; }
+.crmx-sidebar-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 8px; }
+.crmx-sidebar-scroll::-webkit-scrollbar-track { background: transparent; }

@@ -7,7 +7,7 @@ import React, { useState, useEffect } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useApp } from "../../../store";
 import { useAuth, Can } from "../../auth";
-import { CRM_PERMISSIONS, PERMISSIONS } from "../../auth/permissions";
+import { PERMISSIONS } from "../../auth/permissions";
 import { ThemeToggle } from "../shared/ThemeToggle";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -408,13 +408,6 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({
             icon={LayoutDashboard}
             label="لوحة المعلومات"
             exact
-          />
-
-          <SidebarLink
-            to="/admin/crm"
-            icon={HeartHandshake}
-            label="إدارة علاقات العملاء"
-            permission={CRM_PERMISSIONS.ACCESS}
           />
 
           {/* إدارة الأفرع */}

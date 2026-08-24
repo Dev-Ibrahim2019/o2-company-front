@@ -116,6 +116,10 @@ export const PERMISSIONS = {
 export const CRM_PERMISSIONS = {
   ACCESS: "crm.access",
   VIEW_CUSTOMER_FINANCIAL: "crm.view-customer-financial",
+  VIEW_SENSITIVE_NOTES: "crm.view-sensitive-notes",
+  NOTES_CREATE: "crm.notes.create",
+  NOTES_UPDATE: "crm.notes.update",
+  NOTES_DELETE: "crm.notes.delete",
 } as const;
 
 /** نوع يمثل جميع قيم الصلاحيات الممكنة */

@@ -238,6 +238,12 @@ export const HospitalityPOS: React.FC = () => {
   const [editingApiOrderId, setEditingApiOrderId] = useState<number | null>(
     null,
   );
+  // أكثر من طلب نشط على نفس الطاولة (مثلاً بعد دمج طاولات) — السلة تمثل طلباً
+  // واحداً فقط في كل مرة، فلا يمكن دمجهما تلقائياً. ينتظر اختيار الكاشير.
+  const [pendingTableOrderChoice, setPendingTableOrderChoice] = useState<{
+    table: Table;
+    orders: OrderFromApi[];
+  } | null>(null);
   const [tableCartDrafts, setTableCartDrafts] = useState<
     Record<string, TableCartDraft>
   >({});
@@ -554,6 +560,45 @@ export const HospitalityPOS: React.FC = () => {
     setCustomerPhone("");
   };
 
+  /**
+   * يحدد الطلب/الطلبات النشطة على طاولة قبل تحميلها للسلة — بدون هذا،
+   * فقدان ربط السلة بالطلب الأصلي كان يجعل الدفع ينشئ طلباً جديداً بدل
+   * تحديث الطلب الموجود (انظر تحقيق ORD-0008/ORD-0009).
+   * - طلب واحد نشط: يُحمَّل مباشرة عبر applyApiOrderToCart (نفس نمط pos.tsx).
+   * - أكثر من طلب نشط (مثلاً بعد دمج طاولات): لا يمكن للسلة تمثيل أكثر من
+   *   طلب واحد، فنعرض على الكاشير قائمة ليختار الطلب المطلوب فتحه، بدل
+   *   دمج الأصناف بشكل عشوائي أو اختيار طلب تلقائياً.
+   * يُرجع true إذا تم التعامل مع الطاولة (سلة محمّلة أو قائمة اختيار معروضة)،
+   * و false إذا لم توجد طلبات نشطة (يتابع المستدعي بمنطق "سلة فارغة" المعتاد).
+   */
+  const resolveActiveOrdersForTable = async (table: Table): Promise<boolean> => {
+    const allOrders = await orderService.getAllActiveByTableNumber(
+      table.table_number || table.number,
+      { branch_id: branchId || 0 },
+    );
+
+    if (allOrders.length === 0) {
+      return false;
+    }
+
+    if (allOrders.length === 1) {
+      applyApiOrderToCart(allOrders[0], table);
+      setIsCartOpen(true);
+      return true;
+    }
+
+    setPendingTableOrderChoice({ table, orders: allOrders });
+    setIsCartOpen(false);
+    return true;
+  };
+
+  const chooseTableOrder = (order: OrderFromApi) => {
+    if (!pendingTableOrderChoice) return;
+    applyApiOrderToCart(order, pendingTableOrderChoice.table);
+    setPendingTableOrderChoice(null);
+    setIsCartOpen(true);
+  };
+
   const clearActiveCart = () => {
     if (selectedTable) {
       forgetTableDraft(selectedTable.id);
@@ -626,40 +671,10 @@ export const HospitalityPOS: React.FC = () => {
     if (editingApiOrderId || currentCart.length > 0) return;
 
     if (isActiveTable) {
-      // تحميل جميع الطلبات النشطة للطاولة وعرض أصنافها
       (async () => {
         try {
-          const allOrders = await orderService.getAllActiveByTableNumber(
-            selectedTable.table_number || selectedTable.number,
-            { branch_id: branchId || 0 },
-          );
-
-          if (allOrders.length > 0) {
-            const allItems: CartItem[] = [];
-            for (const order of allOrders) {
-              for (const item of order.items) {
-                const isSent = item.is_printed_direct ?? false;
-                allItems.push({
-                  uniqueId: `api-${order.id}-${item.id}-${Math.random().toString(36).substr(2, 9)}`,
-                  itemId: String(item.item_id),
-                  id: item.item_id,
-                  name: item.item_name_ar || item.item_name,
-                  name_ar: item.item_name_ar || item.item_name,
-                  price: Number(item.unit_price || 0),
-                  quantity: Number(item.quantity || 0),
-                  notes: item.notes ?? undefined,
-                  department_id: item.department_id,
-                  is_printed_direct: isSent,
-                  is_takeaway: item.is_takeaway ?? false,
-                });
-              }
-            }
-            if (allItems.length > 0) {
-              loadCart(allItems);
-              setEditingApiOrderId(null);
-            }
-          }
-          setIsCartOpen(true);
+          const opened = await resolveActiveOrdersForTable(selectedTable);
+          if (!opened) setIsCartOpen(true);
         } catch (err) {
           console.error("Failed to load table orders:", err);
           setIsCartOpen(true);
@@ -737,49 +752,8 @@ export const HospitalityPOS: React.FC = () => {
 
     if (isActiveTable) {
       try {
-        // جلب جميع الطلبات النشطة للطاولة وتجميع أصنافها
-        const allOrders = await orderService.getAllActiveByTableNumber(
-          table.table_number || table.number,
-          { branch_id: branchId || 0 },
-        );
-
-        if (allOrders.length > 0) {
-          // تجميع أصناف جميع الطلبات في سلة واحدة
-          const allItems: CartItem[] = [];
-          let hasUnsentItems = false;
-          for (const order of allOrders) {
-            // إضافة الأصناف التي لم ترسل for this order
-            for (const item of order.items) {
-              const isSent = order.tickets?.some((t: any) =>
-                t.items?.some((ti: any) => ti.order_item_id === item.id)
-              );
-              if (!isSent) {
-                hasUnsentItems = true;
-              }
-              // نضيف جميع الأصناف مع ملاحظة إذا أرسلت أو لا
-              allItems.push({
-                uniqueId: `api-${order.id}-${item.id}-${Math.random().toString(36).substr(2, 9)}`,
-                itemId: String(item.item_id),
-                id: item.item_id,
-                name: item.item_name_ar || item.item_name,
-                name_ar: item.item_name_ar || item.item_name,
-                price: Number(item.unit_price || 0),
-                quantity: Number(item.quantity || 0),
-                notes: item.notes ?? undefined,
-                department_id: item.department_id,
-                is_printed_direct: isSent,
-                is_takeaway: item.is_takeaway ?? false,
-              });
-            }
-          }
-
-          if (allItems.length > 0) {
-            loadCart(allItems);
-            setEditingApiOrderId(null);
-            setIsCartOpen(true);
-            return;
-          }
-        }
+        const opened = await resolveActiveOrdersForTable(table);
+        if (opened) return;
 
         // لا توجد طلبات نشطة → فتح السلة فاضية
         setCartOrderType(OrderType.DINE_IN);
@@ -1122,6 +1096,17 @@ export const HospitalityPOS: React.FC = () => {
             }
           }
           loadCart(allItems);
+
+          // بدون هذا، إغلاق الفاتورة لاحقاً في نفس الجلسة (بدون إعادة اختيار
+          // الطاولة) كان يُنشئ طلباً جديداً بدل تحديث الطلب الذي أُرسل للتو
+          // للمطبخ — نفس السبب الجذري الذي تم إصلاحه سابقاً عند إعادة فتح
+          // طاولة، لكنه هنا يحدث ضمن نفس الجلسة مباشرة بعد "إرسال الطلب".
+          if (refreshedOrders.length === 1) {
+            setEditingApiOrderId(refreshedOrders[0].id);
+          }
+          // أكثر من طلب نشط على نفس الطاولة هنا (حالة نادرة) — لا نخمّن أي
+          // طلب هو المقصود؛ سيُطلب من الكاشير اختيار الطلب عند إغلاق
+          // الفاتورة إذا أعاد فتح الطاولة (نفس آلية resolveActiveOrdersForTable).
         }
 
         setPosError(null);
@@ -1196,14 +1181,17 @@ export const HospitalityPOS: React.FC = () => {
           forgetTableDraft(activeTable.id);
           setSelectedTable(activeTable);
         }
+        // الطلب أصبح على الطاولة فعلياً (Active Orders) — لكنه لم يُغلق. يجب أن
+        // تبقى هوية الطلب وبيانات العميل مرتبطة به، وإلا فإن أي إجراء لاحق
+        // (تنفيذ/إغلاق) على نفس الطاولة سيظن أنه لا يوجد طلب وينشئ طلباً
+        // جديداً بدل تحديث result.id (نفس فئة الخلل التي أُصلحت سابقاً عند
+        // إعادة فتح الطاولة وعند "إرسال الطلب" — هنا موقعها الثالث، بعد "حفظ").
         setInvoiceNote("");
         setDiscountValue(0);
         setManualTable("");
-        setCustomerName("");
-        setCustomerPhone("");
         setPayments([]);
         setPaymentMethod(PaymentMethod.CASH);
-        setEditingApiOrderId(null);
+        setEditingApiOrderId(result.id);
         setShowCustomerModal(false);
         setIsCartOpen(false);
       }
@@ -1227,8 +1215,8 @@ export const HospitalityPOS: React.FC = () => {
           : undefined,
       },
       shouldConfirm,
-      [],
-      false,
+      apiClosingPayments,
+      isClosingOrder,
       editingApiOrderId,
     );
 
@@ -1253,11 +1241,18 @@ export const HospitalityPOS: React.FC = () => {
       setInvoiceNote("");
       setDiscountValue(0);
       setManualTable("");
-      setCustomerName("");
-      setCustomerPhone("");
       setPayments([]);
       setPaymentMethod(PaymentMethod.CASH);
-      setEditingApiOrderId(null);
+      // إغلاق الطلب فعلياً (isClosingOrder) هو الحالة الوحيدة التي انتهينا
+      // فيها من هذا الطلب. أي تحديث/تأكيد آخر (مثال: "تحديث الطلب" على طلب
+      // محمَّل مسبقاً) يجب أن يبقي الربط بنفس الطلب وبيانات العميل — تصفيرها
+      // هنا كان يجعل أي إجراء لاحق على نفس الطاولة (مثل الإغلاق) يُنشئ طلباً
+      // جديداً بدل متابعة نفس الطلب (result.id)، ويفقد اسم/هاتف العميل.
+      if (isClosingOrder) {
+        setCustomerName("");
+        setCustomerPhone("");
+      }
+      setEditingApiOrderId(isClosingOrder ? null : result.id);
       setShowCustomerModal(false);
       setIsCartOpen(false);
     }
@@ -1447,6 +1442,46 @@ export const HospitalityPOS: React.FC = () => {
           )
         }
       />
+
+      {/* اختيار الطلب عند وجود أكثر من طلب نشط على نفس الطاولة (مثلاً بعد دمج طاولات) */}
+      {pendingTableOrderChoice && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[75vh]">
+            <div className="p-4 border-b border-white/10">
+              <h3 className="text-white font-black text-sm">
+                يوجد أكثر من طلب نشط على طاولة {pendingTableOrderChoice.table.table_number || pendingTableOrderChoice.table.number}
+              </h3>
+              <p className="text-slate-400 text-xs mt-1">اختر الطلب الذي تريد فتحه</p>
+            </div>
+            <div className="overflow-y-auto p-3 space-y-2">
+              {pendingTableOrderChoice.orders.map((order) => (
+                <button
+                  key={order.id}
+                  onClick={() => chooseTableOrder(order)}
+                  className="w-full text-right bg-slate-800 hover:bg-slate-700 border border-white/10 rounded-xl p-3 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-white font-bold text-sm">{order.order_number}</span>
+                    <span className="text-slate-300 text-sm">{Number(order.total || 0).toFixed(2)} ₪</span>
+                  </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-slate-400 text-xs">{order.customer_name || "بدون اسم عميل"}</span>
+                    <span className="text-slate-400 text-xs">{order.items?.length ?? 0} صنف</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div className="p-3 border-t border-white/10">
+              <button
+                onClick={() => setPendingTableOrderChoice(null)}
+                className="w-full bg-slate-800 text-slate-400 py-3 rounded-2xl font-black text-xs active:scale-95 transition-all"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

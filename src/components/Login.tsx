@@ -64,7 +64,15 @@ export const Login: React.FC = () => {
   // ── تحويل المستخدم حسب دوره ──
   const redirectByRole = (roles: string[]) => {
     const primary = roles[0] || "";
-    if (primary === "call-center") {
+    if (primary === "crm-manager") {
+      localStorage.removeItem("pos_device_uuid");
+      localStorage.removeItem("pos_register_info");
+      localStorage.removeItem("call_center_device_uuid");
+      localStorage.removeItem("call_center_register_info");
+      localStorage.removeItem("hospitality_device_uuid");
+      localStorage.removeItem("hospitality_register_info");
+      navigate("/admin/crm", { replace: true });
+    } else if (primary === "call-center") {
       localStorage.removeItem("pos_device_uuid");
       localStorage.removeItem("pos_register_info");
       localStorage.removeItem("hospitality_device_uuid");

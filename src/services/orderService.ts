@@ -26,6 +26,10 @@ const normalizeTableNumber = (value: string | number | null | undefined) =>
 
 const CLOSED_ORDER_STATUSES = new Set<OrderStatus>(["paid", "cancelled"]);
 
+// Tracks an in-flight orderService.create() call — see the "double-click"
+// comment on create() below.
+let pendingOrderCreate: Promise<OrderFromApi> | null = null;
+
 type ApiErrorLike = {
   response?: {
     data?: {
@@ -464,8 +468,27 @@ export const orderService = {
   },
 
   create: async (payload: CreateOrderPayload): Promise<OrderFromApi> => {
-    const { data } = await api.post("/orders", payload);
-    return data.data as OrderFromApi;
+    // Double-click / rapid re-submit protection, applied once here so every
+    // caller (POS, Hospitality, useOrders, CreateInvoiceModal) is covered
+    // without touching each button's own component:
+    //  1. Request coalescing — a second create() call that arrives while
+    //     the first is still in flight returns the SAME promise instead of
+    //     firing a second HTTP request at all.
+    //  2. idempotency_key (crypto.randomUUID(), already the project's
+    //     existing convention — see callCenterOrderWorkflow.ts/
+    //     useCallCenterCart.ts) sent with the request as the final,
+    //     backend-side guarantee (see OrderController::store()) for cases
+    //     coalescing can't catch, e.g. a genuine network-level retry of the
+    //     same request after this promise already settled.
+    if (pendingOrderCreate) return pendingOrderCreate;
+
+    const idempotencyKey = crypto.randomUUID();
+    pendingOrderCreate = api
+      .post("/orders", { ...payload, idempotency_key: idempotencyKey })
+      .then(({ data }) => data.data as OrderFromApi)
+      .finally(() => { pendingOrderCreate = null; });
+
+    return pendingOrderCreate;
   },
 
   update: async (
