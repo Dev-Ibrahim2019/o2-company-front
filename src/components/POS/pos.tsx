@@ -26,7 +26,9 @@ import { POSHeader } from "./POSHeader";
 import { HospitalityPOSHeader } from "../Hospitality/HospitalityPOSHeader";
 import { MenuGrid } from "./MenuGrid";
 import { InvoiceInfoTab } from "./InvoiceInfoTab";
-import { CustomerTab, type PaymentEntry } from "./CustomerTab";
+import { ContactInfoTab } from "./ContactInfoTab";
+import { AccountsInfoTab } from "./AccountsInfoTab";
+import type { PaymentEntry } from "./CustomerTab";
 import { CartPanel } from "./CartPanel";
 import {
   CustomerSearchModal,
@@ -45,8 +47,9 @@ import {
 } from "../../services/orderService";
 import { TablesView } from "./Tables";
 import type { Order, Table } from "../../../types";
-import { getDeviceUUIDSecurely } from "../../utils/posSecurity";
+import { getDeviceUUIDSecurely, getRegisterInfoSecurely } from "../../utils/posSecurity";
 import POSActivationPage from "./POSActivationPage";
+import { PaymentMethodModal } from "../Hospitality/PaymentMethodModal";
 import { PERMISSIONS, ROLES } from "../../auth/permissions";
 import api from "../../api/axios";
 
@@ -87,6 +90,7 @@ const apiOrderToCartItems = (order: OrderFromApi): CartItem[] =>
     department_id: item.department_id,
     is_printed_direct: item.is_printed_direct ?? false,
     is_takeaway: item.is_takeaway ?? false,
+    is_complimentary: item.is_complimentary ?? false,
   }));
 
 const localOrderToCartItems = (order: Order): CartItem[] =>
@@ -112,6 +116,10 @@ type TableCartDraft = {
   paymentMethod: PaymentMethod;
   customerName: string;
   customerPhone: string;
+  customerMobile: string;
+  customerAddress: string;
+  customerNotes: string;
+  scheduledAt: string;
   editingApiOrderId: number | null;
 };
 
@@ -126,7 +134,7 @@ const normalizeTableNumber = (value: string | number | null | undefined) =>
 
 export const POS: React.FC<{
   onViewTables: () => void;
-  initialMode?: "menu" | "tables" | "info" | "customer";
+  initialMode?: "menu" | "tables" | "info" | "contact" | "accounts";
 }> = ({ onViewTables, initialMode = "menu" }) => {
 
   const [searchParams] = useSearchParams();
@@ -134,16 +142,18 @@ export const POS: React.FC<{
   const [posInfo, setPosInfo] = useState<any>(null);
   const [checkingSecurity, setCheckingSecurity] = useState(true);
   const [invoiceData, setInvoiceData] = useState<any>(null);
+  const [currentInvoiceId, setCurrentInvoiceId] = useState<number | null>(null);
+  const [invoiceNavLoading, setInvoiceNavLoading] = useState(false);
 
   useEffect(() => {
     const checkDeviceSecurity = async () => {
       try {
         const uuid = await getDeviceUUIDSecurely();
-        const storedInfo = localStorage.getItem("pos_register_info");
+        const storedInfo = await getRegisterInfoSecurely();
 
         if (uuid && storedInfo) {
           setDeviceUuid(uuid);
-          setPosInfo(JSON.parse(storedInfo));
+          setPosInfo(storedInfo);
         }
       } catch (error) {
         console.error("خطأ في فحص أمان نقطة البيع:", error);
@@ -191,6 +201,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
     categories,
     allItems,
     loading: menuLoading,
+    error: menuError,
     findByCode,
   } = useMenu(branchId);
 
@@ -221,10 +232,20 @@ const handleActivationSuccess = (activatedInfo: any) => {
 
   // ── UI State ──────────────────────────────────────────────────────────────
   const [activePOSMode, setActivePOSMode] = useState<
-    "tables" | "menu" | "info" | "customer"
+    "tables" | "menu" | "info" | "contact" | "accounts"
   >(initialMode);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [posError, setPosError] = useState<string | null>(null);
+  const [showPaymentMethodModal, setShowPaymentMethodModal] = useState(false);
+  const [pendingCloseKind, setPendingCloseKind] = useState<"takeaway" | "dine_in" | null>(null);
+
+  // فشل تحميل المنيو كان بيمر بصمت — الشاشة بتضل فاضية بدون أي توضيح للكاشير
+  useEffect(() => {
+    if (menuError) {
+      setPosError(menuError);
+    }
+  }, [menuError]);
+
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [manualTable, setManualTable] = useState("");
@@ -255,6 +276,10 @@ const handleActivationSuccess = (activatedInfo: any) => {
   const [quickCustomerPhone, setQuickCustomerPhone] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [customerMobile, setCustomerMobile] = useState("");
+  const [customerAddress, setCustomerAddress] = useState("");
+  const [customerNotes, setCustomerNotes] = useState("");
+  const [scheduledAt, setScheduledAt] = useState("");
   const [showCustomerModal, setShowCustomerModal] = useState(false);
 
   // ── Invoice State ─────────────────────────────────────────────────────────
@@ -331,6 +356,7 @@ const handleActivationSuccess = (activatedInfo: any) => {
   useEffect(() => {
     if (!editingApiOrderId) {
       setInvoiceData(null);
+      setCurrentInvoiceId(null);
       return;
     }
 
@@ -340,34 +366,56 @@ const handleActivationSuccess = (activatedInfo: any) => {
       try {
         const invoice = await orderService.getInvoiceForOrder(editingApiOrderId);
         if (!cancelled && invoice) {
-          // تحويل هيكل الفاتورة من API إلى الشكل المطلوب في InvoiceInfoTab
+          // InvoiceResource (باك اند) بيرجع الشكل متداخل فعلياً تحت pos/details/opening/closing —
+          // كانت هاي القراءة سابقاً بتحاول تقرأ حقول مسطّحة (pos_register_id مباشرة على
+          // الفاتورة) مش موجودة أصلاً، فتبويب "بيانات الفاتورة" كان يضل فاضي عند فتح
+          // طلب محفوظ مسبقاً. نقرأ الشكل المتداخل الحقيقي مع fallback للحقول المسطّحة.
+          const raw = invoice as any;
+          const pos = raw.pos ?? {};
+          const details = raw.details ?? {};
+          const opening = raw.opening ?? {};
+          const closing = raw.closing;
+
           setInvoiceData({
             pos: {
-              register_id: (invoice as any).pos_register_id,
-              code: (invoice as any).pos_code,
-              name: (invoice as any).pos_name,
-              branch: (invoice as any).branch ? { id: (invoice as any).branch.id, name: (invoice as any).branch.name } : null,
+              register_id: pos.register_id ?? raw.pos_register_id ?? null,
+              code: pos.code ?? raw.pos_code ?? null,
+              name: pos.name ?? raw.pos_name ?? null,
+              branch: pos.branch ?? (raw.branch ? { id: raw.branch.id, name: raw.branch.name } : null),
             },
             details: {
-              number: invoice.number,
-              date: invoice.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
-              time: invoice.created_at ? new Date(invoice.created_at).toLocaleTimeString('ar-PS', { hour: '2-digit', minute: '2-digit' }) : '',
-              currency: (invoice as any).currency || 'ILS',
-              account_number: (invoice as any).account_number || null,
+              number: details.number ?? invoice.number,
+              date: details.date ?? invoice.created_at?.split('T')[0] ?? new Date().toISOString().split('T')[0],
+              time: details.time ?? (invoice.created_at ? new Date(invoice.created_at).toLocaleTimeString('ar-PS', { hour: '2-digit', minute: '2-digit' }) : ''),
+              currency: details.currency ?? raw.currency ?? 'ILS',
+              exchange_rate: details.exchange_rate ?? 1,
+              account_number: details.account_number ?? raw.account_number ?? null,
+              daily_sequence: details.daily_sequence ?? null,
+              reference_number: details.reference_number ?? null,
+              financial_voucher_number: details.financial_voucher_number ?? null,
+              vat_report_number: details.vat_report_number ?? null,
+              journal_entry_number: details.journal_entry_number ?? null,
             },
             opening: {
-              user: (invoice as any).opened_by_user ? { id: (invoice as any).opened_by_user.id, name: (invoice as any).opened_by_user.name } : null,
-              pos_name: (invoice as any).pos_name,
-              date: (invoice as any).opened_at?.split('T')[0] || null,
-              time: (invoice as any).opened_at ? new Date((invoice as any).opened_at).toLocaleTimeString('ar-PS', { hour: '2-digit', minute: '2-digit' }) : null,
+              user: opening.user ?? (raw.opened_by_user ? { id: raw.opened_by_user.id, name: raw.opened_by_user.name } : null),
+              pos_name: opening.pos_name ?? pos.name ?? raw.pos_name ?? null,
+              date: opening.date ?? raw.opened_at?.split('T')[0] ?? null,
+              time: opening.time ?? (raw.opened_at ? new Date(raw.opened_at).toLocaleTimeString('ar-PS', { hour: '2-digit', minute: '2-digit' }) : null),
             },
-            closing: (invoice as any).closed_at ? {
-              user: (invoice as any).closed_by_user ? { id: (invoice as any).closed_by_user.id, name: (invoice as any).closed_by_user.name } : null,
-              pos_name: (invoice as any).pos_name,
-              date: (invoice as any).closed_at?.split('T')[0] || null,
-              time: (invoice as any).closed_at ? new Date((invoice as any).closed_at).toLocaleTimeString('ar-PS', { hour: '2-digit', minute: '2-digit' }) : null,
-            } : null,
+            closing: closing ? {
+              user: closing.user ?? null,
+              pos_name: closing.pos_name ?? pos.name ?? null,
+              date: closing.date ?? null,
+              time: closing.time ?? null,
+            } : (raw.closed_at ? {
+              user: raw.closed_by_user ? { id: raw.closed_by_user.id, name: raw.closed_by_user.name } : null,
+              pos_name: raw.pos_name ?? null,
+              date: raw.closed_at?.split('T')[0] ?? null,
+              time: raw.closed_at ? new Date(raw.closed_at).toLocaleTimeString('ar-PS', { hour: '2-digit', minute: '2-digit' }) : null,
+            } : null),
+            accounts: raw.accounts ?? null,
           });
+          setCurrentInvoiceId(raw.id ?? null);
         }
       } catch (err) {
         console.warn('لم يتم العثور على فاتورة لهذا الطلب:', err);
@@ -463,7 +511,15 @@ const handleActivationSuccess = (activatedInfo: any) => {
     appliedDiscounts,
     items: engineDiscountItems,
     loading: discountLoading,
+    error: discountError,
   } = useDiscountCart(currentCart, discountContext);
+
+  // فشل حساب الخصم كان بيمر بصمت — الكاشير يشوف "بدون خصم" بدون أي تفسير
+  useEffect(() => {
+    if (discountError) {
+      toast.error("فشل حساب الخصم", discountError);
+    }
+  }, [discountError]);
 
   const enrichedCart = useMemo(
     () =>
@@ -505,6 +561,11 @@ const handleActivationSuccess = (activatedInfo: any) => {
   const getItemCurrentPrice = (item: any): number => item.price ?? 0;
 
   const setOrderType = (type: OrderType) => {
+    // فوري ومحلي طلبات منفصلة تماماً — التبديل بين الوضعين ما لازم يخلي
+    // أصناف/بيانات الطلب الحالي (اللي كانت بوضع تاني) تنتقل معه
+    if (type !== cartOrderType) {
+      clearActiveCart();
+    }
     setCartOrderType(type);
     if (type === OrderType.DINE_IN) {
       setActivePOSMode("tables");
@@ -529,52 +590,6 @@ const handleActivationSuccess = (activatedInfo: any) => {
     return undefined;
   };
 
-  const addPayment = (method: PaymentMethod) => {
-    if (remainingAmount <= MONEY_EPSILON) return;
-    setPaymentMethod(method);
-    // إذا كان هناك كيان محدد (موظف/عميل/مورد)، نرسل بياناته مع الدفعة
-    const entityMethod = getEntityType();
-    const entityId = accountNumber ? parseInt(accountNumber, 10) : undefined;
-    // سجل الـ payload للتأكد
-    const paymentPayload = {
-      method,
-      amount: roundMoney(remainingAmount),
-      entity_type: entityMethod,
-      entity_id: entityId,
-      subledger_type: entityMethod,
-      subledger_id: entityId,
-    };
-    setPayments((prev) => [
-      ...prev,
-      paymentPayload,
-    ]);
-  };
-
-  const removePayment = (index: number) => {
-    setPayments((prev) => {
-      const next = prev.filter((_, i) => i !== index);
-      setPaymentMethod(next[0]?.method ?? PaymentMethod.CASH);
-      return next;
-    });
-  };
-
-  const updatePaymentAmount = (index: number, val: string) => {
-    const amount = parseFloat(val) || 0;
-    setPayments((prev) =>
-      prev.map((payment, i) =>
-        i === index ? { ...payment, amount } : payment,
-      ),
-    );
-  };
-
-  const updatePaymentReference = (index: number, val: string) => {
-    setPayments((prev) =>
-      prev.map((payment, i) =>
-        i === index ? { ...payment, reference: val } : payment,
-      ),
-    );
-  };
-
   const buildCurrentTableDraft = (): TableCartDraft => ({
     items: cloneCartItems(currentCart),
     orderType: cartOrderType,
@@ -585,6 +600,10 @@ const handleActivationSuccess = (activatedInfo: any) => {
     paymentMethod,
     customerName,
     customerPhone,
+    customerMobile,
+    customerAddress,
+    customerNotes,
+    scheduledAt,
     editingApiOrderId,
   });
 
@@ -627,6 +646,10 @@ const handleActivationSuccess = (activatedInfo: any) => {
     setPaymentMethod(draft.paymentMethod);
     setCustomerName(draft.customerName);
     setCustomerPhone(draft.customerPhone);
+    setCustomerMobile(draft.customerMobile ?? "");
+    setCustomerAddress(draft.customerAddress ?? "");
+    setCustomerNotes(draft.customerNotes ?? "");
+    setScheduledAt(draft.scheduledAt ?? "");
     setIsCartOpen(draft.items.length > 0);
   };
 
@@ -656,6 +679,10 @@ const handleActivationSuccess = (activatedInfo: any) => {
     setDiscountType(order.discount_type === "percent" ? "PERCENT" : "AMOUNT");
     setCustomerName(order.customer_name ?? "");
     setCustomerPhone(order.customer_phone ?? "");
+    setCustomerMobile((order as any).customer_mobile ?? "");
+    setCustomerAddress((order as any).customer_address ?? "");
+    setCustomerNotes((order as any).customer_notes ?? "");
+    setScheduledAt(((order as any).scheduled_at ?? "").slice(0, 16));
 
     const apiPayments = order.payments ?? [];
     setPayments(
@@ -672,6 +699,24 @@ const handleActivationSuccess = (activatedInfo: any) => {
     }
   };
 
+  // ── التنقل بين الفواتير (التالي/السابق/الأول/الأخير) ──
+  const navigateInvoice = async (direction: "next" | "prev" | "first" | "last") => {
+    if (!currentInvoiceId || invoiceNavLoading) return;
+    setInvoiceNavLoading(true);
+    try {
+      const targetInvoice = await orderService.getAdjacentInvoice(currentInvoiceId, direction);
+      if (targetInvoice.order_id) {
+        const order = await orderService.getOne(targetInvoice.order_id);
+        applyApiOrderToCart(order);
+        setIsCartOpen(true);
+      }
+    } catch (err: any) {
+      setPosError(err?.response?.data?.message || "لا توجد فاتورة أخرى بهذا الاتجاه");
+    } finally {
+      setInvoiceNavLoading(false);
+    }
+  };
+
   const clearLoadedApiOrder = () => {
     setEditingApiOrderId(null);
     clearCart();
@@ -682,6 +727,10 @@ const handleActivationSuccess = (activatedInfo: any) => {
     setPaymentMethod(PaymentMethod.CASH);
     setCustomerName("");
     setCustomerPhone("");
+    setCustomerMobile("");
+    setCustomerAddress("");
+    setCustomerNotes("");
+    setScheduledAt("");
   };
 
   const clearActiveCart = () => {
@@ -969,7 +1018,10 @@ const handleActivationSuccess = (activatedInfo: any) => {
     }
   };
 
-const handlePrintInvoice = async (orderId?: number | string | null) => {
+const handlePrintInvoice = async (
+  orderId?: number | string | null,
+  mode: "all" | "merged" | "departments" | "fawri" = "all",
+) => {
   if (isPrinting) return;
   if (!orderId) {
     toast.error("لا يوجد طلب محفوظ لطباعته بعد");
@@ -978,8 +1030,8 @@ const handlePrintInvoice = async (orderId?: number | string | null) => {
 
   setIsPrinting(true); // استخدام الدالة المعرفة مسبقاً في ملفك
   try {
-    // إرسال طلب الفحص للباك إند
-    const response = await api.post(`/orders/${orderId}/print-invoice`);
+    // mode: departments = نسخ الأقسام فقط | merged = الفاتورة المدمجة فقط | all = الاثنين
+    const response = await api.post(`/orders/${orderId}/print-invoice`, { mode });
 
     if (response.data && response.data.success) {
       toast.success(response.data.message || "تم إرسال أمر الطباعة إلى الطابعة");
@@ -1028,11 +1080,11 @@ const handlePrintInvoice = async (orderId?: number | string | null) => {
     setEditingQty((prev) => ({ ...prev, [uniqueId]: val }));
     if (val === "" || val === "." || val.endsWith(".")) return;
     const qty = parseFloat(val);
-    if (!isNaN(qty)) updateCartItem(uniqueId, { quantity: qty } as any);
+    if (!isNaN(qty)) updateCartItem(uniqueId, { quantity: Math.max(0, qty) } as any);
   };
 
   const handleQuantityBlur = (uniqueId: string, val: string) => {
-    updateCartItem(uniqueId, { quantity: parseFloat(val) || 0 } as any);
+    updateCartItem(uniqueId, { quantity: Math.max(0, parseFloat(val) || 0) } as any);
     setEditingQty((prev) => {
       const n = { ...prev };
       delete n[uniqueId];
@@ -1048,7 +1100,7 @@ const handlePrintInvoice = async (orderId?: number | string | null) => {
     const newTotal = parseFloat(val);
     if (!isNaN(newTotal))
       updateCartItem(uniqueId, {
-        quantity: price > 0 ? newTotal / price : 0,
+        quantity: price > 0 ? Math.max(0, newTotal / price) : 0,
       } as any);
   };
 
@@ -1058,7 +1110,7 @@ const handlePrintInvoice = async (orderId?: number | string | null) => {
     status: OrderStatus,
     method: PaymentMethod,
     _discount: number,
-    meta: { name: string; phone: string; note: string },
+    meta: { name: string; phone: string; note: string; currency?: string; exchangeRate?: number },
     paymentsArg?: any[],
     clearAfterSubmit = true,
     options?: { directPrintFirst?: boolean; cashierDeviceId?: number; skipSync?: boolean },
@@ -1172,7 +1224,13 @@ const handlePrintInvoice = async (orderId?: number | string | null) => {
         dining_table_id: activeTable ? Number(activeTable.id) : undefined,
         customer_name: meta.name || undefined,
         customer_phone: meta.phone || undefined,
+        customer_mobile: customerMobile || undefined,
+        customer_address: customerAddress || undefined,
+        customer_notes: customerNotes || undefined,
+        scheduled_at: scheduledAt || undefined,
         note: meta.note || undefined,
+        currency: meta.currency && meta.currency !== "ILS" ? meta.currency : undefined,
+        exchange_rate: meta.currency && meta.currency !== "ILS" ? meta.exchangeRate : undefined,
         discount_value: discountValue || undefined,
         discount_type: discountType === "PERCENT" ? "percent" : "amount",
         ...getPricingContext(),
@@ -1218,6 +1276,10 @@ const handlePrintInvoice = async (orderId?: number | string | null) => {
       setDiscountValue(0);
       setCustomerName("");
       setCustomerPhone("");
+      setCustomerMobile("");
+      setCustomerAddress("");
+      setCustomerNotes("");
+      setScheduledAt("");
       setPayments([]);
       setPaymentMethod(PaymentMethod.CASH);
       setEditingApiOrderId(null);
@@ -1308,6 +1370,10 @@ const handlePrintInvoice = async (orderId?: number | string | null) => {
     clearCart: clearActiveCart,
     onDeferOrder: handleDeferFromCart,
     isDeferred: currentOrderStatus === "pending_payment",
+    onRequestClose: (kind: "takeaway" | "dine_in") => {
+      setPendingCloseKind(kind);
+      setShowPaymentMethodModal(true);
+    },
   };
   // 1. إذا كان النظام ما زال يفحص هوية المتصفح
   if (checkingSecurity) {
@@ -1391,35 +1457,31 @@ const handlePrintInvoice = async (orderId?: number | string | null) => {
               addToCart={addToCart}
               loading={menuLoading}
             />
-          ) : activePOSMode === "info" ? (
+          ) : activePOSMode === "contact" ? (
+            <ContactInfoTab
+              customerName={customerName}
+              setCustomerName={setCustomerName}
+              customerPhone={customerPhone}
+              setCustomerPhone={setCustomerPhone}
+              customerMobile={customerMobile}
+              setCustomerMobile={setCustomerMobile}
+              customerAddress={customerAddress}
+              setCustomerAddress={setCustomerAddress}
+              scheduledAt={scheduledAt}
+              setScheduledAt={setScheduledAt}
+              customerNotes={customerNotes}
+              setCustomerNotes={setCustomerNotes}
+            />
+          ) : activePOSMode === "accounts" ? (
+            <AccountsInfoTab />
+          ) : (
             <InvoiceInfoTab
               editingOrderId={currentEditingOrderId}
               currentUser={currentUser}
               posInfo={posInfo}
               invoiceData={invoiceData}
-            />
-          ) : (
-            <CustomerTab
-              customerName={customerName}
-              setCustomerName={setCustomerName}
-              customerPhone={customerPhone}
-              setCustomerPhone={setCustomerPhone}
-              selectedCustomer={selectedCustomer}
-              accountType={accountType}
-              setAccountType={setAccountType}
-              accountNumber={accountNumber}
-              setAccountNumber={setAccountNumber}
-              setShowSearchModal={setShowSearchModal}
-              customers={customers ?? []}
-              suppliers={suppliers ?? []}
-              employees={employees ?? []}
-              isHospitality={isHospitality}
-              total={total}
-              payments={payments}
-              addPayment={addPayment}
-              removePayment={removePayment}
-              updatePaymentAmount={updatePaymentAmount}
-              updatePaymentReference={updatePaymentReference}
+              onNavigate={currentInvoiceId ? navigateInvoice : undefined}
+              navigating={invoiceNavLoading}
             />
           )}
         </div>
@@ -1477,6 +1539,72 @@ const handlePrintInvoice = async (orderId?: number | string | null) => {
             { name: customerName, phone: customerPhone, note: invoiceNote },
           )
         }
+      />
+
+      <PaymentMethodModal
+        show={showPaymentMethodModal}
+        total={total}
+        confirming={isSubmittingOrder}
+        customerName={customerName}
+        setCustomerName={setCustomerName}
+        customerPhone={customerPhone}
+        setCustomerPhone={setCustomerPhone}
+        accountType={accountType}
+        setAccountType={setAccountType}
+        accountNumber={accountNumber}
+        setAccountNumber={setAccountNumber}
+        setShowSearchModal={setShowSearchModal}
+        onClose={() => {
+          setShowPaymentMethodModal(false);
+          setPendingCloseKind(null);
+        }}
+        onConfirm={async (method, reference, currency, exchangeRate) => {
+          setShowPaymentMethodModal(false);
+          const kind = pendingCloseKind; // "dine_in" | "takeaway"
+          const meta = { name: customerName, phone: customerPhone, note: invoiceNote, currency, exchangeRate };
+          // دفع على حساب زبون/مورد/موظف — نرفق بيانات الكيان المختار بالبوب أب
+          const isEntityPayment =
+            method === PaymentMethod.CUSTOMER ||
+            method === PaymentMethod.SUPPLIER ||
+            method === PaymentMethod.EMPLOYEE;
+          const entityType = isEntityPayment ? getEntityType() : undefined;
+          const entityId =
+            isEntityPayment && accountNumber ? parseInt(accountNumber, 10) : undefined;
+          const payments = [{
+            method,
+            amount: roundMoney(total),
+            reference,
+            entity_type: entityType,
+            entity_id: entityId,
+            subledger_type: entityType,
+            subledger_id: entityId,
+          }];
+
+          // "تنفيذ" = دفع + إغلاق. بمحلي: إغلاق + فاتورة جديدة فقط (بدون طباعة —
+          // الطباعة لها زر مستقل). بفوري: إغلاق + فاتورة جديدة + طباعة على الكاشير.
+          const result = await submitOrder(
+            OrderStatus.DELIVERED,
+            method,
+            calculatedDiscount,
+            meta,
+            payments,
+            true,
+            {},
+          );
+          const printedOrderId = result?.id ?? editingApiOrderId;
+
+          if (result) {
+            // نمسح الفاتورة القديمة ونبدأ فاتورة جديدة فوراً — قبل الطباعة، لأنها
+            // بطيئة (Browsershot/طابور) وكانت تعلّق الشاشة على الطلب القديم لثوانٍ.
+            clearActiveCart();
+          }
+
+          if (printedOrderId && kind === "takeaway") {
+            // فوري فقط — الطباعة بالخلفية (بدون await) حتى لا تؤخّر الفاتورة الجديدة.
+            void handlePrintInvoice(printedOrderId, "fawri");
+          }
+          setPendingCloseKind(null);
+        }}
       />
     </div>
   );

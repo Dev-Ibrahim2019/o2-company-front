@@ -83,6 +83,10 @@ export const useMenu = (branchId?: number | null) => {
     if (initialBranchId) {
       setResolvedBranchId(initialBranchId);
     } else {
+      // نعلّم إنه في جلب شغال قبل ما نطلق الطلب — وإلا Effect 3 (fallback) بيشتغل
+      // بالتوازي بنفس اللحظة (loading لسا false) ويطلق /menu بدون فلترة فرع، وبيصير
+      // في سباق بين الاستجابتين وممكن تظهر أسعار/أصناف فرع غلط حسب مين يوصل أخيراً.
+      setLoading(true);
       // إذا لم يكن branch_id متوفراً، نحاول جلبه من API
       fetchBranchIdFromApi().then((apiBranchId) => {
         if (apiBranchId) {

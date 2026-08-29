@@ -16,6 +16,7 @@ import {
   Cell,
 } from 'recharts';
 import { OrderStatus, PaymentMethod, FinancialTransactionType } from '../../../types';
+import { toast } from '../shared/Toast';
 
 const sumBy = <T,>(items: T[], predicate: (item: T) => boolean, selector: (item: T) => number) =>
   items.filter(predicate).reduce((sum, item) => sum + selector(item), 0);
@@ -320,18 +321,26 @@ const AccountingPage = () => {
                   {currentShift ? 'إغلاق الشفت' : 'فتح شفت جديد'}
                 </h3>
                 
-                <form onSubmit={(e) => {
+                <form onSubmit={async (e) => {
                   e.preventDefault();
                   const formData = new FormData(e.currentTarget);
-                  if (currentShift) {
-                    closeShift(parseFloat(formData.get('closingBalance') as string));
-                  } else {
-                    openShift(
-                      parseFloat(formData.get('openingBalance') as string),
-                      formData.get('type') as any
-                    );
+                  try {
+                    if (currentShift) {
+                      await closeShift(parseFloat(formData.get('closingBalance') as string));
+                    } else {
+                      const ok = await openShift(
+                        parseFloat(formData.get('openingBalance') as string),
+                        formData.get('type') as any
+                      );
+                      if (!ok) {
+                        toast.error('فشل فتح اليومية');
+                        return;
+                      }
+                    }
+                    setShowShiftModal(false);
+                  } catch (err: any) {
+                    toast.error(err?.response?.data?.message || 'فشلت العملية');
                   }
-                  setShowShiftModal(false);
                 }} className="space-y-6">
                   {currentShift ? (
                     <>

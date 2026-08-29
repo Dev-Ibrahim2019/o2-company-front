@@ -26,8 +26,8 @@ const PosRouteGuard: React.FC<Props> = ({ children }) => {
 
     const checkDevice = async () => {
       try {
-        // 1. هل يوجد device_uuid مخزن؟
-        const deviceUuid = localStorage.getItem("device_uuid");
+        // 1. هل يوجد device_uuid مخزن؟ (نفس مفتاح posSecurity / axios interceptor)
+        const deviceUuid = localStorage.getItem("pos_device_uuid");
         if (!deviceUuid) {
           if (!cancelled) setStatus("invalid");
           return;
@@ -40,9 +40,8 @@ const PosRouteGuard: React.FC<Props> = ({ children }) => {
         if (!cancelled) setStatus("valid");
       } catch (err: any) {
         // 4. الباك إند رفض الطلب (403 أو أي خطأ) → الجهاز ملغي أو خارج الشبكة
-        localStorage.removeItem("device_uuid");
+        localStorage.removeItem("pos_device_uuid");
         localStorage.removeItem("pos_register_info");
-        localStorage.removeItem("pos_device_uuid_encrypted");
         if (!cancelled) setStatus("invalid");
       }
     };

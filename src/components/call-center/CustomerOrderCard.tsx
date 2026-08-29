@@ -14,7 +14,7 @@ const sourceStyles: Record<string, { label: string; dot: string; badge: string }
   dine_in: { label: "صالة عائلات", dot: "bg-emerald-500", badge: "border-emerald-200 bg-emerald-50 text-emerald-800" },
   call_center: { label: "فوري", dot: "bg-violet-500", badge: "border-violet-200 bg-violet-50 text-violet-800" },
   delivery: { label: "ديلفري", dot: "bg-sky-500", badge: "border-sky-200 bg-sky-50 text-sky-800" },
-  takeaway: { label: "سفري", dot: "bg-amber-500", badge: "border-amber-200 bg-amber-50 text-amber-800" },
+  takeaway: { label: "فوري", dot: "bg-amber-500", badge: "border-amber-200 bg-amber-50 text-amber-800" },
 };
 
 const branchDots = ["bg-cyan-600", "bg-fuchsia-600", "bg-lime-600", "bg-rose-600", "bg-indigo-600", "bg-orange-600"];

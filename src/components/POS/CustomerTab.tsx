@@ -470,20 +470,24 @@ export const CustomerTab: React.FC<CustomerTabProps> = ({
                           </div>
                           <div className="min-w-0">
                             <p className="text-xs font-black text-white truncate">{getPaymentLabel(payment.method)}</p>
-                            <p className="text-[8px] font-bold text-slate-600 uppercase tracking-tighter">Transaction Ref ID</p>
+                            {payment.method !== PaymentMethod.CASH && (
+                              <p className="text-[8px] font-bold text-slate-600 uppercase tracking-tighter">Transaction Ref ID</p>
+                            )}
                           </div>
                         </div>
 
-                        <div className="relative group/ref">
-                          <input
-                            type="text"
-                            placeholder="أدخل الرقم المرجعي..."
-                            value={payment.reference || ''}
-                            onChange={(event) => updatePaymentReference(index, event.target.value)}
-                            className="w-full bg-black/40 border border-white/5 rounded-lg px-3 py-1.5 text-[10px] font-black text-slate-300 outline-none focus:border-blue-500/30 transition-all placeholder:text-slate-700 placeholder:font-bold"
-                          />
-                          <FileText size={10} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-700 group-focus-within/ref:text-blue-500 transition-colors" />
-                        </div>
+                        {payment.method !== PaymentMethod.CASH && (
+                          <div className="relative group/ref">
+                            <input
+                              type="text"
+                              placeholder="أدخل الرقم المرجعي..."
+                              value={payment.reference || ''}
+                              onChange={(event) => updatePaymentReference(index, event.target.value)}
+                              className="w-full bg-black/40 border border-white/5 rounded-lg px-3 py-1.5 text-[10px] font-black text-slate-300 outline-none focus:border-blue-500/30 transition-all placeholder:text-slate-700 placeholder:font-bold"
+                            />
+                            <FileText size={10} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-700 group-focus-within/ref:text-blue-500 transition-colors" />
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex flex-col items-end gap-2 shrink-0">

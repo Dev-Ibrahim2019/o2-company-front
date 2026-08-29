@@ -131,7 +131,7 @@ const getStatusLabel = (status: ApiOrderStatus) => {
 };
 
 const getOrderTypeLabel = (type: ApiOrderType) =>
-  type === "dine_in" ? "محلي" : "سفري";
+  type === "dine_in" ? "محلي" : "فوري";
 
 const getPaymentIcon = (method?: string | null) => {
   switch (method) {
@@ -373,7 +373,7 @@ export const OrdersView = () => {
                 : "text-slate-500 hover:text-slate-300"
             }`}
           >
-            سفري
+            فوري
           </button>
         </div>
 
@@ -633,7 +633,7 @@ export const OrdersView = () => {
                       <p className="text-[9px] font-black text-red-500">
                         {order.order_type === "dine_in"
                           ? order.table_number || "---"
-                          : "سفري"}
+                          : "فوري"}
                       </p>
                     </div>
                   </div>

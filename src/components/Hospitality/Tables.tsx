@@ -40,6 +40,7 @@ import {
   Link2,
   Unlink,
   AlertTriangle,
+  Bell,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -94,10 +95,12 @@ const getApiPaymentLabel = (method?: string | null) => {
   switch (method) {
     case "cash":
       return "كاش";
+    case "card":
     case "credit_card":
       return "بطاقة/فيزا";
     case "wallet":
       return "محفظة";
+    case "bank":
     case "bank_transfer":
       return "تحويل بنكي";
     default:
@@ -107,10 +110,12 @@ const getApiPaymentLabel = (method?: string | null) => {
 
 const getApiPaymentIcon = (method?: string | null) => {
   switch (method) {
+    case "card":
     case "credit_card":
       return <CreditCard size={16} />;
     case "wallet":
       return <Wallet size={16} />;
+    case "bank":
     case "bank_transfer":
       return <Landmark size={16} />;
     case "cash":
@@ -358,6 +363,16 @@ export const HospitalityTables: React.FC<{
     }
   };
 
+  const acknowledgeWaiterCall = async (tableId: string) => {
+    try {
+      await api.post(`/tables/${tableId}/acknowledge-waiter-call`);
+      await fetchTables();
+    } catch (err) {
+      console.warn("فشل تأكيد استلام نداء النادل:", err);
+      toast.error("فشل تأكيد الاستلام", "حاول مرة ثانية");
+    }
+  };
+
   const handleTransferToTable = async (targetTable: Table) => {
     if (!transferMode) return;
     const sourceTable = tables.find((t) => t.id === transferMode.fromId);
@@ -370,16 +385,20 @@ export const HospitalityTables: React.FC<{
       // جلب جميع الطلبات النشطة للطاولة المصدر
       const allOrders = await orderService.getAllActiveByTableNumber(sourceNumber, getBranchFilter(currentUser));
 
-      // نقل الطلبات إن وُجدت
+      // نقل الطلبات إن وُجدت — نسجل أي طلب فشل نقله بدل ما نتجاهله بصمت
+      const failedOrderIds: number[] = [];
       if (allOrders.length > 0) {
         for (const order of allOrders) {
           try {
             await orderService.transferOrder(order.id, targetNumber);
           } catch (err) {
             console.warn(`فشل نقل الطلب #${order.id}:`, err);
+            failedOrderIds.push(order.id);
           }
         }
       }
+
+      const transferredCount = allOrders.length - failedOrderIds.length;
 
       // تحديث حالة الطاولة الهدف
       updateTableStatus(targetTable.id, TableStatus.OCCUPIED, {
@@ -387,19 +406,28 @@ export const HospitalityTables: React.FC<{
         guestCount: sourceTable.guestCount,
       });
 
-      // تفريغ الطاولة المصدر
-      updateTableStatus(sourceTable.id, TableStatus.AVAILABLE, {
-        currentOrderId: undefined,
-        seatedAt: undefined,
-        guestCount: undefined,
-      });
+      // نفرّغ الطاولة المصدر محلياً بس إذا كل الطلبات انتقلت فعلاً — إذا في طلب
+      // فشل نقله، الباك اند أصلاً ما بيحررها (نفس فحص tableHasOtherActiveOrders)،
+      // فبنسيب fetchTables تجيب الحالة الصحيحة بدل ما نعرض حالة متفائلة غلط.
+      if (failedOrderIds.length === 0) {
+        updateTableStatus(sourceTable.id, TableStatus.AVAILABLE, {
+          currentOrderId: undefined,
+          seatedAt: undefined,
+          guestCount: undefined,
+        });
+      }
 
       setTransferMode(null);
       setTransferError(null);
       await fetchTables();
 
-      if (allOrders.length > 0) {
-        toast.success(`تم نقل ${allOrders.length} طلب بنجاح`, `من طاولة ${sourceNumber} إلى طاولة ${targetNumber}`);
+      if (failedOrderIds.length > 0) {
+        toast.error(
+          `فشل نقل ${failedOrderIds.length} من ${allOrders.length} طلب`,
+          `من طاولة ${sourceNumber} إلى طاولة ${targetNumber} — الطاولة المصدر لسا فيها طلب نشط`,
+        );
+      } else if (allOrders.length > 0) {
+        toast.success(`تم نقل ${transferredCount} طلب بنجاح`, `من طاولة ${sourceNumber} إلى طاولة ${targetNumber}`);
       } else {
         toast.success(`تم نقل الطاولة بنجاح`, `من طاولة ${sourceNumber} إلى طاولة ${targetNumber}`);
       }
@@ -722,6 +750,11 @@ export const HospitalityTables: React.FC<{
                       <span>{calculateSittingTime((table as any).seated_at || table.seatedAt)}</span>
                     </div>
                   )}
+                  {table.waiterCalledAt && (
+                    <div className="absolute top-1 left-1 sm:top-2 sm:left-2 bg-amber-500 text-white rounded-full p-0.5 sm:p-1 animate-pulse shadow-lg">
+                      <Bell size={10} />
+                    </div>
+                  )}
                 </motion.button>
               );
             })}
@@ -892,12 +925,16 @@ export const HospitalityTables: React.FC<{
 
               <div className="flex flex-col gap-2 sm:gap-3">
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     const table = tables.find((t) => t.id === seatingTableId);
                     if (!table) return;
                     const count = Math.max(1, guestCount);
+                    const ok = await seatTable(seatingTableId, count);
+                    if (!ok) {
+                      toast.error("فشل تسكين الطاولة", "حاول مرة ثانية");
+                      return;
+                    }
                     setSelectedTable(table);
-                    seatTable(seatingTableId, count);
                     setOrderType(OrderType.DINE_IN);
                     setSeatingTableId(null);
                     if (onSelect) {
@@ -951,6 +988,22 @@ export const HospitalityTables: React.FC<{
               </div>
 
               <div className="p-4 sm:p-8 space-y-4 sm:space-y-6 max-h-[70vh] overflow-y-auto">
+                {activePopupTable.waiterCalledAt && (
+                  <div className="bg-amber-500/15 border border-amber-500/30 rounded-2xl p-4 flex items-center justify-between gap-3 animate-pulse">
+                    <div className="flex items-center gap-2 text-amber-400">
+                      <Bell size={18} />
+                      <span className="font-black text-xs sm:text-sm">
+                        الزبون طلب نادل ({calculateSittingTime(activePopupTable.waiterCalledAt)})
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => acknowledgeWaiterCall(activePopupTable.id)}
+                      className="bg-amber-500 text-white px-3 py-1.5 rounded-xl font-black text-[10px] shrink-0"
+                    >
+                      تم الرد
+                    </button>
+                  </div>
+                )}
                 {activePopupTable.status === TableStatus.OCCUPIED ||
                 activePopupTable.status === TableStatus.PAYMENT_PENDING ||
                 activePopupTable.status === TableStatus.PAID ||

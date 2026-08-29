@@ -100,7 +100,7 @@ const getStatusIcon = (status: ApiOrderStatus) => {
 };
 
 const getOrderTypeLabel = (type: ApiOrderType) =>
-  type === "dine_in" ? "محلي" : "سفري";
+  type === "dine_in" ? "محلي" : "فوري";
 
 const formatMoney = (value: number) => `${Number(value || 0).toFixed(2)} ₪`;
 
@@ -619,7 +619,7 @@ const OrdersPage = () => {
             >
               <option value="all">الكل</option>
               <option value="dine_in">محلي</option>
-              <option value="takeaway">سفري</option>
+              <option value="takeaway">فوري</option>
             </select>
           </div>
           <div>

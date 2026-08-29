@@ -417,7 +417,7 @@ export const InvoiceDetailsModal = ({
                     className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none"
                   >
                     <option value="dine_in">محلي</option>
-                    <option value="takeaway">سفري</option>
+                    <option value="takeaway">فوري</option>
                   </select>
                 </label>
                 <label className="space-y-1">

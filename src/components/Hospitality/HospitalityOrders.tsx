@@ -2,12 +2,14 @@ import { useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../../../store";
 import { useOrders } from "../../hooks/useOrders";
-import { orderService } from "../../services/orderService";
+import { orderService, normalizePaymentMethod } from "../../services/orderService";
 import type {
   OrderFromApi,
   OrderStatus as ApiOrderStatus,
   OrderType as ApiOrderType,
 } from "../../services/orderService";
+import { PaymentMethodModal } from "./PaymentMethodModal";
+import type { PaymentMethod as UiPaymentMethod } from "../../../types";
 import {
   Banknote,
   CheckCircle2,
@@ -121,7 +123,7 @@ const getStatusLabel = (status: ApiOrderStatus) => {
 };
 
 const getOrderTypeLabel = (type: ApiOrderType) =>
-  type === "dine_in" ? "محلي" : "سفري";
+  type === "dine_in" ? "محلي" : "فوري";
 
 const getPaymentLabel = (method?: string | null) => {
   switch (method) {
@@ -166,6 +168,7 @@ export const HospitalityOrders = () => {
   const [actionError, setActionError] = useState<string | null>(null);
   const [busyOrderId, setBusyOrderId] = useState<number | null>(null);
   const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
+  const [payingOrder, setPayingOrder] = useState<OrderFromApi | null>(null);
 
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
@@ -204,19 +207,22 @@ export const HospitalityOrders = () => {
 
   const refreshOrders = useCallback(() => refetch(branchFilter), [branchFilter, refetch]);
 
-  const closeOrder = async (order: OrderFromApi) => {
-    if (isClosedOrder(order.status)) return;
+  const confirmCloseOrder = async (method: UiPaymentMethod, reference?: string) => {
+    const order = payingOrder;
+    if (!order || isClosedOrder(order.status)) return;
 
     setActionError(null);
     setBusyOrderId(order.id);
     try {
       await orderService.pay(order.id, {
-        payment_method: order.payment_method ?? "cash",
+        payment_method: normalizePaymentMethod(method) ?? "cash",
         amount: order.total,
+        reference_number: reference,
         customer_name: order.customer_name ?? undefined,
         customer_phone: order.customer_phone ?? undefined,
         note: order.note ?? undefined,
       });
+      setPayingOrder(null);
       await refreshOrders();
       setActiveTab("CLOSED");
     } catch (e: unknown) {
@@ -360,7 +366,7 @@ export const HospitalityOrders = () => {
                 : "bg-slate-900 border-white/5 text-slate-500"
             }`}
           >
-            سفري
+            فوري
           </button>
 
           <div className="w-px bg-white/5 shrink-0" />
@@ -546,34 +552,17 @@ export const HospitalityOrders = () => {
                       {/* Actions */}
                       <div className="flex gap-2 pt-1">
                         {activeTab === "ACTIVE" ? (
-                          <>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate(`/Hospitality?editOrderId=${order.id}`);
-                              }}
-                              disabled={busy}
-                              className="flex-1 py-2.5 rounded-xl bg-slate-800 border border-white/5 text-slate-300 font-black text-[10px] flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-40 transition-all"
-                            >
-                              <Edit3 size={13} />
-                              تعديل
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                closeOrder(order);
-                              }}
-                              disabled={busy}
-                              className="flex-1 py-2.5 rounded-xl bg-red-600 text-white font-black text-[10px] flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-40 transition-all shadow-lg shadow-red-900/20"
-                            >
-                              {busy ? (
-                                <Loader2 size={13} className="animate-spin" />
-                              ) : (
-                                <CheckCircle2 size={13} />
-                              )}
-                              إغلاق
-                            </button>
-                          </>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/Hospitality?editOrderId=${order.id}`);
+                            }}
+                            disabled={busy}
+                            className="flex-1 py-2.5 rounded-xl bg-slate-800 border border-white/5 text-slate-300 font-black text-[10px] flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-40 transition-all"
+                          >
+                            <Edit3 size={13} />
+                            تعديل
+                          </button>
                         ) : (
                           <button
                             onClick={(e) => {
@@ -595,6 +584,14 @@ export const HospitalityOrders = () => {
           </div>
         )}
       </div>
+
+      <PaymentMethodModal
+        show={!!payingOrder}
+        total={payingOrder?.total ?? 0}
+        confirming={busyOrderId === payingOrder?.id}
+        onClose={() => setPayingOrder(null)}
+        onConfirm={confirmCloseOrder}
+      />
     </div>
   );
 };

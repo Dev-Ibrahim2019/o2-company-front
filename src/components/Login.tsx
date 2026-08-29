@@ -62,33 +62,19 @@ export const Login: React.FC = () => {
   >("SELECT");
 
   // ── تحويل المستخدم حسب دوره ──
+  // ملاحظة: تفعيل الجهاز (pos/hospitality/call_center _device_uuid + _register_info)
+  // هو ربط عتادي لمرة واحدة يتحكم فيه الأدمن عبر "إلغاء التفعيل" (Revoke) فقط.
+  // تسجيل الدخول بأي دور على نفس الجهاز يجب ألا يمسح هذا الربط، وإلا اضطر
+  // الكاشير لإعادة إدخال كود التفعيل بعد كل تسجيل دخول.
   const redirectByRole = (roles: string[]) => {
     const primary = roles[0] || "";
     if (primary === "call-center") {
-      localStorage.removeItem("pos_device_uuid");
-      localStorage.removeItem("pos_register_info");
-      localStorage.removeItem("hospitality_device_uuid");
-      localStorage.removeItem("hospitality_register_info");
       navigate("/call-center", { replace: true });
     } else if (primary === "hospitality") {
-      localStorage.removeItem("pos_device_uuid");
-      localStorage.removeItem("pos_register_info");
-      localStorage.removeItem("call_center_device_uuid");
-      localStorage.removeItem("call_center_register_info");
       navigate("/Hospitality", { replace: true });
     } else if (primary === "super-admin" || primary === "accountant" || primary === "branch-manager") {
-      localStorage.removeItem("pos_device_uuid");
-      localStorage.removeItem("pos_register_info");
-      localStorage.removeItem("call_center_device_uuid");
-      localStorage.removeItem("call_center_register_info");
-      localStorage.removeItem("hospitality_device_uuid");
-      localStorage.removeItem("hospitality_register_info");
       navigate("/admin/dashboard", { replace: true });
     } else {
-      localStorage.removeItem("call_center_device_uuid");
-      localStorage.removeItem("call_center_register_info");
-      localStorage.removeItem("hospitality_device_uuid");
-      localStorage.removeItem("hospitality_register_info");
       navigate("/pos", { replace: true });
     }
   };

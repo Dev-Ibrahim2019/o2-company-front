@@ -50,6 +50,18 @@ export interface RolloverResponse {
   new_shift: ShiftFromApi;
 }
 
+export interface ShiftReconciliation {
+  expected_cash: number;
+  counted_cash: number;
+  variance: number;
+  status: "balanced" | "over" | "short";
+}
+
+export interface CloseShiftResponse {
+  shift: ShiftFromApi;
+  reconciliation: ShiftReconciliation;
+}
+
 // ── Service ────────────────────────────────────────────────────────────────────
 
 export const shiftService = {
@@ -87,6 +99,27 @@ export const shiftService = {
   async rollover(closingBalance?: number): Promise<RolloverResponse> {
     const { data } = await api.post("/shifts/rollover", {
       closing_balance: closingBalance ?? 0,
+    });
+    return data.data;
+  },
+
+  /**
+   * فتح يومية جديدة — بداية شغل الكاشير
+   */
+  async open(openingBalance?: number): Promise<ShiftFromApi> {
+    const { data } = await api.post("/shifts/open", {
+      opening_balance: openingBalance ?? 0,
+    });
+    return data.data;
+  },
+
+  /**
+   * إغلاق اليومية الحالية (بدون ترحيل تلقائي) — بيرجع تسوية نقدية
+   * (المبلغ المتوقع مقابل المعدود)، وبيرفض الإغلاق لو في طلبات لسا مفتوحة.
+   */
+  async close(closingBalance: number): Promise<CloseShiftResponse> {
+    const { data } = await api.post("/shifts/close", {
+      closing_balance: closingBalance,
     });
     return data.data;
   },

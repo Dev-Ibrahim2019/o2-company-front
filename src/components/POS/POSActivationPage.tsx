@@ -5,7 +5,12 @@
 import React, { useState, useEffect } from 'react'; // 👈 تم إضافة useEffect هنا
 import api from '../../api/axios'; 
 import { Monitor, KeyRound, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { saveDeviceUUIDSecurely } from '../../utils/posSecurity';
+import {
+  saveDeviceUUIDSecurely,
+  saveRegisterInfoSecurely,
+  getDeviceUUIDSecurely,
+  getRegisterInfoSecurely,
+} from '../../utils/posSecurity';
 
 interface Props {
   onActivationSuccess: (registerInfo: any) => void;
@@ -22,19 +27,14 @@ const POSActivationPage: React.FC<Props> = ({ onActivationSuccess }) => {
    * ══════════════════════════════════════════════════════════════ */
   useEffect(() => {
     const checkExistingDevice = async () => {
-      // جلب اسم الـ Key المتوافق مع دالة saveDeviceUUIDSecurely الحالية لديك
-      const cachedUuid = localStorage.getItem('pos_device_uuid');
-      const cachedInfoRaw = localStorage.getItem('pos_register_info');
+      // نقرأ من المستودع المزدوج الآمن (LocalStorage + IndexedDB مع ترميم متبادل)
+      // حتى لو مُسح كاش LocalStorage يبقى الجهاز مفعّلاً بلا إعادة إدخال الكود.
+      const cachedUuid = await getDeviceUUIDSecurely();
+      const posInfo = await getRegisterInfoSecurely();
 
-      if (cachedUuid && cachedInfoRaw) {
-        try {
-          const posInfo = JSON.parse(cachedInfoRaw);
-          // إذا كانت البيانات سليمة وموجودة، نبلغ الأب بالنجاح مباشرة لتخطي شاشة التفعيل
-          onActivationSuccess(posInfo);
-        } catch (e) {
-          // تنظيف في حال كان الكاش تالفاً
-          localStorage.removeItem('pos_register_info');
-        }
+      if (cachedUuid && posInfo) {
+        // إذا كانت البيانات سليمة وموجودة، نبلغ الأب بالنجاح مباشرة لتخطي شاشة التفعيل
+        onActivationSuccess(posInfo);
       }
     };
 
@@ -64,11 +64,9 @@ const POSActivationPage: React.FC<Props> = ({ onActivationSuccess }) => {
         if (device_uuid && pos_info) {
             setSuccess('تم التحقق وتفعيل نقطة البيع بنجاح! جاري التهيئة...');
             
-            // 3. تخزين الـ UUID القادم من السيرفر في المستودع المزدوج الآمن فوراً
+            // 3. تخزين الـ UUID ومعلومات نقطة البيع في المستودع المزدوج الآمن فوراً
             await saveDeviceUUIDSecurely(device_uuid);
-
-            // حفظ معلومات نقطة البيع والفرع للاستخدام السريع في واجهة الكاشير
-            localStorage.setItem('pos_register_info', JSON.stringify(pos_info));
+            await saveRegisterInfoSecurely(pos_info);
 
             // 4. إعلام المكون الأب بالنجاح لتغيير الواجهة والانتقال لشاشة الكاشير
             setTimeout(() => {

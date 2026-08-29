@@ -302,7 +302,7 @@ const orderSourceStyle: Record<string, { label: string; dot: string; badge: stri
   dine_in: { label: "صالة عائلات", dot: "bg-[#0F766E]", badge: "border-[#99F6E4] bg-[#F0FDFA] text-[#115E59]" },
   call_center: { label: "فوري", dot: "bg-[#2563EB]", badge: "border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]" },
   delivery: { label: "ديلفري", dot: "bg-[#7C3AED]", badge: "border-[#DDD6FE] bg-[#F5F3FF] text-[#6D28D9]" },
-  takeaway: { label: "سفري", dot: "bg-[#B45309]", badge: "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]" },
+  takeaway: { label: "فوري", dot: "bg-[#B45309]", badge: "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]" },
 };
 const branchDots = ["bg-[#0891B2]", "bg-[#4F46E5]", "bg-[#15803D]", "bg-[#BE123C]", "bg-[#9333EA]", "bg-[#C2410C]"];
 type SavedFeedback = NonNullable<OrderDetail["feedback"]>;

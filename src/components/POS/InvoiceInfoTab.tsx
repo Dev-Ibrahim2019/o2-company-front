@@ -1,5 +1,5 @@
 import React from 'react';
-import { Monitor, FileText, Clock, Lock, Unlock, User, Building2, Hash, DollarSign, CreditCard } from 'lucide-react';
+import { Monitor, FileText, Clock, Lock, Unlock, User, Building2, Hash, DollarSign, CreditCard, ChevronsRight, ChevronRight, ChevronLeft, ChevronsLeft, Loader2 } from 'lucide-react';
 
 interface UserInfo {
   id: number;
@@ -32,7 +32,13 @@ interface DetailsInfo {
   date: string | null;
   time: string | null;
   currency: string;
+  exchange_rate?: number;
   account_number: string | null;
+  daily_sequence?: number | null;
+  reference_number?: string | null;
+  financial_voucher_number?: string | null;
+  vat_report_number?: string | null;
+  journal_entry_number?: string | null;
 }
 
 interface InvoiceData {
@@ -47,6 +53,8 @@ interface InvoiceInfoTabProps {
   currentUser: { name: string } | null;
   posInfo?: { code?: string; name?: string; branch_id?: number } | null;
   invoiceData?: InvoiceData | null;
+  onNavigate?: (direction: "next" | "prev" | "first" | "last") => void;
+  navigating?: boolean;
 }
 
 export const InvoiceInfoTab: React.FC<InvoiceInfoTabProps> = ({
@@ -54,6 +62,8 @@ export const InvoiceInfoTab: React.FC<InvoiceInfoTabProps> = ({
   currentUser,
   posInfo,
   invoiceData,
+  onNavigate,
+  navigating,
 }) => {
   // استخدام البيانات من الفاتورة الفعلية أو من معلومات POS المخزنة
   const posCode = invoiceData?.pos?.code || posInfo?.code || 'POS-...';
@@ -64,6 +74,12 @@ export const InvoiceInfoTab: React.FC<InvoiceInfoTabProps> = ({
   const invoiceTime = invoiceData?.details?.time || new Date().toLocaleTimeString('ar-PS', { hour: '2-digit', minute: '2-digit' });
   const currency = invoiceData?.details?.currency || 'ILS';
   const accountNumber = invoiceData?.details?.account_number || '---';
+  const exchangeRate = invoiceData?.details?.exchange_rate ?? 1;
+  const dailySequence = invoiceData?.details?.daily_sequence ?? null;
+  const referenceNumber = invoiceData?.details?.reference_number || null;
+  const financialVoucherNumber = invoiceData?.details?.financial_voucher_number || null;
+  const vatReportNumber = invoiceData?.details?.vat_report_number || null;
+  const journalEntryNumber = invoiceData?.details?.journal_entry_number || null;
   const userName = currentUser?.name || invoiceData?.opening?.user?.name || '-';
 
   const openingUser = invoiceData?.opening?.user?.name || userName;
@@ -79,6 +95,28 @@ export const InvoiceInfoTab: React.FC<InvoiceInfoTabProps> = ({
   return (
     <div className="flex-1 bg-slate-900 rounded-[1.5rem] sm:rounded-[2rem] border border-white/5 p-3 sm:p-8 overflow-y-auto custom-scrollbar">
       <div className="max-w-2xl mx-auto space-y-4 sm:space-y-8">
+
+        {/* ── التنقل بين الفواتير ── */}
+        {onNavigate && (
+          <div className="flex items-center justify-center gap-1.5 bg-slate-800/50 border border-white/5 rounded-xl p-1.5">
+            {([
+              { dir: 'first' as const, icon: ChevronsRight, label: 'الأول' },
+              { dir: 'prev' as const, icon: ChevronRight, label: 'السابق' },
+              { dir: 'next' as const, icon: ChevronLeft, label: 'التالي' },
+              { dir: 'last' as const, icon: ChevronsLeft, label: 'الأخير' },
+            ]).map(({ dir, icon: Icon, label }) => (
+              <button
+                key={dir}
+                onClick={() => onNavigate(dir)}
+                disabled={navigating}
+                className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-[9px] font-black text-slate-400 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-40"
+              >
+                {navigating ? <Loader2 size={12} className="animate-spin" /> : <Icon size={12} />}
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* ── قسم 1: تفاصيل نقطة البيع ── */}
         <div>
@@ -115,11 +153,17 @@ export const InvoiceInfoTab: React.FC<InvoiceInfoTabProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-6">
             {[
               { icon: FileText, label: 'رقم الفاتورة', value: invoiceNumber },
+              { icon: Hash, label: 'الرقم اليومي', value: dailySequence ?? '---' },
               { icon: Clock, label: 'التاريخ', value: invoiceDate },
               { icon: Clock, label: 'الوقت', value: invoiceTime },
               { icon: DollarSign, label: 'عملة الفاتورة', value: currency === 'ILS' ? 'شيكل فلسطيني (₪)' : currency },
+              ...(currency !== 'ILS' ? [{ icon: DollarSign, label: 'سعر الصرف', value: exchangeRate }] : []),
               { icon: CreditCard, label: 'رقم الحساب', value: accountNumber },
               { icon: FileText, label: 'حالة الفاتورة', value: invoiceData?.closing ? 'مدفوعة (Paid)' : 'مسودة (Draft)' },
+              { icon: Hash, label: 'الرقم المرجعي (للمرتجعات)', value: referenceNumber ?? '---' },
+              { icon: Hash, label: 'رقم السند المالي', value: financialVoucherNumber ?? '---' },
+              { icon: Hash, label: 'رقم كشف الضريبة', value: vatReportNumber ?? '---' },
+              { icon: Hash, label: 'رقم القيد المحاسبي', value: journalEntryNumber ?? '---' },
             ].map(({ icon: Icon, label, value }) => (
               <div key={label} className="space-y-1.5">
                 <label className="flex items-center gap-1 text-[9px] font-black text-slate-500 uppercase tracking-widest mr-2">

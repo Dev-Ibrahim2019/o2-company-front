@@ -175,6 +175,7 @@ export const HospitalityPOS: React.FC = () => {
     categories,
     allItems,
     loading: menuLoading,
+    error: menuError,
     findByCode,
   } = useMenu(branchId);
 
@@ -195,6 +196,15 @@ export const HospitalityPOS: React.FC = () => {
   const [activePOSMode, setActivePOSMode] = useState<"menu">("menu");
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [posError, setPosError] = useState<string | null>(null);
+
+  // فشل تحميل المنيو كان بيمر بصمت — الشاشة بتضل فاضية بدون أي توضيح للكاشير
+  // إنه في مشكلة اتصال/صلاحيات بدل ما الفرع فعلاً ما عنده أصناف.
+  useEffect(() => {
+    if (menuError) {
+      setPosError(menuError);
+    }
+  }, [menuError]);
+
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [manualTable, setManualTable] = useState("");
@@ -918,11 +928,11 @@ export const HospitalityPOS: React.FC = () => {
     setEditingQty((prev) => ({ ...prev, [uniqueId]: val }));
     if (val === "" || val === "." || val.endsWith(".")) return;
     const qty = parseFloat(val);
-    if (!isNaN(qty)) updateCartItem(uniqueId, { quantity: qty } as any);
+    if (!isNaN(qty)) updateCartItem(uniqueId, { quantity: Math.max(0, qty) } as any);
   };
 
   const handleQuantityBlur = (uniqueId: string, val: string) => {
-    updateCartItem(uniqueId, { quantity: parseFloat(val) || 0 } as any);
+    updateCartItem(uniqueId, { quantity: Math.max(0, parseFloat(val) || 0) } as any);
     setEditingQty((prev) => {
       const n = { ...prev };
       delete n[uniqueId];
@@ -938,7 +948,7 @@ export const HospitalityPOS: React.FC = () => {
     const newTotal = parseFloat(val);
     if (!isNaN(newTotal))
       updateCartItem(uniqueId, {
-        quantity: price > 0 ? newTotal / price : 0,
+        quantity: price > 0 ? Math.max(0, newTotal / price) : 0,
       } as any);
   };
 
@@ -1042,8 +1052,41 @@ export const HospitalityPOS: React.FC = () => {
         const unsentItems = currentCart.filter(item => !item.is_printed_direct);
         const newItems = unsentItems.filter(item => !item.uniqueId.startsWith("api-"));
 
-        // 2. حفظ الأصناف الجديدة فقط كطلب جديد (pending)
-        if (newItems.length > 0) {
+        // 1ب. هل الطاولة عليها أصلاً طلب نشط؟ لو آه، الأصناف الجديدة تنضاف
+        // عليه هو بالذات بدل ما ننشئ Order جديد منفصل لكل جولة — وإلا كل
+        // جولة إضافة بتصير فاتورة لحالها بدل ما تنحسب مع نفس فاتورة الطاولة.
+        const existingOrders = await orderService.getAllActiveByTableNumber(
+          activeTable.table_number || activeTable.number,
+          { branch_id: branchId || 0 },
+        );
+        const targetOrder =
+          existingOrders.find((o) => o.status === "pending" || o.status === "pending_confirmation") ??
+          existingOrders[0] ??
+          null;
+
+        // الطلب الذي أُضيفت عليه/أُنشئ للأصناف الجديدة — بنسخته الأحدث (فيها items محدّثة)
+        let workingOrder = targetOrder;
+
+        if (newItems.length > 0 && targetOrder) {
+          // كل الأصناف الجديدة دفعة واحدة (طلب HTTP واحد بدل واحد لكل صنف)
+          try {
+            workingOrder = await orderService.addOrderItemsBatch(
+              targetOrder.id,
+              newItems.map((item) => ({
+                item_id: item.id,
+                quantity: item.quantity,
+                unit_price: item.price,
+                notes: item.notes,
+                is_takeaway: item.is_takeaway,
+              })),
+            );
+          } catch (err) {
+            console.warn(`فشل إضافة الأصناف على الطلب #${targetOrder.id}:`, err);
+            setPosError("فشل إضافة الأصناف للطلب");
+            return;
+          }
+        } else if (newItems.length > 0) {
+          // ما في طلب نشط أصلاً على الطاولة — نطلب جديد (أول جولة)
           const savedOrder = await submitOrderApi(
             {
               branch_id: branchId || 0,
@@ -1065,15 +1108,21 @@ export const HospitalityPOS: React.FC = () => {
             setPosError("فشل حفظ الأصناف الجديدة");
             return;
           }
+          workingOrder = savedOrder;
         }
 
-        // 3. جلب جميع الطلبات النشطة للطاولة وتأكيد المعلقة منها
-        const allOrders = await orderService.getAllActiveByTableNumber(
-          activeTable.table_number || activeTable.number,
-          { branch_id: branchId || 0 },
-        );
+        // 3. الطلبات المعلقة = الموجودة سابقاً + الطلب الجديد/المُحدّث (بلا إعادة
+        // جلب من الشبكة — كان نداء إضافي بطيء). نستخدم نسخة workingOrder الأحدث.
+        const ordersById = new Map<number, (typeof existingOrders)[number]>();
+        for (const o of existingOrders) ordersById.set(o.id, o);
+        if (workingOrder) ordersById.set(workingOrder.id, workingOrder);
 
-        const pendingOrders = allOrders.filter(o => o.status === 'pending' || o.status === 'pending_confirmation');
+        const pendingOrders = [...ordersById.values()].filter(
+          (o) =>
+            o.status === 'pending' ||
+            o.status === 'pending_confirmation' ||
+            (o.items ?? []).some((item) => !item.is_printed_direct),
+        );
 
         // 3. طباعة مباشرة للأقسام قبل التأكيد (بالتوازي، مش وحدة وراء وحدة)
         if (!posInfo?.id) {

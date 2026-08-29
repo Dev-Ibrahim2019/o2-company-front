@@ -21,6 +21,7 @@ const formatMoney = (value: number) => `${Number(value || 0).toFixed(2)} ₪`;
 export const ShiftView: React.FC = () => {
   const { currentShift, openShift, closeShift, currentUser, financialTransactions, submitBlindDrop, rollover } = useApp();
   const [balance, setBalance] = useState('');
+  const [openShiftLoading, setOpenShiftLoading] = useState(false);
   const [blindDropOpen, setBlindDropOpen] = useState(false);
   const [blindDropLoading, setBlindDropLoading] = useState(false);
   const [rolloverLoading, setRolloverLoading] = useState(false);
@@ -40,13 +41,29 @@ export const ShiftView: React.FC = () => {
     return () => document.removeEventListener("keydown", handler);
   }, [currentShift, blindDropOpen]);
 
-  const handleBlindDropSubmit = useCallback(async (data: BlindDropData) => {
+  const handleOpenShift = useCallback(async () => {
+    if (!balance || openShiftLoading) return;
+    setOpenShiftLoading(true);
+    try {
+      const ok = await openShift(Number(balance), 'MORNING');
+      if (!ok) toast.error("فشل فتح اليومية", "حاول مرة ثانية");
+    } finally {
+      setOpenShiftLoading(false);
+    }
+  }, [balance, openShift, openShiftLoading]);
+
+  const handleBlindDropSubmit = useCallback(async (data: BlindDropData): Promise<boolean> => {
     setBlindDropLoading(true);
     try {
       const totalCash = data.denominations.reduce(
         (sum, d) => sum + d.value * d.count,
         0,
       );
+
+      // إغلاق اليومية فعلياً بالباك اند أولاً — لو رفض (مثلاً في طلبات لسا
+      // مفتوحة) ما بنكمل ولا بنعرض شاشة نجاح، ونطلع سبب الرفض الحقيقي.
+      const reconciliation = await closeShift(totalCash);
+      if (!reconciliation) return false;
 
       // Submit blind drop to store for reconciliation
       if (currentShift && currentShift.id) {
@@ -62,12 +79,21 @@ export const ShiftView: React.FC = () => {
         });
       }
 
-      // Close the shift
-      await closeShift(totalCash);
+      if (reconciliation.status !== "balanced") {
+        const diff = Math.abs(reconciliation.variance).toFixed(2);
+        toast.warning(
+          reconciliation.status === "over" ? `زيادة ${diff} ₪` : `نقص ${diff} ₪`,
+          `المتوقع ${reconciliation.expected_cash.toFixed(2)} ₪ — المعدود ${reconciliation.counted_cash.toFixed(2)} ₪`,
+        );
+      }
+
       // NOTE: Do NOT close the modal here — BlindDropModal shows the
       // success screen and its "إنهاء" button calls onClose().
-    } catch (err) {
-      console.error("Blind drop submit failed:", err);
+      return true;
+    } catch (err: any) {
+      const message = err?.response?.data?.message || "فشل إغلاق اليومية";
+      toast.error(message);
+      return false;
     } finally {
       setBlindDropLoading(false);
     }
@@ -195,7 +221,7 @@ export const ShiftView: React.FC = () => {
                 onChange={(e) => setBalance(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && balance) {
-                    openShift(Number(balance), 'MORNING');
+                    handleOpenShift();
                   }
                 }}
                 placeholder="0.00"
@@ -203,10 +229,11 @@ export const ShiftView: React.FC = () => {
               />
             </div>
             <button
-              onClick={() => openShift(Number(balance), 'MORNING')}
-              disabled={!balance}
+              onClick={handleOpenShift}
+              disabled={!balance || openShiftLoading}
               className="w-full py-4 bg-[var(--o2-brand)] text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-[var(--o2-brand-hover)] transition-all shadow-lg disabled:opacity-50"
             >
+              {openShiftLoading ? <Loader2 size={18} className="animate-spin" /> : null}
               فتح اليومية الآن
               <ArrowRightCircle size={20} className="rotate-180" />
             </button>

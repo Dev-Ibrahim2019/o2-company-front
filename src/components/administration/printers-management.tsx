@@ -961,17 +961,17 @@ export function PrintersManagement() {
                           </p>
                         </div>
                       </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                      <div className="flex gap-1 shrink-0">
                         <button
                           onClick={() => handleEditPrinter(p)}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-blue-400 hover:bg-blue-500/10 transition-all"
-                          title="تعديل"
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-blue-400 bg-blue-500/10 hover:bg-blue-500/20 transition-all"
+                          title="تعديل الطابعة"
                         >
-                          <Pencil size={12} />
+                          <Pencil size={11} /> تعديل
                         </button>
                         <button
                           onClick={() => handleDeletePrinter(p.id, p.name)}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-all"
                           title="حذف"
                         >
                           <Trash2 size={12} />

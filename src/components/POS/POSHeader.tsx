@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { Search, RefreshCw, Loader2 } from 'lucide-react';
+import { Search, RefreshCw, Loader2, Archive } from 'lucide-react';
 import { useApp } from '../../../store';
+import api from '../../api/axios';
+import { toast } from '../shared/Toast';
 
 interface POSHeaderProps {
   editingOrderId: string | null;
   isHospitality: boolean;
-  activePOSMode: 'menu' | 'tables' | 'info' | 'customer';
-  setActivePOSMode: (mode: 'menu' | 'tables' | 'info' | 'customer') => void;
+  activePOSMode: 'menu' | 'tables' | 'info' | 'contact' | 'accounts';
+  setActivePOSMode: (mode: 'menu' | 'tables' | 'info' | 'contact' | 'accounts') => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   clearCart: () => void;
@@ -19,8 +21,33 @@ export const POSHeader: React.FC<POSHeaderProps> = ({
   const { currentShift, rollover, userRole } = useApp();
   const [rolloverLoading, setRolloverLoading] = useState(false);
   const [showRolloverConfirm, setShowRolloverConfirm] = useState(false);
+  const [drawerLoading, setDrawerLoading] = useState(false);
 
   const canRollover = userRole === 'super-admin' || userRole === 'admin' || userRole === 'ADMIN';
+
+  const handleOpenDrawer = async () => {
+    setDrawerLoading(true);
+    try {
+      await api.post('/pos/open-drawer');
+      toast.success('تم فتح صندوق النقدية');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'فشل فتح الصندوق — تأكد من ربط طابعة الكاشير');
+    } finally {
+      setDrawerLoading(false);
+    }
+  };
+
+  // F9 — فتح صندوق النقدية
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'F9') {
+        e.preventDefault();
+        handleOpenDrawer();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const handleRollover = async () => {
     setRolloverLoading(true);
@@ -48,6 +75,21 @@ export const POSHeader: React.FC<POSHeaderProps> = ({
             <button onClick={clearCart} className="text-[10px] font-black text-red-500 hover:bg-red-500/10 px-3 py-1.5 rounded-xl transition-colors border border-red-500/20">إلغاء</button>
           )}
           
+          {/* فتح صندوق النقدية (F9) */}
+          <button
+            onClick={handleOpenDrawer}
+            disabled={drawerLoading}
+            title="فتح صندوق النقدية (F9)"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-[10px] font-black transition-all disabled:opacity-50 border border-white/5"
+          >
+            {drawerLoading ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Archive size={12} />
+            )}
+            فتح الصندوق
+          </button>
+
           {/* زر الترحيل */}
           {canRollover && currentShift && (
             <div className="relative">
@@ -112,13 +154,13 @@ export const POSHeader: React.FC<POSHeaderProps> = ({
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
         {!isHospitality && (
           <div className="flex flex-wrap bg-slate-800 p-1 rounded-xl shrink-0 border border-white/5 shadow-inner">
-            {(['menu', 'tables', 'info', 'customer'] as const).map((mode) => (
+            {(['menu', 'tables', 'contact', 'info', 'accounts'] as const).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setActivePOSMode(mode)}
                 className={`px-3 sm:px-5 py-2 rounded-lg text-[8px] sm:text-[10px] font-black transition-all whitespace-nowrap ${activePOSMode === mode ? 'bg-red-600 text-white shadow-lg shadow-red-900/20' : 'text-slate-500 hover:text-slate-300'}`}
               >
-                {mode === 'menu' ? 'المنيو' : mode === 'tables' ? 'الطاولات' : mode === 'info' ? 'بيانات الفاتورة' : 'بيانات الزبون والحساب'}
+                {mode === 'menu' ? 'المنيو' : mode === 'tables' ? 'الطاولات' : mode === 'contact' ? 'بيانات التواصل' : mode === 'info' ? 'بيانات الفاتورة' : 'أرقام الحسابات'}
               </button>
             ))}
           </div>

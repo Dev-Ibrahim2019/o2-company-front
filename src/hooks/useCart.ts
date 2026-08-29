@@ -33,6 +33,7 @@ export interface CartItem {
   department_id: number;
   is_printed_direct?: boolean;
   is_takeaway?: boolean;
+  is_complimentary?: boolean;
 }
 
 export interface PaymentEntry {
@@ -53,6 +54,10 @@ export interface SubmitOrderPayload {
   customer_name?: string;
   customer_phone?: string;
   customer_id?: number;
+  customer_mobile?: string;
+  customer_address?: string;
+  customer_notes?: string;
+  scheduled_at?: string;
   employee_id?: number;
   supplier_id?: number;
   note?: string;
@@ -67,6 +72,8 @@ export interface SubmitOrderPayload {
   delivery_zone_id?: number;
   delivery_fee?: number;
   delivery_notes?: string;
+  currency?: string;
+  exchange_rate?: number;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -247,6 +254,7 @@ export const useCart = () => {
               unit_price: c.price,
               notes: c.notes ?? undefined,
               is_takeaway: c.is_takeaway ?? false,
+              is_complimentary: c.is_complimentary ?? false,
             })),
         };
 

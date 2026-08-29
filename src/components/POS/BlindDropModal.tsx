@@ -24,7 +24,7 @@ interface BlindDropModalProps {
   open: boolean;
   cashierName: string;
   onClose: () => void;
-  onSubmit: (data: BlindDropData) => void;
+  onSubmit: (data: BlindDropData) => Promise<boolean>;
   loading?: boolean;
 }
 
@@ -112,15 +112,18 @@ export const BlindDropModal = ({ open, cashierName, onClose, onSubmit, loading }
     }
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (loading || success) return;
     const data: BlindDropData = {
       denominations: DENOMINATIONS.map((d, i) => ({ value: d.value, count: counts[i] })),
       cardTotal: Number(cardTotal) || 0,
       walletTotal: Number(walletTotal) || 0,
     };
-    setSuccess(true);
-    onSubmit(data);
+    // كان بيعرض شاشة "نجاح" فوراً بغض النظر عن نتيجة الإغلاق الفعلية بالباك
+    // اند — يعني لو في طلبات لسا مفتوحة والباك اند رفض الإغلاق، الكاشير
+    // كان يشوف "تم" بينما الوردية أصلاً ما انقفلت.
+    const ok = await onSubmit(data);
+    if (ok) setSuccess(true);
   };
 
   const handlePrint = () => {

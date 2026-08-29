@@ -70,10 +70,10 @@ interface AppState {
   setTables: (tables: Table[]) => void;
   selectedTable: Table | null;
   setSelectedTable: (table: Table | null) => void;
-  updateTableStatus: (tableId: string, status: TableStatus, options?: { currentOrderId?: string; seatedAt?: Date; guestCount?: number }) => void;
+  updateTableStatus: (tableId: string, status: TableStatus, options?: { currentOrderId?: string; seatedAt?: Date; guestCount?: number }) => Promise<boolean>;
   transferTable: (fromId: string, toId: string) => void;
   mergeTables: (tableIds: string[]) => void;
-  seatTable: (tableId: string, guests: number) => void;
+  seatTable: (tableId: string, guests: number) => Promise<boolean>;
   loadOrderToPOS: (orderId: string) => void;
   orderType: string;
   setOrderType: (type: string) => void;
@@ -81,8 +81,8 @@ interface AppState {
   // Shifts
   currentShift: Shift | null;
   setCurrentShift: (shift: Shift | null) => void;
-  openShift: (shift: Shift) => void;
-  closeShift: () => void;
+  openShift: (openingBalance: number, type?: 'MORNING' | 'EVENING' | 'NIGHT') => Promise<boolean>;
+  closeShift: (closingBalance: number) => Promise<import('./src/services/shiftService').ShiftReconciliation | null>;
   rollover: (closingBalance?: number) => Promise<{ closedShift: any; newShift: Shift }>;
   fetchCurrentShift: () => Promise<void>;
 
@@ -226,6 +226,7 @@ export const useApp = create<AppState>()(
                     mergedWithId: table.merged_with_id ? String(table.merged_with_id) : undefined,
                     mergedWithTableNumber: table.merged_with_table_number || undefined,
                     mergeInfo: table.merge_info || null,
+                    waiterCalledAt: table.waiter_called_at || null,
                     orders: table.orders || [],
                     position: { x: (parseInt(table.id) % 10) * 120 + 50, y: Math.floor(parseInt(table.id) / 10) * 120 + 50 },
                   });
@@ -266,6 +267,7 @@ export const useApp = create<AppState>()(
                     mergedWithId: table.merged_with_id ? String(table.merged_with_id) : undefined,
                     mergedWithTableNumber: table.merged_with_table_number || undefined,
                     mergeInfo: table.merge_info || null,
+                    waiterCalledAt: table.waiter_called_at || null,
                     orders: table.orders || [],
                   };
                 });
@@ -330,8 +332,13 @@ export const useApp = create<AppState>()(
                 : t
             ),
           }));
+          return true;
         } catch (error) {
+          // كان الخطأ يتبلع هون بصمت — الطاولة تضل بحالتها القديمة بالباك اند
+          // بس الواجهة ما بتعرف إنه في مشكلة (مثلاً لو فيها طلب نشط لسا وما
+          // انحررت). لازم المتصل يتحقق من القيمة الراجعة ويعرض خطأ للمستخدم.
           console.error('Failed to update table status:', error);
+          return false;
         }
       },
       transferTable: (fromId, toId) =>
@@ -368,8 +375,10 @@ export const useApp = create<AppState>()(
                 : t
             ),
           }));
+          return true;
         } catch (error) {
           console.error('Failed to seat table:', error);
+          return false;
         }
       },
       loadOrderToPOS: (orderId) => {
@@ -383,34 +392,53 @@ export const useApp = create<AppState>()(
       currentShift: null,
       shifts: [],
       setCurrentShift: (currentShift) => set({ currentShift }),
-      openShift: (openingBalance: number, type: 'MORNING' | 'EVENING' | 'NIGHT' = 'MORNING') =>
-        set((state) => ({
-          currentShift: {
-            id: 'sh_' + Math.random().toString(36).substring(2, 8),
-            cashierId: state.currentUser?.id || 'unknown',
-            startTime: new Date(),
-            openingBalance,
-            status: 'OPEN',
-            type,
-          } as Shift,
-        })),
-      closeShift: (closingBalance?: number) =>
-        set((state) => {
-          if (!state.currentShift) return { currentShift: null };
+      // كانت openShift/closeShift بس بتغيّروا حالة محلية بالمتصفح (openShift كانت
+      // تخترع رقم يومية عشوائي، closeShift بس بتصفّر الحالة) بدون أي اتصال
+      // بالباك اند إطلاقاً — يعني اليومية الحقيقية بالسيرفر ما إلها علاقة بشو
+      // الكاشير شايفه على شاشته. صارت توصل فعلياً بـ /shifts/open و/shifts/close.
+      openShift: async (openingBalance: number, type: 'MORNING' | 'EVENING' | 'NIGHT' = 'MORNING') => {
+        try {
+          const result = await shiftService.open(openingBalance);
+          set({
+            currentShift: {
+              id: String(result.id),
+              cashierId: String(result.opened_by),
+              startTime: new Date(result.opened_at),
+              openingBalance: result.opening_balance,
+              status: 'OPEN',
+              type,
+            } as Shift,
+          });
+          return true;
+        } catch (error) {
+          console.error('Failed to open shift:', error);
+          return false;
+        }
+      },
+      closeShift: async (closingBalance: number) => {
+        try {
+          const result = await shiftService.close(closingBalance);
           const closedShift: Shift = {
-            ...state.currentShift,
+            id: String(result.shift.id),
+            cashierId: String(result.shift.opened_by),
+            startTime: new Date(result.shift.opened_at),
+            endTime: result.shift.closed_at ? new Date(result.shift.closed_at) : new Date(),
+            openingBalance: result.shift.opening_balance,
+            closingBalance: result.shift.closing_balance ?? closingBalance,
+            totalSales: result.shift.total_sales,
             status: 'CLOSED',
-            endTime: new Date(),
-            closingBalance: closingBalance ?? state.currentShift.openingBalance ?? 0,
-            expectedBalance:
-              (state.currentShift.openingBalance ?? 0) +
-              (state.currentShift.expectedBalance ?? 0),
+            type: 'MORNING',
           };
-          return {
+          set((state) => ({
             currentShift: null,
             shifts: [closedShift, ...state.shifts],
-          };
-        }),
+          }));
+          return result.reconciliation;
+        } catch (error) {
+          console.error('Failed to close shift:', error);
+          throw error;
+        }
+      },
       rollover: async (closingBalance?: number) => {
         try {
           const result = await shiftService.rollover(closingBalance);

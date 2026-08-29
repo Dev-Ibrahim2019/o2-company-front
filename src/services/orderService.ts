@@ -128,6 +128,10 @@ export interface OrderQueryFilters {
   status?: OrderStatus;
   date?: string;
   table_number?: string;
+  /** 1 = الطلبات المفتوحة فقط (بدون paid/cancelled) — فلترة على مستوى الـ DB */
+  active?: 0 | 1;
+  /** سقف عدد النتائج */
+  limit?: number;
 }
 
 const unwrapOrderList = (payload: unknown): OrderFromApi[] => {
@@ -167,6 +171,7 @@ export interface OrderItemPayload {
   unit_price: number;
   notes?: string;
   is_takeaway?: boolean;
+  is_complimentary?: boolean;
 }
 
 export interface CreateOrderPayload {
@@ -323,6 +328,7 @@ export interface OrderItemFromApi {
   tax_amount?: number;
   is_printed_direct?: boolean;
   is_takeaway?: boolean;
+  is_complimentary?: boolean;
   department?: { id: number; name: string; color: string; icon: string };
 }
 
@@ -418,6 +424,7 @@ export const orderService = {
     if (!normalizedTable) return null;
 
     const orders = await orderService.getAll({
+      active: 1,
       ...filters,
       table_number: normalizedTable,
     });
@@ -446,6 +453,7 @@ export const orderService = {
     if (!normalizedTable) return [];
 
     const orders = await orderService.getAll({
+      active: 1,
       ...filters,
       table_number: normalizedTable,
     });
@@ -616,6 +624,17 @@ export const orderService = {
     );
   },
 
+  // التنقل بين الفواتير (التالي/السابق/الأول/الأخير) — نفس نقطة البيع
+  getAdjacentInvoice: async (
+    invoiceId: number,
+    direction: "next" | "prev" | "first" | "last",
+  ): Promise<InvoiceFromApi> => {
+    const { data } = await api.get(`/invoices/${invoiceId}/adjacent`, {
+      params: { direction },
+    });
+    return unwrapInvoice(data) as InvoiceFromApi;
+  },
+
   closeOrderWithPayments: async (
     orderId: number,
     payload: CloseOrderWithPaymentsPayload,
@@ -759,6 +778,15 @@ export const orderService = {
   ): Promise<OrderItemFromApi> => {
     const { data } = await api.post(`/orders/${orderId}/items`, payload);
     return data.data as OrderItemFromApi;
+  },
+
+  /** إضافة عدة أصناف دفعة واحدة (طلب HTTP واحد + إعادة حساب واحدة) */
+  addOrderItemsBatch: async (
+    orderId: number,
+    items: OrderItemPayload[],
+  ): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${orderId}/items/batch`, { items });
+    return (data.data?.order ?? data.data) as OrderFromApi;
   },
 
   /** إزالة صنف من طلب */

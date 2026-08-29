@@ -488,12 +488,12 @@ export const CreateInvoiceModal = ({
                 {order ? (
                   <>
                     العميل: {order.customer_name || "عميل نقدي"} •{" "}
-                    {order.order_type === "dine_in" ? "🍽️ محلي" : "🛵 سفري"}
+                    {order.order_type === "dine_in" ? "🍽️ محلي" : "🛵 فوري"}
                     {order.table_number ? ` • طاولة ${order.table_number}` : ""}
                   </>
                 ) : (
                   <>
-                    طلب جديد • {orderType === "dine_in" ? "🍽️ محلي" : "🛵 سفري"}
+                    طلب جديد • {orderType === "dine_in" ? "🍽️ محلي" : "🛵 فوري"}
                     {tableNumber ? ` • طاولة ${tableNumber}` : ""}
                   </>
                 )}
@@ -539,7 +539,7 @@ export const CreateInvoiceModal = ({
                   className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-red-500/50"
                 >
                   <option value="dine_in">🍽️ محلي</option>
-                  <option value="takeaway">🛵 سفري</option>
+                  <option value="takeaway">🛵 فوري</option>
                 </select>
               </label>
               <label className="space-y-1">

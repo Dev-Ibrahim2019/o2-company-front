@@ -479,6 +479,7 @@ export interface Table {
   guestCount?: number;
   mergedWithId?: string;
   mergedWithTableNumber?: string;
+  waiterCalledAt?: string | null;
   mergeInfo?: {
     is_merged: boolean;
     merged_with_id: string;

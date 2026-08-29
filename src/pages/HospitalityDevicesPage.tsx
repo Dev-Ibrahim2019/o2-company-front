@@ -16,14 +16,16 @@ import {
   Search,
   Loader2,
   AlertCircle,
-  CheckCircle,
   HeartHandshake,
   X,
   KeyRound,
   Unlink,
   Building2,
   Tag,
+  Trash2,
 } from "lucide-react";
+import { toast } from "../components/shared/Toast";
+import { ConfirmModal } from "../components/shared/ConfirmModal";
 
 /* ══════════════════════════════════════════════════════════════
  *  Types
@@ -116,11 +118,10 @@ const HospitalityDevicesPage: React.FC = () => {
   const [filtered, setFiltered] = useState<HospitalityDevice[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
 
   /* Add Modal */
   const [showAddModal, setShowAddModal] = useState(false);
+  const [addError, setAddError] = useState("");
   const [branches, setBranches] = useState<BranchSummary[]>([]);
   const [form, setForm] = useState({ branch_id: "", name: "" });
   const [submitting, setSubmitting] = useState(false);
@@ -129,18 +130,21 @@ const HospitalityDevicesPage: React.FC = () => {
   /* Token Modal */
   const [tokenData, setTokenData] = useState<GeneratedToken | null>(null);
 
+  /* Confirm Modals (revoke / delete) */
+  const [confirmAction, setConfirmAction] = useState<
+    { type: "revoke" | "delete"; device: HospitalityDevice } | null
+  >(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+
   /* ── جلب أجهزة الضيافة ── */
   const fetchDevices = useCallback(async () => {
     setLoading(true);
-    setError("");
     try {
       const { data: res } = await api.get("/admin/hospitality-devices");
       const items = res.data ?? res;
       setDevices(Array.isArray(items) ? items : []);
     } catch (err: any) {
-      setError(
-        err.response?.data?.message || "فشل تحميل أجهزة الضيافة"
-      );
+      toast.error(err.response?.data?.message || "فشل تحميل أجهزة الضيافة");
     } finally {
       setLoading(false);
     }
@@ -182,7 +186,7 @@ const HospitalityDevicesPage: React.FC = () => {
 
   /* ── فتح مودال الإضافة ── */
   const openAddModal = () => {
-    setError("");
+    setAddError("");
     setForm({ branch_id: "", name: "" });
     fetchBranches();
     setShowAddModal(true);
@@ -192,22 +196,22 @@ const HospitalityDevicesPage: React.FC = () => {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    setError("");
+    setAddError("");
     try {
       await api.post("/admin/hospitality-devices", {
         branch_id: Number(form.branch_id),
         name: form.name.trim(),
       });
-      setSuccess("تم إنشاء جهاز الضيافة بنجاح");
+      toast.success("تم إنشاء جهاز الضيافة بنجاح");
       setShowAddModal(false);
       fetchDevices();
     } catch (err: any) {
       const errs = err.response?.data?.errors;
       if (errs) {
         const k = Object.keys(errs)[0];
-        setError(errs[k]?.[0] || "خطأ في التحقق");
+        setAddError(errs[k]?.[0] || "خطأ في التحقق");
       } else {
-        setError(err.response?.data?.message || "حدث خطأ أثناء الإضافة");
+        setAddError(err.response?.data?.message || "حدث خطأ أثناء الإضافة");
       }
     } finally {
       setSubmitting(false);
@@ -216,7 +220,6 @@ const HospitalityDevicesPage: React.FC = () => {
 
   /* ── توليد كود التفعيل ── */
   const handleGenerateToken = async (item: HospitalityDevice) => {
-    setError("");
     setTokenData(null);
     try {
       const { data: res } = await api.post(
@@ -226,44 +229,41 @@ const HospitalityDevicesPage: React.FC = () => {
         token: res.token,
         deviceName: item.name,
       });
-      setSuccess(res.message || "تم توليد الكود بنجاح");
+      toast.success(res.message || "تم توليد الكود بنجاح");
       fetchDevices();
     } catch (err: any) {
-      setError(
-        err.response?.data?.message || "فشل توليد الكود"
-      );
+      toast.error(err.response?.data?.message || "فشل توليد الكود");
     }
   };
 
-  /* ── إلغاء ربط الجهاز (Revoke) ── */
-  const handleRevoke = async (item: HospitalityDevice) => {
-    if (
-      !confirm(
-        `⚠️ هل أنت متأكد من إلغاء تفعيل جهاز الضيافة "${item.name}"؟\n\nسيتم مسح UUID الجهاز الحالي بالكامل، ولن يعود الجهاز صالحاً للاستخدام. ستحتاج إلى تفعيله من البداية.`
-      )
-    )
-      return;
-    setError("");
+  /* ── تنفيذ الإجراء المؤكد (إلغاء ربط / حذف) ── */
+  const handleConfirmAction = async () => {
+    if (!confirmAction) return;
+    const { type, device } = confirmAction;
+    setConfirmLoading(true);
     try {
-      const { data: res } = await api.post(
-        `/admin/hospitality-devices/${item.id}/revoke`
-      );
-      setSuccess(res.message || "تم إلغاء ربط الجهاز بنجاح");
+      if (type === "revoke") {
+        const { data: res } = await api.post(
+          `/admin/hospitality-devices/${device.id}/revoke`
+        );
+        toast.success(res.message || "تم إلغاء ربط الجهاز بنجاح");
+      } else {
+        const { data: res } = await api.delete(
+          `/admin/hospitality-devices/${device.id}`
+        );
+        toast.success(res.message || "تم حذف جهاز الضيافة بنجاح");
+      }
+      setConfirmAction(null);
       fetchDevices();
     } catch (err: any) {
-      setError(
-        err.response?.data?.message || "فشل إلغاء ربط الجهاز"
+      toast.error(
+        err.response?.data?.message ||
+          (type === "revoke" ? "فشل إلغاء ربط الجهاز" : "فشل حذف الجهاز")
       );
+    } finally {
+      setConfirmLoading(false);
     }
   };
-
-  /* ── إخفاء رسائل النجاح/الخطأ ── */
-  useEffect(() => {
-    if (success) {
-      const t = setTimeout(() => setSuccess(""), 4000);
-      return () => clearTimeout(t);
-    }
-  }, [success]);
 
   /* ============================================================
    *  Render
@@ -286,20 +286,6 @@ const HospitalityDevicesPage: React.FC = () => {
           <Plus size={18} /> إضافة جهاز ضيافة
         </button>
       </div>
-
-      {/* ── Alert Banners ── */}
-      {success && (
-        <div className="flex items-center gap-2 p-3 bg-emerald-600/20 text-emerald-400 rounded-xl text-sm font-bold border border-emerald-600/20">
-          <CheckCircle size={18} className="shrink-0" />
-          {success}
-        </div>
-      )}
-      {error && (
-        <div className="flex items-center gap-2 p-3 bg-red-600/20 text-red-400 rounded-xl text-sm font-bold border border-red-600/20">
-          <AlertCircle size={18} className="shrink-0" />
-          {error}
-        </div>
-      )}
 
       {/* ── Search ── */}
       <div className="relative">
@@ -420,7 +406,9 @@ const HospitalityDevicesPage: React.FC = () => {
 
                           {item.status === "ACTIVE" && (
                             <button
-                              onClick={() => handleRevoke(item)}
+                              onClick={() =>
+                                setConfirmAction({ type: "revoke", device: item })
+                              }
                               className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600/20 text-red-300 rounded-lg text-xs font-bold hover:bg-red-600/30 transition-colors border border-red-600/20"
                               title="إلغاء ربط الجهاز"
                             >
@@ -430,9 +418,16 @@ const HospitalityDevicesPage: React.FC = () => {
                           )}
 
                           {(item.status === "INACTIVE" || item.status === "REVOKED") && (
-                            <span className="text-xs text-slate-600 font-bold">
-                              —
-                            </span>
+                            <button
+                              onClick={() =>
+                                setConfirmAction({ type: "delete", device: item })
+                              }
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 text-slate-400 rounded-lg text-xs font-bold hover:bg-red-600/20 hover:text-red-300 transition-colors border border-white/5"
+                              title="حذف الجهاز نهائياً"
+                            >
+                              <Trash2 size={13} />
+                              حذف
+                            </button>
                           )}
                         </div>
                       </td>
@@ -473,10 +468,10 @@ const HospitalityDevicesPage: React.FC = () => {
             </div>
 
             {/* Error inside modal */}
-            {error && (
+            {addError && (
               <div className="flex items-center gap-2 p-3 bg-red-600/20 text-red-400 rounded-xl text-sm font-bold">
                 <AlertCircle size={16} />
-                {error}
+                {addError}
               </div>
             )}
 
@@ -605,6 +600,25 @@ const HospitalityDevicesPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        open={!!confirmAction}
+        title={
+          confirmAction?.type === "revoke"
+            ? "إلغاء ربط الجهاز"
+            : "حذف جهاز الضيافة"
+        }
+        message={
+          confirmAction?.type === "revoke"
+            ? `هل أنت متأكد من إلغاء تفعيل جهاز الضيافة "${confirmAction.device.name}"؟\nسيتم مسح UUID الجهاز الحالي بالكامل، ولن يعود الجهاز صالحاً للاستخدام. ستحتاج إلى تفعيله من البداية.`
+            : `هل أنت متأكد من حذف جهاز الضيافة "${confirmAction?.device.name}" نهائياً؟ هذا الإجراء لا يمكن التراجع عنه.`
+        }
+        confirmLabel={confirmAction?.type === "revoke" ? "إلغاء الربط" : "حذف نهائياً"}
+        variant="danger"
+        loading={confirmLoading}
+        onConfirm={handleConfirmAction}
+        onCancel={() => setConfirmAction(null)}
+      />
     </div>
   );
 };

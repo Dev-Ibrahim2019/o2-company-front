@@ -415,6 +415,13 @@ export const TablesView: React.FC<{
     }
 
     if (mode === "pos") {
+      // طاولة فاضية → افتح مودال التسكين (عدد الأشخاص) قبل بدء الطلب
+      if (table.status === TableStatus.AVAILABLE) {
+        setSeatingTableId(table.id);
+        setGuestCount(table.capacity);
+        return;
+      }
+      // طاولة مشغولة/بانتظار الدفع/... → افتح طلبها مباشرة
       setSelectedTable(table);
       setOrderType(OrderType.DINE_IN);
       onSelect?.(table);
