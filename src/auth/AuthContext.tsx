@@ -14,6 +14,7 @@ import {
   getPermissions,
   clearAuthData,
   isLoggedIn as checkIsLoggedIn,
+  setBranchId,
 } from "./authStorage";
 
 /* ── نوع بيانات المستخدم المُرجّع من الـ API ── */
@@ -69,6 +70,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const { data } = await api.get("/auth/me");
       const userData = data.user || data.data?.user || data;
+
+      // مزامنة branch_id في localStorage مع القيمة الحقيقية من الخادم — بدون هذا،
+      // getBranchId() (المستخدمة في شاشات الكول سنتر لإنشاء الطلبات وعرض تحذير
+      // الفرع) تبقى عالقة على قيمة تسجيل الدخول القديمة حتى لو رَبَط المشرف فرعاً
+      // للموظف لاحقاً — راجع setBranchId في authStorage.ts للتفاصيل.
+      setBranchId(userData.branch_id ?? null);
 
       setUser({
         id: userData.id,

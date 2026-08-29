@@ -88,6 +88,7 @@ import { TopCustomersTable } from "./components/call-center/TopCustomersTable";
 import { CallCenterEmployees } from "./components/call-center/CallCenterEmployees";
 import { CallCenterPOS } from "./components/call-center/CallCenterPOS";
 import { CallCenterDashboard } from "./components/call-center/pages/CallCenterDashboard";
+import { OperationsDashboard } from "./components/call-center/pages/OperationsDashboard";
 import { SipConfigurationPage as SipConfigV2 } from "./components/call-center/pages/SipConfigPage";
 import { CallCenterPageWithAside } from "./components/call-center/pages/CallCenterPageWithAside";
 import { ActiveOrdersPage } from "./components/call-center/pages/ActiveOrdersPage";
@@ -427,7 +428,7 @@ function AppRoutes() {
           <Route element={<CallCenterGuard />}>
             <Route element={<CallCenterLayout />}>
               <Route path="/call-center">
-                <Route index element={<CallCenterDashboard />} />
+                <Route index element={<OperationsDashboard />} />
                 <Route path="pos" element={<CallCenterPOS />} />
                 <Route path="order" element={<CallCenterPageWithAside />} />
                 <Route path="active-orders" element={<ActiveOrdersPage />} />

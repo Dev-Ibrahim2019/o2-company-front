@@ -13,6 +13,7 @@ const SCOPE_CONFIG: Record<ActiveOrderScope, { label: string; icon: React.ReactN
   awaiting_payment:   { label: "بانتظار الدفع", icon: <CreditCard size={18} />, color: colors.semantic.warning, bgColor: colors.semantic.warningBg },
   kitchen_active:     { label: "في المطبخ", icon: <ChefHat size={18} />, color: "#8b5cf6", bgColor: "rgba(139,92,246,0.08)" },
   delivery_active:    { label: "قيد التوصيل", icon: <Truck size={18} />, color: colors.semantic.success, bgColor: colors.semantic.successBg },
+  no_branch:          { label: "بانتظار الفرع", icon: <AlertCircle size={18} />, color: colors.semantic.error, bgColor: colors.semantic.errorBg },
 };
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
@@ -61,7 +62,7 @@ const timeAgo = (dateStr: string) => {
 export const ActiveOrdersPage: React.FC = () => {
   const navigate = useNavigate();
   const [orders, setOrders] = useState<Record<ActiveOrderScope, ActiveCallCenterOrder[]>>({
-    operational_active: [], awaiting_payment: [], kitchen_active: [], delivery_active: [],
+    operational_active: [], awaiting_payment: [], kitchen_active: [], delivery_active: [], no_branch: [],
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

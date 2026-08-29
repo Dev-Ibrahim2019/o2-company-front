@@ -9,12 +9,16 @@ interface SipAccount {
   account_name: string;
   username: string;
   sip_server: string;
+  websocket_port: number | null;
+  server_path: string | null;
   domain: string | null;
   transport: "udp" | "tcp" | "tls";
   register_refresh: number;
   keep_alive: number;
   is_active: boolean;
   is_registered: boolean;
+  user_id: number | null;
+  user_name: string | null;
   created_at: string;
 }
 
@@ -23,19 +27,29 @@ interface SipFormData {
   username: string;
   password: string;
   sip_server: string;
+  websocket_port: number | "";
+  server_path: string;
   domain: string;
   transport: "udp" | "tcp" | "tls";
   register_refresh: number;
   keep_alive: number;
+  user_id: number | null;
 }
 
+interface UserOption {
+  id: number;
+  name: string;
+}
+
+// لا قيم اتصال حقيقية افتراضية — الحقول فارغة، يُدخلها المستخدم بنفسه لكل حساب
 const defaultForm: SipFormData = {
-  account_name: "", username: "", password: "", sip_server: "192.168.2.250", domain: "192.168.2.250",
-  transport: "udp", register_refresh: 300, keep_alive: 15,
+  account_name: "", username: "", password: "", sip_server: "", websocket_port: "", server_path: "/ws",
+  domain: "", transport: "udp", register_refresh: 300, keep_alive: 15, user_id: null,
 };
 
 export const SipConfigurationPage: React.FC = () => {
   const [accounts, setAccounts] = useState<SipAccount[]>([]);
+  const [users, setUsers] = useState<UserOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -49,14 +63,26 @@ export const SipConfigurationPage: React.FC = () => {
     try {
       const res = await api.get("/call-center/sip-accounts");
       setAccounts(res.data.data);
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "تعذر تحميل حسابات SIP");
+      setError(null);
+    } catch {
+      // لا نعرض نص الاستثناء الخام من الـ backend للمستخدم أبداً — رسالة عربية ثابتة فقط.
+      setAccounts([]);
+      setError("تعذّر تحميل حسابات SIP، حاول لاحقًا");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { fetchAccounts(); }, []);
+  const fetchUsers = async () => {
+    try {
+      const res = await api.get("/users");
+      setUsers(res.data.data ?? res.data);
+    } catch {
+      setUsers([]);
+    }
+  };
+
+  useEffect(() => { fetchAccounts(); fetchUsers(); }, []);
 
   const validate = (): boolean => {
     if (!form.account_name.trim()) { setFormError("اسم الحساب مطلوب"); return false; }
@@ -71,7 +97,7 @@ export const SipConfigurationPage: React.FC = () => {
     if (!validate()) return;
     setFormLoading(true);
     try {
-      const payload = { ...form };
+      const payload = { ...form, websocket_port: form.websocket_port === "" ? undefined : form.websocket_port };
       if (editing && !payload.password) delete (payload as any).password;
       if (editing) {
         await api.put(`/call-center/sip-accounts/${editing.id}`, payload);
@@ -91,7 +117,12 @@ export const SipConfigurationPage: React.FC = () => {
 
   const handleEdit = (account: SipAccount) => {
     setEditing(account);
-    setForm({ account_name: account.account_name, username: account.username, password: "", sip_server: account.sip_server, domain: account.domain || account.sip_server, transport: account.transport, register_refresh: account.register_refresh, keep_alive: account.keep_alive });
+    setForm({
+      account_name: account.account_name, username: account.username, password: "",
+      sip_server: account.sip_server, websocket_port: account.websocket_port ?? "", server_path: account.server_path ?? "/ws",
+      domain: account.domain || account.sip_server, transport: account.transport,
+      register_refresh: account.register_refresh, keep_alive: account.keep_alive, user_id: account.user_id,
+    });
     setShowForm(true);
   };
 
@@ -141,11 +172,23 @@ export const SipConfigurationPage: React.FC = () => {
                 <div style={{ padding: "10px 12px", borderRadius: radius.lg, background: colors.semantic.errorBg, color: "#991b1b", fontSize: "13px", marginBottom: 16 }}>{formError}</div>
               )}
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                <Input label="اسم الحccount *" value={form.account_name} onChange={e => setForm({ ...form, account_name: e.target.value })} placeholder="مثال: 208" />
+                <Input label="اسم الحساب *" value={form.account_name} onChange={e => setForm({ ...form, account_name: e.target.value })} placeholder="مثال: 208" />
                 <Input label="اسم المستخدم / الملحق *" value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} placeholder="مثال: 208" icon={<User size={14} />} />
                 <Input label={editing ? "كلمة المرور (اتركه فارغًا للاحتفاظ بالحالي)" : "كلمة المرور *"} type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="••••••••" icon={<Lock size={14} />} />
-                <Input label="SIP Server *" value={form.sip_server} onChange={e => setForm({ ...form, sip_server: e.target.value })} placeholder="192.168.2.250" icon={<Server size={14} />} />
-                <Input label="النطاق (Domain)" value={form.domain} onChange={e => setForm({ ...form, domain: e.target.value })} placeholder="192.168.2.250" icon={<Wifi size={14} />} />
+                <Input label="SIP Server (WSS Host) *" value={form.sip_server} onChange={e => setForm({ ...form, sip_server: e.target.value })} placeholder="مثال: pbx.yourdomain.com" icon={<Server size={14} />} />
+                <div className="flex flex-col sm:flex-row" style={{ gap: 12 }}>
+                  <Input label="WebSocket Port" type="number" value={form.websocket_port} onChange={e => setForm({ ...form, websocket_port: e.target.value === "" ? "" : Number(e.target.value) })} placeholder="مثال: 8089" />
+                  <Input label="Server Path" value={form.server_path} onChange={e => setForm({ ...form, server_path: e.target.value })} placeholder="/ws" />
+                </div>
+                <Input label="النطاق (Domain)" value={form.domain} onChange={e => setForm({ ...form, domain: e.target.value })} placeholder="يُترك فارغاً لاستخدام SIP Server نفسه" icon={<Wifi size={14} />} />
+
+                {/* الموظف المرتبط — سماعة هذا الموظف تلتقط هذا الحساب تلقائياً عند تسجيل دخوله */}
+                <Select
+                  label="الموظف المرتبط بهذا الحساب"
+                  value={form.user_id ?? ""}
+                  onChange={v => setForm({ ...form, user_id: v ? Number(v) : null })}
+                  options={[{ value: "", label: "— بدون ربط —" }, ...users.map(u => ({ value: u.id, label: u.name }))]}
+                />
 
                 {/* Transport */}
                 <div>
@@ -186,6 +229,9 @@ export const SipConfigurationPage: React.FC = () => {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
           {[1, 2, 3].map(i => <div key={i} style={{ height: 180, borderRadius: radius.xl, background: colors.neutral[100], animation: "shimmer 1.5s infinite" }} />)}
         </div>
+      ) : error ? (
+        // حالة فشل الطلب — مميّزة بصرياً عن "لا توجد بيانات" الفعلية (البانر الأحمر أعلاه يوضّح الخطأ)
+        <EmptyState icon={<AlertTriangle size={24} />} title="تعذّر عرض حسابات SIP" description="حدث خطأ أثناء التحميل — راجع الرسالة أعلاه" />
       ) : accounts.length === 0 ? (
         <EmptyState icon={<Phone size={24} />} title="لا توجد حسابات SIP" description="أضف حساب SIP للبدء في استقبال المكالمات" action={{ label: "إضافة حساب", onClick: () => setShowForm(true) }} />
       ) : (
@@ -214,6 +260,19 @@ export const SipConfigurationPage: React.FC = () => {
                     {account.username}@{account.domain || account.sip_server}
                   </p>
                 </div>
+              </div>
+
+              {/* الموظف المرتبط */}
+              <div style={{ marginBottom: 12 }}>
+                {account.user_name ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 8px", borderRadius: radius.md, background: colors.semantic.successBg, color: "#065f46", fontSize: "12px", fontWeight: 600 }}>
+                    <User size={12} /> {account.user_name}
+                  </span>
+                ) : (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 8px", borderRadius: radius.md, background: colors.semantic.warningBg, color: "#92400e", fontSize: "12px", fontWeight: 600 }}>
+                    <AlertTriangle size={12} /> غير مرتبط بموظف
+                  </span>
+                )}
               </div>
 
               {/* Server info */}

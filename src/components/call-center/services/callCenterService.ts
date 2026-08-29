@@ -185,7 +185,7 @@ export interface OrderFeedbackPayload {
   notes?: string;
 }
 
-export type ActiveOrderScope = "operational_active" | "awaiting_payment" | "kitchen_active" | "delivery_active";
+export type ActiveOrderScope = "operational_active" | "awaiting_payment" | "kitchen_active" | "delivery_active" | "no_branch";
 export interface ActiveCallCenterOrder {
   id: number;
   order_number: string;
@@ -804,4 +804,38 @@ export const callCenterService = {
     const res = await api.post(`/call-center/customer-addresses/${addressId}/use`);
     return res.data;
   },
+
+  getOperationsSnapshot: async (branchId?: number): Promise<ApiResponse<OperationsSnapshot>> => {
+    const res = await api.get("/call-center/reports/operations-snapshot", {
+      params: branchId ? { branch_id: branchId } : undefined,
+    });
+    return res.data;
+  },
 };
+
+export interface OperationsSnapshot {
+  today: {
+    orders_count: number;
+    sales_total: number;
+    avg_order_value: number;
+    calls_total: number;
+    calls_completed: number;
+    calls_missed: number;
+    conversion_rate: number;
+  };
+  yesterday: { orders_count: number; sales_total: number };
+  order_status_breakdown: { completed: number; preparing: number; cancelled: number; pending_branch: number };
+  hourly: Array<{ hour: number; orders: number; calls: number }>;
+  top_items: Array<{ name: string; quantity: number }>;
+  branch_distribution: Array<{ branch_id: number; branch_name: string; orders_count: number }>;
+  last_call: {
+    id: number;
+    customer_name: string | null;
+    phone: string | null;
+    started_at: string | null;
+    duration_seconds: number | null;
+    status: string;
+    linked_order_id: number | null;
+  } | null;
+  my_performance: { orders: number; sales: number; calls_total: number; calls_completed: number } | null;
+}

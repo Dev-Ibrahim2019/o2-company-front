@@ -225,6 +225,39 @@ export const CallCenterPageWithAside: React.FC = () => {
     }
   };
 
+  // Screen-pop عند وصول مكالمة: CallPhoneWidget يفتح هذه الصفحة بـ ?phone=...
+  // لا يغيّر أي سلوك حالي — يعمل فقط عند وجود الباراميتر، والبحث اليدوي المعتاد
+  // (searchCustomer أعلاه) يبقى كما هو تماماً بدون أي تعديل.
+  useEffect(() => {
+    const prefillPhone = new URLSearchParams(window.location.search).get("phone");
+    if (!prefillPhone) return;
+    setPhone(prefillPhone);
+    (async () => {
+      setCustomerLoading(true);
+      try {
+        const res = await api.get("/call-center/customers/search", { params: { q: prefillPhone, limit: 1 } });
+        const customers = res.data?.data || res.data || [];
+        if (customers.length > 0) {
+          const found = customers[0];
+          setCustomer(found);
+          setCustomerName(found.name || "");
+          setCustomerAddress(found.address || "");
+          setCustomerPhone(found.phone || prefillPhone);
+          loadCustomerOrders(found.id);
+          loadCustomerFavorites(found.id);
+          toast.success("مكالمة واردة — تم فتح ملف العميل", found.name);
+        } else {
+          toast.info("مكالمة واردة من رقم غير مسجّل", prefillPhone);
+        }
+      } catch {
+        // صامت — لا نريد إزعاج الموظف برسالة خطأ عند مجرد فشل الجلب التلقائي
+      } finally {
+        setCustomerLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const loadCustomerOrders = async (customerId: number) => {
     setOrdersLoading(true);
     try {
@@ -282,7 +315,7 @@ export const CallCenterPageWithAside: React.FC = () => {
             name: item.name,
             name_ar: item.name_ar ?? item.name,
             price: Number(item.price ?? 0),
-            category: cat.name,
+            category: cat.name_ar ?? cat.name,
             image: item.image ?? item.image_url,
             is_available: isAvailable,
             code: item.code,
@@ -402,7 +435,10 @@ export const CallCenterPageWithAside: React.FC = () => {
     });
   }, [menuItems, selectedCategory, menuSearchQuery]);
 
-  const categories = useMemo(() => ["all", ...new Set(menuItems.map(i => i.category).filter(Boolean))], [menuItems]);
+  const categories = useMemo(
+    () => [...new Set(menuItems.map(i => i.category).filter((c): c is string => Boolean(c)))],
+    [menuItems]
+  );
 
   // Fall back to sample data whenever there's nothing real yet, so the page never looks empty/unfinished.
   const displayOrders = recentOrders.length > 0 ? recentOrders : SAMPLE_ORDERS;
@@ -588,7 +624,9 @@ export const CallCenterPageWithAside: React.FC = () => {
       <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0 lg:h-[calc(100vh-40px)] p-3 sm:p-4 lg:p-0">
 
         {/* ══════════════════ RIGHT COLUMN — Customer ══════════════════ */}
-        <div className="cc-scroll-col flex-1 flex flex-col min-w-0 min-h-0 custom-scrollbar lg:pr-1 gap-4" dir="rtl">
+        {/* عرض محدود بنسبة + حدود دنيا/قصوى بدل flex-1 (50/50) — عمود العميل لا يحتاج نفس مساحة عمود المنيو/السلة،
+            وتقسيم 50/50 كان يترك مساحة غير كافية لعمود المنيو عند دقة 1280–1440px */}
+        <div className="cc-scroll-col flex flex-col min-w-0 min-h-0 custom-scrollbar lg:pr-1 gap-4 lg:w-[36%] lg:min-w-[360px] lg:max-w-[440px] lg:flex-none" dir="rtl">
 
           {/* ── Customer Search ── */}
           <Card padding="20px" style={{ boxShadow: shadows.xs }}>
@@ -896,7 +934,8 @@ export const CallCenterPageWithAside: React.FC = () => {
           <div className="bg-slate-950 rounded-2xl border border-white/10 flex flex-col lg:flex-row gap-0 overflow-hidden" style={{ flex: 1, minHeight: 500 }}>
 
             {/* Menu Area */}
-            <div className="flex-1 flex flex-col min-w-0 p-3 sm:p-4">
+            {/* min-w-[240px] بدل min-w-0 — كانت تسمح بانكماش العمود إلى شبه صفر عند ضيق المساحة بدل حد أدنى معقول */}
+            <div className="flex-1 flex flex-col min-w-[240px] p-3 sm:p-4">
               <div className="flex items-center gap-2 mb-3">
                 <div className="flex-1 relative">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
@@ -986,7 +1025,8 @@ export const CallCenterPageWithAside: React.FC = () => {
             </div>
 
             {/* Cart Panel */}
-            <div className="w-full lg:w-[450px] xl:w-[500px] bg-slate-900 border-t lg:border-t-0 lg:border-r border-white/10 flex flex-col overflow-hidden shrink-0">
+            {/* عرض نسبي بحدود بدل px ثابت (450/500) — كان يبتلع كل مساحة العمود عند 1280-1440px ويكاد يصفّر عمود المنيو المجاور */}
+            <div className="w-full lg:w-[42%] lg:min-w-[320px] lg:max-w-[420px] bg-slate-900 border-t lg:border-t-0 lg:border-r border-white/10 flex flex-col overflow-hidden lg:flex-none shrink-0">
               {/* Cart Header */}
               <div className="p-3 sm:p-4 border-b border-white/5 space-y-3 bg-slate-900/50 backdrop-blur-md lg:sticky lg:top-0 z-10">
                 <div className="flex items-center justify-between flex-wrap gap-2">

@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useApp } from "../../../store";
 import { useAuth } from "../../auth";
 import { AnimatePresence, motion } from "framer-motion";
+import { CallPhoneWidget } from "./components/CallPhoneWidget";
 import {
   Headphones,
   LayoutDashboard,
@@ -23,7 +24,7 @@ import {
 } from "lucide-react";
 import { colors, typography, radius, shadows, transitions } from "./design/tokens";
 
-const FULL_BLEED_PATHS = new Set(["/call-center", "/call-center/pos"]);
+const FULL_BLEED_PATHS = new Set(["/call-center/pos"]);
 
 export const CallCenterLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const { currentUser } = useApp();
@@ -138,11 +139,11 @@ export const CallCenterLayout: React.FC<{ children?: React.ReactNode }> = ({ chi
           <SidebarLink to="/call-center/order" icon={ShoppingCart} label="صفحة الطلب" />
           <SidebarLink to="/call-center/active-orders" icon={ClipboardList} label="الطلبات النشطة" />
           <SidebarLink to="/call-center/closed-orders" icon={CheckCircle} label="الطلبات المغلقة" />
-          <SidebarLink to="/call-center/crm" icon={Database} label="العملاء" />
-          <SidebarLink to="/call-center/search" icon={Search} label="المكالمات والبحث" />
-          <SidebarLink to="/call-center/complaints" icon={MessageSquareWarning} label="الشكاوى والمتابعة" />
-          <SidebarLink to="/call-center/occasions" icon={Gift} label="المناسبات" />
-          <SidebarLink to="/call-center/top-customers" icon={Star} label="الولاء والعملاء المميزون" />
+          {/* <SidebarLink to="/call-center/crm" icon={Database} label="العملاء" /> */}
+          {/* <SidebarLink to="/call-center/search" icon={Search} label="المكالمات والبحث" /> */}
+          {/* <SidebarLink to="/call-center/complaints" icon={MessageSquareWarning} label="الشكاوى والمتابعة" /> */}
+          {/* <SidebarLink to="/call-center/occasions" icon={Gift} label="المناسبات" /> */}
+          {/* <SidebarLink to="/call-center/top-customers" icon={Star} label="الولاء والعملاء المميزون" /> */}
           <SidebarLink to="/call-center/employees" icon={Users} label="الموظفون" />
           <SidebarLink to="/call-center/sip-settings" icon={Phone} label="إعدادات SIP" />
         </nav>
@@ -221,6 +222,8 @@ export const CallCenterLayout: React.FC<{ children?: React.ReactNode }> = ({ chi
           .cc-main-open { margin-right: 256px; }
         }
       `}</style>
+
+      <CallPhoneWidget />
     </div>
   );
 };
