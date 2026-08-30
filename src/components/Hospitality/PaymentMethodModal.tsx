@@ -3,16 +3,20 @@
 // مودال اختيار طريقة الدفع عند إغلاق/تحصيل فاتورة.
 // بدونه كان النظام بيفترض "نقدي" بصمت دايماً — راجع feedback الجلسة.
 //
+// يدعم الدفع المُجزّأ: الكاشير يقدر يوزّع إجمالي الفاتورة على أكثر من طريقة
+// (جزء كاش + جزء بطاقة + جزء محفظة). يضيف "سطر دفع" لكل طريقة، يعدّل مبلغه،
+// وما بيتفعّل زر التأكيد إلا لما مجموع الأسطر = إجمالي الفاتورة بالظبط.
+//
 // بالكاشير العادي (pos.tsx) بيستقبل كمان بيانات الزبون والحساب (اسم/جوال/بحث
 // عن عميل-مورد-موظف) عشان الكاشير ما يحتاج يروح لتاب منفصل قبل ما يقفل الفاتورة —
 // هاي الحقول اختيارية وما بتظهر إلا إذا الأب مرر setCustomerName (حالة الضيافة
 // اللي بتستخدم هالمودال من HospitalityOrders.tsx ما بتمررها فبتضل زي ما كانت).
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Banknote, CreditCard, Wallet, X, Search, Loader2,
-  Users, UserCheck, Truck, Phone, Tag,
+  Users, UserCheck, Truck, Phone, Tag, Plus, Trash2,
 } from "lucide-react";
 import { PaymentMethod } from "../../../types";
 import { customerService } from "../../services/customerService";
@@ -23,16 +27,35 @@ export const requiresPaymentReference = (method: PaymentMethod) =>
   method === PaymentMethod.WALLET || method === PaymentMethod.QR || method === PaymentMethod.ONLINE ||
   method === PaymentMethod.CREDIT_CARD;
 
-interface PaymentMethodOption {
+const roundMoney = (value: number) => Math.round((Number(value) || 0) * 100) / 100;
+const MONEY_EPSILON = 0.01;
+
+/** سطر دفع واحد ضمن التسوية المُجزّأة */
+export interface PaymentLine {
   method: PaymentMethod;
+  amount: number;
+  reference?: string;
+}
+
+interface MethodMeta {
   label: string;
   icon: React.ElementType;
 }
 
-const OPTIONS: PaymentMethodOption[] = [
-  { method: PaymentMethod.CASH, label: "نقدي", icon: Banknote },
-  { method: PaymentMethod.CREDIT_CARD, label: "بطاقة", icon: CreditCard },
-  { method: PaymentMethod.WALLET, label: "محفظة / تحويل", icon: Wallet },
+const METHOD_META: Partial<Record<PaymentMethod, MethodMeta>> = {
+  [PaymentMethod.CASH]: { label: "نقدي", icon: Banknote },
+  [PaymentMethod.CREDIT_CARD]: { label: "بطاقة", icon: CreditCard },
+  [PaymentMethod.WALLET]: { label: "محفظة / تحويل", icon: Wallet },
+  [PaymentMethod.CUSTOMER]: { label: "حساب عميل", icon: Users },
+  [PaymentMethod.SUPPLIER]: { label: "حساب مورد", icon: Truck },
+  [PaymentMethod.EMPLOYEE]: { label: "حساب موظف", icon: UserCheck },
+};
+
+// طرق الدفع المباشر المتاحة للتجزئة
+const DIRECT_METHODS: PaymentMethod[] = [
+  PaymentMethod.CASH,
+  PaymentMethod.CREDIT_CARD,
+  PaymentMethod.WALLET,
 ];
 
 interface EntityResult {
@@ -47,11 +70,16 @@ interface EntityResult {
 
 type AccountType = "ACCOUNT" | "SUPPLIER" | "EMPLOYEE";
 
+interface LineState extends PaymentLine {
+  key: string;
+  reference: string;
+}
+
 interface PaymentMethodModalProps {
   show: boolean;
   total: number;
   onClose: () => void;
-  onConfirm: (method: PaymentMethod, reference?: string, currency?: string, exchangeRate?: number) => void;
+  onConfirm: (payments: PaymentLine[], currency?: string, exchangeRate?: number) => void;
   confirming?: boolean;
 
   // بيانات الزبون والحساب — اختيارية (كاشير فقط)
@@ -65,6 +93,9 @@ interface PaymentMethodModalProps {
   setAccountNumber?: (num: string) => void;
   setShowSearchModal?: (show: boolean) => void;
 }
+
+let _lineSeq = 0;
+const nextLineKey = () => `line-${Date.now()}-${++_lineSeq}`;
 
 export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
   show,
@@ -82,8 +113,7 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
   setAccountNumber,
   setShowSearchModal,
 }) => {
-  const [selected, setSelected] = useState<PaymentMethod | null>(null);
-  const [reference, setReference] = useState("");
+  const [lines, setLines] = useState<LineState[]>([]);
   const [error, setError] = useState("");
   const accountSearchInputRef = useRef<HTMLInputElement>(null);
 
@@ -94,6 +124,17 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
   const [entityResults, setEntityResults] = useState<EntityResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedEntity, setSelectedEntity] = useState<EntityResult | null>(null);
+
+  // ── حساب المخصّص / المتبقّي ─────────────────────────────────────────────
+  const allocated = useMemo(
+    () => roundMoney(lines.reduce((sum, l) => sum + (Number(l.amount) || 0), 0)),
+    [lines],
+  );
+  const remaining = useMemo(() => roundMoney(total - allocated), [total, allocated]);
+  const isBalanced = Math.abs(remaining) <= MONEY_EPSILON;
+  const missingReference = lines.some(
+    (l) => requiresPaymentReference(l.method) && !l.reference.trim(),
+  );
 
   useEffect(() => {
     if (!showAccountFields || !accountNumber || accountNumber.length < 1 || !showAccountSuggestions) {
@@ -160,8 +201,7 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
   // المودال بيتصفر بين فتحة وفتحة عشان ما يفضل حساب طلب سابق عالق
   useEffect(() => {
     if (!show) {
-      setSelected(null);
-      setReference("");
+      setLines([]);
       setError("");
       setSelectedEntity(null);
       setShowAccountSuggestions(false);
@@ -181,24 +221,93 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
       : accountType === "SUPPLIER" ? PaymentMethod.SUPPLIER
       : PaymentMethod.EMPLOYEE;
 
-  const options: PaymentMethodOption[] = selectedEntity
-    ? [...OPTIONS, { method: entityPaymentMethod, label: `حساب ${entityTypeLabel}`, icon: entityTypeLabel === "عميل" ? Users : entityTypeLabel === "مورد" ? Truck : UserCheck }]
-    : OPTIONS;
-
   const handleClose = () => {
     onClose();
   };
 
+  // ── إدارة أسطر الدفع ────────────────────────────────────────────────────
+  const addLine = (method: PaymentMethod) => {
+    setError("");
+    setLines((prev) => {
+      if (prev.some((l) => l.method === method)) return prev;
+      const alloc = prev.reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
+      const rest = roundMoney(total - alloc);
+      return [
+        ...prev,
+        { key: nextLineKey(), method, amount: rest > 0 ? rest : 0, reference: "" },
+      ];
+    });
+  };
+
+  const updateLineAmount = (key: string, value: string) => {
+    const amount = roundMoney(parseFloat(value) || 0);
+    setLines((prev) => prev.map((l) => (l.key === key ? { ...l, amount } : l)));
+  };
+
+  const updateLineReference = (key: string, value: string) => {
+    setLines((prev) => prev.map((l) => (l.key === key ? { ...l, reference: value } : l)));
+  };
+
+  const removeLine = (key: string) => {
+    setLines((prev) => prev.filter((l) => l.key !== key));
+  };
+
+  const fillRestAsCash = () => {
+    setError("");
+    setLines((prev) => {
+      const alloc = prev.reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
+      const rest = roundMoney(total - alloc);
+      if (rest <= 0) return prev;
+      const idx = prev.findIndex((l) => l.method === PaymentMethod.CASH);
+      if (idx >= 0) {
+        return prev.map((l, i) =>
+          i === idx ? { ...l, amount: roundMoney(l.amount + rest) } : l,
+        );
+      }
+      return [
+        ...prev,
+        { key: nextLineKey(), method: PaymentMethod.CASH, amount: rest, reference: "" },
+      ];
+    });
+  };
+
+  const emit = (payload: PaymentLine[]) => {
+    onConfirm(payload);
+  };
+
   const handleConfirm = () => {
-    if (!selected) {
-      setError("اختر طريقة الدفع أولاً");
+    if (lines.length === 0) {
+      setError("أضف طريقة دفع واحدة على الأقل");
       return;
     }
-    if (requiresPaymentReference(selected) && !reference.trim()) {
-      setError("يرجى إدخال الرقم المرجعي");
+    if (lines.some((l) => l.amount <= 0)) {
+      setError("كل سطر دفع يجب أن يكون بمبلغ أكبر من صفر");
       return;
     }
-    onConfirm(selected, reference.trim() || undefined);
+    if (!isBalanced) {
+      setError(
+        remaining > 0
+          ? `المبلغ ناقص ${remaining.toFixed(2)} ₪`
+          : `المبلغ زائد ${Math.abs(remaining).toFixed(2)} ₪`,
+      );
+      return;
+    }
+    if (missingReference) {
+      setError("يرجى إدخال الرقم المرجعي للمحفظة / البطاقة");
+      return;
+    }
+    emit(
+      lines.map((l) => ({
+        method: l.method,
+        amount: roundMoney(l.amount),
+        reference: l.reference.trim() || undefined,
+      })),
+    );
+  };
+
+  // دفع كامل الفاتورة على حساب الكيان المحدد (غير مُجزّأ)
+  const handleEntityConfirm = () => {
+    emit([{ method: entityPaymentMethod, amount: roundMoney(total), reference: undefined }]);
   };
 
   return (
@@ -387,40 +496,117 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
               <p className="text-3xl font-black text-white mt-1">{total.toFixed(2)} ₪</p>
             </div>
 
-            <div className={`grid gap-2 ${options.length > 3 ? "grid-cols-4" : "grid-cols-3"}`}>
-              {options.map(({ method, label, icon: Icon }) => (
-                <button
-                  key={method}
-                  onClick={() => {
-                    setSelected(method);
-                    setError("");
-                  }}
-                  className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border font-bold text-[11px] transition-all active:scale-95 ${
-                    selected === method
-                      ? "bg-red-600 border-red-500 text-white"
-                      : "bg-slate-800 border-white/5 text-slate-400 hover:text-white"
-                  }`}
-                >
-                  <Icon size={18} />
-                  {label}
-                </button>
-              ))}
+            {/* شريط المخصّص / المتبقّي */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-slate-800/60 border border-white/5 rounded-xl p-2.5 text-center">
+                <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">المخصّص</p>
+                <p className="text-sm font-mono font-black text-white mt-0.5">{allocated.toFixed(2)} ₪</p>
+              </div>
+              <div className={`rounded-xl p-2.5 text-center border ${isBalanced ? "bg-emerald-500/10 border-emerald-500/20" : "bg-red-500/10 border-red-500/20"}`}>
+                <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">
+                  {remaining < 0 ? "الزائد" : "المتبقّي"}
+                </p>
+                <p className={`text-sm font-mono font-black mt-0.5 ${isBalanced ? "text-emerald-400" : "text-red-400"}`}>
+                  {Math.abs(remaining).toFixed(2)} ₪
+                </p>
+              </div>
             </div>
 
-            {selected && requiresPaymentReference(selected) && (
-              <div className="space-y-1.5">
-                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest mr-2">
-                  الرقم المرجعي
-                </label>
-                <input
-                  type="text"
-                  autoFocus
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                  placeholder={selected === PaymentMethod.CREDIT_CARD ? "رقم عملية البطاقة..." : "رقم العملية / التحويل..."}
-                  className="w-full p-3 bg-slate-800 border border-white/5 rounded-xl outline-none focus:ring-2 focus:ring-red-600 font-black text-xs text-white"
-                />
+            {/* أزرار إضافة طريقة دفع */}
+            <div className="space-y-2">
+              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mr-1">أضف طريقة دفع</p>
+              <div className="grid grid-cols-3 gap-2">
+                {DIRECT_METHODS.map((method) => {
+                  const meta = METHOD_META[method]!;
+                  const Icon = meta.icon;
+                  const used = lines.some((l) => l.method === method);
+                  return (
+                    <button
+                      key={method}
+                      onClick={() => addLine(method)}
+                      disabled={used}
+                      className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border font-bold text-[11px] transition-all active:scale-95 ${
+                        used
+                          ? "bg-slate-800/40 border-white/5 text-slate-600 cursor-not-allowed"
+                          : "bg-slate-800 border-white/5 text-slate-300 hover:text-white hover:border-red-600/40"
+                      }`}
+                    >
+                      <Icon size={18} />
+                      {meta.label}
+                    </button>
+                  );
+                })}
               </div>
+
+              {remaining > MONEY_EPSILON && (
+                <button
+                  onClick={fillRestAsCash}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-dashed border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 transition-all text-[10px] font-black active:scale-95"
+                >
+                  <Plus size={12} />
+                  الباقي كاش ({remaining.toFixed(2)} ₪)
+                </button>
+              )}
+            </div>
+
+            {/* أسطر الدفع */}
+            {lines.length > 0 && (
+              <div className="space-y-2">
+                {lines.map((line) => {
+                  const meta = METHOD_META[line.method]!;
+                  const Icon = meta.icon;
+                  const needsRef = requiresPaymentReference(line.method);
+                  return (
+                    <div
+                      key={line.key}
+                      className="bg-white/[0.03] border border-white/5 rounded-xl p-2.5 space-y-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 shrink-0 rounded-lg bg-slate-800 border border-white/5 flex items-center justify-center text-slate-300">
+                          <Icon size={15} />
+                        </div>
+                        <span className="text-[11px] font-black text-white flex-1 truncate">{meta.label}</span>
+                        <div className="relative w-28 shrink-0">
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            value={line.amount}
+                            onChange={(e) => updateLineAmount(line.key, e.target.value)}
+                            className="w-full bg-slate-950 border border-white/5 rounded-lg pl-5 pr-2 py-1.5 text-right text-xs font-mono font-black text-emerald-400 outline-none focus:border-emerald-500/50 transition-all [appearance:textfield]"
+                          />
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[8px] text-slate-600 font-black">₪</span>
+                        </div>
+                        <button
+                          onClick={() => removeLine(line.key)}
+                          className="w-7 h-7 shrink-0 rounded-lg bg-slate-800 text-slate-500 hover:text-red-500 hover:bg-red-500/10 flex items-center justify-center transition-colors"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                      {needsRef && (
+                        <input
+                          type="text"
+                          value={line.reference}
+                          onChange={(e) => updateLineReference(line.key, e.target.value)}
+                          placeholder={line.method === PaymentMethod.CREDIT_CARD ? "رقم عملية البطاقة..." : "رقم العملية / التحويل..."}
+                          className="w-full p-2 bg-slate-800 border border-white/5 rounded-lg outline-none focus:ring-1 focus:ring-red-600 font-bold text-[10px] text-white"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {selectedEntity && (
+              <button
+                onClick={handleEntityConfirm}
+                disabled={confirming}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-cyan-500/30 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 transition-all text-[11px] font-black active:scale-95 disabled:opacity-50"
+              >
+                {entityTypeLabel === "عميل" ? <Users size={14} /> : entityTypeLabel === "مورد" ? <Truck size={14} /> : <UserCheck size={14} />}
+                تحميل كامل المبلغ على حساب {entityTypeLabel}
+              </button>
             )}
 
             {error && (
@@ -430,8 +616,8 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
             <div className="flex flex-col gap-2">
               <button
                 onClick={handleConfirm}
-                disabled={confirming}
-                className="w-full bg-red-600 text-white py-3 rounded-2xl font-black text-xs shadow-lg shadow-red-900/20 active:scale-95 transition-all disabled:opacity-50"
+                disabled={confirming || lines.length === 0 || !isBalanced || missingReference}
+                className="w-full bg-red-600 text-white py-3 rounded-2xl font-black text-xs shadow-lg shadow-red-900/20 active:scale-95 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {confirming ? "جاري التحصيل..." : "تأكيد وتحصيل الفاتورة"}
               </button>

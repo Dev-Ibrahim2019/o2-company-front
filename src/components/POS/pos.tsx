@@ -1558,33 +1558,35 @@ const handlePrintInvoice = async (
           setShowPaymentMethodModal(false);
           setPendingCloseKind(null);
         }}
-        onConfirm={async (method, reference, currency, exchangeRate) => {
+        onConfirm={async (lines, currency, exchangeRate) => {
           setShowPaymentMethodModal(false);
           const kind = pendingCloseKind; // "dine_in" | "takeaway"
           const meta = { name: customerName, phone: customerPhone, note: invoiceNote, currency, exchangeRate };
-          // دفع على حساب زبون/مورد/موظف — نرفق بيانات الكيان المختار بالبوب أب
+          // دفع مُجزّأ: قد يكون سطر واحد (كاش/بطاقة/محفظة/حساب) أو عدة أسطر مقسّمة.
+          // نرفق بيانات الكيان فقط لو الدفعة كلها سطر واحد على حساب زبون/مورد/موظف.
           const isEntityPayment =
-            method === PaymentMethod.CUSTOMER ||
-            method === PaymentMethod.SUPPLIER ||
-            method === PaymentMethod.EMPLOYEE;
+            lines.length === 1 &&
+            (lines[0].method === PaymentMethod.CUSTOMER ||
+              lines[0].method === PaymentMethod.SUPPLIER ||
+              lines[0].method === PaymentMethod.EMPLOYEE);
           const entityType = isEntityPayment ? getEntityType() : undefined;
           const entityId =
             isEntityPayment && accountNumber ? parseInt(accountNumber, 10) : undefined;
-          const payments = [{
-            method,
-            amount: roundMoney(total),
-            reference,
-            entity_type: entityType,
-            entity_id: entityId,
-            subledger_type: entityType,
-            subledger_id: entityId,
-          }];
+          const payments = lines.map((line) => ({
+            method: line.method,
+            amount: roundMoney(line.amount),
+            reference: line.reference,
+            entity_type: isEntityPayment ? entityType : undefined,
+            entity_id: isEntityPayment ? entityId : undefined,
+            subledger_type: isEntityPayment ? entityType : undefined,
+            subledger_id: isEntityPayment ? entityId : undefined,
+          }));
 
           // "تنفيذ" = دفع + إغلاق. بمحلي: إغلاق + فاتورة جديدة فقط (بدون طباعة —
           // الطباعة لها زر مستقل). بفوري: إغلاق + فاتورة جديدة + طباعة على الكاشير.
           const result = await submitOrder(
             OrderStatus.DELIVERED,
-            method,
+            payments[0]?.method ?? PaymentMethod.CASH,
             calculatedDiscount,
             meta,
             payments,
@@ -1599,9 +1601,14 @@ const handlePrintInvoice = async (
             clearActiveCart();
           }
 
-          if (printedOrderId && kind === "takeaway") {
-            // فوري فقط — الطباعة بالخلفية (بدون await) حتى لا تؤخّر الفاتورة الجديدة.
-            void handlePrintInvoice(printedOrderId, "fawri");
+          if (printedOrderId) {
+            // الطباعة بالخلفية (بدون await) حتى لا تؤخّر الفاتورة الجديدة.
+            // فوري: فاتورة منفصلة لكل قسم على طابعة الكاشير.
+            // محلي: فاتورة الكاشير المدمجة (كل الأصناف سوا) على طابعة الكاشير.
+            void handlePrintInvoice(
+              printedOrderId,
+              kind === "takeaway" ? "fawri" : "merged",
+            );
           }
           setPendingCloseKind(null);
         }}

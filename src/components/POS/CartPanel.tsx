@@ -262,7 +262,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
         }
       };
 
-      const doCloseDineIn = () => {
+      const doCloseDineIn = async () => {
         if (currentCart.length === 0) return;
         if (!manualTable) {
           setPosError("يرجى إدخال رقم الطاولة أولاً");
@@ -275,11 +275,16 @@ export const CartPanel: React.FC<CartPanelProps> = ({
           setShowCustomerModal(true);
           return;
         }
-        submitOrder(OrderStatus.DELIVERED, paymentMethod, calculatedDiscount, {
-          name: customerName,
-          phone: customerPhone,
-          note: invoiceNote,
-        });
+        // "محلي" = دفع + إغلاق ثم فاتورة الكاشير المدمجة على طابعة الكاشير.
+        const result = await submitOrder(
+          OrderStatus.DELIVERED,
+          paymentMethod,
+          calculatedDiscount,
+          { name: customerName, phone: customerPhone, note: invoiceNote },
+        );
+        if (result?.id) {
+          await handlePrintInvoice?.(result.id, "merged");
+        }
       };
 
       const focusQuantity = () => {

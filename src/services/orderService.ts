@@ -831,6 +831,35 @@ export const orderService = {
     return data.data?.order || data.data;
   },
 
+  /**
+   * إغلاق الطلب ماليًا بدفع مُجزّأ — عدة طرق دفع مباشرة (كاش/بطاقة/محفظة) على
+   * نفس الفاتورة. طلب /settle واحد بمصفوفة payments كاملة (SettlementEngine
+   * بيتحقق إن مجموعها = إجمالي الفاتورة قبل ترحيل القيد).
+   */
+  settleMixed: async (
+    id: number,
+    lines: { method: string; amount: number; reference_number?: string }[],
+  ): Promise<OrderFromApi> => {
+    const payments = await Promise.all(
+      lines.map(async (line) => {
+        const method = normalizePaymentMethod(line.method) ?? "cash";
+        return {
+          payment_method_id: await resolvePaymentMethodIdToDbId(method),
+          amount: normalizeMoney(line.amount),
+          reference_number: line.reference_number?.trim() || undefined,
+        };
+      }),
+    );
+    logSettlementPayload("orderService.settleMixed", {
+      payments: payments.map((p) => ({
+        payment_method_id: p.payment_method_id,
+        amount: p.amount,
+      })),
+    } as Record<string, unknown>);
+    const { data } = await api.post(`/orders/${id}/settle`, { payments });
+    return data.data?.order || data.data;
+  },
+
   transferClosedOrderToSales: async (
     order: OrderFromApi,
   ): Promise<AccountingTransaction> => {

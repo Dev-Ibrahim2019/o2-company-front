@@ -2,14 +2,13 @@ import { useMemo, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../../../store";
 import { useOrders } from "../../hooks/useOrders";
-import { orderService, normalizePaymentMethod } from "../../services/orderService";
+import { orderService } from "../../services/orderService";
 import type {
   OrderFromApi,
   OrderStatus as ApiOrderStatus,
   OrderType as ApiOrderType,
 } from "../../services/orderService";
-import { PaymentMethodModal } from "./PaymentMethodModal";
-import type { PaymentMethod as UiPaymentMethod } from "../../../types";
+import { PaymentMethodModal, type PaymentLine } from "./PaymentMethodModal";
 import {
   Banknote,
   CheckCircle2,
@@ -207,21 +206,21 @@ export const HospitalityOrders = () => {
 
   const refreshOrders = useCallback(() => refetch(branchFilter), [branchFilter, refetch]);
 
-  const confirmCloseOrder = async (method: UiPaymentMethod, reference?: string) => {
+  const confirmCloseOrder = async (payments: PaymentLine[]) => {
     const order = payingOrder;
     if (!order || isClosedOrder(order.status)) return;
 
     setActionError(null);
     setBusyOrderId(order.id);
     try {
-      await orderService.pay(order.id, {
-        payment_method: normalizePaymentMethod(method) ?? "cash",
-        amount: order.total,
-        reference_number: reference,
-        customer_name: order.customer_name ?? undefined,
-        customer_phone: order.customer_phone ?? undefined,
-        note: order.note ?? undefined,
-      });
+      await orderService.settleMixed(
+        order.id,
+        payments.map((p) => ({
+          method: p.method,
+          amount: p.amount,
+          reference_number: p.reference,
+        })),
+      );
       setPayingOrder(null);
       await refreshOrders();
       setActiveTab("CLOSED");
