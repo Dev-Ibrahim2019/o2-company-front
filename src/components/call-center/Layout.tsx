@@ -4,6 +4,7 @@ import { useApp } from "../../../store";
 import { useAuth } from "../../auth";
 import { AnimatePresence, motion } from "framer-motion";
 import { CallPhoneWidget } from "./components/CallPhoneWidget";
+import { CallCenterThemeToggle } from "./components/CallCenterThemeToggle";
 import {
   Headphones,
   LayoutDashboard,
@@ -72,6 +73,7 @@ export const CallCenterLayout: React.FC<{ children?: React.ReactNode }> = ({ chi
   return (
     <div
       dir="rtl"
+      data-callcenter-root
       style={{
         display: "flex", height: "100vh", overflow: "hidden",
         background: colors.surface.page,
@@ -103,21 +105,24 @@ export const CallCenterLayout: React.FC<{ children?: React.ReactNode }> = ({ chi
         }}
         className={`cc-sidebar ${isSidebarOpen ? "cc-sidebar-open" : "cc-sidebar-closed"}`}
       >
-        <div style={{ marginBottom: 28, display: "flex", alignItems: "center", gap: 12, padding: collapsed ? 0 : "0 6px", justifyContent: collapsed ? "center" : "flex-start" }}>
-          <div style={{
-            width: 38, height: 38, borderRadius: radius.lg, flexShrink: 0,
-            background: `linear-gradient(135deg, ${colors.brand[500]}, ${colors.brand[700]})`,
-            display: "flex", alignItems: "center", justifyContent: "center", color: "#fff",
-            boxShadow: shadows.sm,
-          }}>
-            <Headphones size={20} />
-          </div>
-          {!collapsed && (
-            <div style={{ overflow: "hidden" }}>
-              <h1 style={{ fontSize: typography.size.lg, fontWeight: typography.weight.extrabold, color: colors.neutral[900], letterSpacing: "-0.01em" }}>الكول سنتر</h1>
-              <p style={{ fontSize: 9, fontWeight: typography.weight.bold, color: colors.neutral[400], textTransform: "uppercase", letterSpacing: "0.08em" }}>Call Center</p>
+        <div style={{ marginBottom: 28, display: "flex", alignItems: "center", gap: 12, padding: collapsed ? 0 : "0 6px", justifyContent: collapsed ? "center" : "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, overflow: "hidden" }}>
+            <div style={{
+              width: 38, height: 38, borderRadius: radius.lg, flexShrink: 0,
+              background: `linear-gradient(135deg, ${colors.brand[500]}, ${colors.brand[700]})`,
+              display: "flex", alignItems: "center", justifyContent: "center", color: "#fff",
+              boxShadow: shadows.sm,
+            }}>
+              <Headphones size={20} />
             </div>
-          )}
+            {!collapsed && (
+              <div style={{ overflow: "hidden" }}>
+                <h1 style={{ fontSize: typography.size.lg, fontWeight: typography.weight.extrabold, color: colors.neutral[900], letterSpacing: "-0.01em" }}>الكول سنتر</h1>
+                <p style={{ fontSize: 9, fontWeight: typography.weight.bold, color: colors.neutral[400], textTransform: "uppercase", letterSpacing: "0.08em" }}>Call Center</p>
+              </div>
+            )}
+          </div>
+          {!collapsed && <CallCenterThemeToggle size={32} />}
         </div>
 
         <button
@@ -193,11 +198,14 @@ export const CallCenterLayout: React.FC<{ children?: React.ReactNode }> = ({ chi
             >
               <Menu size={18} />
             </button>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ width: 30, height: 30, borderRadius: radius.md, background: colors.brand[500], display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
-                <Headphones size={16} />
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 30, height: 30, borderRadius: radius.md, background: colors.brand[500], display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
+                  <Headphones size={16} />
+                </div>
+                <h1 style={{ fontSize: typography.size.base, fontWeight: typography.weight.extrabold, color: colors.neutral[900] }}>الكول سنتر</h1>
               </div>
-              <h1 style={{ fontSize: typography.size.base, fontWeight: typography.weight.extrabold, color: colors.neutral[900] }}>الكول سنتر</h1>
+              <CallCenterThemeToggle size={30} />
             </div>
           </header>
           <div

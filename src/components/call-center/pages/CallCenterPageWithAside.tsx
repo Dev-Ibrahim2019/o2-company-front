@@ -9,6 +9,7 @@ import { Button, Badge, Card } from "../design/components";
 import api from "../../../api/axios";
 import { getBranchId } from "../../../auth/authStorage";
 import { toast } from "../../shared/Toast";
+import { branchService, type Branch } from "../../../services/branchService";
 
 // ============================================================================
 // TYPES
@@ -45,6 +46,11 @@ interface Order {
   customer_name?: string;
   delivery_address?: string;
   payment_method?: string;
+  branch?: { id: number; name: string } | null;
+  delivery_address_snapshot?: { address?: string } | null;
+  delivery_fee?: number;
+  tax_amount?: number;
+  scheduled_at?: string | null;
 }
 
 interface MenuItem {
@@ -77,6 +83,17 @@ interface FavoriteItem {
 }
 
 const CHART_PALETTE = ["#8b5cf6", "#10b981", "#3b82f6", "#06b6d4", "#f43f5e", "#f97316"];
+
+const ORDER_TYPE_LABELS: Record<"takeaway" | "dine_in" | "delivery", string> = {
+  dine_in: "استلام من الفرع",
+  takeaway: "طلب فوري",
+  delivery: "توصيل للمنزل",
+};
+const ORDER_TYPE_TOOLTIPS: Record<"takeaway" | "dine_in" | "delivery", string> = {
+  dine_in: "العميل سيستلم طلبه من الفرع مباشرة",
+  takeaway: "طلب يُجهَّز فورًا ليُستلم من الكاشير — بدون خدمة طاولات",
+  delivery: "الطلب يُوصَّل إلى عنوان العميل — يتطلب إدخال العنوان أدناه",
+};
 
 // Placeholder shown until a real customer is searched / real data arrives from the API.
 const SAMPLE_ORDERS: Order[] = [
@@ -160,7 +177,23 @@ export const CallCenterPageWithAside: React.FC = () => {
   const [discountValue, setDiscountValue] = useState(0);
   const [discountType, setDiscountType] = useState<"AMOUNT" | "PERCENT">("AMOUNT");
   const [paymentMethod, setPaymentMethod] = useState("cash");
-  const [orderType, setOrderType] = useState<"takeaway" | "dine_in">("takeaway");
+  const [orderType, setOrderType] = useState<"takeaway" | "dine_in" | "delivery">("takeaway");
+
+  // ── Branch / Delivery / Tax / Scheduling State ──
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
+  const [deliveryFee, setDeliveryFee] = useState(0);
+  const [taxEnabled, setTaxEnabled] = useState(false);
+  const [taxRate, setTaxRate] = useState(0);
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduledAt, setScheduledAt] = useState("");
+
+  useEffect(() => {
+    branchService.getAll().then(list => {
+      setBranches(list);
+      setSelectedBranchId(prev => prev ?? getBranchId() ?? list[0]?.id ?? null);
+    });
+  }, []);
 
   // ── Favorites State ──
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
@@ -421,7 +454,11 @@ export const CallCenterPageWithAside: React.FC = () => {
     ? (cartSubtotal * discountValue) / 100
     : discountValue;
 
-  const total = Math.max(0, cartSubtotal - manualDiscount);
+  const taxableBase = Math.max(0, cartSubtotal - manualDiscount);
+  const taxAmount = taxEnabled ? (taxableBase * taxRate) / 100 : 0;
+  const effectiveDeliveryFee = orderType === "delivery" ? deliveryFee : 0;
+
+  const total = taxableBase + taxAmount + effectiveDeliveryFee;
 
   const cartQtyById = useMemo(() => Object.fromEntries(cart.map(c => [c.id, c.quantity])), [cart]);
 
@@ -440,6 +477,15 @@ export const CallCenterPageWithAside: React.FC = () => {
     [menuItems]
   );
 
+  const pickupLabel = (order: Order) => {
+    if (order.delivery_address) return order.delivery_address; // بيانات تجريبية (SAMPLE_ORDERS)
+    if (order.order_type === "delivery") {
+      const addr = order.delivery_address_snapshot?.address;
+      return addr ? `توصيل — ${addr}` : "توصيل للمنزل";
+    }
+    return order.branch?.name || "—";
+  };
+
   // Fall back to sample data whenever there's nothing real yet, so the page never looks empty/unfinished.
   const displayOrders = recentOrders.length > 0 ? recentOrders : SAMPLE_ORDERS;
   const displayFavorites = favorites.length > 0 ? favorites : SAMPLE_FAVORITES;
@@ -454,7 +500,7 @@ export const CallCenterPageWithAside: React.FC = () => {
     if (!orderSearchQuery) return displayOrders;
     const q = orderSearchQuery.toLowerCase();
     return displayOrders.filter(o =>
-      o.order_number?.toLowerCase().includes(q) || o.delivery_address?.toLowerCase().includes(q)
+      o.order_number?.toLowerCase().includes(q) || pickupLabel(o).toLowerCase().includes(q)
     );
   }, [displayOrders, orderSearchQuery]);
 
@@ -467,19 +513,36 @@ export const CallCenterPageWithAside: React.FC = () => {
       toast.error("السلة فارغة");
       return;
     }
+    if (orderType === "delivery" && !customerAddress.trim()) {
+      toast.error("عنوان التوصيل مطلوب", "أدخل عنوان العميل قبل تنفيذ طلب توصيل");
+      return;
+    }
+    if (scheduleEnabled) {
+      if (!scheduledAt) {
+        toast.error("حدد موعد الجدولة");
+        return;
+      }
+      if (new Date(scheduledAt).getTime() < Date.now()) {
+        toast.error("موعد الجدولة يجب أن يكون في المستقبل");
+        return;
+      }
+    }
     setSubmitting(true);
     try {
       const payload = {
-        branch_id: getBranchId() ?? 1,
+        branch_id: selectedBranchId ?? getBranchId() ?? 1,
         order_type: orderType,
         customer_id: customer?.id,
         customer_name: customerName || customer?.name,
         customer_phone: customerPhone || phone,
-        delivery_address: customerAddress,
+        ...(orderType === "delivery" ? { delivery_address_snapshot: { address: customerAddress } } : {}),
         note: invoiceNote,
         discount_value: discountValue || undefined,
         discount_type: discountType === "PERCENT" ? "percent" : "amount",
         payment_method: paymentMethod,
+        delivery_fee: effectiveDeliveryFee || undefined,
+        tax_rate: taxEnabled ? taxRate : undefined,
+        scheduled_at: scheduleEnabled && scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
         items: cart.map(c => ({
           item_id: c.id,
           quantity: c.quantity,
@@ -492,6 +555,11 @@ export const CallCenterPageWithAside: React.FC = () => {
       clearCart();
       setInvoiceNote("");
       setDiscountValue(0);
+      setDeliveryFee(0);
+      setTaxEnabled(false);
+      setTaxRate(0);
+      setScheduleEnabled(false);
+      setScheduledAt("");
       if (customer?.id) loadCustomerOrders(customer.id);
     } catch (err: any) {
       toast.error("فشل إرسال الطلب", err?.response?.data?.message);
@@ -611,7 +679,7 @@ export const CallCenterPageWithAside: React.FC = () => {
               color: colors.brand[600],
             }}
           >
-            {orderType === "dine_in" ? "محلي" : "فوري"}
+            {ORDER_TYPE_LABELS[orderType]}
           </span>
         </div>
       </div>
@@ -624,9 +692,7 @@ export const CallCenterPageWithAside: React.FC = () => {
       <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0 lg:h-[calc(100vh-40px)] p-3 sm:p-4 lg:p-0">
 
         {/* ══════════════════ RIGHT COLUMN — Customer ══════════════════ */}
-        {/* عرض محدود بنسبة + حدود دنيا/قصوى بدل flex-1 (50/50) — عمود العميل لا يحتاج نفس مساحة عمود المنيو/السلة،
-            وتقسيم 50/50 كان يترك مساحة غير كافية لعمود المنيو عند دقة 1280–1440px */}
-        <div className="cc-scroll-col flex flex-col min-w-0 min-h-0 custom-scrollbar lg:pr-1 gap-4 lg:w-[36%] lg:min-w-[360px] lg:max-w-[440px] lg:flex-none" dir="rtl">
+        <div className="cc-scroll-col flex-1 flex flex-col min-w-0 min-h-0 custom-scrollbar lg:pr-1 gap-4" dir="rtl">
 
           {/* ── Customer Search ── */}
           <Card padding="20px" style={{ boxShadow: shadows.xs }}>
@@ -732,7 +798,7 @@ export const CallCenterPageWithAside: React.FC = () => {
                         <tr style={{ borderBottom: `1px solid ${colors.neutral[100]}` }}>
                           <td style={{ padding: "14px 16px", color: colors.neutral[900], fontWeight: 500 }}>#{order.order_number}</td>
                           <td style={{ padding: "14px 16px", color: colors.neutral[500] }}>{formatDate(order.created_at)}</td>
-                          <td style={{ padding: "14px 16px", color: colors.neutral[500] }}>{order.delivery_address || "—"}</td>
+                          <td style={{ padding: "14px 16px", color: colors.neutral[500] }}>{pickupLabel(order)}</td>
                           <td style={{ padding: "14px 16px", fontWeight: 600, color: colors.neutral[900] }}>{formatCurrency(order.total)}</td>
                           <td style={{ padding: "14px 16px" }}>
                             <button
@@ -765,7 +831,7 @@ export const CallCenterPageWithAside: React.FC = () => {
                                       تفاصيل الطلب #{order.order_number}
                                     </h3>
                                     <span style={{ fontSize: "11px", color: colors.neutral[500] }}>{formatDate(order.created_at)}</span>
-                                    <span style={{ fontSize: "11px", color: colors.neutral[500] }}>{order.delivery_address}</span>
+                                    <span style={{ fontSize: "11px", color: colors.neutral[500] }}>{pickupLabel(order)}</span>
                                   </div>
                                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                     <span style={{ fontSize: "12px", fontWeight: typography.weight.bold, color: colors.semantic.success }}>{formatCurrency(order.total)}</span>
@@ -788,7 +854,7 @@ export const CallCenterPageWithAside: React.FC = () => {
                                     </thead>
                                     <tbody>
                                       {order.items.map((item, idx) => (
-                                        <tr key={idx} style={{ borderBottom: `1px solid ${colors.neutral[100]}`, background: "#fff" }}>
+                                        <tr key={idx} style={{ borderBottom: `1px solid ${colors.neutral[100]}`, background: colors.surface.raised }}>
                                           <td style={{ padding: "10px 12px", color: colors.neutral[900] }}>{item.item_name_ar || item.item_name}</td>
                                           <td style={{ padding: "10px 12px", color: colors.neutral[500] }}>{item.quantity}</td>
                                           <td style={{ padding: "10px 12px", color: colors.neutral[500] }}>{formatCurrency(item.price)}</td>
@@ -800,7 +866,7 @@ export const CallCenterPageWithAside: React.FC = () => {
                                 </div>
 
                                 <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 16 }}>
-                                  <div style={{ flex: 1, minWidth: 240, padding: "16px", borderRadius: radius.lg, background: "#fff", border: `1px solid ${colors.neutral[200]}` }}>
+                                  <div style={{ flex: 1, minWidth: 240, padding: "16px", borderRadius: radius.lg, background: colors.surface.raised, border: `1px solid ${colors.neutral[200]}` }}>
                                     <h4 style={{ fontSize: "13px", fontWeight: 600, marginBottom: 8, color: colors.neutral[700] }}>
                                       تقييم الخدمة
                                     </h4>
@@ -812,7 +878,7 @@ export const CallCenterPageWithAside: React.FC = () => {
                                       ))}
                                     </div>
                                   </div>
-                                  <div style={{ flex: 1, minWidth: 240, padding: "16px", borderRadius: radius.lg, background: "#fff", border: `1px solid ${colors.neutral[200]}` }}>
+                                  <div style={{ flex: 1, minWidth: 240, padding: "16px", borderRadius: radius.lg, background: colors.surface.raised, border: `1px solid ${colors.neutral[200]}` }}>
                                     <h4 style={{ fontSize: "13px", fontWeight: 600, marginBottom: 8, color: colors.neutral[700] }}>
                                       تقييم التوصيل
                                     </h4>
@@ -827,7 +893,7 @@ export const CallCenterPageWithAside: React.FC = () => {
                                 </div>
 
                                 <div style={{ display: "flex", justifyContent: "center" }}>
-                                  <button onClick={() => setExpandedOrder(null)} style={{ padding: "8px 24px", borderRadius: radius.lg, border: `1px solid ${colors.neutral[200]}`, background: "#fff", color: colors.neutral[500], fontSize: "12px", fontWeight: 500, cursor: "pointer" }}>
+                                  <button onClick={() => setExpandedOrder(null)} style={{ padding: "8px 24px", borderRadius: radius.lg, border: `1px solid ${colors.neutral[200]}`, background: colors.surface.raised, color: colors.neutral[500], fontSize: "12px", fontWeight: 500, cursor: "pointer" }}>
                                     إلغاء
                                   </button>
                                 </div>
@@ -901,7 +967,7 @@ export const CallCenterPageWithAside: React.FC = () => {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <div style={{ display: "flex", gap: 12, alignItems: "flex-end", height: 170, minWidth: 360 }}>
+                <div style={{ display: "flex", gap: 12, alignItems: "flex-end", minHeight: 170, minWidth: 360 }}>
                   {topFavorites.map((meal, i) => {
                     const barColor = CHART_PALETTE[i % CHART_PALETTE.length];
                     return (
@@ -1039,18 +1105,61 @@ export const CallCenterPageWithAside: React.FC = () => {
                       <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">{customer.name}</span>
                     )}
                     <div className="flex bg-slate-800 p-1 rounded-lg">
-                      {[{ id: "takeaway" as const, label: "فوري" }, { id: "dine_in" as const, label: "محلي" }].map(type => (
+                      {(["dine_in", "takeaway", "delivery"] as const).map(id => (
                         <button
-                          key={type.id}
-                          className={`px-2 sm:px-2.5 py-1 text-[10px] sm:text-[11px] font-black rounded-md transition-all whitespace-nowrap ${orderType === type.id ? "bg-red-600 text-white shadow-lg" : "text-slate-500 hover:text-slate-300"}`}
-                          onClick={() => setOrderType(type.id)}
+                          key={id}
+                          title={ORDER_TYPE_TOOLTIPS[id]}
+                          className={`px-2 sm:px-2.5 py-1 text-[10px] sm:text-[11px] font-black rounded-md transition-all whitespace-nowrap ${orderType === id ? "bg-red-600 text-white shadow-lg" : "text-slate-500 hover:text-slate-300"}`}
+                          onClick={() => setOrderType(id)}
                         >
-                          {type.label}
+                          {ORDER_TYPE_LABELS[id]}
                         </button>
                       ))}
                     </div>
                   </div>
                 </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <label className="flex items-center gap-1.5 flex-1 min-w-[160px]">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest shrink-0">الفرع</span>
+                    <select
+                      value={selectedBranchId ?? ""}
+                      onChange={e => setSelectedBranchId(Number(e.target.value) || null)}
+                      title="الفرع الذي سيجهّز هذا الطلب"
+                      className="flex-1 min-w-0 bg-slate-800 text-slate-200 text-[11px] font-black rounded-lg px-2 py-1.5 outline-none border border-white/5"
+                    >
+                      {branches.length === 0 && <option value="">جارِ التحميل...</option>}
+                      {branches.map(b => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    title="جدولة الطلب لوقت لاحق بدل التنفيذ الفوري"
+                    onClick={() => setScheduleEnabled(v => !v)}
+                    className={`px-2.5 py-1.5 text-[10px] font-black rounded-lg whitespace-nowrap transition-all ${scheduleEnabled ? "bg-red-600 text-white" : "bg-slate-800 text-slate-500 hover:text-slate-300"}`}
+                  >
+                    جدولة الطلب
+                  </button>
+                </div>
+
+                {scheduleEnabled && (
+                  <input
+                    type="datetime-local"
+                    value={scheduledAt}
+                    min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
+                    onChange={e => setScheduledAt(e.target.value)}
+                    className="w-full bg-slate-800 text-slate-200 text-[11px] font-black rounded-lg px-2 py-1.5 outline-none border border-white/5"
+                    dir="ltr"
+                  />
+                )}
+
+                {orderType === "delivery" && !customerAddress.trim() && (
+                  <div className="text-[10px] font-black text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5">
+                    عنوان التوصيل مطلوب — أدخله في حقل "العنوان" في بيانات العميل
+                  </div>
+                )}
 
                 <div className="bg-red-600/10 border border-red-600/20 p-2.5 px-3 rounded-lg flex flex-col gap-1">
                   {manualDiscount > 0 && (
@@ -1065,7 +1174,19 @@ export const CallCenterPageWithAside: React.FC = () => {
                       </div>
                     </>
                   )}
-                  <div className={`pt-1 mt-1 ${manualDiscount > 0 ? "border-t border-red-600/20" : ""} flex justify-between items-center`}>
+                  {taxEnabled && taxAmount > 0 && (
+                    <div className="flex justify-between items-center text-slate-400">
+                      <span className="text-[10px] font-black uppercase tracking-widest">الضريبة ({taxRate}%)</span>
+                      <span className="text-sm font-black">{taxAmount.toFixed(2)} ₪</span>
+                    </div>
+                  )}
+                  {effectiveDeliveryFee > 0 && (
+                    <div className="flex justify-between items-center text-slate-400">
+                      <span className="text-[10px] font-black uppercase tracking-widest">رسوم التوصيل</span>
+                      <span className="text-sm font-black">{effectiveDeliveryFee.toFixed(2)} ₪</span>
+                    </div>
+                  )}
+                  <div className={`pt-1 mt-1 ${manualDiscount > 0 || (taxEnabled && taxAmount > 0) || effectiveDeliveryFee > 0 ? "border-t border-red-600/20" : ""} flex justify-between items-center`}>
                     <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{manualDiscount > 0 ? "الصافي النهائي" : "الإجمالي الكلي"}</span>
                     <div className="text-left">
                       <span className="text-xl sm:text-2xl lg:text-3xl font-black text-red-600">{total.toFixed(2)}</span>
@@ -1167,6 +1288,47 @@ export const CallCenterPageWithAside: React.FC = () => {
                       <button onClick={() => setDiscountType(discountType === "AMOUNT" ? "PERCENT" : "AMOUNT")} className="text-[10px] font-black text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded hover:text-slate-200 transition-colors shrink-0">
                         {discountType === "AMOUNT" ? "₪" : "%"}
                       </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  {orderType === "delivery" && (
+                    <div className="flex-1 bg-slate-900 px-3 py-1.5 rounded-xl border border-white/5 flex flex-col gap-0.5">
+                      <div className="flex items-center gap-1 text-slate-500 shrink-0">
+                        <span className="text-[10px] font-black uppercase tracking-widest">رسوم التوصيل</span>
+                      </div>
+                      <input
+                        type="number"
+                        value={deliveryFee || ""}
+                        onChange={e => setDeliveryFee(parseFloat(e.target.value) || 0)}
+                        placeholder="0"
+                        className="w-full bg-transparent text-[11px] sm:text-xs font-black text-white outline-none"
+                      />
+                    </div>
+                  )}
+                  <div className="flex-1 bg-slate-900 px-3 py-1.5 rounded-xl border border-white/5 flex flex-col gap-0.5">
+                    <div className="flex items-center justify-between gap-1 text-slate-500 shrink-0">
+                      <span className="text-[10px] font-black uppercase tracking-widest">الضريبة</span>
+                      <button
+                        type="button"
+                        onClick={() => setTaxEnabled(v => !v)}
+                        title="تفعيل/إيقاف احتساب الضريبة على هذا الطلب"
+                        className={`text-[10px] font-black px-1.5 py-0.5 rounded transition-colors shrink-0 ${taxEnabled ? "bg-red-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"}`}
+                      >
+                        {taxEnabled ? "مفعّلة" : "متوقفة"}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        value={taxRate || ""}
+                        onChange={e => setTaxRate(parseFloat(e.target.value) || 0)}
+                        placeholder="0"
+                        disabled={!taxEnabled}
+                        className="flex-1 min-w-0 bg-transparent text-center text-[11px] sm:text-xs font-black text-white outline-none disabled:opacity-30"
+                      />
+                      <span className="text-[10px] font-black text-slate-500 shrink-0">%</span>
                     </div>
                   </div>
                 </div>

@@ -156,7 +156,7 @@ export const SipConfigurationPage: React.FC = () => {
       {/* Form Modal */}
       {showForm && (
         <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: colors.dark.overlay }} onClick={e => { if (e.target === e.currentTarget) setShowForm(false); }}>
-          <div style={{ width: "100%", maxWidth: 420, maxHeight: "90vh", overflow: "auto", background: "#fff", borderRadius: 20, boxShadow: shadows["2xl"] }}>
+          <div style={{ width: "100%", maxWidth: 420, maxHeight: "90vh", overflow: "auto", background: colors.surface.raised, borderRadius: 20, boxShadow: shadows["2xl"] }}>
             {/* Modal Header */}
             <div style={{ padding: "20px 24px", borderBottom: `1px solid ${colors.border.subtle}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div>
@@ -198,7 +198,7 @@ export const SipConfigurationPage: React.FC = () => {
                       <button key={p} onClick={() => setForm({ ...form, transport: p })} style={{
                         padding: "10px", borderRadius: radius.lg,
                         border: `1px solid ${form.transport === p ? transportColors[p] : colors.border.default}`,
-                        background: form.transport === p ? `${transportColors[p]}10` : colors.neutral[50],
+                        background: form.transport === p ? `color-mix(in srgb, ${transportColors[p]} 6%, transparent)` : colors.neutral[50],
                         color: form.transport === p ? transportColors[p] : colors.neutral[600],
                         fontSize: "13px", fontWeight: 600, textTransform: "uppercase", cursor: "pointer",
                         transition: `all ${transitions.fast}`,
@@ -249,7 +249,7 @@ export const SipConfigurationPage: React.FC = () => {
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
                 <div style={{
                   width: 48, height: 48, borderRadius: radius.lg,
-                  background: `${colors.brand[500]}10`, display: "flex", alignItems: "center", justifyContent: "center",
+                  background: `color-mix(in srgb, ${colors.brand[500]} 6%, transparent)`, display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: "18px", fontWeight: 800, color: colors.brand[500],
                 }}>
                   {account.username.slice(0, 2)}
@@ -265,11 +265,11 @@ export const SipConfigurationPage: React.FC = () => {
               {/* الموظف المرتبط */}
               <div style={{ marginBottom: 12 }}>
                 {account.user_name ? (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 8px", borderRadius: radius.md, background: colors.semantic.successBg, color: "#065f46", fontSize: "12px", fontWeight: 600 }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 8px", borderRadius: radius.md, background: colors.semantic.successBg, color: colors.semantic.success, fontSize: "12px", fontWeight: 600 }}>
                     <User size={12} /> {account.user_name}
                   </span>
                 ) : (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 8px", borderRadius: radius.md, background: colors.semantic.warningBg, color: "#92400e", fontSize: "12px", fontWeight: 600 }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 8px", borderRadius: radius.md, background: colors.semantic.warningBg, color: colors.semantic.warning, fontSize: "12px", fontWeight: 600 }}>
                     <AlertTriangle size={12} /> غير مرتبط بموظف
                   </span>
                 )}
@@ -282,7 +282,7 @@ export const SipConfigurationPage: React.FC = () => {
                 </span>
                 <span style={{
                   display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 8px", borderRadius: radius.md,
-                  background: `${transportColors[account.transport]}10`, color: transportColors[account.transport],
+                  background: `color-mix(in srgb, ${transportColors[account.transport]} 6%, transparent)`, color: transportColors[account.transport],
                   fontSize: "12px", fontWeight: 600, textTransform: "uppercase",
                 }}>
                   {account.transport}

@@ -40,6 +40,67 @@
   --o2-danger-soft: rgba(239, 68, 68, 0.10);
   --o2-info: #3b82f6;
   --o2-info-soft: rgba(59, 130, 246, 0.10);
+
+  /* ── Call Center design-system palette (design/tokens.ts `colors`) ──────────
+     Extends the same --o2-* mechanism above with the full neutral/brand/semantic
+     scale that the call-center module's inline styles reference. Dark values
+     here; the light override block below carries the *exact* previous hardcoded
+     values from tokens.ts so light mode is pixel-identical to before. */
+  --o2-cc-neutral-0: #0a0a0a;
+  --o2-cc-neutral-50: #111113;
+  --o2-cc-neutral-100: #18181b;
+  --o2-cc-neutral-200: #27272a;
+  --o2-cc-neutral-300: #3f3f46;
+  --o2-cc-neutral-400: #52525b;
+  --o2-cc-neutral-500: #71717a;
+  --o2-cc-neutral-600: #a1a1aa;
+  --o2-cc-neutral-700: #d4d4d8;
+  --o2-cc-neutral-800: #e4e4e7;
+  --o2-cc-neutral-900: #f4f4f5;
+  --o2-cc-neutral-950: #fafafa;
+
+  --o2-cc-brand-50: #2c0a0a;
+  --o2-cc-brand-100: #3d0f0f;
+  --o2-cc-brand-200: #5c1515;
+  --o2-cc-brand-300: #7a1a1a;
+  --o2-cc-brand-400: #f87171;
+  --o2-cc-brand-500: #E20004;
+  --o2-cc-brand-600: #C90004;
+  --o2-cc-brand-700: #991b1b;
+  --o2-cc-brand-800: #7f1d1d;
+  --o2-cc-brand-900: #450a0a;
+
+  --o2-cc-success: #10b981;
+  --o2-cc-success-bg: rgba(16, 185, 129, 0.16);
+  --o2-cc-success-border: rgba(16, 185, 129, 0.35);
+  --o2-cc-warning: #f59e0b;
+  --o2-cc-warning-bg: rgba(245, 158, 11, 0.16);
+  --o2-cc-warning-border: rgba(245, 158, 11, 0.35);
+  --o2-cc-error: #ef4444;
+  --o2-cc-error-bg: rgba(239, 68, 68, 0.16);
+  --o2-cc-error-border: rgba(239, 68, 68, 0.35);
+  --o2-cc-info: #3b82f6;
+  --o2-cc-info-bg: rgba(59, 130, 246, 0.16);
+  --o2-cc-info-border: rgba(59, 130, 246, 0.35);
+
+  --o2-cc-call-ringing: #10b981;
+  --o2-cc-call-ringing-bg: rgba(16, 185, 129, 0.2);
+  --o2-cc-call-connected: #3b82f6;
+  --o2-cc-call-connected-bg: rgba(59, 130, 246, 0.2);
+  --o2-cc-call-ended: #9ca3af;
+  --o2-cc-call-ended-bg: rgba(156, 163, 175, 0.2);
+  --o2-cc-call-onhold: #f59e0b;
+  --o2-cc-call-onhold-bg: rgba(245, 158, 11, 0.2);
+
+  --o2-cc-surface-page: #0a0a0a;
+  --o2-cc-surface-raised: #18181b;
+  --o2-cc-surface-overlay: rgba(0, 0, 0, 0.7);
+  --o2-cc-surface-sunken: #111113;
+
+  --o2-cc-border-subtle: #27272a;
+  --o2-cc-border-default: #3f3f46;
+  --o2-cc-border-strong: #52525b;
+  --o2-cc-border-focus: #E20004;
 }
 
 :root[data-theme="light"],
@@ -64,6 +125,70 @@
   --o2-danger-soft: rgba(220, 38, 38, 0.06);
   --o2-info: #2563eb;
   --o2-info-soft: rgba(37, 99, 235, 0.06);
+
+  /* Call Center — exact previous hardcoded values from design/tokens.ts (unchanged look) */
+  --o2-cc-neutral-0: #ffffff;
+  --o2-cc-neutral-50: #fafafa;
+  --o2-cc-neutral-100: #f5f5f5;
+  --o2-cc-neutral-200: #e5e5e5;
+  --o2-cc-neutral-300: #d4d4d4;
+  --o2-cc-neutral-400: #a3a3a3;
+  --o2-cc-neutral-500: #737373;
+  --o2-cc-neutral-600: #525252;
+  --o2-cc-neutral-700: #404040;
+  --o2-cc-neutral-800: #262626;
+  --o2-cc-neutral-900: #171717;
+  --o2-cc-neutral-950: #0a0a0a;
+
+  --o2-cc-brand-50: #fef2f2;
+  --o2-cc-brand-100: #fee2e2;
+  --o2-cc-brand-200: #fecaca;
+  --o2-cc-brand-300: #fca5a5;
+  --o2-cc-brand-400: #f87171;
+  --o2-cc-brand-500: #E20004;
+  --o2-cc-brand-600: #C90004;
+  --o2-cc-brand-700: #991b1b;
+  --o2-cc-brand-800: #7f1d1d;
+  --o2-cc-brand-900: #450a0a;
+
+  --o2-cc-success: #10b981;
+  --o2-cc-success-bg: rgba(16, 185, 129, 0.08);
+  --o2-cc-success-border: rgba(16, 185, 129, 0.2);
+  --o2-cc-warning: #f59e0b;
+  --o2-cc-warning-bg: rgba(245, 158, 11, 0.08);
+  --o2-cc-warning-border: rgba(245, 158, 11, 0.2);
+  --o2-cc-error: #ef4444;
+  --o2-cc-error-bg: rgba(239, 68, 68, 0.08);
+  --o2-cc-error-border: rgba(239, 68, 68, 0.2);
+  --o2-cc-info: #3b82f6;
+  --o2-cc-info-bg: rgba(59, 130, 246, 0.08);
+  --o2-cc-info-border: rgba(59, 130, 246, 0.2);
+
+  --o2-cc-call-ringing: #10b981;
+  --o2-cc-call-ringing-bg: rgba(16, 185, 129, 0.12);
+  --o2-cc-call-connected: #3b82f6;
+  --o2-cc-call-connected-bg: rgba(59, 130, 246, 0.12);
+  --o2-cc-call-ended: #6b7280;
+  --o2-cc-call-ended-bg: rgba(107, 114, 128, 0.12);
+  --o2-cc-call-onhold: #f59e0b;
+  --o2-cc-call-onhold-bg: rgba(245, 158, 11, 0.12);
+
+  --o2-cc-surface-page: #fafafa;
+  --o2-cc-surface-raised: #ffffff;
+  --o2-cc-surface-overlay: rgba(0, 0, 0, 0.5);
+  --o2-cc-surface-sunken: #f5f5f5;
+
+  --o2-cc-border-subtle: #e5e5e5;
+  --o2-cc-border-default: #d4d4d4;
+  --o2-cc-border-strong: #a3a3a3;
+  --o2-cc-border-focus: #E20004;
+}
+
+/* Call Center: smooth theme transition (point 6) — scoped to the module so it
+   doesn't add transition overhead to the rest of the app's already-tuned CSS */
+[data-callcenter-root],
+[data-callcenter-root] * {
+  transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease;
 }
 
 *,

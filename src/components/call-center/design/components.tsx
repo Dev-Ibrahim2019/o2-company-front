@@ -18,7 +18,7 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 
 const vStyles: Record<ButtonVariant, React.CSSProperties> = {
   primary: { background: colors.brand[500], color: "#fff", border: "none" },
-  secondary: { background: "#fff", color: colors.neutral[700], border: `1px solid ${colors.border.default}` },
+  secondary: { background: colors.surface.raised, color: colors.neutral[700], border: `1px solid ${colors.border.default}` },
   ghost: { background: "transparent", color: colors.neutral[600], border: "none" },
   danger: { background: colors.semantic.error, color: "#fff", border: "none" },
   success: { background: colors.semantic.success, color: "#fff", border: "none" },
@@ -47,7 +47,7 @@ export const Input: React.FC<InputProps> = ({ label, error, icon, style, ...p })
     {label && <label style={{ fontSize: "13px", fontWeight: 500, color: colors.neutral[600] }}>{label}</label>}
     <div style={{ position: "relative" }}>
       {icon && <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", color: colors.neutral[400], display: "flex" }}>{icon}</span>}
-      <input {...p} style={{ width: "100%", height: 36, padding: icon ? "0 36px 0 12px" : "0 12px", fontSize: "14px", fontFamily: typography.fontFamily.sans, color: colors.neutral[900], background: "#fff", border: `1px solid ${error ? colors.semantic.error : colors.border.default}`, borderRadius: radius.lg, outline: "none", ...style }} />
+      <input {...p} style={{ width: "100%", height: 36, padding: icon ? "0 36px 0 12px" : "0 12px", fontSize: "14px", fontFamily: typography.fontFamily.sans, color: colors.neutral[900], background: colors.surface.raised, border: `1px solid ${error ? colors.semantic.error : colors.border.default}`, borderRadius: radius.lg, outline: "none", ...style }} />
     </div>
     {error && <span style={{ fontSize: "12px", color: colors.semantic.error }}>{error}</span>}
   </div>
@@ -74,7 +74,7 @@ export const Badge: React.FC<{ variant?: BadgeVariant; children: React.ReactNode
 // CARD
 // ============================================================================
 export const Card: React.FC<{ children: React.ReactNode; padding?: string; hover?: boolean; onClick?: () => void; className?: string; style?: React.CSSProperties }> = ({ children, padding = "16px", hover, onClick, style }) => (
-  <div onClick={onClick} style={{ background: "#fff", border: `1px solid ${colors.border.subtle}`, borderRadius: radius.xl, padding, transition: `all ${transitions.fast}`, cursor: onClick ? "pointer" : undefined, ...style }}>
+  <div onClick={onClick} style={{ background: colors.surface.raised, border: `1px solid ${colors.border.subtle}`, borderRadius: radius.xl, padding, transition: `all ${transitions.fast}`, cursor: onClick ? "pointer" : undefined, ...style }}>
     {children}
   </div>
 );
@@ -93,7 +93,7 @@ export const StatCard: React.FC<{ title: string; value: string | number; change?
         </div>
         {change && <p style={{ fontSize: "12px", fontWeight: 500, color: change.type === "increase" ? colors.semantic.success : colors.semantic.error, marginTop: 4 }}>{change.type === "increase" ? "↑" : "↓"} {Math.abs(change.value)}%</p>}
       </div>
-      {icon && <div style={{ width: 40, height: 40, borderRadius: radius.lg, background: `${color}12`, display: "flex", alignItems: "center", justifyContent: "center", color }}>{icon}</div>}
+      {icon && <div style={{ width: 40, height: 40, borderRadius: radius.lg, background: `color-mix(in srgb, ${color} 12%, transparent)`, display: "flex", alignItems: "center", justifyContent: "center", color }}>{icon}</div>}
     </div>
   </Card>
 );
@@ -110,7 +110,7 @@ export const Avatar: React.FC<{ name: string; image?: string; size?: number; sta
       {image ? <img src={image} alt={name} style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover" }} /> : (
         <div style={{ width: size, height: size, borderRadius: "50%", background: `${bg}15`, color: bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: size * 0.35, fontWeight: 700 }}>{initials}</div>
       )}
-      {status && <span style={{ position: "absolute", bottom: 0, right: 0, width: size * 0.3, height: size * 0.3, borderRadius: "50%", background: status === "online" ? colors.semantic.success : status === "busy" ? colors.semantic.error : colors.neutral[400], border: "2px solid #fff" }} />}
+      {status && <span style={{ position: "absolute", bottom: 0, right: 0, width: size * 0.3, height: size * 0.3, borderRadius: "50%", background: status === "online" ? colors.semantic.success : status === "busy" ? colors.semantic.error : colors.neutral[400], border: `2px solid ${colors.surface.raised}` }} />}
     </div>
   );
 };
@@ -183,7 +183,7 @@ export const SearchInput: React.FC<{ value: string; onChange: (v: string) => voi
 export const Select: React.FC<{ label?: string; value: string | number; onChange: (v: string) => void; options: Array<{ value: string | number; label: string }> }> = ({ label, value, onChange, options }) => (
   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
     {label && <label style={{ fontSize: "13px", fontWeight: 500, color: colors.neutral[600] }}>{label}</label>}
-    <select value={value} onChange={e => onChange(e.target.value)} style={{ height: 36, padding: "0 12px", fontSize: "14px", fontFamily: typography.fontFamily.sans, color: colors.neutral[900], background: "#fff", border: `1px solid ${colors.border.default}`, borderRadius: radius.lg, outline: "none", cursor: "pointer" }}>
+    <select value={value} onChange={e => onChange(e.target.value)} style={{ height: 36, padding: "0 12px", fontSize: "14px", fontFamily: typography.fontFamily.sans, color: colors.neutral[900], background: colors.surface.raised, border: `1px solid ${colors.border.default}`, borderRadius: radius.lg, outline: "none", cursor: "pointer" }}>
       {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
   </div>

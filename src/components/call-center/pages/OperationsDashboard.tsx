@@ -436,7 +436,7 @@ const KpiCard: React.FC<{ title: string; value: string | number; icon: React.Rea
           </div>
         )}
       </div>
-      <div style={{ width: 34, height: 34, borderRadius: radius.lg, background: `${color}12`, display: "flex", alignItems: "center", justifyContent: "center", color, flexShrink: 0 }}>
+      <div style={{ width: 34, height: 34, borderRadius: radius.lg, background: `color-mix(in srgb, ${color} 12%, transparent)`, display: "flex", alignItems: "center", justifyContent: "center", color, flexShrink: 0 }}>
         {icon}
       </div>
     </div>

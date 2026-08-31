@@ -383,6 +383,12 @@ export interface OrderFromApi {
   tickets: ProductionTicketFromApi[];
   payments?: InvoicePaymentResponse[];
   cashier?: { id: number; name: string };
+  branch?: { id: number; name: string } | null;
+  delivery_fee?: number;
+  delivery_address_snapshot?: { address?: string } | null;
+  tax_rate?: number;
+  tax_amount?: number;
+  scheduled_at?: string | null;
   has_unsent_items?: boolean;
   created_at: string;
   updated_at: string;

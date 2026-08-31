@@ -257,7 +257,7 @@ export const ClosedOrdersPage: React.FC = () => {
                   <span style={{
                     display: "inline-flex", alignItems: "center", gap: 4,
                     padding: "3px 8px", borderRadius: radius.full, width: "fit-content",
-                    background: `${statusInfo.color}12`, color: statusInfo.color,
+                    background: `color-mix(in srgb, ${statusInfo.color} 12%, transparent)`, color: statusInfo.color,
                     fontSize: "11px", fontWeight: typography.weight.semibold,
                   }}>
                     {statusInfo.icon}
@@ -293,7 +293,7 @@ export const ClosedOrdersPage: React.FC = () => {
                         style={{
                           display: "flex", alignItems: "center", gap: 4,
                           padding: "4px 10px", borderRadius: radius.md,
-                          background: `${colors.brand[500]}08`, border: `1px solid ${colors.brand[500]}20`,
+                          background: `color-mix(in srgb, ${colors.brand[500]} 3%, transparent)`, border: `1px solid color-mix(in srgb, ${colors.brand[500]} 13%, transparent)`,
                           color: colors.brand[600], fontSize: "11px", fontWeight: typography.weight.semibold,
                           cursor: "pointer", transition: `all ${transitions.fast}`,
                         }}

@@ -233,7 +233,7 @@ export const IncomingCallNotification: React.FC<IncomingCallProps> = ({
                       fontSize: "12px", fontWeight: 500, color: colors.neutral[700],
                       cursor: "pointer", transition: `all ${transitions.fast}`,
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.background = `${colors.brand[500]}08`; e.currentTarget.style.borderColor = `${colors.brand[500]}40`; }}
+                    onMouseEnter={e => { e.currentTarget.style.background = `color-mix(in srgb, ${colors.brand[500]} 3%, transparent)`; e.currentTarget.style.borderColor = `color-mix(in srgb, ${colors.brand[500]} 25%, transparent)`; }}
                     onMouseLeave={e => { e.currentTarget.style.background = colors.neutral[50]; e.currentTarget.style.borderColor = colors.border.subtle; }}>
                     <PhoneForwarded size={14} color={colors.brand[500]} />
                     {ext.name}
@@ -345,8 +345,8 @@ export const ActiveCallBar: React.FC<ActiveCallBarProps> = ({
           <span key={i} style={{
             padding: "2px 8px", borderRadius: radius.md,
             fontSize: "11px", fontWeight: 500,
-            background: `${chip.color}12`, color: chip.color,
-            border: `1px solid ${chip.color}20`,
+            background: `color-mix(in srgb, ${chip.color} 12%, transparent)`, color: chip.color,
+            border: `1px solid color-mix(in srgb, ${chip.color} 13%, transparent)`,
           }}>
             {chip.label}
           </span>
@@ -359,8 +359,8 @@ export const ActiveCallBar: React.FC<ActiveCallBarProps> = ({
           <button onClick={onToggleProfile} style={{
             display: "flex", alignItems: "center", gap: 6,
             padding: "6px 10px", borderRadius: radius.lg,
-            background: profileOpen ? `${colors.brand[500]}10` : "transparent",
-            border: `1px solid ${profileOpen ? `${colors.brand[500]}40` : colors.border.default}`,
+            background: profileOpen ? `color-mix(in srgb, ${colors.brand[500]} 6%, transparent)` : "transparent",
+            border: `1px solid ${profileOpen ? `color-mix(in srgb, ${colors.brand[500]} 25%, transparent)` : colors.border.default}`,
             color: profileOpen ? colors.brand[600] : colors.neutral[600],
             fontSize: "12px", fontWeight: 500, cursor: "pointer",
           }}>
@@ -371,7 +371,7 @@ export const ActiveCallBar: React.FC<ActiveCallBarProps> = ({
           <button onClick={onHold} style={{
             padding: "6px 10px", borderRadius: radius.lg,
             background: isOnHold ? colors.call.onHoldBg : "transparent",
-            border: `1px solid ${isOnHold ? `${colors.call.onHold}40` : colors.border.default}`,
+            border: `1px solid ${isOnHold ? `color-mix(in srgb, ${colors.call.onHold} 25%, transparent)` : colors.border.default}`,
             color: isOnHold ? colors.call.onHold : colors.neutral[600],
             fontSize: "12px", fontWeight: 500, cursor: "pointer",
           }}>

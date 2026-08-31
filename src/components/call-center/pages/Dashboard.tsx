@@ -312,7 +312,7 @@ const RecentActivityList: React.FC = () => {
         <div key={activity.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: radius.lg, transition: `background ${transitions.fast}` }}
           onMouseEnter={e => e.currentTarget.style.background = colors.neutral[50]}
           onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-          <div style={{ width: 32, height: 32, borderRadius: radius.lg, background: `${activity.color}12`, display: "flex", alignItems: "center", justifyContent: "center", color: activity.color }}>
+          <div style={{ width: 32, height: 32, borderRadius: radius.lg, background: `color-mix(in srgb, ${activity.color} 12%, transparent)`, display: "flex", alignItems: "center", justifyContent: "center", color: activity.color }}>
             {activity.icon}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -354,7 +354,7 @@ const AgentStatusList: React.FC = () => {
 
 const QuickActionCard: React.FC<{ icon: React.ReactNode; label: string; color: string; onClick: () => void }> = ({ icon, label, color, onClick }) => (
   <button onClick={onClick} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "16px 12px", background: colors.neutral[50], border: `1px solid ${colors.border.subtle}`, borderRadius: radius.lg, cursor: "pointer", transition: `all ${transitions.fast}` }}
-    onMouseEnter={e => { e.currentTarget.style.background = `${color}08`; e.currentTarget.style.borderColor = color; }}
+    onMouseEnter={e => { e.currentTarget.style.background = `color-mix(in srgb, ${color} 3%, transparent)`; e.currentTarget.style.borderColor = color; }}
     onMouseLeave={e => { e.currentTarget.style.background = colors.neutral[50]; e.currentTarget.style.borderColor = colors.border.subtle; }}>
     <div style={{ color }}>{icon}</div>
     <span style={{ fontSize: typography.size.xs, fontWeight: typography.weight.medium, color: colors.neutral[700] }}>{label}</span>

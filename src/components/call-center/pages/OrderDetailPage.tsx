@@ -271,7 +271,7 @@ export const OrderDetailPage: React.FC = () => {
               <span style={{
                 display: "inline-flex", alignItems: "center", gap: 4,
                 padding: "3px 10px", borderRadius: radius.full,
-                background: `${statusInfo.color}12`, color: statusInfo.color,
+                background: `color-mix(in srgb, ${statusInfo.color} 12%, transparent)`, color: statusInfo.color,
                 fontSize: "11px", fontWeight: typography.weight.semibold,
               }}>
                 {statusInfo.icon} {statusInfo.label}
@@ -313,7 +313,7 @@ export const OrderDetailPage: React.FC = () => {
                   <button onClick={() => setShowAddItem(true)} style={{
                     display: "flex", alignItems: "center", gap: 6,
                     padding: "8px 14px", borderRadius: radius.lg,
-                    background: `${colors.semantic.success}10`, border: `1px solid ${colors.semantic.successBorder}`,
+                    background: `color-mix(in srgb, ${colors.semantic.success} 6%, transparent)`, border: `1px solid ${colors.semantic.successBorder}`,
                     color: colors.semantic.success, fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
                     cursor: "pointer",
                   }}>
@@ -322,7 +322,7 @@ export const OrderDetailPage: React.FC = () => {
                   <button onClick={() => setEditing(true)} style={{
                     display: "flex", alignItems: "center", gap: 6,
                     padding: "8px 14px", borderRadius: radius.lg,
-                    background: `${colors.brand[500]}08`, border: `1px solid ${colors.brand[500]}20`,
+                    background: `color-mix(in srgb, ${colors.brand[500]} 3%, transparent)`, border: `1px solid color-mix(in srgb, ${colors.brand[500]} 13%, transparent)`,
                     color: colors.brand[600], fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
                     cursor: "pointer",
                   }}>
@@ -336,7 +336,7 @@ export const OrderDetailPage: React.FC = () => {
             <button onClick={cancelOrder} style={{
               display: "flex", alignItems: "center", gap: 6,
               padding: "8px 14px", borderRadius: radius.lg,
-              background: `${colors.semantic.error}08`, border: `1px solid ${colors.semantic.errorBorder}`,
+              background: `color-mix(in srgb, ${colors.semantic.error} 6%, transparent)`, border: `1px solid ${colors.semantic.errorBorder}`,
               color: colors.semantic.error, fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
               cursor: "pointer",
             }}>
@@ -378,7 +378,7 @@ export const OrderDetailPage: React.FC = () => {
                 <button onClick={() => setShowAddItem(true)} style={{
                   display: "flex", alignItems: "center", gap: 4,
                   padding: "4px 10px", borderRadius: radius.md,
-                  background: `${colors.semantic.success}10`, border: `1px solid ${colors.semantic.successBorder}`,
+                  background: `color-mix(in srgb, ${colors.semantic.success} 6%, transparent)`, border: `1px solid ${colors.semantic.successBorder}`,
                   color: colors.semantic.success, fontSize: "11px", fontWeight: typography.weight.semibold,
                   cursor: "pointer",
                 }}>
@@ -422,7 +422,7 @@ export const OrderDetailPage: React.FC = () => {
                         onClick={() => removeItem(item.id)}
                         style={{
                           width: 28, height: 28, borderRadius: radius.md,
-                          background: `${colors.semantic.error}08`, border: `1px solid ${colors.semantic.errorBorder}`,
+                          background: `color-mix(in srgb, ${colors.semantic.error} 3%, transparent)`, border: `1px solid ${colors.semantic.errorBorder}`,
                           display: "flex", alignItems: "center", justifyContent: "center",
                           cursor: "pointer", color: colors.semantic.error, flexShrink: 0,
                         }}

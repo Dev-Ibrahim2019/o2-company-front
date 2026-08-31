@@ -233,8 +233,8 @@ const ScopeTab: React.FC<{ label: string; count: number; active: boolean; color:
     style={{
       display: "flex", alignItems: "center", gap: 6,
       padding: "8px 14px", borderRadius: radius.full,
-      background: active ? `${color}14` : "transparent",
-      border: `1.5px solid ${active ? `${color}40` : colors.border.subtle}`,
+      background: active ? `color-mix(in srgb, ${color} 8%, transparent)` : "transparent",
+      border: `1.5px solid ${active ? `color-mix(in srgb, ${color} 25%, transparent)` : colors.border.subtle}`,
       color: active ? color : colors.neutral[500],
       fontSize: typography.size.xs, fontWeight: typography.weight.semibold,
       cursor: "pointer", transition: `all ${transitions.fast}`,
@@ -244,7 +244,7 @@ const ScopeTab: React.FC<{ label: string; count: number; active: boolean; color:
     <span style={{
       display: "inline-flex", alignItems: "center", justifyContent: "center",
       minWidth: 20, height: 20, padding: "0 6px", borderRadius: radius.full,
-      background: active ? `${color}20` : colors.neutral[100],
+      background: active ? `color-mix(in srgb, ${color} 13%, transparent)` : colors.neutral[100],
       fontSize: "11px", fontWeight: typography.weight.bold,
     }}>
       {count}
@@ -302,7 +302,7 @@ const OrderCard: React.FC<{ order: ActiveCallCenterOrder; onClick: () => void }>
           <span style={{
             padding: "2px 8px", borderRadius: radius.full,
             fontSize: "11px", fontWeight: typography.weight.semibold,
-            background: `${statusInfo.color}12`, color: statusInfo.color,
+            background: `color-mix(in srgb, ${statusInfo.color} 12%, transparent)`, color: statusInfo.color,
           }}>
             {statusInfo.label}
           </span>
