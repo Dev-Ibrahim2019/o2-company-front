@@ -70,13 +70,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data } = await api.get("/auth/me");
       const userData = data.user || data.data?.user || data;
 
+      // Roles and permissions come from the server on every app load, not from
+      // the copy localStorage kept since login. Granting a permission to a
+      // signed-in user used to require them to log out and back in before the
+      // UI acknowledged it; now a refresh is enough, and a revoked permission
+      // stops being honoured just as promptly.
+      //
+      // The stored copy is still the fallback: older backends answer /auth/me
+      // with the bare user, and blanking a working session's permissions on
+      // that response would lock the user out of screens they can still use.
+      const serverRoles: string[] | undefined = data.roles ?? data.data?.roles;
+      const serverPermissions: string[] | undefined = data.permissions ?? data.data?.permissions;
+
+      const roles = Array.isArray(serverRoles) ? serverRoles : getRoles();
+      const permissions = Array.isArray(serverPermissions) ? serverPermissions : getPermissions();
+
+      // Keep localStorage in step so the guards that read it directly, and the
+      // next load before this request resolves, see the same answer.
+      saveAuthData({ token: currentToken, roles, permissions, branch_id: userData.branch_id ?? null });
+
       setUser({
         id: userData.id,
         name: userData.name,
         email: userData.email,
         branch_id: userData.branch_id ?? null,
-        roles: getRoles(),
-        permissions: getPermissions(),
+        roles,
+        permissions,
       });
       setToken(currentToken);
     } catch (err) {

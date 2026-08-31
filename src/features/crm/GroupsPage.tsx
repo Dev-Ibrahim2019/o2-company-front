@@ -1,4 +1,4 @@
-import { Building2, ChevronLeft, Loader2, Plus, RotateCcw, X } from "lucide-react";
+import { Building2, ChevronLeft, Layers, Loader2, Plus, RotateCcw, Users, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth";
@@ -6,7 +6,7 @@ import { CRM_PERMISSIONS } from "../../auth/permissions";
 import { toast } from "../../components/shared/Toast";
 import { crmApi } from "./api";
 import { CrmState, getCrmError } from "./components";
-import { CrmPageHeader, CrmSearchBar } from "./customers-ui";
+import { CrmKpiCard, CrmPageHeader, CrmSearchBar } from "./customers-ui";
 import type { CrmCustomerGroup, CrmCustomerGroupInput, CrmGroupType } from "./types";
 
 /** customer_groups.group_type — a DB enum since the table was created. */
@@ -157,6 +157,16 @@ export function GroupsPage() {
     }
   };
 
+  // Derived from the list already loaded — no extra request, and the figures
+  // therefore always describe exactly the rows rendered below them.
+  const totalMembers = groups.reduce((sum, g) => sum + (g.customers_count ?? 0), 0);
+  const busiestType = (() => {
+    const counts = new Map<CrmGroupType, number>();
+    for (const g of groups) counts.set(g.group_type, (counts.get(g.group_type) ?? 0) + 1);
+    const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+    return top ? GROUP_TYPE_LABELS[top[0]] : "—";
+  })();
+
   const needle = term.trim().toLowerCase();
   const visible = needle === ""
     ? groups
@@ -187,6 +197,12 @@ export function GroupsPage() {
         }
       />
 
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <CrmKpiCard icon={<Layers className="h-5 w-5" />} label="عدد المجموعات" value={String(groups.length)} tone="navy" loading={loading} />
+        <CrmKpiCard icon={<Users className="h-5 w-5" />} label="إجمالي الأعضاء" value={String(totalMembers)} hint="عبر كل المجموعات" tone="success" loading={loading} />
+        <CrmKpiCard icon={<Building2 className="h-5 w-5" />} label="أكثر نوع" value={busiestType} tone="accent" loading={loading} />
+      </div>
+
       <div className={`${cardCls} p-4`}>
         <CrmSearchBar value={term} onChange={setTerm} placeholder="ابحث باسم المجموعة…" />
       </div>
@@ -196,7 +212,31 @@ export function GroupsPage() {
       ) : error ? (
         <CrmState kind={error.status === 403 ? "forbidden" : "error"} title={error.message} retry={load} />
       ) : visible.length === 0 ? (
-        <CrmState kind="empty" title={needle ? "لا توجد مجموعة مطابقة" : "لا توجد مجموعات بعد"} />
+        <div className={`${cardCls} flex flex-col items-center justify-center gap-3 py-16 text-center`}>
+          <span className="flex h-12 w-12 items-center justify-center rounded-[var(--crmx-radius-control)] bg-[var(--crmx-navy-soft)] text-[var(--crmx-navy)]">
+            <Building2 className="h-6 w-6" />
+          </span>
+          <div>
+            <p className="text-[15px] font-bold text-[var(--crmx-text)]">
+              {needle ? "لا توجد مجموعة مطابقة" : "لا توجد مجموعات بعد"}
+            </p>
+            <p className="mt-1 text-[13px] text-[var(--crmx-text-secondary)]">
+              {needle
+                ? "جرّب اسماً آخر أو امسح البحث."
+                : "أنشئ أول مجموعة لتجميع عملاء شركة أو عائلة تحت ملف واحد."}
+            </p>
+          </div>
+          {/* The header action is not enough here: on an empty screen the
+              primary next step belongs where the reader is looking. */}
+          {!needle && canCreate && (
+            <button
+              onClick={() => setCreateOpen(true)}
+              className="mt-1 flex h-11 items-center gap-2 rounded-xl bg-[var(--crmx-primary)] px-4 text-[14px] font-bold text-white transition hover:bg-[var(--crmx-primary-hover)]"
+            >
+              <Plus className="h-4 w-4" /> إنشاء مجموعة
+            </button>
+          )}
+        </div>
       ) : (
         <div className={cardCls}>
           <div className="crmx-scrollbar overflow-x-auto">
