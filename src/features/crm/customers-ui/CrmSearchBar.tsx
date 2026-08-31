@@ -45,7 +45,7 @@ export function CrmSearchBar({
         value={local}
         onChange={(e) => setLocal(e.target.value)}
         placeholder={placeholder}
-        className="h-11 w-full rounded-xl border border-[var(--crmx-border)] bg-white ps-10 pe-9 text-[14px] text-[var(--crmx-text)] outline-none transition placeholder:text-[var(--crmx-text-muted)] focus:border-[var(--crmx-navy)] focus:ring-2 focus:ring-[var(--crmx-navy)]/10"
+        className="h-11 w-full rounded-xl border border-[var(--crmx-border)] bg-white ps-10 pe-9 text-[14px] text-[var(--crmx-text)] outline-none transition placeholder:text-[var(--crmx-text-muted)] focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
       />
       {local && (
         <button

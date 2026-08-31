@@ -10,18 +10,12 @@ import {
 } from "recharts";
 import { useAuth } from "../../auth";
 import { crmApi } from "./api";
+import { date as formatDate, num } from "./format";
 import { getCrmError } from "./components";
 import { useCrmOperational } from "./CrmShell";
 import "./customers-ui/crmx.css";
 import { CrmAvatar, CrmKpiCard, CrmPageHeader, CrmStatusBadge } from "./customers-ui";
 import type { CrmCustomerSource, CrmDashboard } from "./types";
-
-function formatDate(value?: string | null) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("ar-EG", { year: "numeric", month: "short", day: "numeric" });
-}
 
 // Fixed, brand-consistent series colors for the donut — same palette used
 // across the CRM design tokens (green/navy/purple/warning/muted).
@@ -76,7 +70,7 @@ export function CrmDashboardPage() {
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] py-16 text-center">
           <AlertTriangle className="h-8 w-8 text-[var(--crmx-danger)]" />
           <p className="text-[15px] font-bold text-[var(--crmx-text)]">{error.message}</p>
-          <button onClick={load} className="h-10 rounded-xl bg-[var(--crmx-navy)] px-4 text-[13px] font-bold text-white">إعادة المحاولة</button>
+          <button onClick={load} className="h-10 rounded-xl bg-[var(--crmx-primary)] px-4 text-[13px] font-bold text-white">إعادة المحاولة</button>
         </div>
       </div>
     );
@@ -87,7 +81,13 @@ export function CrmDashboardPage() {
     { icon: <UserCheck className="h-5 w-5" />, label: "العملاء النشطون", value: data?.active_customers_count, trend: data?.trends?.active_customers_count, tone: "success" as const },
     { icon: <UserPlus className="h-5 w-5" />, label: "عملاء جدد", value: data?.new_customers_count, tone: "warning" as const, hint: "هذا الشهر" },
     { icon: <TriangleAlert className="h-5 w-5" />, label: "شكاوى مفتوحة", value: data?.open_complaints_count, trend: data?.trends?.open_complaints_count, trendInverse: true, tone: "accent" as const },
-    { icon: <ShoppingBag className="h-5 w-5" />, label: "الطلبات", value: data?.orders_count, tone: "navy" as const },
+    // Counts orders that belong to a CRM customer (CrmController@dashboard:
+    // Order::whereIn('customer_id', visibleCustomerIds)), NOT every order in
+    // the branch — that is what the "الطلبات النشطة"/"الطلبات المتأخرة" cards
+    // below report, via a different query with a different scope. Labelled
+    // explicitly because a bare "الطلبات" next to those two reads as a
+    // contradiction whenever orders exist that carry no customer_id.
+    { icon: <ShoppingBag className="h-5 w-5" />, label: "طلبات العملاء", value: data?.orders_count, tone: "navy" as const, hint: "الطلبات المرتبطة بملف عميل" },
   ];
 
   const exportRecentCustomers = () => {
@@ -138,12 +138,12 @@ export function CrmDashboardPage() {
             <button
               onClick={exportRecentCustomers}
               disabled={!data?.recent_customers?.length}
-              className="flex h-11 items-center gap-2 rounded-xl border border-[var(--crmx-border)] bg-white px-4 text-[14px] font-semibold text-[var(--crmx-text)] transition enabled:hover:border-[var(--crmx-navy)] disabled:opacity-40"
+              className="flex h-11 items-center gap-2 rounded-xl border border-[var(--crmx-border)] bg-white px-4 text-[14px] font-semibold text-[var(--crmx-text)] transition enabled:hover:border-[var(--crmx-primary)] disabled:opacity-40"
               title="تصدير آخر العملاء إلى CSV"
             >
               تصدير
             </button>
-            <button onClick={load} aria-label="تحديث" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--crmx-border)] bg-white text-[var(--crmx-text-secondary)] hover:border-[var(--crmx-navy)] hover:text-[var(--crmx-navy)]">
+            <button onClick={load} aria-label="تحديث" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--crmx-border)] bg-white text-[var(--crmx-text-secondary)] hover:border-[var(--crmx-primary)] hover:text-[var(--crmx-navy)]">
               <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
             </button>
           </>
@@ -156,7 +156,7 @@ export function CrmDashboardPage() {
           <select
             value={filters.branch_id}
             onChange={(e) => setFilters((v) => ({ ...v, branch_id: e.target.value }))}
-            className="h-11 min-w-[160px] rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-navy)] focus:ring-2 focus:ring-[var(--crmx-navy)]/10"
+            className="h-11 min-w-[160px] rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
           >
             <option value="">جميع الفروع</option>
             {data?.branches?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -164,11 +164,11 @@ export function CrmDashboardPage() {
         </label>
         <label className="flex flex-col gap-1 text-[13px] font-semibold text-[var(--crmx-text-secondary)]">
           <span className="flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" /> من</span>
-          <input type="date" value={filters.from} onChange={(e) => setFilters((v) => ({ ...v, from: e.target.value }))} className="h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-navy)] focus:ring-2 focus:ring-[var(--crmx-navy)]/10" />
+          <input type="date" value={filters.from} onChange={(e) => setFilters((v) => ({ ...v, from: e.target.value }))} className="h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10" />
         </label>
         <label className="flex flex-col gap-1 text-[13px] font-semibold text-[var(--crmx-text-secondary)]">
           إلى
-          <input type="date" value={filters.to} onChange={(e) => setFilters((v) => ({ ...v, to: e.target.value }))} className="h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-navy)] focus:ring-2 focus:ring-[var(--crmx-navy)]/10" />
+          <input type="date" value={filters.to} onChange={(e) => setFilters((v) => ({ ...v, to: e.target.value }))} className="h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10" />
         </label>
       </div>
 
@@ -180,7 +180,7 @@ export function CrmDashboardPage() {
             label={m.label}
             tone={m.tone}
             loading={loading}
-            value={(m.value ?? 0).toLocaleString("ar")}
+            value={num(m.value ?? 0)}
             trend={m.trend}
             trendInverse={"trendInverse" in m ? m.trendInverse : false}
             hint={"hint" in m ? m.hint : undefined}
@@ -200,8 +200,8 @@ export function CrmDashboardPage() {
               label="الطلبات النشطة"
               tone="navy"
               loading={operational.loading}
-              value={operational.activeCount != null ? operational.activeCount.toLocaleString("ar") : "—"}
-              hint={!operational.loading && operational.activeCount == null ? "تعذر تحميل العدد" : "لم تُدفع أو تُسلَّم أو تُلغَ بعد"}
+              value={num(operational.activeCount)}
+              hint={!operational.loading && operational.activeCount == null ? "تعذر تحميل العدد" : "كل طلبات الفرع الآن — لم تُدفع أو تُسلَّم أو تُلغَ بعد"}
             />
           </Link>
           <Link
@@ -213,8 +213,8 @@ export function CrmDashboardPage() {
               label="الطلبات المتأخرة"
               tone={operational.delayedCount ? "danger" : "navy"}
               loading={operational.loading}
-              value={operational.delayedCount != null ? operational.delayedCount.toLocaleString("ar") : "—"}
-              hint={!operational.loading && operational.delayedCount == null ? "تعذر تحميل العدد" : "منذ الإنشاء، بعد الحد التشغيلي المحدد"}
+              value={num(operational.delayedCount)}
+              hint={!operational.loading && operational.delayedCount == null ? "تعذر تحميل العدد" : "من طلبات الفرع النشطة — منذ الإنشاء، بعد الحد التشغيلي المحدد"}
             />
           </Link>
         </div>
@@ -367,7 +367,7 @@ export function CrmDashboardPage() {
           )}
           {!loading && !!data?.recent_customers?.length && (
             <div className="flex items-center justify-between border-t border-[var(--crmx-border)] px-5 py-3 text-[12.5px] font-semibold text-[var(--crmx-text-secondary)]">
-              <span>عرض 1 إلى {data.recent_customers.length} من {recentTotal.toLocaleString("ar")} عميل</span>
+              <span>عرض 1 إلى {data.recent_customers.length} من {num(recentTotal)} عميل</span>
               <Link to="/admin/crm/customers" className="text-[var(--crmx-navy)] hover:text-[var(--crmx-primary)]">عرض الكل ←</Link>
             </div>
           )}
@@ -418,7 +418,7 @@ export function CrmDashboardPage() {
                       </span>
                       <span className="truncate text-[13px] font-semibold text-[var(--crmx-text)]">{i + 1}. {c.name}</span>
                     </Link>
-                    <span className="shrink-0 text-[12.5px] font-bold text-[var(--crmx-text)]">{c.loyalty_points.toLocaleString("ar")} نقطة</span>
+                    <span className="shrink-0 text-[12.5px] font-bold text-[var(--crmx-text)]">{num(c.loyalty_points)} نقطة</span>
                   </li>
                 ))}
               </ul>

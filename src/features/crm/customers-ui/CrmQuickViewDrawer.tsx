@@ -1,23 +1,17 @@
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { CrmCustomer } from "../types";
-import { categoryLabel } from "./categoryOptions";
+import { date as formatDate, money as formatMoney, num } from "../format";
+import { crmApi } from "../api";
+import type { CrmCustomer, CrmId } from "../types";
+
+/** Loose row shape — the orders endpoint returns denormalised order records. */
+type Row = Record<string, unknown>;
+import { engagementLabel } from "./engagementOptions";
 import { CRM_CUSTOMER_SOURCE_LABELS, CRM_GENDER_LABELS } from "./sourceOptions";
 import { CrmAvatar } from "./CrmAvatar";
 import { CrmStatusBadge } from "./CrmStatusBadge";
-
-function formatDate(value?: string | null) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("ar-EG", { year: "numeric", month: "short", day: "numeric" });
-}
-
-function formatMoney(value?: number | null) {
-  if (value == null) return "—";
-  return new Intl.NumberFormat("ar-PS", { style: "currency", currency: "ILS", maximumFractionDigits: 0 }).format(value);
-}
 
 type Fact = { label: string; value: string; ltr?: boolean; strong?: boolean };
 
@@ -47,6 +41,21 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+/**
+ * Quick view for a customer row.
+ *
+ * Deliberately NOT the Call Center's CustomerProfileDrawer, despite that
+ * component being richer: it reads /call-center/* endpoints, whose route group
+ * is gated on role_or_permission:call-center|super-admin|accountant|
+ * branch-manager|… — a crm-manager, the primary user of this screen, gets 403
+ * on every one of them (verified: full-profile, favorites, occasions all 403
+ * while /crm/customers/1 returns 200). Wiring it here would open an empty
+ * drawer for exactly the people who need it.
+ *
+ * So the richer content is reproduced from /crm/* endpoints instead, reusing
+ * the same chart components the Overview and Financial tabs already render.
+ * The Call Center drawer is left untouched.
+ */
 export function CrmQuickViewDrawer({ customer, onClose }: { customer: CrmCustomer | null; onClose: () => void }) {
   if (!customer) return null;
 
@@ -77,7 +86,7 @@ export function CrmQuickViewDrawer({ customer, onClose }: { customer: CrmCustome
 
           <div className="mt-3 flex items-center gap-2">
             <CrmStatusBadge value={customer.status} />
-            {customer.category && <span className="text-[12px] text-[var(--crmx-text-secondary)]">{categoryLabel(customer.category)}</span>}
+            {customer.engagement_status && <span className="text-[12px] text-[var(--crmx-text-secondary)]">{engagementLabel(customer.engagement_status)}</span>}
           </div>
 
           <div className="mt-2">
@@ -94,10 +103,10 @@ export function CrmQuickViewDrawer({ customer, onClose }: { customer: CrmCustome
             </Section>
 
             <Section title="النشاط">
-              <FactRow label="عدد الطلبات" value={customer.orders_count != null ? customer.orders_count.toLocaleString("ar") : "—"} />
+              <FactRow label="عدد الطلبات" value={num(customer.orders_count)} />
               <FactRow label="إجمالي المشتريات" value={formatMoney(customer.total_purchases)} strong />
               <FactRow label="آخر طلب" value={customer.last_order_at ? formatDate(customer.last_order_at) : "لا يوجد نشاط"} />
-              <FactRow label="نقاط الولاء" value={customer.loyalty_points != null ? customer.loyalty_points.toLocaleString("ar") : "—"} />
+              <FactRow label="نقاط الولاء" value={num(customer.loyalty_points)} />
               <FactRow label="تاريخ التسجيل" value={formatDate(customer.created_at)} />
             </Section>
 
@@ -106,18 +115,63 @@ export function CrmQuickViewDrawer({ customer, onClose }: { customer: CrmCustome
                 <FactRow label="الرصيد" value={formatMoney(customer.balance)} strong />
               </Section>
             )}
+
+            <RecentOrders customerId={customer.id} />
           </div>
         </div>
 
         <footer className="border-t border-[var(--crmx-border)] px-5 py-4">
           <Link
             to={`/admin/crm/customers/${customer.id}`}
-            className="flex h-11 items-center justify-center rounded-xl bg-[var(--crmx-navy)] text-[14px] font-bold text-white transition hover:bg-[var(--crmx-navy-hover)]"
+            className="flex h-11 items-center justify-center rounded-xl bg-[var(--crmx-primary)] text-[14px] font-bold text-white transition hover:bg-[var(--crmx-primary-hover)]"
           >
             عرض الملف الكامل
           </Link>
         </footer>
       </div>
     </div>
+  );
+}
+
+/**
+ * The last few orders, from /crm/customers/{id}/orders — the same endpoint the
+ * Orders tab uses, so no new backend surface and no call-center dependency.
+ *
+ * Failure is silent: a quick view that cannot fetch orders should still show
+ * the identity facts it already has, not turn into an error panel.
+ */
+function RecentOrders({ customerId }: { customerId: CrmId }) {
+  const [rows, setRows] = useState<Row[]>();
+
+  useEffect(() => {
+    let cancelled = false;
+    crmApi
+      .section<unknown>(customerId, "orders")
+      .then((d) => {
+        if (cancelled) return;
+        const value = d as { data?: unknown } | unknown[];
+        const items = Array.isArray(value) ? value : ((value as { data?: unknown[] })?.data ?? []);
+        setRows((items as Row[]).slice(0, 3));
+      })
+      .catch(() => !cancelled && setRows([]));
+    return () => { cancelled = true; };
+  }, [customerId]);
+
+  if (!rows?.length) return null;
+
+  return (
+    <Section title="آخر الطلبات">
+      <ul className="space-y-2">
+        {rows.map((r, i) => (
+          <li key={String(r.id ?? i)} className="flex items-center justify-between gap-2 text-[12.5px]">
+            <span className="min-w-0 truncate text-[var(--crmx-text-secondary)]">
+              {String(r.order_number ?? r.number ?? `#${r.id}`)}
+              <span className="text-[var(--crmx-text-muted)]"> · {formatDate(String(r.created_at ?? ""))}</span>
+            </span>
+            <span className="shrink-0 font-bold text-[var(--crmx-text)]">{formatMoney(Number(r.total ?? 0))}</span>
+          </li>
+        ))}
+      </ul>
+    </Section>
   );
 }

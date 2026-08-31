@@ -1,14 +1,15 @@
-import { Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2, RotateCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { branchService, type Branch } from "../../services/branchService";
 import { employeeService, type EmployeeFromApi } from "../../services/employeeService";
 import { crmApi } from "./api";
 import { getCrmError } from "./components";
-import { CRM_CREATE_CATEGORY_OPTIONS, CRM_CREATE_STATUS_OPTIONS } from "./customers-ui/customerCreateFields";
+import { CRM_CREATE_STATUS_OPTIONS } from "./customers-ui/customerCreateFields";
+import { CRM_ENGAGEMENT_OPTIONS, CRM_GROUP_TYPE_LABELS } from "./customers-ui/engagementOptions";
 import { CRM_CUSTOMER_SOURCE_LABELS } from "./customers-ui/sourceOptions";
 import "./customers-ui/crmx.css";
-import type { CrmCustomerProfile } from "./types";
+import type { CrmCustomerProfile, CrmCustomerGroup } from "./types";
 
 // Full-page form — matches the approved reference exactly (a page navigated
 // to, not a drawer/side panel). Used for both create (/admin/crm/customers/new)
@@ -18,7 +19,7 @@ import type { CrmCustomerProfile } from "./types";
 
 const emptyForm = {
   name: "", name_en: "", title: "", gender: "", phone: "", mobile: "", email: "",
-  address: "", city: "", country: "", category: "retail", status: "active",
+  address: "", city: "", country: "", engagement_status: "", group_id: "", status: "active",
   branch_id: "", salesperson_id: "", notes: "",
   birth_date: "",
   work_city: "", work_street: "", work_area: "", work_building_no: "", work_phone: "",
@@ -92,10 +93,16 @@ export function CrmCustomerFormPage() {
 
   const [form, setForm] = useState<FormState>(emptyForm);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [groups, setGroups] = useState<CrmCustomerGroup[]>([]);
   const [employees, setEmployees] = useState<EmployeeFromApi[]>([]);
   const [loadingCustomer, setLoadingCustomer] = useState(isEdit);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  // Load failure is terminal and must be kept separate from errorMessage
+  // (which reports SAVE failures and has to leave the form on screen). An
+  // unloaded customer must never fall through to an empty, submittable form.
+  const [loadError, setLoadError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [customerSource, setCustomerSource] = useState<string | null>(null);
 
@@ -104,10 +111,21 @@ export function CrmCustomerFormPage() {
     employeeService.getAll().then(setEmployees).catch(() => setEmployees([]));
   }, []);
 
+  // Group picker data. Failure is non-blocking: the form still saves,
+  // the picker just shows "بلا مجموعة" only.
+  useEffect(() => {
+    let cancelled = false;
+    crmApi.customerGroups()
+      .then((g) => !cancelled && setGroups(Array.isArray(g) ? g : []))
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
     if (!customerId) { setForm(emptyForm); return; }
     let cancelled = false;
     setLoadingCustomer(true);
+    setLoadError("");
     crmApi.customer<CrmCustomerProfile>(customerId).then(({ identity }) => {
       if (cancelled) return;
       const phones = identity.phones ?? [];
@@ -124,7 +142,8 @@ export function CrmCustomerFormPage() {
         address: identity.default_address ?? "",
         city: "",
         country: "",
-        category: identity.category ?? "retail",
+        engagement_status: identity.engagement_status ?? "",
+        group_id: identity.group_id != null ? String(identity.group_id) : "",
         status: identity.status ?? "active",
         branch_id: identity.branch?.id != null ? String(identity.branch.id) : "",
         salesperson_id: "",
@@ -137,10 +156,10 @@ export function CrmCustomerFormPage() {
         work_phone: work?.phone ?? "",
       });
       setCustomerSource(identity.source ?? null);
-    }).catch((e) => !cancelled && setErrorMessage(getCrmError(e).message))
+    }).catch((e) => !cancelled && setLoadError(getCrmError(e).message))
       .finally(() => !cancelled && setLoadingCustomer(false));
     return () => { cancelled = true; };
-  }, [customerId]);
+  }, [customerId, reloadKey]);
 
   const set = (key: keyof FormState, value: string) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -148,8 +167,8 @@ export function CrmCustomerFormPage() {
   };
 
   const inputCls = (key: keyof FormState) =>
-    `h-11 w-full rounded-xl border bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none transition focus:ring-2 focus:ring-[var(--crmx-navy)]/10 ${
-      fieldErrors[key] ? "border-[var(--crmx-danger)] focus:border-[var(--crmx-danger)]" : "border-[var(--crmx-border)] focus:border-[var(--crmx-navy)]"
+    `h-11 w-full rounded-xl border bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none transition focus:ring-2 focus:ring-[var(--crmx-primary)]/10 ${
+      fieldErrors[key] ? "border-[var(--crmx-danger)] focus:border-[var(--crmx-danger)]" : "border-[var(--crmx-border)] focus:border-[var(--crmx-primary)]"
     }`;
   const labelCls = "mb-1.5 block text-[13px] font-semibold text-[var(--crmx-text-secondary)]";
 
@@ -174,7 +193,8 @@ export function CrmCustomerFormPage() {
         address: form.address.trim() || undefined,
         city: form.city.trim() || undefined,
         country: form.country.trim() || undefined,
-        category: form.category || undefined,
+        engagement_status: form.engagement_status || undefined,
+        group_id: form.group_id ? Number(form.group_id) : null,
         // "حفظ ومتابعة لاحقًا" saves a real record too (there's no draft
         // concept on the backend) — the only difference is status and where
         // we navigate afterward, so nothing is silently lost either way.
@@ -211,6 +231,40 @@ export function CrmCustomerFormPage() {
     return (
       <div className="crmx-root flex min-h-[60vh] items-center justify-center p-6">
         <Loader2 className="h-6 w-6 animate-spin text-[var(--crmx-text-muted)]" />
+      </div>
+    );
+  }
+
+  // Terminal state: the customer never loaded, so there is nothing to edit.
+  // Rendering the form here would show empty fields over a stale record and
+  // let "حفظ التعديلات" overwrite the real customer with blanks.
+  if (loadError) {
+    return (
+      <div className="crmx-root p-4 sm:p-6" dir="rtl">
+        <p className="mb-1 text-[12px] font-bold text-[var(--crmx-text-muted)]">CRM / العملاء / تعديل عميل</p>
+        <div className="mx-auto mt-8 flex max-w-lg flex-col items-center justify-center gap-3 rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] py-16 text-center">
+          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--crmx-danger-soft)] text-[var(--crmx-danger-text)]">
+            <AlertTriangle className="h-6 w-6" />
+          </span>
+          <div>
+            <p className="text-[16px] font-bold text-[var(--crmx-text)]">تعذر تحميل بيانات العميل</p>
+            <p className="mt-1 max-w-sm text-[13px] text-[var(--crmx-text-secondary)]">{loadError}</p>
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              onClick={() => setReloadKey((k) => k + 1)}
+              className="flex h-10 items-center gap-1.5 rounded-xl bg-[var(--crmx-primary)] px-4 text-[13px] font-bold text-white hover:bg-[var(--crmx-primary-hover)]"
+            >
+              <RotateCw className="h-4 w-4" /> إعادة المحاولة
+            </button>
+            <button
+              onClick={() => navigate("/admin/crm/customers")}
+              className="h-10 rounded-xl border border-[var(--crmx-border)] px-4 text-[13px] font-semibold text-[var(--crmx-text)] hover:bg-[var(--crmx-neutral-soft)]"
+            >
+              العودة إلى قائمة العملاء
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -266,9 +320,27 @@ export function CrmCustomerFormPage() {
               <input className={inputCls("name_en")} value={form.name_en} onChange={(e) => set("name_en", e.target.value)} dir="ltr" />
             </div>
             <div>
-              <label className={labelCls}>التصنيف</label>
-              <select className={inputCls("category")} value={form.category} onChange={(e) => set("category", e.target.value)}>
-                {CRM_CREATE_CATEGORY_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              {/* The Call Center's engagement tag. The business classification
+                  that used to share this field now belongs to the customer's
+                  group — see the group picker below. */}
+              <label className={labelCls}>حالة التعامل</label>
+              <select className={inputCls("engagement_status")} value={form.engagement_status} onChange={(e) => set("engagement_status", e.target.value)}>
+                <option value="">غير محدد</option>
+                {CRM_ENGAGEMENT_OPTIONS.filter(([v]) => v !== "").map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+            <div>
+              {/* Optional: most customers are individuals and belong to no
+                  group. Groups are picked here, never created — that is a
+                  separate screen. */}
+              <label className={labelCls}>المجموعة</label>
+              <select className={inputCls("group_id")} value={form.group_id} onChange={(e) => set("group_id", e.target.value)}>
+                <option value="">بلا مجموعة</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}{CRM_GROUP_TYPE_LABELS[g.group_type] ? ` — ${CRM_GROUP_TYPE_LABELS[g.group_type]}` : ""}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
@@ -358,7 +430,7 @@ export function CrmCustomerFormPage() {
 
         <FormSection title="ملاحظات أخرى">
           <textarea
-            className="h-28 w-full resize-none rounded-xl border border-[var(--crmx-border)] bg-white p-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-navy)] focus:ring-2 focus:ring-[var(--crmx-navy)]/10"
+            className="h-28 w-full resize-none rounded-xl border border-[var(--crmx-border)] bg-white p-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
             value={form.notes}
             onChange={(e) => set("notes", e.target.value)}
             placeholder="أي ملاحظات إضافية حول العميل..."

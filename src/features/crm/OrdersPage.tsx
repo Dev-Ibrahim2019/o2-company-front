@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../auth";
 import { branchService, type Branch } from "../../services/branchService";
 import { crmApi } from "./api";
+import { money as formatMoney, num } from "./format";
 import { getCrmError } from "./components";
 import "./customers-ui/crmx.css";
 import { CrmOrderExpandedPanel, CrmPageHeader, CrmPagination, CrmSearchBar, CrmStatusBadge, CrmToolbarSkeleton } from "./customers-ui";
@@ -49,18 +50,13 @@ const ORDER_TYPE_LABELS: Record<string, string> = {
   delivery: "توصيل",
 };
 
-function formatMoney(value?: number | null) {
-  if (value == null) return "—";
-  return new Intl.NumberFormat("ar-PS", { style: "currency", currency: "ILS" }).format(value);
-}
-
 function formatElapsed(minutes: number) {
-  if (minutes < 60) return `منذ ${minutes.toLocaleString("ar")} دقيقة`;
+  if (minutes < 60) return `منذ ${num(minutes)} دقيقة`;
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   return rest > 0
-    ? `منذ ${hours.toLocaleString("ar")} س ${rest.toLocaleString("ar")} د`
-    : `منذ ${hours.toLocaleString("ar")} ساعة`;
+    ? `منذ ${num(hours)} س ${num(rest)} د`
+    : `منذ ${num(hours)} ساعة`;
 }
 
 // Graduated delay severity — a flat "everything past the threshold is red"
@@ -199,7 +195,7 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
             <select
               value={minutes}
               onChange={(e) => set("minutes", e.target.value)}
-              className="h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-navy)] focus:ring-2 focus:ring-[var(--crmx-navy)]/10"
+              className="h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
             >
               <option value={10}>أكثر من 10 دقائق</option>
               <option value={20}>أكثر من 20 دقيقة</option>
@@ -212,7 +208,7 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
             <select
               value={status}
               onChange={(e) => set("status", e.target.value)}
-              className="h-11 min-w-[140px] rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-navy)] focus:ring-2 focus:ring-[var(--crmx-navy)]/10"
+              className="h-11 min-w-[140px] rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
             >
               {STATUS_FILTER_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
@@ -222,7 +218,7 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
             <select
               value={paymentStatus}
               onChange={(e) => set("payment_status", e.target.value)}
-              className="h-11 min-w-[150px] rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-navy)] focus:ring-2 focus:ring-[var(--crmx-navy)]/10"
+              className="h-11 min-w-[150px] rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
             >
               {PAYMENT_STATUS_FILTER_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
@@ -231,7 +227,7 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
           <select
             value={source}
             onChange={(e) => set("source", e.target.value)}
-            className="h-11 min-w-[140px] rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-navy)] focus:ring-2 focus:ring-[var(--crmx-navy)]/10"
+            className="h-11 min-w-[140px] rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
             aria-label="مصدر الطلب"
           >
             {SOURCE_FILTER_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -241,7 +237,7 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
             <select
               value={branchId}
               onChange={(e) => set("branch_id", e.target.value)}
-              className="h-11 min-w-[140px] rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-navy)] focus:ring-2 focus:ring-[var(--crmx-navy)]/10"
+              className="h-11 min-w-[140px] rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
             >
               <option value="">كل الفروع</option>
               {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -254,14 +250,14 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
                 من
                 <input
                   type="date" value={dateFrom} onChange={(e) => set("date_from", e.target.value)}
-                  className="h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-navy)] focus:ring-2 focus:ring-[var(--crmx-navy)]/10"
+                  className="h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
                 />
               </label>
               <label className="flex items-center gap-1.5 text-[13px] font-semibold text-[var(--crmx-text-secondary)]">
                 إلى
                 <input
                   type="date" value={dateTo} onChange={(e) => set("date_to", e.target.value)}
-                  className="h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-navy)] focus:ring-2 focus:ring-[var(--crmx-navy)]/10"
+                  className="h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
                 />
               </label>
             </>
@@ -271,7 +267,7 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
             <button
               type="button"
               onClick={resetFilters}
-              className="flex h-11 items-center gap-1.5 rounded-xl border border-[var(--crmx-border)] bg-white px-3.5 text-[13px] font-semibold text-[var(--crmx-text-secondary)] transition hover:border-[var(--crmx-navy)] hover:text-[var(--crmx-text)]"
+              className="flex h-11 items-center gap-1.5 rounded-xl border border-[var(--crmx-border)] bg-white px-3.5 text-[13px] font-semibold text-[var(--crmx-text-secondary)] transition hover:border-[var(--crmx-primary)] hover:text-[var(--crmx-text)]"
             >
               <X className="h-3.5 w-3.5" /> إعادة تعيين
             </button>
@@ -290,7 +286,7 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] py-16 text-center">
           <AlertTriangle className="h-8 w-8 text-[var(--crmx-danger)]" />
           <p className="text-[15px] font-bold text-[var(--crmx-text)]">{error.message}</p>
-          <button onClick={load} className="h-10 rounded-xl bg-[var(--crmx-navy)] px-4 text-[13px] font-bold text-white">إعادة المحاولة</button>
+          <button onClick={load} className="h-10 rounded-xl bg-[var(--crmx-primary)] px-4 text-[13px] font-bold text-white">إعادة المحاولة</button>
         </div>
       ) : !result?.items.length ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] py-20 text-center">
@@ -383,6 +379,7 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
             lastPage={result.lastPage}
             total={result.total}
             perPage={perPage}
+            itemLabel="طلب"
             onPageChange={(p) => set("page", String(p))}
             onPerPageChange={(size) => set("per_page", String(size))}
           />

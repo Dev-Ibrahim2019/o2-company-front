@@ -116,10 +116,24 @@ export const PERMISSIONS = {
 export const CRM_PERMISSIONS = {
   ACCESS: "crm.access",
   VIEW_CUSTOMER_FINANCIAL: "crm.view-customer-financial",
+  ACCOUNTING_VIEW: "view-accounting",
+  ACCOUNTING_MANAGE: "manage-accounting",
   VIEW_SENSITIVE_NOTES: "crm.view-sensitive-notes",
+  MANAGE_IDENTITY_CONFLICTS: "crm.manage-identity-conflicts",
   NOTES_CREATE: "crm.notes.create",
   NOTES_UPDATE: "crm.notes.update",
   NOTES_DELETE: "crm.notes.delete",
+  COMPLAINTS_VIEW: "crm.complaints.view",
+  COMPLAINTS_CREATE: "crm.complaints.create",
+  COMPLAINTS_UPDATE: "crm.complaints.update",
+  GROUPS_VIEW: "crm.groups.view",
+  GROUPS_CREATE: "crm.groups.create",
+  GROUPS_UPDATE: "crm.groups.update",
+  GROUPS_DELETE: "crm.groups.delete",
+  OCCASIONS_VIEW: "crm.occasions.view",
+  OCCASIONS_CREATE: "crm.occasions.create",
+  OCCASIONS_UPDATE: "crm.occasions.update",
+  OCCASIONS_DELETE: "crm.occasions.delete",
 } as const;
 
 /** نوع يمثل جميع قيم الصلاحيات الممكنة */
@@ -205,3 +219,18 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     PERMISSIONS.MANAGE_CALL_CENTER,
   ],
 };
+
+/**
+ * Permissions that grant sight of a customer's receivables data.
+ *
+ * Mirrors CustomerFinancialProfileService::READ_PERMISSIONS on the backend.
+ * Three, not one, because two separate domains legitimately need this data and
+ * are governed differently: CRM uses the granular crm.* permission, while the
+ * Accounting module is gated on view-accounting / manage-accounting. Checking
+ * only the CRM one would hide the financial tab from Accounting's own users.
+ */
+export const CUSTOMER_FINANCIAL_READ_PERMISSIONS: string[] = [
+  CRM_PERMISSIONS.VIEW_CUSTOMER_FINANCIAL,
+  CRM_PERMISSIONS.ACCOUNTING_VIEW,
+  CRM_PERMISSIONS.ACCOUNTING_MANAGE,
+];

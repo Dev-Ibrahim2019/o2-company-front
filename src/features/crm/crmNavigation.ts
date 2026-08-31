@@ -1,7 +1,8 @@
 import type { LucideIcon } from "lucide-react";
+import { CRM_PERMISSIONS } from "../../auth/permissions";
 import {
-  AlertTriangle, BellRing, CalendarHeart, FileBarChart2, Gift, LayoutDashboard,
-  ListOrdered, MessagesSquare, ShoppingBag, UserPlus, Users, UsersRound, Zap,
+  AlertTriangle, BellRing, Building2, CalendarHeart, FileBarChart2, Gift, LayoutDashboard,
+  ListOrdered, MessagesSquare, ShieldAlert, ShoppingBag, UserPlus, Users, UsersRound, Zap,
 } from "lucide-react";
 
 // Single source of truth for CRM navigation — read by both the app-wide
@@ -25,6 +26,12 @@ export interface CrmNavItem {
   end?: boolean;
   children?: CrmNavChild[];
   comingSoon?: boolean;
+  /**
+   * Hide the entry entirely unless the user holds this permission.
+   * Hidden, not disabled: a greyed-out "identity conflicts" link still tells
+   * an unauthorised viewer that the queue exists.
+   */
+  permission?: string;
 }
 
 export const CRM_NAVIGATION: CrmNavItem[] = [
@@ -57,9 +64,29 @@ export const CRM_NAVIGATION: CrmNavItem[] = [
       { key: "orders-delayed", label: "الطلبات المتأخرة", to: "/admin/crm/orders/delayed", icon: AlertTriangle },
     ],
   },
+  {
+    key: "groups",
+    label: "المجموعات",
+    icon: Building2,
+    to: "/admin/crm/groups",
+    permission: CRM_PERMISSIONS.GROUPS_VIEW,
+  },
+  {
+    key: "identity-conflicts",
+    label: "تعارضات الهوية",
+    icon: ShieldAlert,
+    to: "/admin/crm/identity-conflicts",
+    permission: CRM_PERMISSIONS.MANAGE_IDENTITY_CONFLICTS,
+  },
+  {
+    key: "complaints",
+    label: "الشكاوى",
+    icon: BellRing,
+    to: "/admin/crm/complaints",
+    permission: CRM_PERMISSIONS.COMPLAINTS_VIEW,
+  },
   { key: "loyalty", label: "الولاء", icon: Gift, comingSoon: true },
   { key: "occasions", label: "المناسبات", icon: CalendarHeart, comingSoon: true },
-  { key: "complaints", label: "الشكاوى", icon: BellRing, comingSoon: true },
   { key: "communication", label: "التواصل", icon: MessagesSquare, comingSoon: true },
   { key: "reports", label: "التقارير", icon: FileBarChart2, comingSoon: true },
 ];

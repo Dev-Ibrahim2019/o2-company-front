@@ -5,6 +5,7 @@ import { useAuth } from "../../auth";
 import { branchService, type Branch } from "../../services/branchService";
 import { crmApi } from "./api";
 import { getCrmError } from "./components";
+import { num } from "./format";
 import "./customers-ui/crmx.css";
 import {
   CrmEmptyState,
@@ -22,17 +23,26 @@ import {
 import type { CrmFilterDrawerValues } from "./customers-ui";
 import type { CrmCustomer, CrmPage } from "./types";
 
+// Mirrors the columns the table actually shows, so an exported file and the
+// screen it was exported from carry the same information.
 function exportCsv(items: CrmCustomer[]) {
-  const headers = ["الاسم", "الكود", "الهاتف", "التصنيف", "الحالة", "الفرع", "الطلبات", "آخر طلب"];
+  const headers = [
+    "الاسم", "الكود", "الهاتف", "البريد الإلكتروني", "التصنيف",
+    "مناسبة قادمة", "تاريخ المناسبة", "لديه مشكلة", "الطلبات", "آخر طلب", "الحالة", "الفرع",
+  ];
   const rows = items.map((c) => [
     c.name,
     c.code ?? "",
     String(c.primary_phone ?? c.mobile ?? c.phone ?? ""),
-    c.category ?? "",
-    c.status ?? "",
-    c.branch?.name ?? "",
+    c.email ?? "",
+    c.engagement_status ?? "",
+    c.next_occasion?.label ?? "",
+    c.next_occasion?.date ?? "",
+    c.open_complaints_count ? "نعم" : "لا",
     String(c.orders_count ?? ""),
     c.last_order_at ?? "",
+    c.status ?? "",
+    c.branch?.name ?? "",
   ]);
   const csv = [headers, ...rows].map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
   const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
@@ -86,7 +96,7 @@ export function CrmCustomersPage() {
     setKpiLoading(true);
     Promise.allSettled([
       crmApi.dashboard({}),
-      crmApi.customers(new URLSearchParams({ category: "vip", per_page: "1" })),
+      crmApi.customers(new URLSearchParams({ engagement_status: "vip", per_page: "1" })),
     ]).then(([dashboardResult, vipResult]) => {
       if (cancelled) return;
       const dashboard = dashboardResult.status === "fulfilled" ? dashboardResult.value : undefined;
@@ -111,16 +121,24 @@ export function CrmCustomersPage() {
 
   const search = params.get("search") || "";
   const status = params.get("status") || "";
-  const category = params.get("category") || "";
+  const category = params.get("engagement_status") || "";
   const source = params.get("source") || "";
   const gender = params.get("gender") || "";
   const branchId = params.get("branch_id") || "";
+  // Mockup's "لديه مشكلة" / "لديه مناسبة" / "مناسبة" filters. The first two are
+  // tri-state: "" = no filter, "1" = only with, "0" = only without — so an
+  // empty string must never be coerced to false.
+  const hasComplaints = params.get("has_complaints") || "";
+  const hasOccasion = params.get("has_occasion") || "";
+  const occasionType = params.get("occasion_type") || "";
   const perPage = Number(params.get("per_page") || 20);
 
-  const hasFilters = Boolean(search || status || category || source || gender || branchId);
+  const hasFilters = Boolean(
+    search || status || category || source || gender || branchId || hasComplaints || hasOccasion || occasionType,
+  );
   const advancedActiveCount = useMemo(
-    () => [status, category, source, gender, branchId].filter(Boolean).length,
-    [status, category, source, gender, branchId],
+    () => [status, category, source, gender, branchId, hasComplaints, hasOccasion, occasionType].filter(Boolean).length,
+    [status, category, source, gender, branchId, hasComplaints, hasOccasion, occasionType],
   );
 
   const resetFilters = () => setParams(new URLSearchParams());
@@ -129,7 +147,7 @@ export function CrmCustomersPage() {
     const next = new URLSearchParams(params);
     next.delete("page");
     values.status ? next.set("status", values.status) : next.delete("status");
-    values.category ? next.set("category", values.category) : next.delete("category");
+    values.category ? next.set("engagement_status", values.category) : next.delete("engagement_status");
     values.source ? next.set("source", values.source) : next.delete("source");
     values.gender ? next.set("gender", values.gender) : next.delete("gender");
     values.branchId ? next.set("branch_id", values.branchId) : next.delete("branch_id");
@@ -148,7 +166,7 @@ export function CrmCustomersPage() {
               type="button"
               onClick={() => result?.items.length && exportCsv(result.items)}
               disabled={!result?.items.length}
-              className="flex h-11 items-center gap-2 rounded-xl border border-[var(--crmx-border)] bg-white px-4 text-[14px] font-semibold text-[var(--crmx-text)] transition enabled:hover:border-[var(--crmx-navy)] disabled:opacity-40"
+              className="flex h-11 items-center gap-2 rounded-xl border border-[var(--crmx-border)] bg-white px-4 text-[14px] font-semibold text-[var(--crmx-text)] transition enabled:hover:border-[var(--crmx-primary)] disabled:opacity-40"
               title="تصدير الصفحة الحالية إلى CSV"
             >
               <Download className="h-4 w-4" /> تصدير
@@ -167,21 +185,21 @@ export function CrmCustomersPage() {
         <CrmKpiCard
           icon={<Users className="h-5 w-5" />}
           label="إجمالي العملاء"
-          value={(kpi.total ?? result?.total ?? 0).toLocaleString("ar")}
+          value={num(kpi.total ?? result?.total ?? 0)}
           tone="navy"
           loading={kpiLoading && !result}
         />
         <CrmKpiCard
           icon={<UserCheck className="h-5 w-5" />}
           label="العملاء النشطون"
-          value={kpi.active != null ? kpi.active.toLocaleString("ar") : "—"}
+          value={num(kpi.active)}
           tone="success"
           loading={kpiLoading}
         />
         <CrmKpiCard
           icon={<UserPlus className="h-5 w-5" />}
           label="العملاء الجدد"
-          value={kpi.recent != null ? kpi.recent.toLocaleString("ar") : "—"}
+          value={num(kpi.recent)}
           hint="هذا الشهر"
           tone="warning"
           loading={kpiLoading}
@@ -189,7 +207,7 @@ export function CrmCustomersPage() {
         <CrmKpiCard
           icon={<Award className="h-5 w-5" />}
           label="العملاء المميزون"
-          value={kpi.vip != null ? kpi.vip.toLocaleString("ar") : "—"}
+          value={num(kpi.vip)}
           hint="VIP"
           tone="accent"
           loading={kpiLoading}
@@ -208,7 +226,7 @@ export function CrmCustomersPage() {
             aria-label="فلاتر"
           >
             {advancedActiveCount > 0 && (
-              <span className="absolute -top-1 -end-1 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--crmx-navy)] text-[10px] font-bold text-white">
+              <span className="absolute -top-1 -end-1 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--crmx-primary)] text-[10px] font-bold text-white">
                 {advancedActiveCount}
               </span>
             )}
@@ -219,10 +237,14 @@ export function CrmCustomersPage() {
           <CrmFilterBar
             status={status}
             onStatusChange={(v) => set("status", v)}
+            hasComplaints={hasComplaints}
+            onHasComplaintsChange={(v) => set("has_complaints", v)}
+            hasOccasion={hasOccasion}
+            onHasOccasionChange={(v) => set("has_occasion", v)}
+            occasionType={occasionType}
+            onOccasionTypeChange={(v) => set("occasion_type", v)}
             category={category}
             onCategoryChange={(v) => set("category", v)}
-            source={source}
-            onSourceChange={(v) => set("source", v)}
             branchId={branchId}
             onBranchChange={(v) => set("branch_id", v)}
             branches={branches}
@@ -239,7 +261,7 @@ export function CrmCustomersPage() {
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] py-16 text-center">
           <AlertTriangle className="h-8 w-8 text-[var(--crmx-danger)]" />
           <p className="text-[15px] font-bold text-[var(--crmx-text)]">{error.message}</p>
-          <button onClick={load} className="h-10 rounded-xl bg-[var(--crmx-navy)] px-4 text-[13px] font-bold text-white">إعادة المحاولة</button>
+          <button onClick={load} className="h-10 rounded-xl bg-[var(--crmx-primary)] px-4 text-[13px] font-bold text-white">إعادة المحاولة</button>
         </div>
       ) : !result?.items.length ? (
         <CrmEmptyState hasFilters={hasFilters} onResetFilters={resetFilters} onAddCustomer={() => navigate("/admin/crm/customers/new")} />

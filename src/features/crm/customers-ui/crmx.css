@@ -3,51 +3,88 @@
    classes with arbitrary values referencing these variables. Scoped to
    .crmx-root so it never leaks outside the redesigned Customers page. */
 .crmx-root {
-  /* O2 CRM design tokens — single source of truth for every CRM screen.
-     Values match the approved brand palette; soft/-text pairs are derived
-     tints/shades of the same hue for accessible badge contrast. */
-  --crmx-bg: #F3F5F9;
+  /* ══════════════════════════════════════════════════════════════
+     O2 CRM design tokens — single source of truth for every CRM screen.
+     Extracted from the approved O2 CRM mockup (4 screens: إدارة العملاء /
+     إضافة عميل / صفحة العميل / طلبات العميل).
+
+     Two deliberate changes from the previous palette, both taken from the
+     mockup: the shell is near-black (not navy), and the primary action
+     colour is O2 red (not green). Every CRM screen reads these variables,
+     so both propagate module-wide without per-screen edits.
+     ══════════════════════════════════════════════════════════════ */
+
+  /* ── Surfaces ── */
+  --crmx-bg: #F6F7F9;
   --crmx-card: #FFFFFF;
 
-  /* Brand navy — CRM shell/sidebar, headings-on-dark */
-  --crmx-navy: #132749;
-  --crmx-navy-hover: #0E1D38;
-  --crmx-navy-soft: #E9EDF5;
+  /* ── Shell ink — sidebar background, strongest text emphasis ──
+     The mockup sidebar is a near-black with a cool cast, not the old navy.
+     Kept under the `navy` name so no consumer has to be renamed. */
+  --crmx-navy: #12141B;
+  --crmx-navy-hover: #0B0D12;
+  --crmx-navy-soft: #EEF0F4;
 
-  /* Brand green — primary actions, active nav state, positive metrics */
-  --crmx-primary: #79B949;
-  --crmx-primary-hover: #6AA43D;
-  --crmx-primary-soft: #EDF6E4;
-  --crmx-primary-text: #4F7E2B;
+  /* ── Brand red — primary buttons, active nav item, active tab,
+     brand mark, chart accent. This is the mockup's single action colour. ── */
+  --crmx-primary: #E0202A;
+  --crmx-primary-hover: #C1161F;
+  --crmx-primary-soft: #FDECED;
+  --crmx-primary-text: #B3151E;
 
-  --crmx-success: #79B949;
-  --crmx-success-soft: #EDF6E4;
-  --crmx-success-text: #4F7E2B;
-  --crmx-danger: #EF4444;
-  --crmx-danger-soft: #FDECEC;
-  --crmx-danger-text: #C4281F;
-  --crmx-warning: #F39A25;
-  --crmx-warning-soft: #FEF2E2;
-  --crmx-warning-text: #B06A0F;
-  --crmx-accent: #7956C7;
-  --crmx-accent-soft: #F0EBFA;
-  --crmx-accent-text: #5B3A9E;
+  /* ── Status hues — one soft/solid/text triplet per badge meaning ──
+     success = نشط / مكتمل / "لا" (no problem)
+     danger  = ملغي / "نعم" (has problem)
+     warning = جديد / معلق
+     accent  = VIP
+     info    = قيد التوصيل
+     orange  = عائلة
+     gold    = rating + occasion stars */
+  --crmx-success: #16A34A;
+  --crmx-success-soft: #DCFCE7;
+  --crmx-success-text: #15803D;
+  --crmx-danger: #DC2626;
+  --crmx-danger-soft: #FEE2E2;
+  --crmx-danger-text: #B91C1C;
+  --crmx-warning: #F59E0B;
+  --crmx-warning-soft: #FEF3C7;
+  --crmx-warning-text: #B45309;
+  --crmx-accent: #7C3AED;
+  --crmx-accent-soft: #EDE9FE;
+  --crmx-accent-text: #6D28D9;
   --crmx-info: #2563EB;
-  --crmx-info-soft: #E8EFFD;
+  --crmx-info-soft: #DBEAFE;
   --crmx-info-text: #1D4ED8;
+  --crmx-orange: #EA580C;
+  --crmx-orange-soft: #FFEDD5;
+  --crmx-orange-text: #C2410C;
+  --crmx-gold: #F5A524;
 
-  --crmx-text: #162033;
+  /* ── Text + lines ── */
+  --crmx-text: #16181D;
   --crmx-text-secondary: #667085;
   --crmx-text-muted: #98A2B3;
-  --crmx-border: #E7EBF0;
-  --crmx-neutral-soft: #F1F2F6;
+  --crmx-border: #E9EBF0;
+  --crmx-neutral-soft: #F3F4F7;
 
-  --crmx-shadow-sm: 0 1px 2px rgba(22, 32, 51, 0.04);
-  --crmx-shadow-md: 0 8px 24px rgba(19, 39, 73, 0.08);
+  /* ── Shape scale — matches the mockup's corner radii ── */
+  --crmx-radius-card: 14px;
+  --crmx-radius-control: 10px;
+  --crmx-radius-pill: 999px;
+
+  --crmx-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04);
+  --crmx-shadow-md: 0 8px 24px rgba(16, 24, 40, 0.08);
 
   background: var(--crmx-bg);
   color: var(--crmx-text);
   min-height: 100%;
+  /* Cairo is already loaded globally (src/index.css @theme --font-sans);
+     naming it here keeps CRM typography stable even if a parent changes. */
+  font-family: "Cairo", "Tajawal", Arial, sans-serif;
+  /* The mockup renders every figure in Latin digits (248 عميل, 2,250,
+     2025-05-20). Force them so browsers never substitute Arabic-Indic
+     numerals inside CRM, regardless of the surrounding lang/dir. */
+  font-variant-numeric: lining-nums tabular-nums;
 }
 .crmx-root * { box-sizing: border-box; }
 

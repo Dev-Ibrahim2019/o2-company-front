@@ -14,7 +14,7 @@ export function CrmState({ kind, title, detail, retry }: { kind: "loading" | "em
       {retry && (
         <button
           onClick={retry}
-          className="mt-1 h-9 rounded-xl bg-[var(--crmx-navy)] px-4 text-[13px] font-bold text-white hover:bg-[var(--crmx-navy-hover)]"
+          className="mt-1 h-9 rounded-xl bg-[var(--crmx-primary)] px-4 text-[13px] font-bold text-white hover:bg-[var(--crmx-primary-hover)]"
         >
           إعادة المحاولة
         </button>

@@ -1,7 +1,7 @@
 import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Branch } from "../../../services/branchService";
-import { CRM_CATEGORY_OPTIONS } from "./categoryOptions";
+import { CRM_ENGAGEMENT_OPTIONS } from "./engagementOptions";
 import { CRM_GENDER_FILTER_OPTIONS, CRM_SOURCE_FILTER_OPTIONS } from "./sourceOptions";
 
 export interface CrmFilterDrawerValues {
@@ -13,7 +13,7 @@ export interface CrmFilterDrawerValues {
 }
 
 const inputCls =
-  "h-11 w-full rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none transition focus:border-[var(--crmx-navy)] focus:ring-2 focus:ring-[var(--crmx-navy)]/10";
+  "h-11 w-full rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none transition focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10";
 const labelCls = "mb-1.5 block text-[13px] font-semibold text-[var(--crmx-text-secondary)]";
 
 function ComingSoonField({ label }: { label: string }) {
@@ -78,9 +78,9 @@ export function CrmFilterDrawer({
           </div>
 
           <div>
-            <label className={labelCls}>التصنيف</label>
+            <label className={labelCls}>حالة التعامل</label>
             <select className={inputCls} value={local.category} onChange={(e) => setLocal((s) => ({ ...s, category: e.target.value }))}>
-              {CRM_CATEGORY_OPTIONS.map(([v, l]) => (
+              {CRM_ENGAGEMENT_OPTIONS.map(([v, l]) => (
                 <option key={v} value={v}>{l}</option>
               ))}
             </select>
@@ -124,7 +124,7 @@ export function CrmFilterDrawer({
         <footer className="flex items-center gap-2.5 border-t border-[var(--crmx-border)] px-5 py-4">
           <button
             onClick={() => { onApply(local); onClose(); }}
-            className="h-11 flex-1 rounded-xl bg-[var(--crmx-navy)] text-[14px] font-bold text-white transition hover:bg-[var(--crmx-navy-hover)]"
+            className="h-11 flex-1 rounded-xl bg-[var(--crmx-primary)] text-[14px] font-bold text-white transition hover:bg-[var(--crmx-primary-hover)]"
           >
             تطبيق الفلاتر
           </button>

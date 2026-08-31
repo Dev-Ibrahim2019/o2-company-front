@@ -24,23 +24,35 @@ const IMPORTANCE_TONE: Record<CrmNoteImportance, string> = {
 };
 
 const inputCls =
-  "h-11 w-full rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none transition focus:border-[var(--crmx-navy)] focus:ring-2 focus:ring-[var(--crmx-navy)]/10";
+  "h-11 w-full rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none transition focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10";
 const labelCls = "mb-1.5 block text-[13px] font-semibold text-[var(--crmx-text-secondary)]";
 
 const EMPTY_FORM: CrmNoteInput = { content: "", type: "general", importance: "normal", show_during_order: false };
 
 function NoteFormDrawer({
-  open, initial, saving, onClose, onSubmit,
+  initial, saving, canUseSensitive, onClose, onSubmit,
 }: {
-  open: boolean;
   initial: CrmNoteInput;
   saving: boolean;
+  /** Whether "حساسة" may be chosen at all — see the type list below. */
+  canUseSensitive: boolean;
   onClose: () => void;
   onSubmit: (data: CrmNoteInput) => void;
 }) {
+  // The caller mounts this only while the drawer is open, so `initial` is
+  // read once per opening. It used to stay mounted and merely render null,
+  // which left the previous note's values — type included — in state for the
+  // next opening: a note added right after a sensitive one inherited the
+  // sensitive type without the form ever showing it.
   const [form, setForm] = useState(initial);
 
-  if (!open) return null;
+  // "حساسة" is dropped from the list entirely rather than disabled: an
+  // option the viewer can see but not pick still tells them the category
+  // exists. The one exception is a note that is already sensitive — keeping
+  // its own value listed stops the select from silently reading blank and
+  // rewriting the type on save.
+  const typeOptions = (Object.entries(NOTE_TYPE_LABELS) as [CrmNoteType, string][])
+    .filter(([v]) => v !== "sensitive" || canUseSensitive || initial.type === "sensitive");
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="ملاحظة العميل">
@@ -73,7 +85,7 @@ function NoteFormDrawer({
               value={form.type}
               onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as CrmNoteType }))}
             >
-              {Object.entries(NOTE_TYPE_LABELS).map(([v, l]) => (
+              {typeOptions.map(([v, l]) => (
                 <option key={v} value={v}>{l}</option>
               ))}
             </select>
@@ -107,7 +119,7 @@ function NoteFormDrawer({
           <button
             disabled={saving || !form.content.trim()}
             onClick={() => onSubmit(form)}
-            className="h-11 flex-1 rounded-xl bg-[var(--crmx-navy)] text-[14px] font-bold text-white transition hover:bg-[var(--crmx-navy-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-11 flex-1 rounded-xl bg-[var(--crmx-primary)] text-[14px] font-bold text-white transition hover:bg-[var(--crmx-primary-hover)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {saving ? "جارٍ الحفظ..." : "حفظ"}
           </button>
@@ -130,6 +142,13 @@ function Notes() {
   const canCreate = hasPermission(CRM_PERMISSIONS.NOTES_CREATE);
   const canUpdate = hasPermission(CRM_PERMISSIONS.NOTES_UPDATE);
   const canDelete = hasPermission(CRM_PERMISSIONS.NOTES_DELETE);
+  const canSensitive = hasPermission(CRM_PERMISSIONS.VIEW_SENSITIVE_NOTES);
+
+  // A sensitive note needs both the action permission and clearance for the
+  // category. The backend enforces this on write; hiding the buttons keeps a
+  // viewer from discovering the rule by being refused.
+  const mayEdit = (note: CrmNote) => canUpdate && (note.type !== "sensitive" || canSensitive);
+  const mayDelete = (note: CrmNote) => canDelete && (note.type !== "sensitive" || canSensitive);
 
   const s = useCrmSection("notes");
   const [drawer, setDrawer] = useState<{ mode: "add" } | { mode: "edit"; note: CrmNote } | null>(null);
@@ -172,8 +191,14 @@ function Notes() {
 
   const rows = unwrapRows(s.data, ["notes"]) as unknown as CrmNote[];
 
+  // A 403 on the list takes the whole section with it — heading, add button
+  // and all. Leaving an "add note" button above a permission error would
+  // offer an action the server is going to refuse.
+  if (s.error?.status === 403) return null;
+
   return (
-    <div className="space-y-3">
+    <section className="space-y-3">
+      <h3 className={sectionTitle}>الملاحظات</h3>
       {canCreate && (
         <button
           onClick={() => setDrawer({ mode: "add" })}
@@ -183,7 +208,7 @@ function Notes() {
         </button>
       )}
 
-      <SectionFrame state={s} empty="لا توجد ملاحظات">
+      <SectionFrame state={s} empty="لا توجد ملاحظات" hideOnForbidden>
         {() =>
           rows.length === 0 ? (
             <CrmState kind="empty" title="لا توجد ملاحظات" />
@@ -193,9 +218,9 @@ function Notes() {
                 <div key={String(note.id)} className="rounded-2xl border border-[var(--crmx-border)] bg-white p-4">
                   <div className="flex items-start justify-between gap-3">
                     <p className="text-[14px] text-[var(--crmx-text)]">{text(note.content)}</p>
-                    {(canUpdate || canDelete) && (
+                    {(mayEdit(note) || mayDelete(note)) && (
                       <div className="flex shrink-0 items-center gap-1">
-                        {canUpdate && (
+                        {mayEdit(note) && (
                           <button
                             onClick={() => setDrawer({ mode: "edit", note })}
                             title="تعديل"
@@ -204,7 +229,7 @@ function Notes() {
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
                         )}
-                        {canDelete && (
+                        {mayDelete(note) && (
                           <button
                             onClick={() => remove(note)}
                             disabled={deletingId === note.id}
@@ -235,18 +260,20 @@ function Notes() {
         }
       </SectionFrame>
 
-      <NoteFormDrawer
-        open={drawer !== null}
-        initial={drawer?.mode === "edit"
-          ? { content: drawer.note.content, type: drawer.note.type, importance: drawer.note.importance, show_during_order: drawer.note.show_during_order }
-          : EMPTY_FORM}
-        saving={saving}
-        onClose={() => setDrawer(null)}
-        onSubmit={submit}
-      />
-    </div>
+      {drawer && (
+        <NoteFormDrawer
+          initial={drawer.mode === "edit"
+            ? { content: drawer.note.content, type: drawer.note.type, importance: drawer.note.importance, show_during_order: drawer.note.show_during_order }
+            : EMPTY_FORM}
+          saving={saving}
+          canUseSensitive={canSensitive}
+          onClose={() => setDrawer(null)}
+          onSubmit={submit}
+        />
+      )}
+    </section>
   );
 }
 function Occasions(){const s=useCrmSection("occasions");return <SectionFrame state={s}>{d=><DomainTable empty="لا توجد مناسبات" rows={unwrapRows(d,["occasions"])} columns={[{key:"title",label:"المناسبة",render:(v,r)=>text(v??r.name??r.type)},{key:"date",label:"التاريخ",render:(v,r)=>date(v??r.occasion_date)},{key:"notes",label:"التفاصيل"}]}/>}</SectionFrame>}
 const sectionTitle = "mb-3 text-[15px] font-bold text-[var(--crmx-text)]";
-export default function NotesOccasionsTab(){return <div className="crmx-root grid grid-cols-1 gap-5 lg:grid-cols-2"><section><h3 className={sectionTitle}>الملاحظات</h3><Notes/></section><section><h3 className={sectionTitle}>المناسبات</h3><Occasions/></section></div>}
+export default function NotesOccasionsTab(){return <div className="crmx-root grid grid-cols-1 gap-5 lg:grid-cols-2"><Notes/><section><h3 className={sectionTitle}>المناسبات</h3><Occasions/></section></div>}

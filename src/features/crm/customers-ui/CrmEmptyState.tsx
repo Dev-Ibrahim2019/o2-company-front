@@ -30,7 +30,7 @@ export function CrmEmptyState({
       ) : (
         <button
           onClick={onAddCustomer}
-          className="mt-2 flex h-10 items-center gap-1.5 rounded-xl bg-[var(--crmx-navy)] px-4 text-[13px] font-bold text-white hover:bg-[var(--crmx-navy-hover)]"
+          className="mt-2 flex h-10 items-center gap-1.5 rounded-xl bg-[var(--crmx-primary)] px-4 text-[13px] font-bold text-white hover:bg-[var(--crmx-primary-hover)]"
         >
           <UserPlus className="h-4 w-4" /> إضافة أول عميل
         </button>

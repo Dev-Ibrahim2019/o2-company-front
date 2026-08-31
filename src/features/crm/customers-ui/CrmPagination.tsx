@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { num } from "../format";
 
 const PAGE_SIZES = [10, 20, 50];
 
@@ -16,6 +17,10 @@ export function CrmPagination({
   perPage,
   onPageChange,
   onPerPageChange,
+  // Shared between the customers list and the orders lists, so the counted
+  // noun has to come from the caller. Defaults to "عميل" — the value this
+  // component hardcoded before — so the customers list is unaffected.
+  itemLabel = "عميل",
 }: {
   currentPage: number;
   lastPage: number;
@@ -23,6 +28,7 @@ export function CrmPagination({
   perPage: number;
   onPageChange: (page: number) => void;
   onPerPageChange: (perPage: number) => void;
+  itemLabel?: string;
 }) {
   const from = total === 0 ? 0 : (currentPage - 1) * perPage + 1;
   const to = Math.min(currentPage * perPage, total);
@@ -31,7 +37,7 @@ export function CrmPagination({
   return (
     <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--crmx-border)] px-5 py-3.5">
       <p className="text-[13px] text-[var(--crmx-text-secondary)]">
-        عرض {from.toLocaleString("ar")}–{to.toLocaleString("ar")} من {total.toLocaleString("ar")} عميل
+        عرض {num(from)}–{num(to)} من {num(total)} {itemLabel}
       </p>
       <div className="flex items-center gap-3">
         <select
@@ -57,10 +63,10 @@ export function CrmPagination({
               key={p}
               onClick={() => onPageChange(p)}
               className={`flex h-9 w-9 items-center justify-center rounded-lg text-[13px] font-semibold ${
-                p === currentPage ? "bg-[var(--crmx-navy)] text-white" : "text-[var(--crmx-text-secondary)] hover:bg-[var(--crmx-neutral-soft)]"
+                p === currentPage ? "bg-[var(--crmx-primary)] text-white" : "text-[var(--crmx-text-secondary)] hover:bg-[var(--crmx-neutral-soft)]"
               }`}
             >
-              {p.toLocaleString("ar")}
+              {num(p)}
             </button>
           ))}
           <button

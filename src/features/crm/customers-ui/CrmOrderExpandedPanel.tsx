@@ -3,20 +3,11 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { crmApi } from "../api";
 import { getCrmError } from "../components";
+import { dateTime as formatDate, money as formatMoney, num } from "../format";
 import type { CrmOrderDetails, CrmOrderTimeline } from "../types";
 import { CrmStatusBadge } from "./CrmStatusBadge";
 import { CRM_ORDER_SOURCE_LABELS } from "./sourceOptions";
 
-function formatDate(value?: string | null) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("ar-EG", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-}
-function formatMoney(value?: number | null) {
-  if (value == null) return "—";
-  return new Intl.NumberFormat("ar-PS", { style: "currency", currency: "ILS" }).format(value);
-}
 
 function StarRow({ value, onChange, disabled }: { value: number; onChange?: (v: number) => void; disabled?: boolean }) {
   return (
@@ -210,7 +201,7 @@ export function CrmOrderExpandedPanel({ orderId }: { orderId: string | number })
                 <div key={item.id} className="flex items-center justify-between px-3.5 py-3">
                   <div className="min-w-0">
                     <p className="truncate text-[14px] font-semibold text-[var(--crmx-text)]">{item.item_name_ar || item.item_name}</p>
-                    <p className="text-[12px] text-[var(--crmx-text-muted)]">×{item.quantity.toLocaleString("ar")} · {formatMoney(item.price)}</p>
+                    <p className="text-[12px] text-[var(--crmx-text-muted)]">×{num(item.quantity)} · {formatMoney(item.price)}</p>
                   </div>
                   <span className="shrink-0 text-[14px] font-bold text-[var(--crmx-text)]">{formatMoney(item.total)}</span>
                 </div>

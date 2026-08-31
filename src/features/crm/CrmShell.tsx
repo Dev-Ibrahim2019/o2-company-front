@@ -4,6 +4,7 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../auth";
 import { crmApi } from "./api";
 import { CRM_NAVIGATION } from "./crmNavigation";
+import { num } from "./format";
 import "./customers-ui/crmx.css";
 
 // Shared operational counts (active/delayed orders), fetched once per CRM
@@ -49,8 +50,12 @@ function isChildActive(pathname: string, search: string, to: string): boolean {
 
 function CrmSidebar({ mobileOpen, onClose, delayedCount }: { mobileOpen: boolean; onClose: () => void; delayedCount: number | null }) {
   const location = useLocation();
+  const { hasPermission } = useAuth();
   const [openGroup, setOpenGroup] = useState<string | null>(null);
-  const comingSoonItems = CRM_NAVIGATION.filter((item) => item.comingSoon);
+  // Permission-gated entries vanish for users who lack them — same rule the
+  // financial tab follows: hide, never merely disable.
+  const visibleItems = CRM_NAVIGATION.filter((item) => !item.permission || hasPermission(item.permission));
+  const comingSoonItems = visibleItems.filter((item) => item.comingSoon);
 
   return (
     <>
@@ -86,7 +91,7 @@ function CrmSidebar({ mobileOpen, onClose, delayedCount }: { mobileOpen: boolean
         </div>
 
       <nav aria-label="أقسام إدارة علاقات العملاء" className="flex flex-1 flex-col gap-1">
-        {CRM_NAVIGATION.filter((item) => !item.comingSoon).map((item) => {
+        {visibleItems.filter((item) => !item.comingSoon).map((item) => {
           const Icon = item.icon;
 
           if (item.children?.length) {
@@ -124,7 +129,7 @@ function CrmSidebar({ mobileOpen, onClose, delayedCount }: { mobileOpen: boolean
                           <span className="flex-1 truncate">{child.label}</span>
                           {showBadge && (
                             <span className="flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-[var(--crmx-danger)] px-1 text-[10px] font-bold text-white">
-                              {delayedCount!.toLocaleString("ar")}
+                              {num(delayedCount)}
                             </span>
                           )}
                         </Link>

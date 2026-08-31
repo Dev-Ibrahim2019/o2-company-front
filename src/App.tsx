@@ -78,6 +78,10 @@ import {
   CrmCustomerFormPage,
   Customer360Page,
   CrmOrdersPage,
+  CrmIdentityConflictsPage,
+  CrmComplaintsPage,
+  CrmGroupsPage,
+  CrmGroupProfilePage,
 } from "./features/crm";
 
 // ── مكونات الكول سنتر ──
@@ -327,6 +331,10 @@ function AppRoutes() {
           <Route path="customers/:customerId/*" element={<Customer360Page />} />
           {/* Read-only order monitoring — CRM never creates/edits orders,
               see the Order Domain Audit. Same page, different `mode`. */}
+          <Route path="identity-conflicts" element={<CrmIdentityConflictsPage />} />
+          <Route path="complaints" element={<CrmComplaintsPage />} />
+          <Route path="groups" element={<CrmGroupsPage />} />
+          <Route path="groups/:groupId" element={<CrmGroupProfilePage />} />
           <Route path="orders" element={<CrmOrdersPage mode="all" />} />
           <Route path="orders/active" element={<CrmOrdersPage mode="active" />} />
           <Route path="orders/delayed" element={<CrmOrdersPage mode="delayed" />} />

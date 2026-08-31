@@ -1,40 +1,67 @@
-import { Copy, Eye, MoreVertical, Pencil, Phone, ScanEye } from "lucide-react";
+import { Copy, Eye, MoreVertical, Pencil, Phone, ScanEye, Star } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import type { CrmCustomer } from "../types";
-import { categoryLabel } from "./categoryOptions";
-import { CRM_CUSTOMER_SOURCE_LABELS } from "./sourceOptions";
+import { date as fmtDate, lastOrder as fmtLastOrder, num } from "../format";
+import type { CrmCustomer, CrmNextOccasion } from "../types";
 import { CrmAvatar } from "./CrmAvatar";
-import { CrmStatusBadge } from "./CrmStatusBadge";
+import { CrmStatusBadge, CrmYesNoBadge } from "./CrmStatusBadge";
 
-function formatDate(value?: string | null) {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString("ar-EG", { year: "numeric", month: "short", day: "numeric" });
+// Column set taken from the approved mockup (screen 1 — إدارة جميع العملاء).
+// The mockup labels the yes/no complaint column "إجمالي المشكلة"; that reads
+// as a total, but the cell renders نعم/لا, so the label is corrected to
+// "لديه مشكلة" here — the column itself is unchanged.
+//
+// Two columns the mockup does not show were dropped from this table rather
+// than kept alongside it: "المصدر" and "إجمالي المشتريات". Neither is lost —
+// both still appear in the quick-view drawer and in Customer 360.
+//
+// "الحالة" is likewise not a mockup column, but a blocked/inactive customer
+// must stay visible to an operator scanning the list, so instead of a full
+// column the status pill is rendered inside the name cell *only when it is
+// not `active`* — normal rows look exactly like the mockup, exceptions still
+// announce themselves.
+const COLUMNS = [
+  "الاسم",
+  "الهاتف",
+  "البريد الإلكتروني",
+  "التصنيف",
+  "مناسبة قادمة",
+  "لديه مشكلة",
+  "الطلبات",
+  "آخر طلب",
+  "",
+];
+
+function NextOccasionCell({ occasion }: { occasion?: CrmNextOccasion | null }) {
+  if (!occasion) return <span className="text-[13px] text-[var(--crmx-text-muted)]">لا يوجد</span>;
+  return (
+    <div className="flex items-start gap-1.5">
+      <Star className="mt-0.5 h-3.5 w-3.5 shrink-0 fill-[var(--crmx-gold)] text-[var(--crmx-gold)]" />
+      <div className="min-w-0">
+        <p className="truncate text-[13px] font-bold text-[var(--crmx-text)]">{occasion.label}</p>
+        <p className="text-[12px] text-[var(--crmx-text-muted)]">{fmtDate(occasion.date)}</p>
+      </div>
+    </div>
+  );
 }
 
-// "آخر طلب" specifically — a missing value here means the customer has no
-// order activity at all, which reads better than a bare dash.
-function formatLastOrder(value?: string | null) {
-  return value ? formatDate(value) : "لا يوجد نشاط";
+function CustomerNameCell({ customer: c }: { customer: CrmCustomer }) {
+  return (
+    <Link to={`/admin/crm/customers/${c.id}`} className="group flex items-center gap-3">
+      <CrmAvatar name={c.name} />
+      <div className="min-w-0">
+        <p className="flex items-center gap-1.5 text-[14px] font-bold text-[var(--crmx-text)] transition-colors group-hover:text-[var(--crmx-primary)]">
+          <span className="max-w-[170px] truncate">{c.name}</span>
+          {c.title && <span className="shrink-0 font-normal text-[var(--crmx-text-muted)]">· {c.title}</span>}
+        </p>
+        <p className="flex items-center gap-1.5 text-[12px] text-[var(--crmx-text-muted)]">
+          <span>{c.code || `#${c.id}`}</span>
+          {c.status && c.status !== "active" && <CrmStatusBadge value={c.status} />}
+        </p>
+      </div>
+    </Link>
+  );
 }
-
-function formatMoney(value?: number | null) {
-  if (value == null) return "—";
-  return new Intl.NumberFormat("ar-PS", { style: "currency", currency: "ILS", maximumFractionDigits: 0 }).format(value);
-}
-
-function formatCount(value?: number | null) {
-  return value != null ? value.toLocaleString("ar") : "—";
-}
-
-function sourceLabel(source?: CrmCustomer["source"]) {
-  if (!source) return "—";
-  return CRM_CUSTOMER_SOURCE_LABELS[source] || source;
-}
-
-const COLUMNS = ["العميل", "الهاتف", "المصدر", "التصنيف", "الطلبات", "إجمالي المشتريات", "آخر طلب", "الحالة", ""];
 
 export function CrmTable({
   items,
@@ -48,11 +75,11 @@ export function CrmTable({
   return (
     <div>
       <div className="crmx-scrollbar hidden overflow-x-auto md:block">
-        <table className="w-full min-w-[980px] border-collapse text-right">
+        <table className="w-full min-w-[1040px] border-collapse text-right">
           <thead>
             <tr className="border-b border-[var(--crmx-border)] bg-[#FAFBFC]">
-              {COLUMNS.map((c) => (
-                <th key={c} className="whitespace-nowrap px-4 py-3.5 text-[13px] font-bold text-[var(--crmx-text-secondary)]">{c}</th>
+              {COLUMNS.map((c, i) => (
+                <th key={c || `actions-${i}`} className="whitespace-nowrap px-4 py-3.5 text-[13px] font-bold text-[var(--crmx-text-secondary)]">{c}</th>
               ))}
             </tr>
           </thead>
@@ -76,27 +103,18 @@ export function CrmTable({
 function CrmTableRow({ customer: c, onQuickView, onEdit }: { customer: CrmCustomer; onQuickView: (customer: CrmCustomer) => void; onEdit?: (customer: CrmCustomer) => void }) {
   return (
     <tr className="crmx-table-row border-b border-[var(--crmx-border)] transition-colors last:border-0">
-      <td className="px-4 py-3.5">
-        <Link to={`/admin/crm/customers/${c.id}`} className="group flex items-center gap-3">
-          <CrmAvatar name={c.name} />
-          <div className="min-w-0">
-            <p className="max-w-[180px] truncate text-[14px] font-bold text-[var(--crmx-text)] transition-colors group-hover:text-[var(--crmx-navy)]">
-              {c.name}
-              {c.title && <span className="font-normal text-[var(--crmx-text-muted)]"> · {c.title}</span>}
-            </p>
-            <p className="text-[12px] text-[var(--crmx-text-muted)]">{c.code || `#${c.id}`}</p>
-          </div>
-        </Link>
-      </td>
+      <td className="px-4 py-3.5"><CustomerNameCell customer={c} /></td>
       <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]" dir="ltr">
         {c.primary_phone || c.mobile || c.phone || "—"}
       </td>
-      <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">{sourceLabel(c.source)}</td>
-      <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">{categoryLabel(c.category)}</td>
-      <td className="px-4 py-4 text-[14px] font-semibold text-[var(--crmx-text)]">{formatCount(c.orders_count)}</td>
-      <td className="px-4 py-4 text-[14px] font-bold text-[var(--crmx-text)]">{formatMoney(c.total_purchases)}</td>
-      <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">{formatLastOrder(c.last_order_at)}</td>
-      <td className="px-4 py-3.5"><CrmStatusBadge value={c.status} /></td>
+      <td className="max-w-[190px] px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]" dir="ltr">
+        <span className="block truncate">{c.email || "—"}</span>
+      </td>
+      <td className="px-4 py-3.5"><CrmStatusBadge value={c.engagement_status} /></td>
+      <td className="px-4 py-3"><NextOccasionCell occasion={c.next_occasion} /></td>
+      <td className="px-4 py-3.5"><CrmYesNoBadge value={Boolean(c.open_complaints_count)} /></td>
+      <td className="px-4 py-4 text-[14px] font-bold text-[var(--crmx-text)]">{num(c.orders_count)}</td>
+      <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">{fmtLastOrder(c.last_order_at)}</td>
       <td className="px-4 py-3.5"><CrmRowActions customer={c} onQuickView={onQuickView} onEdit={onEdit} /></td>
     </tr>
   );
@@ -106,28 +124,25 @@ function CrmCustomerCard({ customer: c, onQuickView, onEdit }: { customer: CrmCu
   return (
     <div className="p-4">
       <div className="flex items-start justify-between gap-3">
-        <Link to={`/admin/crm/customers/${c.id}`} className="flex min-w-0 items-center gap-3">
-          <CrmAvatar name={c.name} />
-          <div className="min-w-0">
-            <p className="truncate text-[14px] font-bold text-[var(--crmx-text)]">
-              {c.name}
-              {c.title && <span className="font-normal text-[var(--crmx-text-muted)]"> · {c.title}</span>}
-            </p>
-            <p className="text-[12px] text-[var(--crmx-text-muted)]">{c.code || `#${c.id}`}</p>
-          </div>
-        </Link>
+        <CustomerNameCell customer={c} />
         <CrmRowActions customer={c} onQuickView={onQuickView} onEdit={onEdit} />
       </div>
       <div className="mt-3 grid grid-cols-2 gap-y-1.5 text-[12px]">
         <span className="text-[var(--crmx-text-secondary)]" dir="ltr">{c.primary_phone || c.mobile || c.phone || "—"}</span>
-        <span className="text-left text-[var(--crmx-text-secondary)]">{sourceLabel(c.source)}</span>
-        <span className="text-[var(--crmx-text-secondary)]">طلبات: {formatCount(c.orders_count)}</span>
-        <span className="text-left font-semibold text-[var(--crmx-text)]">{formatMoney(c.total_purchases)}</span>
-        <span className="text-[var(--crmx-text-secondary)]">آخر طلب: {formatLastOrder(c.last_order_at)}</span>
+        <span className="truncate text-left text-[var(--crmx-text-secondary)]" dir="ltr">{c.email || "—"}</span>
+        <span className="text-[var(--crmx-text-secondary)]">طلبات: {num(c.orders_count)}</span>
+        <span className="text-left text-[var(--crmx-text-secondary)]">آخر طلب: {fmtLastOrder(c.last_order_at)}</span>
       </div>
+      {c.next_occasion && (
+        <div className="mt-2.5 flex items-center gap-1.5 rounded-[var(--crmx-radius-control)] bg-[var(--crmx-warning-soft)] px-2.5 py-1.5">
+          <Star className="h-3.5 w-3.5 shrink-0 fill-[var(--crmx-gold)] text-[var(--crmx-gold)]" />
+          <span className="text-[12px] font-bold text-[var(--crmx-warning-text)]">{c.next_occasion.label}</span>
+          <span className="text-[12px] text-[var(--crmx-warning-text)]/70">· {fmtDate(c.next_occasion.date)}</span>
+        </div>
+      )}
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <CrmStatusBadge value={c.status} />
-        {c.category && <CrmStatusBadge value={c.category} />}
+        {c.engagement_status && <CrmStatusBadge value={c.engagement_status} />}
+        <CrmYesNoBadge value={Boolean(c.open_complaints_count)} />
       </div>
     </div>
   );

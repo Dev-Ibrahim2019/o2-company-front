@@ -3,7 +3,12 @@ export interface CrmBranch { id: CrmId; name: string }
 export interface CrmCustomer {
   id: CrmId; code?: string; name: string; phone?: string | null; mobile?: string | null;
   primary_phone?: string | null;
-  email?: string | null; status?: string; category?: string | null; branch?: CrmBranch | null;
+  email?: string | null; status?: string; branch?: CrmBranch | null;
+  // Call Center engagement tag (regular/vip/follow_up/…). The business
+  // classification that used to share this field lives on the group now.
+  engagement_status?: string | null;
+  group_id?: CrmId | null;
+  group?: { id: CrmId; name: string; group_type: string } | null;
   branch_id?: CrmId | null; city?: string | null; created_at?: string;
   // customers.title — free-text nickname (e.g. "أبو خالد"), not an honorific enum.
   title?: string | null;
@@ -18,7 +23,23 @@ export interface CrmCustomer {
   total_purchases?: number;
   loyalty_points?: number | null; last_order_at?: string | null;
   occasion_type?: string | null; occasion_label?: string | null;
+  /**
+   * Nearest upcoming occasion — the directory's "مناسبة قادمة" column.
+   * Computed per row from the customer's active occasions
+   * (Customer360QueryService::nextOccasion): an annual occasion rolls to its
+   * next anniversary, a one-off already in the past is skipped. Null when the
+   * customer has nothing ahead of them.
+   */
+  next_occasion?: CrmNextOccasion | null;
   balance?: number;
+}
+export interface CrmNextOccasion {
+  type: string;
+  label: string;
+  title?: string | null;
+  /** ISO date (YYYY-MM-DD) of the next occurrence, not the original date. */
+  date: string;
+  days_until: number;
 }
 export interface CrmPage<T> { items: T[]; currentPage: number; lastPage: number; total: number }
 export interface CrmMonthPoint { month: string; count: number }
@@ -69,7 +90,10 @@ export interface CrmWorkAddress {
 export interface CrmCustomerProfile {
   id: CrmId;
   identity: {
-    name: string; code?: string | null; status?: string | null; category?: string | null;
+    name: string; code?: string | null; status?: string | null;
+    engagement_status?: string | null;
+    group_id?: CrmId | null;
+    group?: { id: CrmId; name: string; group_type: string } | null;
     primary_phone?: string | null; phones?: CrmCustomerPhone[]; email?: string | null;
     branch?: CrmBranch | null;
     // customers.address is a plain text column (not a related object) —
@@ -169,6 +193,150 @@ export interface CrmNoteInput {
   show_during_order?: boolean;
 }
 
+// customer_complaints — status/priority mirror CustomerComplaint's constants,
+// channel mirrors the DB enum added with the column.
+export type CrmComplaintStatus =
+  | "new" | "open" | "in_progress" | "waiting_customer" | "resolved" | "closed" | "cancelled";
+export type CrmComplaintPriority = "low" | "normal" | "high" | "critical";
+export type CrmComplaintChannel = "call_center" | "crm" | "website";
+
+// GET /crm/customers/{id}/complaints — CrmController::complaints()
+export interface CrmComplaint {
+  id: CrmId;
+  customer_id: CrmId;
+  title?: string | null;
+  description?: string | null;
+  status: CrmComplaintStatus;
+  priority: CrmComplaintPriority;
+  severity?: string | null;
+  channel?: CrmComplaintChannel | null;
+  /** The written outcome. Required by the backend on the resolved transition. */
+  resolution_notes?: string | null;
+  is_sensitive: boolean;
+  assigned_to?: CrmId | null;
+  created_at?: string | null;
+}
+
+// customer_groups.group_type — a real DB enum since the table was created.
+export type CrmGroupType = "retail" | "wholesale" | "corporate" | "government" | "service";
+
+export interface CrmCustomerGroup {
+  id: CrmId;
+  name: string;
+  group_type: CrmGroupType;
+  /**
+   * Members across every branch — deliberately unscoped on the backend.
+   * Never render it above a branch-scoped member list; use the list length.
+   */
+  customers_count?: number;
+  created_at?: string | null;
+}
+
+export interface CrmCustomerGroupInput {
+  name: string;
+  group_type: CrmGroupType;
+}
+
+// customer_occasions — the enums constrained at DB level in 2027_01_18_000001.
+export type CrmOccasionType =
+  | "birthday" | "anniversary" | "graduation" | "company_founding" | "contract_renewal" | "other";
+export type CrmContactMethod = "call" | "sms" | "email" | "whatsapp";
+
+export interface CrmOccasion {
+  id: CrmId;
+  occasion_type: CrmOccasionType;
+  title: string;
+  date: string;
+  repeats_annually: boolean;
+  notes?: string | null;
+  preferred_contact_method?: CrmContactMethod | null;
+  is_active: boolean;
+  /** Resolved next occurrence, present on the range endpoint only. */
+  next_occurrence?: string | null;
+  created_at?: string | null;
+}
+
+export interface CrmOccasionInput {
+  occasion_type: CrmOccasionType;
+  title: string;
+  date: string;
+  repeats_annually?: boolean;
+  notes?: string | null;
+  preferred_contact_method?: CrmContactMethod | null;
+  is_active?: boolean;
+}
+
+export type CrmComplaintSeverity = "info" | "warning" | "critical";
+// customer_complaints.department — the analytical tag, unrelated to assigned_to.
+export type CrmComplaintDepartment =
+  | "hospitality" | "pos" | "call_center" | "kitchen" | "delivery" | "accounting" | "management";
+
+// GET /crm/complaints — Crm\ComplaintController::index(). Carries the customer
+// inline so the list can link to a profile without a second request.
+export interface CrmComplaintRow extends Omit<CrmComplaint, "assigned_to"> {
+  department?: CrmComplaintDepartment | null;
+  /**
+   * Either the raw column or the eager-loaded relation.
+   *
+   * Laravel serialises the `assignedTo` relation under the snake_case key
+   * `assigned_to`, which overwrites the integer column of the same name — so
+   * whether this is a number or an object depends on whether the endpoint
+   * eager-loaded it. Read it through `assignedId()` rather than directly.
+   */
+  assigned_to?: CrmId | { id: CrmId; name: string } | null;
+  customer?: { id: CrmId; name: string; code?: string | null; phone?: string | null } | null;
+  assigned_to_user?: { id: CrmId; name: string } | null;
+}
+
+// One entry of the followup trail returned by GET /crm/complaints/{id}.
+// `user` is nullable by design: the User model carries a branch scope, so an
+// author outside the reader's branch resolves to null rather than leaking.
+export interface CrmComplaintFollowup {
+  id: CrmId;
+  complaint_id: CrmId;
+  user_id?: CrmId | null;
+  action?: string | null;
+  notes?: string | null;
+  old_status?: CrmComplaintStatus | null;
+  new_status?: CrmComplaintStatus | null;
+  followup_type?: string | null;
+  created_at?: string | null;
+  user?: { id: CrmId; name: string } | null;
+}
+
+// GET /crm/complaints/summary. The distribution maps are keyed by the raw
+// enum value; an empty-string key means "not classified" (a NULL column).
+export interface CrmComplaintSummary {
+  total: number;
+  open: number;
+  by_status: Record<string, number>;
+  by_priority: Record<string, number>;
+  by_channel: Record<string, number>;
+  by_department: Record<string, number>;
+}
+
+// POST /crm/customers/{id}/complaints — CrmController::createComplaint().
+// `channel` is absent by design: the server derives it from the entry point.
+export interface CrmComplaintCreateInput {
+  title: string;
+  description?: string;
+  priority?: CrmComplaintPriority;
+  severity?: CrmComplaintSeverity;
+}
+
+// PUT /crm/complaints/{id} — CrmController::updateComplaint(). Every field is
+// optional: the endpoint applies whichever ones are present.
+export interface CrmComplaintInput {
+  status?: CrmComplaintStatus;
+  priority?: CrmComplaintPriority;
+  title?: string;
+  description?: string;
+  assigned_to?: CrmId | null;
+  resolution_notes?: string;
+  is_sensitive?: boolean;
+  department?: CrmComplaintDepartment | null;
+}
+
 // GET /crm/customers/{id}/financial-summary — Customer360QueryService::financial()
 export interface CrmFinancialSummary {
   balance: number;
@@ -223,4 +391,45 @@ export interface CrmOrderTimeline {
 // PUT /crm/customers/{customer}/orders/{order}/feedback — OrderFeedbackController::store()
 export interface CrmOrderFeedbackInput {
   food_quality: number; service_quality: number; delivery_speed?: number | null; notes?: string | null;
+}
+
+/** A recorded clash between an incoming customer name and the stored one. */
+export interface CrmIdentityConflict {
+  id: CrmId;
+  customer_id: CrmId;
+  source_channel: "call_center" | "pos_instant" | "pos_family" | "website";
+  source_order_id?: CrmId | null;
+  incoming_name: string;
+  incoming_phone_normalized: string;
+  status: "open" | "resolved" | "dismissed";
+  resolution?: "kept_original" | "renamed_customer" | "created_new_customer" | "marked_shared_number" | null;
+  /** Set only by the two split resolutions — the customer they created. */
+  created_customer_id?: number | null;
+  created_customer?: { id: CrmId; name: string; code?: string | null } | null;
+  resolution_note?: string | null;
+  resolved_by?: CrmId | null;
+  resolved_at?: string | null;
+  created_at?: string;
+  customer?: { id: CrmId; name: string; code?: string | null; phone?: string | null } | null;
+  resolver?: { id: CrmId; name: string } | null;
+  order?: { id: CrmId; order_number?: string | null; created_at?: string } | null;
+}
+
+/** An order the reviewer may (or may not) decide belongs to the split-off customer. */
+export interface CrmCandidateOrder {
+  id: number;
+  order_number: string | null;
+  created_at: string | null;
+  total: string | number | null;
+}
+
+/**
+ * Ticket responses carry candidate_orders next to `data`, so these endpoints
+ * are read whole rather than unwrapped to `data`.
+ */
+export interface CrmConflictEnvelope {
+  data: CrmIdentityConflict;
+  candidate_orders?: CrmCandidateOrder[];
+  reassigned?: number[];
+  left?: number[];
 }

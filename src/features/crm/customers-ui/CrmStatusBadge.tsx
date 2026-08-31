@@ -1,11 +1,13 @@
-type Tone = "success" | "danger" | "warning" | "accent" | "info" | "neutral";
+type Tone = "success" | "danger" | "warning" | "accent" | "info" | "orange" | "neutral";
 
 const VALUE_MAP: Record<string, { label: string; tone: Tone }> = {
   active: { label: "نشط", tone: "success" },
   inactive: { label: "غير نشط", tone: "neutral" },
   blocked: { label: "محظور", tone: "danger" },
   vip: { label: "VIP", tone: "accent" },
-  new: { label: "جديد", tone: "info" },
+  // Mockup renders "جديد" amber, not blue — blue is reserved there for
+  // in-flight order states (قيد التوصيل / مؤكد / قيد التنفيذ).
+  new: { label: "جديد", tone: "warning" },
   retail: { label: "تجزئة", tone: "neutral" },
   wholesale: { label: "جملة", tone: "neutral" },
   corporate: { label: "شركات", tone: "neutral" },
@@ -32,6 +34,7 @@ const TONE_CLASS: Record<Tone, string> = {
   warning: "bg-[var(--crmx-warning-soft)] text-[var(--crmx-warning-text)]",
   accent: "bg-[var(--crmx-accent-soft)] text-[var(--crmx-accent-text)]",
   info: "bg-[var(--crmx-info-soft)] text-[var(--crmx-info-text)]",
+  orange: "bg-[var(--crmx-orange-soft)] text-[var(--crmx-orange-text)]",
   neutral: "bg-[var(--crmx-neutral-soft)] text-[var(--crmx-text-secondary)]",
 };
 
@@ -41,6 +44,19 @@ export function CrmStatusBadge({ value }: { value?: string | null }) {
   return (
     <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-bold whitespace-nowrap ${TONE_CLASS[entry.tone]}`}>
       {entry.label}
+    </span>
+  );
+}
+
+/**
+ * The mockup's "إجمالي المشكلة" column: a red "نعم" / green "لا" pill.
+ * Same pill geometry as CrmStatusBadge so the two read as one system.
+ */
+export function CrmYesNoBadge({ value, yesTone = "danger" }: { value: boolean; yesTone?: "danger" | "success" }) {
+  const tone: Tone = value ? yesTone : yesTone === "danger" ? "success" : "neutral";
+  return (
+    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-bold ${TONE_CLASS[tone]}`}>
+      {value ? "نعم" : "لا"}
     </span>
   );
 }
