@@ -76,7 +76,15 @@ export type CrmCustomerSource = "website" | "fawri" | "families" | "call_center"
 export type OrderSource = string;
 
 // GET /crm/customers/{id} — Customer360QueryService::profile()
-export interface CrmCustomerPhone { id?: CrmId; phone?: string; type?: string; is_primary?: boolean }
+export interface CrmCustomerPhone {
+  id?: CrmId;
+  phone?: string;
+  /** E.164 as stored — the only form carrying a country code. */
+  normalized_phone?: string | null;
+  type?: string;
+  is_primary?: boolean;
+  is_verified?: boolean;
+}
 export type CrmGender = "male" | "female";
 // Mirrors customer_addresses columns — the work address is a real
 // CustomerAddress row (label=CustomerIdentityService::WORK_ADDRESS_LABEL),

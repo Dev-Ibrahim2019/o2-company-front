@@ -216,6 +216,8 @@ export function Customer360Page() {
           name={identity.name}
           code={identity.code}
           phone={identity.primary_phone}
+          normalizedPhone={identity.phones?.find((p) => p.is_primary)?.normalized_phone
+            ?? identity.phones?.[0]?.normalized_phone}
           email={identity.email}
           editHref={`/admin/crm/customers/${customer.id}/edit`}
         />

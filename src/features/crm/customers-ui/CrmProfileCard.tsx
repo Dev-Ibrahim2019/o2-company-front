@@ -1,6 +1,7 @@
 import { Building2, Copy, Mail, MessageCircle, Pencil, Phone } from "lucide-react";
 import { Link } from "react-router-dom";
 import { CrmAvatar } from "./CrmAvatar";
+import { whatsappNumber } from "../whatsapp";
 
 /**
  * The mockup's customer identity card: avatar, name, phone, email, and a row
@@ -17,6 +18,7 @@ export function CrmProfileCard({
   phone,
   email,
   group,
+  normalizedPhone,
   editHref,
 }: {
   name: string;
@@ -25,9 +27,13 @@ export function CrmProfileCard({
   email?: string | null;
   /** The customer's group, when they belong to one. Rendered as a link. */
   group?: { id: string | number; name: string } | null;
+  /** customer_phones.normalized_phone (E.164) for the primary number. */
+  normalizedPhone?: string | null;
   editHref: string;
 }) {
-  const whatsapp = (phone || "").replace(/\D/g, "");
+  // Built from the stored E.164 value when we have it — stripping non-digits
+  // off the displayed local number produced links with no country code at all.
+  const whatsapp = whatsappNumber({ normalized: normalizedPhone, legacy: phone });
 
   const iconBtn =
     "flex h-8 w-8 items-center justify-center rounded-[var(--crmx-radius-control)] border border-[var(--crmx-border)] text-[var(--crmx-text-muted)] transition hover:border-[var(--crmx-primary)] hover:text-[var(--crmx-primary)]";
