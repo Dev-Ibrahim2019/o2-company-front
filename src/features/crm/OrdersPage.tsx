@@ -286,7 +286,7 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] py-16 text-center">
           <AlertTriangle className="h-8 w-8 text-[var(--crmx-danger)]" />
           <p className="text-[15px] font-bold text-[var(--crmx-text)]">{error.message}</p>
-          <button onClick={load} className="h-10 rounded-xl bg-[var(--crmx-primary)] px-4 text-[13px] font-bold text-white">إعادة المحاولة</button>
+          <button onClick={load} className="h-11 rounded-xl bg-[var(--crmx-primary)] px-4 text-[14px] font-bold text-white transition hover:bg-[var(--crmx-primary-hover)]">إعادة المحاولة</button>
         </div>
       ) : !result?.items.length ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] py-20 text-center">
@@ -307,7 +307,7 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
             <button
               type="button"
               onClick={resetFilters}
-              className="mt-1 h-10 rounded-xl border border-[var(--crmx-border)] px-4 text-[13px] font-semibold text-[var(--crmx-text)] hover:bg-[var(--crmx-neutral-soft)]"
+              className="mt-1 h-11 rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] px-4 text-[14px] font-semibold text-[var(--crmx-text)] transition hover:bg-[var(--crmx-neutral-soft)]"
             >
               إعادة ضبط الفلاتر
             </button>

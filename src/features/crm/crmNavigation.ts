@@ -86,7 +86,13 @@ export const CRM_NAVIGATION: CrmNavItem[] = [
     permission: CRM_PERMISSIONS.COMPLAINTS_VIEW,
   },
   { key: "loyalty", label: "الولاء", icon: Gift, comingSoon: true },
-  { key: "occasions", label: "المناسبات", icon: CalendarHeart, comingSoon: true },
+  {
+    key: "occasions",
+    label: "المناسبات",
+    icon: CalendarHeart,
+    to: "/admin/crm/occasions",
+    permission: CRM_PERMISSIONS.OCCASIONS_VIEW,
+  },
   { key: "communication", label: "التواصل", icon: MessagesSquare, comingSoon: true },
   { key: "reports", label: "التقارير", icon: FileBarChart2, comingSoon: true },
 ];

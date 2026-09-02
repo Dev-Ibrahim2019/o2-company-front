@@ -264,6 +264,66 @@ export interface CrmOccasion {
   created_at?: string | null;
 }
 
+/** One line of the yearly diary — occasion_followups, newest first. */
+export interface CrmOccasionFollowup {
+  id: CrmId;
+  occasion_id: CrmId;
+  notes: string;
+  /** The integer column. The relation is serialized separately as `creator`
+   *  so that it cannot overwrite this id — see OccasionFollowup::creator(). */
+  created_by?: number | null;
+  creator?: { id: CrmId; name: string } | null;
+  created_at?: string | null;
+}
+
+/** GET /crm/occasions/{id} — the occasion plus its diary and rolled date. */
+export interface CrmOccasionDetail extends CrmOccasion {
+  followups?: CrmOccasionFollowup[];
+  creator?: { id: CrmId; name: string } | null;
+  /** Derived server-side from CustomerOccasion::nextOccurrence(). */
+  next_occurrence?: string | null;
+  days_until_next?: number | null;
+  occasionable?: { id: CrmId; name?: string | null } | null;
+  occasionable_type?: string | null;
+}
+
+/**
+ * One row of GET /crm/occasions — the cross-owner listing.
+ *
+ * `next_occurrence` is resolved server-side against the requested window, so
+ * the same annual occasion reports a different date depending on the month
+ * being asked about. The frontend never rolls a date itself.
+ */
+export interface CrmOccasionListRow {
+  id: CrmId;
+  occasion_type: CrmOccasionType;
+  title: string;
+  date?: string | null;
+  repeats_annually: boolean;
+  next_occurrence: string | null;
+  owner_type: "customer" | "group";
+  owner_id: CrmId;
+  owner_name?: string | null;
+  /** null for a group — it has no single number to dial. */
+  owner_phone?: string | null;
+}
+
+export interface CrmOccasionListQuery {
+  range?: "today" | "week" | "month" | "upcoming";
+  from?: string;
+  to?: string;
+  owner_type?: "customer" | "group";
+  occasion_type?: string;
+}
+
+/** GET /crm/occasions/summary — nested counts, each closed by window_ends. */
+export interface CrmOccasionsSummary {
+  today: number;
+  this_week: number;
+  this_month: number;
+  window_ends?: { today: string; this_week: string; this_month: string };
+}
+
 export interface CrmOccasionInput {
   occasion_type: CrmOccasionType;
   title: string;

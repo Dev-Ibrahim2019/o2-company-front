@@ -73,12 +73,12 @@ function HeaderMoreMenu({ code }: { code?: string | null }) {
         aria-label="مزيد من الإجراءات"
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--crmx-border)] text-[var(--crmx-text-muted)] hover:bg-[var(--crmx-neutral-soft)] hover:text-[var(--crmx-navy)]"
+        className="flex h-11 w-11 items-center justify-center rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] text-[var(--crmx-text-muted)] transition hover:bg-[var(--crmx-neutral-soft)] hover:text-[var(--crmx-navy)]"
       >
         <MoreVertical className="h-4 w-4" />
       </button>
       {open && (
-        <div role="menu" className="absolute end-0 top-11 z-10 w-52 rounded-xl border border-[var(--crmx-border)] bg-white py-1.5 shadow-lg">
+        <div role="menu" className="absolute end-0 top-11 z-10 w-52 rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] py-1.5 shadow-lg">
           {code && (
             <button
               role="menuitem"
@@ -196,7 +196,7 @@ export function Customer360Page() {
           <Link
             to="/call-center/pos"
             title="إنشاء طلب جديد لهذا العميل عبر نقطة بيع الكول سنتر"
-            className="flex h-10 items-center gap-2 rounded-[var(--crmx-radius-control)] bg-[var(--crmx-primary)] px-4 text-[13px] font-bold text-white transition hover:bg-[var(--crmx-primary-hover)]"
+            className="flex h-11 items-center gap-2 rounded-xl bg-[var(--crmx-primary)] px-4 text-[14px] font-bold text-white transition hover:bg-[var(--crmx-primary-hover)]"
           >
             <Plus className="h-4 w-4" /> طلب جديد
           </Link>
@@ -265,7 +265,7 @@ export function Customer360Page() {
               // the catch-all and renders "القسم غير موجود".
               to={`/admin/crm/customers/${customer.id}/${key}`}
               className={({ isActive }) =>
-                `rounded-t-xl px-4 py-2.5 text-[13.5px] font-bold transition-colors ${
+                `rounded-t-xl px-4 py-2.5 text-[14px] font-bold transition-colors ${
                   isActive
                     ? "border-b-2 border-[var(--crmx-primary)] text-[var(--crmx-primary-text)]"
                     : "text-[var(--crmx-text-secondary)] hover:text-[var(--crmx-text)]"
@@ -289,7 +289,24 @@ export function Customer360Page() {
               <Route path="activity" element={<ActivityTab />} />
               <Route path="addresses" element={<AddressesTab />} />
               <Route path="complaints" element={<ComplaintsTab />} />
-              <Route path="notes" element={<NotesOccasionsTab />} />
+              {/* The customer's phone travels down so the occasions half can
+                  offer call/WhatsApp. It is read here rather than re-fetched
+                  in the tab: this page already holds the identity payload,
+                  including the E.164 value the wa.me link needs. */}
+              <Route
+                path="notes"
+                element={
+                  <NotesOccasionsTab
+                    contact={{
+                      name: identity.name,
+                      phone: identity.primary_phone,
+                      normalizedPhone:
+                        identity.phones?.find((p) => p.is_primary)?.normalized_phone
+                        ?? identity.phones?.[0]?.normalized_phone,
+                    }}
+                  />
+                }
+              />
               {canFinancial && <Route path="financial" element={<FinancialTab />} />}
               <Route path="*" element={<CrmState kind="empty" title="القسم غير موجود" />} />
             </Routes>

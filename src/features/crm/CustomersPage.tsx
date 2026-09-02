@@ -261,7 +261,7 @@ export function CrmCustomersPage() {
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] py-16 text-center">
           <AlertTriangle className="h-8 w-8 text-[var(--crmx-danger)]" />
           <p className="text-[15px] font-bold text-[var(--crmx-text)]">{error.message}</p>
-          <button onClick={load} className="h-10 rounded-xl bg-[var(--crmx-primary)] px-4 text-[13px] font-bold text-white">إعادة المحاولة</button>
+          <button onClick={load} className="h-11 rounded-xl bg-[var(--crmx-primary)] px-4 text-[14px] font-bold text-white transition hover:bg-[var(--crmx-primary-hover)]">إعادة المحاولة</button>
         </div>
       ) : !result?.items.length ? (
         <CrmEmptyState hasFilters={hasFilters} onResetFilters={resetFilters} onAddCustomer={() => navigate("/admin/crm/customers/new")} />

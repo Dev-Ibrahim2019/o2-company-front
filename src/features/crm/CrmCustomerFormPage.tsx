@@ -60,7 +60,7 @@ function PendingFieldsSection() {
             <input type="date" disabled className={pendingInputCls} />
           </div>
         </div>
-        <button disabled type="button" className="mt-3 h-10 w-full cursor-not-allowed rounded-xl border border-dashed border-[var(--crmx-border)] text-[13px] font-semibold text-[var(--crmx-text-muted)]">
+        <button disabled type="button" className="mt-3 h-11 w-full cursor-not-allowed rounded-xl border border-dashed border-[var(--crmx-border)] text-[14px] font-semibold text-[var(--crmx-text-muted)]">
           + إضافة مناسبة
         </button>
       </FormSection>
@@ -253,13 +253,13 @@ export function CrmCustomerFormPage() {
           <div className="mt-2 flex items-center gap-2">
             <button
               onClick={() => setReloadKey((k) => k + 1)}
-              className="flex h-10 items-center gap-1.5 rounded-xl bg-[var(--crmx-primary)] px-4 text-[13px] font-bold text-white hover:bg-[var(--crmx-primary-hover)]"
+              className="flex h-11 items-center gap-2 rounded-xl bg-[var(--crmx-primary)] px-4 text-[14px] font-bold text-white transition hover:bg-[var(--crmx-primary-hover)]"
             >
               <RotateCw className="h-4 w-4" /> إعادة المحاولة
             </button>
             <button
               onClick={() => navigate("/admin/crm/customers")}
-              className="h-10 rounded-xl border border-[var(--crmx-border)] px-4 text-[13px] font-semibold text-[var(--crmx-text)] hover:bg-[var(--crmx-neutral-soft)]"
+              className="h-11 rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] px-4 text-[14px] font-semibold text-[var(--crmx-text)] transition hover:bg-[var(--crmx-neutral-soft)]"
             >
               العودة إلى قائمة العملاء
             </button>

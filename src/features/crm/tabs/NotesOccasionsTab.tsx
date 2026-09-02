@@ -7,7 +7,9 @@ import { toast } from "../../../components/shared/Toast";
 import { crmApi } from "../api";
 import { CrmState, getCrmError } from "../components";
 import type { CrmNote, CrmNoteImportance, CrmNoteInput, CrmNoteType } from "../types";
-import { DomainTable, SectionFrame, date, text, unwrapRows, useCrmSection } from "./shared";
+import type { OccasionContact } from "../OccasionContactActions";
+import { OccasionsPanel } from "../OccasionsPanel";
+import { SectionFrame, date, text, unwrapRows, useCrmSection } from "./shared";
 
 const NOTE_TYPE_LABELS: Record<CrmNoteType, string> = {
   general: "عامة", delivery: "توصيل", warning: "تنبيه",
@@ -57,7 +59,7 @@ function NoteFormDrawer({
   return (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="ملاحظة العميل">
       <button aria-label="إغلاق" className="absolute inset-0 bg-[#0B1220]/40" onClick={onClose} />
-      <div dir="rtl" className="crmx-drawer-panel relative flex h-full w-full max-w-sm flex-col bg-white shadow-2xl">
+      <div dir="rtl" className="crmx-drawer-panel relative flex h-full w-full max-w-sm flex-col bg-[var(--crmx-card)] shadow-2xl">
         <header className="flex items-center justify-between border-b border-[var(--crmx-border)] px-5 py-4">
           <h2 className="text-[17px] font-bold text-[var(--crmx-text)]">{initial.content ? "تعديل ملاحظة" : "إضافة ملاحظة"}</h2>
           <button onClick={onClose} className="rounded-lg p-1.5 text-[var(--crmx-text-muted)] hover:bg-[var(--crmx-neutral-soft)]" aria-label="إغلاق">
@@ -202,7 +204,7 @@ function Notes() {
       {canCreate && (
         <button
           onClick={() => setDrawer({ mode: "add" })}
-          className="flex h-10 items-center gap-1.5 rounded-xl border border-[var(--crmx-border)] bg-white px-3.5 text-[13px] font-bold text-[var(--crmx-navy)] hover:bg-[var(--crmx-neutral-soft)]"
+          className="flex h-11 items-center gap-2 rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] px-4 text-[14px] font-bold text-[var(--crmx-navy)] transition hover:bg-[var(--crmx-neutral-soft)]"
         >
           <Plus className="h-4 w-4" /> إضافة ملاحظة
         </button>
@@ -215,7 +217,7 @@ function Notes() {
           ) : (
             <div className="crmx-root space-y-2.5">
               {rows.map((note) => (
-                <div key={String(note.id)} className="rounded-2xl border border-[var(--crmx-border)] bg-white p-4">
+                <div key={String(note.id)} className="rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-4">
                   <div className="flex items-start justify-between gap-3">
                     <p className="text-[14px] text-[var(--crmx-text)]">{text(note.content)}</p>
                     {(mayEdit(note) || mayDelete(note)) && (
@@ -274,6 +276,28 @@ function Notes() {
     </section>
   );
 }
-function Occasions(){const s=useCrmSection("occasions");return <SectionFrame state={s}>{d=><DomainTable empty="لا توجد مناسبات" rows={unwrapRows(d,["occasions"])} columns={[{key:"title",label:"المناسبة",render:(v,r)=>text(v??r.name??r.type)},{key:"date",label:"التاريخ",render:(v,r)=>date(v??r.occasion_date)},{key:"notes",label:"التفاصيل"}]}/>}</SectionFrame>}
 const sectionTitle = "mb-3 text-[15px] font-bold text-[var(--crmx-text)]";
-export default function NotesOccasionsTab(){return <div className="crmx-root grid grid-cols-1 gap-5 lg:grid-cols-2"><Notes/><section><h3 className={sectionTitle}>المناسبات</h3><Occasions/></section></div>}
+
+/**
+ * The customer's occasions, through the same panel a group profile uses.
+ *
+ * This half of the tab used to be a read-only three-column table: a customer's
+ * occasion could be seen but never added, edited or deleted, while the group
+ * profile had the full set through OccasionsPanel. Since customer_occasions
+ * became polymorphic there is nothing customer-specific left to justify a
+ * second implementation — `owner` is the only difference, and a second copy is
+ * exactly what that migration existed to prevent.
+ */
+export default function NotesOccasionsTab({ contact }: { contact?: OccasionContact }) {
+  const { customerId = "" } = useParams();
+
+  return (
+    <div className="crmx-root grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <Notes />
+      <section>
+        <h3 className={sectionTitle}>المناسبات</h3>
+        <OccasionsPanel owner="customers" ownerId={customerId} contact={contact} />
+      </section>
+    </div>
+  );
+}

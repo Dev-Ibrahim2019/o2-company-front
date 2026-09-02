@@ -63,7 +63,7 @@ const DECISIONS: Array<{ key: string; label: string; hint: string; tone: string 
 ];
 
 const selectCls =
-  "h-10 rounded-[var(--crmx-radius-control)] border border-[var(--crmx-border)] bg-[var(--crmx-card)] px-3 text-[13px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)]";
+  "h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10";
 
 function StatusPill({ value }: { value: string }) {
   const tone =
@@ -297,7 +297,7 @@ function ConflictDrawer({
   return (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="تفاصيل تعارض الهوية">
       <button aria-label="إغلاق" className="absolute inset-0 bg-[#0B1220]/40" onClick={onClose} />
-      <div dir="rtl" className="crmx-drawer-panel relative flex h-full w-full max-w-md flex-col bg-white shadow-2xl">
+      <div dir="rtl" className="crmx-drawer-panel relative flex h-full w-full max-w-md flex-col bg-[var(--crmx-card)] shadow-2xl">
         <header className="flex items-center justify-between border-b border-[var(--crmx-border)] px-5 py-4">
           <div className="flex items-center gap-2">
             <ShieldAlert className="h-5 w-5 text-[var(--crmx-warning-text)]" />
@@ -408,7 +408,7 @@ function ConflictDrawer({
                 type="button"
                 disabled={busy !== null}
                 onClick={submitReassign}
-                className="mt-3 w-full rounded-[var(--crmx-radius-control)] bg-[var(--crmx-primary)] px-4 py-2.5 text-[13.5px] font-bold text-white transition hover:bg-[var(--crmx-primary-hover)] disabled:opacity-50"
+                className="mt-3 h-11 w-full rounded-xl bg-[var(--crmx-primary)] px-4 text-[14px] font-bold text-white transition hover:bg-[var(--crmx-primary-hover)] disabled:opacity-50"
               >
                 {busy === "reassign"
                   ? "جارٍ الإسناد…"
@@ -428,7 +428,7 @@ function ConflictDrawer({
               <button
                 type="button"
                 onClick={onResolved}
-                className="mt-3 w-full rounded-[var(--crmx-radius-control)] border border-[var(--crmx-border)] bg-[var(--crmx-card)] px-4 py-2.5 text-[13.5px] font-bold text-[var(--crmx-text)]"
+                className="mt-3 h-11 w-full rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] px-4 text-[14px] font-bold text-[var(--crmx-text)]"
               >
                 إغلاق
               </button>
@@ -441,7 +441,7 @@ function ConflictDrawer({
             <button
               type="button"
               onClick={() => { setCandidates(pending); setPicked([]); }}
-              className="mt-4 w-full rounded-[var(--crmx-radius-control)] border border-[var(--crmx-warning)] px-4 py-2.5 text-[13.5px] font-bold text-[var(--crmx-warning-text)] hover:bg-[var(--crmx-warning-soft)]"
+              className="mt-4 h-11 w-full rounded-xl border border-[var(--crmx-warning)] px-4 text-[14px] font-bold text-[var(--crmx-warning-text)] hover:bg-[var(--crmx-warning-soft)]"
             >
               مراجعة الطلبات المتبقية ({pending.length})
             </button>
@@ -449,12 +449,12 @@ function ConflictDrawer({
 
           {isOpen && canResolve && !candidates && !summary && (
             <div className="mt-5">
-              <label className="mb-1.5 block text-[13px] font-semibold text-[var(--crmx-text-secondary)]">ملاحظة (اختيارية)</label>
+              <label className="mb-1 block text-[13px] font-semibold text-[var(--crmx-text-secondary)]">ملاحظة (اختيارية)</label>
               <textarea
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 rows={2}
-                className="w-full rounded-[var(--crmx-radius-control)] border border-[var(--crmx-border)] px-3 py-2 text-[13px] outline-none focus:border-[var(--crmx-primary)]"
+                className="w-full rounded-xl border border-[var(--crmx-border)] bg-white px-3 py-2.5 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
                 placeholder="سبب القرار، لسجل المراجعة."
               />
               {err && <p className="mt-2 text-[12.5px] text-[var(--crmx-danger-text)]">{err}</p>}
@@ -465,7 +465,7 @@ function ConflictDrawer({
                     key={d.key}
                     disabled={busy !== null}
                     onClick={() => act(d.key)}
-                    className={`w-full rounded-[var(--crmx-radius-control)] border px-4 py-2.5 text-right text-[13.5px] font-semibold transition disabled:opacity-50 ${d.tone}`}
+                    className={`w-full rounded-xl border px-4 py-3 text-right text-[14px] font-semibold transition disabled:opacity-50 ${d.tone}`}
                   >
                     {busy === d.key ? "جارٍ التنفيذ…" : d.label}
                     <span className="mt-0.5 block text-[11.5px] font-normal text-[var(--crmx-text-muted)]">{d.hint}</span>
@@ -474,7 +474,7 @@ function ConflictDrawer({
                 <button
                   disabled={busy !== null}
                   onClick={() => act("dismissed")}
-                  className="w-full rounded-[var(--crmx-radius-control)] px-4 py-2.5 text-right text-[13px] font-semibold text-[var(--crmx-text-muted)] hover:bg-[var(--crmx-neutral-soft)] disabled:opacity-50"
+                  className="w-full rounded-xl px-4 py-3 text-right text-[14px] font-semibold text-[var(--crmx-text-muted)] hover:bg-[var(--crmx-neutral-soft)] disabled:opacity-50"
                 >
                   {busy === "dismissed" ? "جارٍ التنفيذ…" : "تجاهل"}
                   <span className="mt-0.5 block text-[11.5px] font-normal">تذكرة لا محل لها — بيانات اختبار أو خطأ إدخال واضح.</span>

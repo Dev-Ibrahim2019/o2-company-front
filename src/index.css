@@ -94,8 +94,18 @@ body {
   background: var(--o2-bg);
 }
 
-:where(button, input, textarea, select) {
-  font: inherit;
+/* Form controls inherit the page's typography instead of the browser's.
+ *
+ * This must sit inside @layer base. Unlayered CSS beats every layered rule
+ * regardless of specificity, so while this block was unlayered it won over
+ * Tailwind's utilities in @layer utilities — `font: inherit` forced a control
+ * to take its parent's size and a `text-[14px]` on the control itself did
+ * nothing. The :where() wrapper was already there to make this rule
+ * overridable; the layer is what the wrapper needs to actually work. */
+@layer base {
+  :where(button, input, textarea, select) {
+    font: inherit;
+  }
 }
 
 :where(input, textarea, select) {

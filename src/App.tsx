@@ -81,6 +81,7 @@ import {
   CrmIdentityConflictsPage,
   CrmComplaintsPage,
   CrmGroupsPage,
+  CrmOccasionsPage,
   CrmGroupProfilePage,
 } from "./features/crm";
 
@@ -334,6 +335,7 @@ function AppRoutes() {
           <Route path="identity-conflicts" element={<CrmIdentityConflictsPage />} />
           <Route path="complaints" element={<CrmComplaintsPage />} />
           <Route path="groups" element={<CrmGroupsPage />} />
+          <Route path="occasions" element={<CrmOccasionsPage />} />
           <Route path="groups/:groupId" element={<CrmGroupProfilePage />} />
           <Route path="orders" element={<CrmOrdersPage mode="all" />} />
           <Route path="orders/active" element={<CrmOrdersPage mode="active" />} />

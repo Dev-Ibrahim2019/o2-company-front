@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  AlertTriangle, ArrowLeft, Award, CalendarDays, Footprints, Globe, Headset, Plus, RefreshCw,
+  AlertTriangle, ArrowLeft, Award, CalendarDays, CalendarHeart, Footprints, Globe, Headset, Plus, RefreshCw,
   ShoppingBag, TriangleAlert, UserCheck, Users2, UserPlus, Users, Wallet, Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -15,7 +15,7 @@ import { getCrmError } from "./components";
 import { useCrmOperational } from "./CrmShell";
 import "./customers-ui/crmx.css";
 import { CrmAvatar, CrmKpiCard, CrmPageHeader, CrmStatusBadge } from "./customers-ui";
-import type { CrmCustomerSource, CrmDashboard } from "./types";
+import type { CrmCustomerSource, CrmDashboard, CrmOccasionsSummary } from "./types";
 
 // Fixed, brand-consistent series colors for the donut — same palette used
 // across the CRM design tokens (green/navy/purple/warning/muted).
@@ -57,6 +57,29 @@ function ChartCard({ title, children, empty }: { title: string; children?: React
 export function CrmDashboardPage() {
   const { user } = useAuth();
   const operational = useCrmOperational();
+  // Read straight from GET /crm/occasions/summary rather than from the
+  // dashboard payload: that endpoint resolves every count through
+  // CustomerOccasion::nextOccurrence(), so an annual occasion stored in 1999
+  // is counted on this year's date. The dashboard's own occasion figures are
+  // a type distribution over stored rows and answer a different question.
+  const [occasionsDue, setOccasionsDue] = useState<CrmOccasionsSummary | null>(null);
+  const [occasionsLoading, setOccasionsLoading] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const summary = await crmApi.occasionsSummary();
+        if (alive) setOccasionsDue(summary);
+      } catch {
+        // A failed summary must not take the whole dashboard down; the card
+        // says so itself via the null value below.
+        if (alive) setOccasionsDue(null);
+      } finally {
+        if (alive) setOccasionsLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
   const [data, setData] = useState<CrmDashboard>();
   const [error, setError] = useState<{ status?: number; message: string }>();
   const [loading, setLoading] = useState(true);
@@ -190,7 +213,7 @@ export function CrmDashboardPage() {
 
       <div>
         <h2 className="mb-3 text-[17px] font-bold text-[var(--crmx-text)]">الوضع التشغيلي الآن</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:max-w-xl">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Link
             to="/admin/crm/orders/active"
             className="block rounded-2xl transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--crmx-navy)]/30"
@@ -216,6 +239,27 @@ export function CrmDashboardPage() {
               value={num(operational.delayedCount)}
               hint={!operational.loading && operational.delayedCount == null ? "تعذر تحميل العدد" : "من طلبات الفرع النشطة — منذ الإنشاء، بعد الحد التشغيلي المحدد"}
             />
+          </Link>
+          {/* Deep-links into the screen already filtered to today, so the
+              number the reader clicked is the list they land on. */}
+          <Link
+            to="/admin/crm/occasions?range=today"
+            className="block rounded-2xl transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--crmx-accent)]/30"
+          >
+          <CrmKpiCard
+            icon={<CalendarHeart className="h-5 w-5" />}
+            label="مناسبات اليوم"
+            tone={occasionsDue?.today ? "accent" : "navy"}
+            loading={occasionsLoading}
+            value={num(occasionsDue?.today)}
+            hint={
+              occasionsLoading
+                ? undefined
+                : occasionsDue == null
+                  ? "تعذر تحميل العدد"
+                  : `${num(occasionsDue.this_week)} خلال هذا الأسبوع · ${num(occasionsDue.this_month)} خلال الشهر`
+            }
+          />
           </Link>
         </div>
       </div>

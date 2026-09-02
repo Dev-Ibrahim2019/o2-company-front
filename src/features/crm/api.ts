@@ -3,7 +3,9 @@ import type {
   CrmActivityEvent, CrmCustomer, CrmDashboard, CrmFavoriteProduct, CrmId, CrmNote, CrmNoteInput,
   CrmOrderDetails, CrmOrderFeedbackInput, CrmOrderRow, CrmOrderTimeline, CrmPage, CrmPurchaseHistory,
   CrmSection, CrmIdentityConflict, CrmConflictEnvelope, CrmComplaint, CrmComplaintInput, CrmComplaintCreateInput, CrmComplaintRow, CrmComplaintSummary, CrmComplaintFollowup,
-  CrmCustomerGroup, CrmCustomerGroupInput, CrmOccasion, CrmOccasionInput,
+  CrmCustomerGroup, CrmCustomerGroupInput, CrmOccasion, CrmOccasionDetail,
+  CrmOccasionFollowup, CrmOccasionInput, CrmOccasionListQuery,
+  CrmOccasionListRow, CrmOccasionsSummary,
 } from "./types";
 
 const payload = <T,>(raw: unknown): T => {
@@ -61,6 +63,23 @@ export const crmApi = {
     payload<CrmOccasion>((await api.put(`/crm/${owner}/${ownerId}/occasions/${occasionId}`, data)).data),
   deleteOccasion: async (owner: "customers" | "groups", ownerId: CrmId, occasionId: CrmId) =>
     payload<{ deleted: boolean }>((await api.delete(`/crm/${owner}/${ownerId}/occasions/${occasionId}`)).data),
+  // Addressed by occasion id alone — these three span both owner types, so
+  // they carry no owner segment. The backend resolves the owner itself and
+  // applies the branch check only when it is a customer.
+  occasion: async (occasionId: CrmId) =>
+    payload<CrmOccasionDetail>((await api.get(`/crm/occasions/${occasionId}`)).data),
+  addOccasionFollowup: async (occasionId: CrmId, notes: string) =>
+    payload<CrmOccasionFollowup>((await api.post(`/crm/occasions/${occasionId}/followups`, { notes })).data),
+  // The cross-owner listing. Every filter is server-side; the calendar asks
+  // for one month at a time through from/to and gets each occasion's rolled
+  // date for that month.
+  occasionsList: async (query: CrmOccasionListQuery) => {
+    const params = new URLSearchParams();
+    Object.entries(query).forEach(([k, v]) => { if (v) params.set(k, String(v)); });
+    return payload<CrmOccasionListRow[]>((await api.get("/crm/occasions", { params })).data);
+  },
+  occasionsSummary: async () =>
+    payload<CrmOccasionsSummary>((await api.get("/crm/occasions/summary")).data),
   // ── Identity-conflict tickets ──
   // Read rides on crm.view-customers; resolving/dismissing needs
   // crm.manage-identity-conflicts (enforced per-route on the backend).

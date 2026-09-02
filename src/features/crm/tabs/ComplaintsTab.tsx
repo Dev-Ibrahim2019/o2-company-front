@@ -106,7 +106,7 @@ export default function ComplaintsTab() {
       {canCreate && (
         <button
           onClick={() => setDrawerOpen(true)}
-          className="flex h-10 items-center gap-1.5 rounded-xl border border-[var(--crmx-border)] bg-white px-3.5 text-[13px] font-bold text-[var(--crmx-navy)] hover:bg-[var(--crmx-neutral-soft)]"
+          className="flex h-11 items-center gap-2 rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] px-4 text-[14px] font-bold text-[var(--crmx-navy)] transition hover:bg-[var(--crmx-neutral-soft)]"
         >
           <Plus className="h-4 w-4" /> إضافة شكوى
         </button>

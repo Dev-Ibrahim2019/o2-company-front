@@ -6,24 +6,14 @@ import { toast } from "../../components/shared/Toast";
 import { crmApi } from "./api";
 import { CrmState, getCrmError } from "./components";
 import { date as fmtDate } from "./format";
+import { CONTACT_METHOD_LABELS, OCCASION_TYPE_LABELS } from "./occasionLabels";
+import { OccasionContactActions, type OccasionContact } from "./OccasionContactActions";
+import { OccasionDetailDrawer } from "./OccasionDetailDrawer";
 import type { CrmContactMethod, CrmId, CrmOccasion, CrmOccasionInput, CrmOccasionType } from "./types";
 
-/** Mirrors the customer_occasions enum constrained in 2027_01_18_000001. */
-export const OCCASION_TYPE_LABELS: Record<CrmOccasionType, string> = {
-  birthday: "عيد ميلاد",
-  anniversary: "ذكرى سنوية",
-  graduation: "تخرّج",
-  company_founding: "تأسيس",
-  contract_renewal: "تجديد عقد",
-  other: "أخرى",
-};
-
-export const CONTACT_METHOD_LABELS: Record<CrmContactMethod, string> = {
-  call: "اتصال",
-  sms: "رسالة نصية",
-  email: "بريد إلكتروني",
-  whatsapp: "واتساب",
-};
+// Re-exported, not redefined: the maps live in occasionLabels.ts so the
+// detail drawer can read them without importing this panel back.
+export { CONTACT_METHOD_LABELS, OCCASION_TYPE_LABELS };
 
 const pill = "inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-bold whitespace-nowrap";
 const inputCls =
@@ -165,7 +155,20 @@ function OccasionFormDrawer({
  * requests use. Building a second, group-shaped copy is exactly what the
  * polymorphic migration existed to avoid.
  */
-export function OccasionsPanel({ owner, ownerId }: { owner: "customers" | "groups"; ownerId: CrmId }) {
+export function OccasionsPanel({
+  owner,
+  ownerId,
+  contact,
+}: {
+  owner: "customers" | "groups";
+  ownerId: CrmId;
+  /**
+   * The owner's phone, for the quick call/WhatsApp actions. Supplied by the
+   * customer profile only — a group has no single number, so a group profile
+   * passes nothing and no contact button is rendered anywhere in this panel.
+   */
+  contact?: OccasionContact;
+}) {
   const { hasPermission } = useAuth();
   const canCreate = hasPermission(CRM_PERMISSIONS.OCCASIONS_CREATE);
   const canUpdate = hasPermission(CRM_PERMISSIONS.OCCASIONS_UPDATE);
@@ -177,6 +180,12 @@ export function OccasionsPanel({ owner, ownerId }: { owner: "customers" | "group
   const [drawer, setDrawer] = useState<{ mode: "add" } | { mode: "edit"; occasion: CrmOccasion } | null>(null);
   const [saving, setSaving] = useState(false);
   const [pendingId, setPendingId] = useState<CrmId | null>(null);
+  const [openId, setOpenId] = useState<CrmId | null>(null);
+
+  // Contact actions belong to a person, never to a group. Guarded on `owner`
+  // as well as on `contact` being present, so a caller that passed one by
+  // mistake still cannot put a phone button on a group's occasion.
+  const contactActions = owner === "customers" && contact ? contact : null;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -245,7 +254,19 @@ export function OccasionsPanel({ owner, ownerId }: { owner: "customers" | "group
       ) : (
         <div className="crmx-root space-y-2.5">
           {rows.map((o) => (
-            <div key={String(o.id)} className="rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-4">
+            <div
+              key={String(o.id)}
+              role="button"
+              tabIndex={0}
+              onClick={() => setOpenId(o.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setOpenId(o.id);
+                }
+              }}
+              className="cursor-pointer rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-4 transition hover:border-[var(--crmx-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--crmx-primary)]/20"
+            >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="flex items-center gap-2 text-[14px] font-bold text-[var(--crmx-text)]">
@@ -260,7 +281,7 @@ export function OccasionsPanel({ owner, ownerId }: { owner: "customers" | "group
                   <div className="flex shrink-0 items-center gap-1">
                     {canUpdate && (
                       <button
-                        onClick={() => setDrawer({ mode: "edit", occasion: o })}
+                        onClick={(e) => { e.stopPropagation(); setDrawer({ mode: "edit", occasion: o }); }}
                         title="تعديل"
                         className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--crmx-text-muted)] hover:bg-[var(--crmx-neutral-soft)] hover:text-[var(--crmx-navy)]"
                       >
@@ -269,7 +290,7 @@ export function OccasionsPanel({ owner, ownerId }: { owner: "customers" | "group
                     )}
                     {canDelete && (
                       <button
-                        onClick={() => void remove(o)}
+                        onClick={(e) => { e.stopPropagation(); void remove(o); }}
                         disabled={pendingId === o.id}
                         title="حذف"
                         className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--crmx-text-muted)] hover:bg-[var(--crmx-danger-soft)] hover:text-[var(--crmx-danger-text)] disabled:opacity-50"
@@ -299,9 +320,26 @@ export function OccasionsPanel({ owner, ownerId }: { owner: "customers" | "group
                   </span>
                 )}
               </div>
+
+              {contactActions && (
+                <div className="mt-3 border-t border-[var(--crmx-border)] pt-3">
+                  <OccasionContactActions contact={contactActions} occasionType={o.occasion_type} />
+                </div>
+              )}
             </div>
           ))}
         </div>
+      )}
+
+      {openId !== null && (
+        <OccasionDetailDrawer
+          occasionId={openId}
+          contact={contactActions ?? undefined}
+          onClose={() => setOpenId(null)}
+          // A followup does not change the row, but reloading keeps this list
+          // and the drawer reading from the same server response.
+          onChanged={() => void load()}
+        />
       )}
 
       {drawer && (
