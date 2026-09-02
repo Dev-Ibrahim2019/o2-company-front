@@ -2,13 +2,15 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Phone, Search, ShoppingCart, Star, MapPin, User,
   Trash2, Save, Package, TrendingUp, Loader2, CheckCircle, Eye,
-  MessageSquare, Sparkles, Users, Receipt,
+  MessageSquare, Sparkles, Users, Receipt, LayoutGrid, List as ListIcon, Plus,
 } from "lucide-react";
 import { colors, typography, radius, shadows, transitions } from "../design/tokens";
 import { Button, Badge, Card } from "../design/components";
 import api from "../../../api/axios";
 import { getBranchId } from "../../../auth/authStorage";
 import { toast } from "../../shared/Toast";
+import { ResizableSplit } from "../../shared/ResizableSplit";
+import { calculateCartTotals } from "../cartTotals";
 import { branchService, type Branch } from "../../../services/branchService";
 
 // ============================================================================
@@ -82,7 +84,27 @@ interface FavoriteItem {
   total_spent: number;
 }
 
-const CHART_PALETTE = ["#8b5cf6", "#10b981", "#3b82f6", "#06b6d4", "#f43f5e", "#f97316"];
+type PaymentMethod = "cash" | "card" | "wallet";
+type PaymentSplit = { method: PaymentMethod; amount: number };
+const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = { cash: "نقداً", card: "بطاقة", wallet: "محفظة" };
+const MENU_VIEW_MODE_STORAGE_KEY = "callCenterMenuViewMode";
+
+// يطابق بالاسم (عربي/انجليزي) أو بكود الصنف (نصي زي ITM-40513 أو رقمي زي 901) — نفس المنطق يُستخدم
+// بفلترة الشبكة وبسطر الإدخال السريع بالفاتورة عشان يبقى سلوك البحث موحّد بمكان واحد.
+const itemMatchesQuery = (item: MenuItem, query: string): boolean => {
+  const q = query.trim();
+  if (!q) return true;
+  const qLower = q.toLowerCase();
+  return (
+    item.name.toLowerCase().includes(qLower) ||
+    Boolean(item.name_ar && item.name_ar.includes(q)) ||
+    Boolean(item.code && item.code.toLowerCase().includes(qLower))
+  );
+};
+
+// تدرجات رمادي محايدة + لون accent العلامة (أحمر) للعنصر الأول فقط (الأكثر طلبًا) — بدل ألوان
+// عشوائية غير مرتبطة بهوية النظام. topFavorites مرتبة تنازليًا أصلاً فالفهرس 0 هو الأعلى قيمة.
+const CHART_PALETTE = ["#e20004", "#52525b", "#71717a", "#94a3b8", "#a1a1aa", "#cbd5e1"];
 
 const ORDER_TYPE_LABELS: Record<"takeaway" | "dine_in" | "delivery", string> = {
   dine_in: "استلام من الفرع",
@@ -170,13 +192,36 @@ export const CallCenterPageWithAside: React.FC = () => {
   const [menuLoading, setMenuLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [menuSearchQuery, setMenuSearchQuery] = useState("");
+  const [topSellingItems, setTopSellingItems] = useState<FavoriteItem[]>([]);
+  const [menuViewMode, setMenuViewMode] = useState<"grid" | "list">(() => {
+    try {
+      const stored = window.localStorage.getItem(MENU_VIEW_MODE_STORAGE_KEY);
+      return stored === "list" ? "list" : "grid";
+    } catch {
+      return "grid";
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(MENU_VIEW_MODE_STORAGE_KEY, menuViewMode);
+    } catch {
+      // خاص/quota ممتلئ — تجاهل، مش حرج
+    }
+  }, [menuViewMode]);
+
+  // ── Quick Add State (سطر الإدخال السريع بأعلى الفاتورة) ──
+  const [quickAddValue, setQuickAddValue] = useState("");
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [quickAddActiveIndex, setQuickAddActiveIndex] = useState(0);
+  const [lastAddedItemId, setLastAddedItemId] = useState<number | null>(null);
+  const quickAddInputRef = useRef<HTMLInputElement>(null);
 
   // ── Cart State ──
   const [cart, setCart] = useState<CartItem[]>([]);
   const [invoiceNote, setInvoiceNote] = useState("");
   const [discountValue, setDiscountValue] = useState(0);
   const [discountType, setDiscountType] = useState<"AMOUNT" | "PERCENT">("AMOUNT");
-  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [payments, setPayments] = useState<PaymentSplit[]>([]);
   const [orderType, setOrderType] = useState<"takeaway" | "dine_in" | "delivery">("takeaway");
 
   // ── Branch / Delivery / Tax / Scheduling State ──
@@ -389,6 +434,24 @@ export const CallCenterPageWithAside: React.FC = () => {
     loadMenuItems();
   }, []);
 
+  // الأصناف الأكثر طلبًا عمومًا (all-time) — fallback يُستخدم لترتيب الشبكة الافتراضي لو ما كان
+  // عند العميل مفضّلات خاصة به بعد (favorites فاضية).
+  useEffect(() => {
+    api.get("/call-center/menu/top-items", { params: { limit: 12 } })
+      .then(res => {
+        const rows = res.data?.data || res.data || [];
+        setTopSellingItems(rows.map((r: any) => ({
+          item_id: r.item_id,
+          item_name: r.name,
+          item_name_ar: r.name_ar,
+          orders_count: 0,
+          quantity_sum: Number(r.quantity ?? 0),
+          total_spent: 0,
+        })));
+      })
+      .catch(() => setTopSellingItems([]));
+  }, []);
+
   // ═══════════════════════════════════════════════════════════════════════════
   // CART OPERATIONS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -401,6 +464,7 @@ export const CallCenterPageWithAside: React.FC = () => {
       }
       return [...prev, { id: item.id, name: item.name, name_ar: item.name_ar, price: item.price, quantity: 1, notes: "" }];
     });
+    setLastAddedItemId(item.id);
   };
 
   const addFavoriteToCart = (fav: FavoriteItem) => {
@@ -416,6 +480,7 @@ export const CallCenterPageWithAside: React.FC = () => {
       }
       return [...prev, { id: fav.item_id, name: fav.item_name, name_ar: fav.item_name_ar, price: 0, quantity: 1, notes: "" }];
     });
+    setLastAddedItemId(fav.item_id);
   };
 
   const updateQuantity = (id: number, delta: number) => {
@@ -445,32 +510,165 @@ export const CallCenterPageWithAside: React.FC = () => {
   const clearCart = () => setCart([]);
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // QUICK ADD (سطر الإدخال السريع بأعلى الفاتورة)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const commitQuickAdd = (item: MenuItem) => {
+    addToCart(item);
+    setQuickAddValue("");
+    setQuickAddOpen(false);
+    setQuickAddActiveIndex(0);
+    quickAddInputRef.current?.focus();
+  };
+
+  const handleQuickAddChange = (value: string) => {
+    setQuickAddValue(value);
+    setQuickAddActiveIndex(0);
+    setQuickAddOpen(Boolean(value.trim()));
+  };
+
+  const handleQuickAddKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // بند 5: الأسهم بحقل الإدخال السريع تتنقل بقائمة الاقتراحات لو مفتوحة، وإلا بتتحكم بكمية
+    // "آخر صنف تمت إضافته" (lastAddedItemId) — سلوك واحد واضح بدل التخمين بين "آخر صنف" و"صنف محدد".
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (quickAddMatches.length > 0) {
+        setQuickAddOpen(true);
+        setQuickAddActiveIndex(i => Math.min(i + 1, quickAddMatches.length - 1));
+      } else if (lastAddedItemId != null) {
+        updateQuantity(lastAddedItemId, -1);
+      }
+      return;
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (quickAddOpen && quickAddMatches.length > 0) {
+        setQuickAddActiveIndex(i => Math.max(i - 1, 0));
+      } else if (lastAddedItemId != null) {
+        updateQuantity(lastAddedItemId, 1);
+      }
+      return;
+    }
+    if (e.key === "Escape") {
+      setQuickAddOpen(false);
+      return;
+    }
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const query = quickAddValue.trim();
+    if (!query) return;
+
+    if (quickAddOpen && quickAddMatches[quickAddActiveIndex]) {
+      commitQuickAdd(quickAddMatches[quickAddActiveIndex]);
+      return;
+    }
+    const qLower = query.toLowerCase();
+    const exactMatch = menuItems.find(item => item.is_available && (
+      item.code?.toLowerCase() === qLower ||
+      item.name.toLowerCase() === qLower ||
+      item.name_ar?.trim() === query
+    ));
+    if (exactMatch) {
+      commitQuickAdd(exactMatch);
+      return;
+    }
+    if (quickAddMatches.length === 1) {
+      commitQuickAdd(quickAddMatches[0]);
+      return;
+    }
+    if (quickAddMatches.length > 1) {
+      setQuickAddOpen(true);
+      setQuickAddActiveIndex(0);
+      return;
+    }
+    toast.error("ما في صنف مطابق", query);
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // DERIVED
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const cartSubtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  // مصدر واحد للحقيقة لكل من صفوف جدول الفاتورة والإجمالي الكلي (calculateCartTotals) — بدل
+  // حساب المجموع بمعزل عن الصفوف المعروضة، وهو ما كان ممكن يخليهم يطلعوا out of sync
+  const cartTotals = useMemo(
+    () => calculateCartTotals({
+      items: cart,
+      discountValue,
+      discountType,
+      taxEnabled,
+      taxRate,
+      deliveryFee,
+      isDelivery: orderType === "delivery",
+    }),
+    [cart, discountValue, discountType, taxEnabled, taxRate, deliveryFee, orderType]
+  );
+  const cartSubtotal = cartTotals.subtotal;
+  const manualDiscount = cartTotals.discountAmount;
+  const taxableBase = cartTotals.taxableBase;
+  const taxAmount = cartTotals.taxAmount;
+  const effectiveDeliveryFee = cartTotals.deliveryFee;
+  const total = cartTotals.total;
 
-  const manualDiscount = discountType === "PERCENT"
-    ? (cartSubtotal * discountValue) / 100
-    : discountValue;
+  const paymentsTotal = payments.reduce((sum, p) => sum + p.amount, 0);
+  const paymentsDiff = total - paymentsTotal;
+  const paymentsValid = payments.length > 0 && Math.abs(paymentsDiff) < 0.01;
 
-  const taxableBase = Math.max(0, cartSubtotal - manualDiscount);
-  const taxAmount = taxEnabled ? (taxableBase * taxRate) / 100 : 0;
-  const effectiveDeliveryFee = orderType === "delivery" ? deliveryFee : 0;
+  // عند وجود طريقة دفع واحدة فقط، تتحمّل الإجمالي كاملاً دائمًا وتتحدّث تلقائيًا مع أي تغيير بالسلة/الخصم/الضريبة
+  useEffect(() => {
+    setPayments(prev => (prev.length === 1 ? [{ ...prev[0], amount: total }] : prev));
+  }, [total]);
 
-  const total = taxableBase + taxAmount + effectiveDeliveryFee;
+  const togglePaymentMethod = (method: PaymentMethod) => {
+    setPayments(prev => {
+      if (prev.some(p => p.method === method)) {
+        return prev.filter(p => p.method !== method);
+      }
+      if (prev.length >= 2) {
+        toast.error("لا يمكن تفعيل أكثر من طريقتي دفع بنفس الوقت");
+        return prev;
+      }
+      if (prev.length === 0) {
+        return [{ method, amount: total }];
+      }
+      const remaining = Math.max(0, total - prev.reduce((sum, p) => sum + p.amount, 0));
+      return [...prev, { method, amount: remaining }];
+    });
+  };
 
-  const cartQtyById = useMemo(() => Object.fromEntries(cart.map(c => [c.id, c.quantity])), [cart]);
+  const updatePaymentAmount = (method: PaymentMethod, amount: number) => {
+    setPayments(prev => prev.map(p => (p.method === method ? { ...p, amount } : p)));
+  };
+
+  // مفضّلات العميل نفسه أولوية أعلى من الأكثر طلبًا عمومًا؛ بيانات SAMPLE التجريبية مستبعدة هون
+  // عمدًا (لازم بيانات حقيقية بس لترتيب الشبكة الافتراضي).
+  const bestSellersSource = favorites.length > 0 ? favorites : topSellingItems;
+  const bestSellerRank = useMemo(
+    () => new Map(bestSellersSource.map((f, idx) => [f.item_id, idx])),
+    [bestSellersSource]
+  );
 
   const filteredItems = useMemo(() => {
-    return menuItems.filter(item => {
+    const base = menuItems.filter(item => {
       const matchesCategory = selectedCategory === "all" || item.category === selectedCategory;
-      const matchesSearch = !menuSearchQuery ||
-        item.name.toLowerCase().includes(menuSearchQuery.toLowerCase()) ||
-        (item.name_ar && menuSearchQuery && item.name_ar.includes(menuSearchQuery));
-      return matchesCategory && matchesSearch && item.is_available;
+      return matchesCategory && itemMatchesQuery(item, menuSearchQuery) && item.is_available;
     });
-  }, [menuItems, selectedCategory, menuSearchQuery]);
+    // ترتيب "الأكثر طلبًا" الافتراضي يظهر بس بالحالة الافتراضية (بدون بحث/فلتر تصنيف) — بمجرد
+    // ما المستخدم يكتب أو يفلتر، يرجع الترتيب العادي.
+    const isDefaultView = !menuSearchQuery.trim() && selectedCategory === "all";
+    if (!isDefaultView || bestSellerRank.size === 0) return base;
+    return [...base].sort((a, b) => {
+      const rankA = bestSellerRank.has(a.id) ? bestSellerRank.get(a.id)! : Infinity;
+      const rankB = bestSellerRank.has(b.id) ? bestSellerRank.get(b.id)! : Infinity;
+      return rankA - rankB;
+    });
+  }, [menuItems, selectedCategory, menuSearchQuery, bestSellerRank]);
+
+  // مرشّحو الإدخال السريع بالفاتورة — نفس منطق مطابقة البحث بالشبكة (اسم أو كود)
+  const quickAddMatches = useMemo(() => {
+    const q = quickAddValue.trim();
+    if (!q) return [];
+    return menuItems.filter(item => item.is_available && itemMatchesQuery(item, q)).slice(0, 8);
+  }, [menuItems, quickAddValue]);
 
   const categories = useMemo(
     () => [...new Set(menuItems.map(i => i.category).filter((c): c is string => Boolean(c)))],
@@ -508,13 +706,27 @@ export const CallCenterPageWithAside: React.FC = () => {
   // SUBMIT ORDER
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const submitOrder = async () => {
+  // execute=true (زر "تنفيذ"): نفس الحمولة لكن نحاول أيضًا إرسال الطلب مباشرة للأقسام بعد الحفظ.
+  // ملاحظة: طلبات الكول سنتر يمنع الباك اند إرسالها للمطبخ قبل اكتمال الفاتورة/الدفع (قاعدة عمل موجودة أصلاً)،
+  // لذا هذه المحاولة "أفضل جهد" ولا تُفشل عملية الحفظ إن رُفضت.
+  const submitOrder = async (execute: boolean) => {
     if (cart.length === 0) {
       toast.error("السلة فارغة");
       return;
     }
     if (orderType === "delivery" && !customerAddress.trim()) {
       toast.error("عنوان التوصيل مطلوب", "أدخل عنوان العميل قبل تنفيذ طلب توصيل");
+      return;
+    }
+    if (!paymentsValid) {
+      toast.error(
+        payments.length === 0 ? "اختر طريقة دفع واحدة على الأقل" : "مجموع المدفوعات لا يساوي الإجمالي",
+        payments.length > 0
+          ? paymentsDiff > 0
+            ? `متبقٍ ${paymentsDiff.toFixed(2)} ₪ من إجمالي الفاتورة`
+            : `المبلغ المُدخل يتجاوز الإجمالي بمقدار ${Math.abs(paymentsDiff).toFixed(2)} ₪`
+          : undefined
+      );
       return;
     }
     if (scheduleEnabled) {
@@ -532,6 +744,7 @@ export const CallCenterPageWithAside: React.FC = () => {
       const payload = {
         branch_id: selectedBranchId ?? getBranchId() ?? 1,
         order_type: orderType,
+        source: "call_center",
         customer_id: customer?.id,
         customer_name: customerName || customer?.name,
         customer_phone: customerPhone || phone,
@@ -539,7 +752,7 @@ export const CallCenterPageWithAside: React.FC = () => {
         note: invoiceNote,
         discount_value: discountValue || undefined,
         discount_type: discountType === "PERCENT" ? "percent" : "amount",
-        payment_method: paymentMethod,
+        payments: payments.map(p => ({ method: p.method, amount: p.amount })),
         delivery_fee: effectiveDeliveryFee || undefined,
         tax_rate: taxEnabled ? taxRate : undefined,
         scheduled_at: scheduleEnabled && scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
@@ -551,7 +764,21 @@ export const CallCenterPageWithAside: React.FC = () => {
         })),
       };
       const res = await api.post("/orders", payload);
-      toast.success("تم إرسال الطلب بنجاح", `رقم الطلب: ${res.data?.data?.order_number || res.data?.order_number}`);
+      const orderId = res.data?.data?.id;
+      const orderNumber = res.data?.data?.order_number || res.data?.order_number;
+
+      if (execute && !scheduleEnabled && orderId) {
+        try {
+          await api.post(`/orders/${orderId}/confirm`);
+        } catch {
+          // الباك اند يرفض إرسال طلبات الكول سنتر للمطبخ قبل اكتمال الدفع — الطلب يبقى محفوظًا بانتظار الدفع
+        }
+      }
+
+      toast.success(
+        execute ? "تم تنفيذ الطلب" : "تم حفظ الطلب بنجاح",
+        `رقم الطلب: ${orderNumber}`
+      );
       clearCart();
       setInvoiceNote("");
       setDiscountValue(0);
@@ -560,6 +787,7 @@ export const CallCenterPageWithAside: React.FC = () => {
       setTaxRate(0);
       setScheduleEnabled(false);
       setScheduledAt("");
+      setPayments([]);
       if (customer?.id) loadCustomerOrders(customer.id);
     } catch (err: any) {
       toast.error("فشل إرسال الطلب", err?.response?.data?.message);
@@ -567,6 +795,22 @@ export const CallCenterPageWithAside: React.FC = () => {
       setSubmitting(false);
     }
   };
+
+  // بند 6: زر "-" بالكيبورد ينفّذ الطلب مباشرة (نفس شرط زر "تنفيذ" بالماوس)، ما عدا وقت التركيز
+  // بحقل نصي (ملاحظة/خصم/بحث...) عشان ما يتسبب بتنفيذ غير مقصود أثناء الكتابة.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "-") return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
+      if (cart.length === 0 || submitting || !paymentsValid || scheduleEnabled) return;
+      e.preventDefault();
+      submitOrder(true);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [cart.length, submitting, paymentsValid, scheduleEnabled, submitOrder]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // HELPERS
@@ -593,10 +837,13 @@ export const CallCenterPageWithAside: React.FC = () => {
       `}</style>
 
       {/* ══════════════════════════════════════════════════════════════════
-          STICKY CUSTOMER INFO BAR — Transparent pill overlay on scroll
+          STICKY CUSTOMER INFO BAR — Transparent pill overlay on scroll.
+          lg:hidden: هاد التصميم (pill عائم بنص الشاشة) مخصص للموبايل/الشاشات الضيقة فقط — على
+          الديسكتوب نفس المعلومات ظاهرة أصلاً بمكانها الطبيعي بعمود العميل، وإبقاء الـ pill كان
+          يتراكب فوق محتوى الصفحة بدون داعي.
       ══════════════════════════════════════════════════════════════════ */}
       <div
-        className="fixed top-2 sm:top-4 left-1/2 z-50 transition-all duration-500 ease-out w-[calc(100%-1.5rem)] sm:w-auto max-w-full flex justify-center px-2"
+        className="lg:hidden fixed top-2 sm:top-4 left-1/2 z-50 transition-all duration-500 ease-out w-[calc(100%-1.5rem)] sm:w-auto max-w-full flex justify-center px-2"
         style={{
           transform: `translateX(-50%) translateY(${isScrolled ? "0" : "-120%"})`,
           opacity: isScrolled ? 1 : 0,
@@ -689,10 +936,12 @@ export const CallCenterPageWithAside: React.FC = () => {
           Stacks into a single column below the "lg" breakpoint; each
           column scrolls independently only on large screens.
       ══════════════════════════════════════════════════════════════════ */}
-      <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0 lg:h-[calc(100vh-40px)] p-3 sm:p-4 lg:p-0">
-
-        {/* ══════════════════ RIGHT COLUMN — Customer ══════════════════ */}
-        <div className="cc-scroll-col flex-1 flex flex-col min-w-0 min-h-0 custom-scrollbar lg:pr-1 gap-4" dir="rtl">
+      <ResizableSplit
+        storageKey="orderPageSplit"
+        className="flex-1 min-h-0 lg:h-[calc(100vh-40px)] p-3 sm:p-4 lg:p-0"
+        right={
+        /* ══════════════════ RIGHT COLUMN — Customer ══════════════════ */
+        <div className="cc-scroll-col flex flex-col min-w-0 min-h-0 custom-scrollbar h-full lg:pr-1 gap-4" dir="rtl">
 
           {/* ── Customer Search ── */}
           <Card padding="20px" style={{ boxShadow: shadows.xs }}>
@@ -947,9 +1196,10 @@ export const CallCenterPageWithAside: React.FC = () => {
             <Button variant="primary" fullWidth icon={<Save size={14} />} onClick={saveCustomerData}>حفظ التفاصيل</Button>
           </Card>
         </div>
-
-        {/* ══════════════════ LEFT COLUMN — Chart + POS ══════════════════ */}
-        <div className="cc-scroll-col flex-1 flex flex-col min-w-0 min-h-0 custom-scrollbar lg:pl-1 gap-4" dir="rtl">
+        }
+        left={
+        /* ══════════════════ LEFT COLUMN — Chart + POS ══════════════════ */
+        <div className="cc-scroll-col flex flex-col min-w-0 min-h-0 custom-scrollbar h-full lg:pl-1 gap-4" dir="rtl">
 
           {/* ── Top Ordered Items Chart ── */}
           <Card padding="20px" style={{ boxShadow: shadows.xs }}>
@@ -997,107 +1247,16 @@ export const CallCenterPageWithAside: React.FC = () => {
           </Card>
 
           {/* ══════════════════ POS SECTION — Menu + Cart (Dark Theme) ══════════════════ */}
-          <div className="bg-slate-950 rounded-2xl border border-white/10 flex flex-col lg:flex-row gap-0 overflow-hidden" style={{ flex: 1, minHeight: 500 }}>
+          <div className="bg-slate-950 rounded-2xl border border-white/10 flex flex-col lg:flex-row lg:overflow-x-hidden gap-0" style={{ flex: 1, minHeight: 900 }}>
 
-            {/* Menu Area */}
-            {/* min-w-[240px] بدل min-w-0 — كانت تسمح بانكماش العمود إلى شبه صفر عند ضيق المساحة بدل حد أدنى معقول */}
-            <div className="flex-1 flex flex-col min-w-[240px] p-3 sm:p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="flex-1 relative">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                  <input
-                    type="text"
-                    value={menuSearchQuery}
-                    onChange={e => setMenuSearchQuery(e.target.value)}
-                    placeholder="ابحث عن صنف بالاسم أو الكود..."
-                    className="w-full pl-9 pr-3 py-2.5 bg-slate-900 border border-white/10 rounded-xl text-sm font-bold text-white outline-none focus:ring-1 focus:ring-red-600 placeholder:text-slate-600"
-                  />
-                </div>
-                <div className="flex bg-slate-800 px-2.5 py-2 rounded-lg shrink-0">
-                  <span className="text-[11px] font-black text-slate-400">{filteredItems.length} صنف</span>
-                </div>
-              </div>
-
-              {/* Category Tabs */}
-              <div className="mb-3 flex shrink-0 gap-1.5 overflow-x-auto custom-scrollbar py-1">
-                <button
-                  onClick={() => setSelectedCategory("all")}
-                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg whitespace-nowrap text-[11px] font-black transition-all duration-200 border shrink-0 ${selectedCategory === "all" ? "bg-red-600 text-white border-red-600 shadow-sm" : "bg-slate-900 text-slate-400 border-white/5 hover:bg-slate-800"}`}
-                >
-                  <span>الكل</span>
-                </button>
-                {categories.map((cat, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`flex items-center gap-1 px-3 py-1.5 rounded-lg whitespace-nowrap text-[11px] font-black transition-all duration-200 border shrink-0 ${selectedCategory === cat ? "bg-red-600 text-white border-red-600 shadow-sm" : "bg-slate-900 text-slate-400 border-white/5 hover:bg-slate-800"}`}
-                  >
-                    <span>{cat}</span>
-                  </button>
-                ))}
-              </div>
-
-              {/* Items Grid */}
-              <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3 overflow-y-auto pr-1 pb-6 custom-scrollbar">
-                {menuLoading ? (
-                  <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-600 gap-3">
-                    <Loader2 size={32} className="animate-spin" />
-                    <p className="font-black text-sm">جاري تحميل المنيو...</p>
-                  </div>
-                ) : filteredItems.length === 0 ? (
-                  <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-600 gap-3">
-                    <Package size={40} strokeWidth={1} />
-                    <p className="font-black text-xs">{menuSearchQuery ? "لا توجد نتائج مطابقة" : "لا توجد أصناف متاحة"}</p>
-                  </div>
-                ) : (
-                  filteredItems.map(item => {
-                    const inCartQty = cartQtyById[item.id] || 0;
-                    return (
-                      <div
-                        key={item.id}
-                        onClick={() => addToCart(item)}
-                        className="group cursor-pointer flex flex-col gap-2"
-                      >
-                        <div className={`aspect-square relative rounded-2xl overflow-hidden bg-slate-900 border transition-all duration-300 shadow-lg ${inCartQty > 0 ? "border-red-600/70" : "border-white/5 group-hover:border-red-600/50"}`}>
-                          {item.image ? (
-                            <img
-                              src={item.image}
-                              alt={item.name_ar || item.name}
-                              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 ease-in-out"
-                              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                            />
-                          ) : null}
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                          {inCartQty > 0 && (
-                            <div className="absolute top-2 left-2 bg-red-600 text-white w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-black shadow-lg border border-white/20">{inCartQty}</div>
-                          )}
-                          {!item.image && (
-                            <div className="absolute inset-0 flex items-center justify-center text-slate-700">
-                              <Package size={32} strokeWidth={1} />
-                            </div>
-                          )}
-                        </div>
-                        <div className="px-1">
-                          <h4 className="font-black text-slate-100 text-[11px] leading-tight group-hover:text-red-500 transition-colors line-clamp-2">{item.name_ar || item.name}</h4>
-                          <div className="flex items-center justify-between mt-1">
-                            <span className="text-[11px] font-black text-red-500">{item.price > 0 ? `${item.price.toFixed(2)} ₪` : "—"}</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            {/* Cart Panel */}
-            {/* عرض نسبي بحدود بدل px ثابت (450/500) — كان يبتلع كل مساحة العمود عند 1280-1440px ويكاد يصفّر عمود المنيو المجاور */}
-            <div className="w-full lg:w-[42%] lg:min-w-[320px] lg:max-w-[420px] bg-slate-900 border-t lg:border-t-0 lg:border-r border-white/10 flex flex-col overflow-hidden lg:flex-none shrink-0">
-              {/* Cart Header */}
-              <div className="p-3 sm:p-4 border-b border-white/5 space-y-3 bg-slate-900/50 backdrop-blur-md lg:sticky lg:top-0 z-10">
+            {/* Cart Panel — أول عنصر بالـ DOM، فيظهر على اليمين لأن الحاوية dir="rtl" */}
+            {/* عرض أكبر (440-520px) بدل 42% — لوحة الفاتورة هي المحور الأساسي لعمل موظف الكول سنتر */}
+            <div className="w-full lg:w-[460px] lg:min-w-[420px] xl:w-[500px] xl:max-w-[520px] bg-slate-900 border-t lg:border-t-0 lg:border-l border-white/10 flex flex-col lg:h-full lg:min-h-0 lg:overflow-hidden lg:flex-none shrink-0">
+              {/* Cart Header — ثابت بالأعلى دايمًا (lg+)؛ الأصناف هي يلي فيها سكرول داخلي، مو اللوحة كلها */}
+              <div className="p-3 sm:p-4 border-b border-white/5 space-y-3 bg-slate-900/50 backdrop-blur-md shrink-0">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-1.5">
-                    <ShoppingCart className="text-red-500" size={16} />
+                    <ShoppingCart className="text-slate-400" size={16} />
                     <h3 className="text-xs sm:text-sm font-black text-white">تفاصيل الفاتورة</h3>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
@@ -1109,7 +1268,7 @@ export const CallCenterPageWithAside: React.FC = () => {
                         <button
                           key={id}
                           title={ORDER_TYPE_TOOLTIPS[id]}
-                          className={`px-2 sm:px-2.5 py-1 text-[10px] sm:text-[11px] font-black rounded-md transition-all whitespace-nowrap ${orderType === id ? "bg-red-600 text-white shadow-lg" : "text-slate-500 hover:text-slate-300"}`}
+                          className={`px-2 sm:px-2.5 py-1 text-[10px] sm:text-[11px] font-black rounded-md transition-all whitespace-nowrap ${orderType === id ? "bg-slate-700 text-white shadow-lg" : "text-slate-500 hover:text-slate-300"}`}
                           onClick={() => setOrderType(id)}
                         >
                           {ORDER_TYPE_LABELS[id]}
@@ -1138,7 +1297,7 @@ export const CallCenterPageWithAside: React.FC = () => {
                     type="button"
                     title="جدولة الطلب لوقت لاحق بدل التنفيذ الفوري"
                     onClick={() => setScheduleEnabled(v => !v)}
-                    className={`px-2.5 py-1.5 text-[10px] font-black rounded-lg whitespace-nowrap transition-all ${scheduleEnabled ? "bg-red-600 text-white" : "bg-slate-800 text-slate-500 hover:text-slate-300"}`}
+                    className={`px-2.5 py-1.5 text-[10px] font-black rounded-lg whitespace-nowrap transition-all ${scheduleEnabled ? "bg-slate-700 text-white" : "bg-slate-800 text-slate-500 hover:text-slate-300"}`}
                   >
                     جدولة الطلب
                   </button>
@@ -1161,14 +1320,14 @@ export const CallCenterPageWithAside: React.FC = () => {
                   </div>
                 )}
 
-                <div className="bg-red-600/10 border border-red-600/20 p-2.5 px-3 rounded-lg flex flex-col gap-1">
+                <div className="bg-slate-800/60 border border-white/5 p-2.5 px-3 rounded-lg flex flex-col gap-1">
                   {manualDiscount > 0 && (
                     <>
                       <div className="flex justify-between items-center">
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">الإجمالي الفرعي</span>
                         <span className="text-sm font-black text-slate-300">{cartSubtotal.toFixed(2)} ₪</span>
                       </div>
-                      <div className="flex justify-between items-center text-red-500">
+                      <div className="flex justify-between items-center text-slate-300">
                         <span className="text-[10px] font-black uppercase tracking-widest">الخصم</span>
                         <span className="text-sm font-black">-{manualDiscount.toFixed(2)} ₪</span>
                       </div>
@@ -1186,18 +1345,17 @@ export const CallCenterPageWithAside: React.FC = () => {
                       <span className="text-sm font-black">{effectiveDeliveryFee.toFixed(2)} ₪</span>
                     </div>
                   )}
-                  <div className={`pt-1 mt-1 ${manualDiscount > 0 || (taxEnabled && taxAmount > 0) || effectiveDeliveryFee > 0 ? "border-t border-red-600/20" : ""} flex justify-between items-center`}>
+                  <div className={`pt-1 mt-1 ${manualDiscount > 0 || (taxEnabled && taxAmount > 0) || effectiveDeliveryFee > 0 ? "border-t border-white/10" : ""} flex justify-between items-center`}>
                     <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{manualDiscount > 0 ? "الصافي النهائي" : "الإجمالي الكلي"}</span>
                     <div className="text-left">
-                      <span className="text-xl sm:text-2xl lg:text-3xl font-black text-red-600">{total.toFixed(2)}</span>
-                      <span className="text-[12px] font-black text-red-600 mr-1">₪</span>
+                      <span className="text-xl sm:text-2xl lg:text-3xl font-black text-red-600">{formatCurrency(total)}</span>
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Cart Items Header */}
-              <div className="bg-slate-900 border-b border-white/5 overflow-x-auto">
+              <div className="bg-slate-900 border-b border-white/5 overflow-x-auto shrink-0">
                 <table className="w-full text-right border-collapse min-w-[350px]">
                   <thead>
                     <tr className="border-b border-white/5">
@@ -1209,8 +1367,46 @@ export const CallCenterPageWithAside: React.FC = () => {
                 </table>
               </div>
 
-              {/* Cart Items (scrollable) */}
-              <div className="flex-1 overflow-y-auto custom-scrollbar min-h-[100px]">
+              {/* Quick Add Row — سطر إدخال سريع بكود/اسم الصنف، ظاهر دايمًا حتى لو الفاتورة فاضية.
+                  Enter: تطابق دقيق واحد → إضافة فورية بكمية 1 (أو زيادة لو موجود). أكثر من تطابق → قائمة اقتراحات. */}
+              <div className="relative border-b border-white/5 bg-slate-900/60 p-2 sm:p-3 shrink-0">
+                <input
+                  ref={quickAddInputRef}
+                  type="text"
+                  value={quickAddValue}
+                  onChange={e => handleQuickAddChange(e.target.value)}
+                  onKeyDown={handleQuickAddKeyDown}
+                  onFocus={() => setQuickAddOpen(Boolean(quickAddValue.trim()))}
+                  onBlur={() => setQuickAddOpen(false)}
+                  placeholder="كود أو اسم الصنف... (Enter للإضافة)"
+                  dir="rtl"
+                  className="w-full bg-slate-800 border border-white/10 rounded-lg px-3 py-2 text-[12px] font-black text-white outline-none focus:ring-1 focus:ring-red-600 placeholder:text-slate-500"
+                />
+                {quickAddOpen && quickAddMatches.length > 0 && (
+                  <div className="absolute z-20 top-full mt-1 right-2 left-2 bg-slate-800 border border-white/10 rounded-lg shadow-xl overflow-y-auto custom-scrollbar max-h-56">
+                    {quickAddMatches.map((item, idx) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onMouseDown={e => { e.preventDefault(); commitQuickAdd(item); }}
+                        className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-[12px] font-black text-right transition-colors ${idx === quickAddActiveIndex ? "bg-slate-700 text-white" : "text-slate-300 hover:bg-white/5"}`}
+                      >
+                        <span className="flex items-center gap-2 min-w-0">
+                          {item.code && (
+                            <span className="shrink-0 text-[10px] text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded" dir="ltr">{item.code}</span>
+                          )}
+                          <span className="truncate">{item.name_ar || item.name}</span>
+                        </span>
+                        <span className="shrink-0 text-slate-300">{item.price > 0 ? `${item.price.toFixed(2)} ₪` : "—"}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Cart Items — القسم الوحيد يلي فيه سكرول داخلي (lg+)، حتى تضل الإجمالي/الملاحظة/الضريبة/أزرار
+                  الدفع بالأسفل ظاهرة دايمًا مهما طالت قائمة الأصناف */}
+              <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto custom-scrollbar">
                 {cart.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-6 text-slate-700 gap-2">
                     <div className="w-14 h-14 bg-slate-800 rounded-full flex items-center justify-center shadow-inner">
@@ -1243,13 +1439,18 @@ export const CallCenterPageWithAside: React.FC = () => {
                                   type="text"
                                   value={item.quantity}
                                   onChange={e => { const val = parseInt(e.target.value); if (!isNaN(val)) updateCartQuantityDirect(item.id, val); }}
+                                  onKeyDown={e => {
+                                    // بند 5: من سطر الصنف بالفاتورة، الأسهم تتحكم بكمية هالصنف نفسه (المؤشَّر عليه حاليًا)
+                                    if (e.key === "ArrowUp") { e.preventDefault(); updateQuantity(item.id, 1); }
+                                    else if (e.key === "ArrowDown") { e.preventDefault(); updateQuantity(item.id, -1); }
+                                  }}
                                   className="w-8 bg-transparent text-center text-[11px] sm:text-xs font-black text-white outline-none"
                                 />
                                 <button onClick={() => updateQuantity(item.id, 1)} className="w-6 h-6 bg-slate-700 rounded text-[11px] font-bold text-white hover:bg-slate-600 flex items-center justify-center">+</button>
                               </div>
                             </td>
                             <td className="p-2 sm:p-3 text-left">
-                              <span className="text-[11px] sm:text-xs font-black text-red-500">{(item.price * item.quantity).toFixed(2)}</span>
+                              <span className="text-[11px] sm:text-xs font-black text-slate-200">{(item.price * item.quantity).toFixed(2)}</span>
                             </td>
                             <td className="p-2 sm:p-3 text-center">
                               <button onClick={() => removeFromCart(item.id)} className="p-1.5 text-slate-600 hover:text-red-500 transition-colors opacity-100 lg:opacity-0 lg:group-hover:opacity-100">
@@ -1264,8 +1465,8 @@ export const CallCenterPageWithAside: React.FC = () => {
                 )}
               </div>
 
-              {/* Cart Footer */}
-              <div className="p-3 sm:p-4 bg-slate-950 border-t border-white/10 space-y-2">
+              {/* Cart Footer — ثابت بالأسفل دايمًا (lg+) */}
+              <div className="p-3 sm:p-4 bg-slate-950 border-t border-white/10 space-y-2 shrink-0">
                 <div className="flex flex-col sm:flex-row gap-2">
                   <div className="flex-1 bg-slate-900 px-3 py-1.5 rounded-xl border border-white/5 flex flex-col gap-0.5">
                     <div className="flex items-center gap-1 text-slate-500 shrink-0">
@@ -1314,7 +1515,7 @@ export const CallCenterPageWithAside: React.FC = () => {
                         type="button"
                         onClick={() => setTaxEnabled(v => !v)}
                         title="تفعيل/إيقاف احتساب الضريبة على هذا الطلب"
-                        className={`text-[10px] font-black px-1.5 py-0.5 rounded transition-colors shrink-0 ${taxEnabled ? "bg-red-600 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"}`}
+                        className={`text-[10px] font-black px-1.5 py-0.5 rounded transition-colors shrink-0 ${taxEnabled ? "bg-slate-700 text-white" : "bg-slate-800 text-slate-400 hover:text-slate-200"}`}
                       >
                         {taxEnabled ? "مفعّلة" : "متوقفة"}
                       </button>
@@ -1333,41 +1534,207 @@ export const CallCenterPageWithAside: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex gap-1.5 pt-1">
-                  {[{ id: "cash", label: "نقداً" }, { id: "card", label: "بطاقة" }, { id: "wallet", label: "محفظة" }].map(pm => (
-                    <button
-                      key={pm.id}
-                      onClick={() => setPaymentMethod(pm.id)}
-                      className={`flex-1 py-2 text-[11px] sm:text-[12px] font-black rounded-lg transition-all ${paymentMethod === pm.id ? "bg-red-600 text-white shadow-lg shadow-red-900/30" : "bg-slate-800 text-slate-500 hover:text-slate-300 border border-white/5"}`}
-                    >
-                      {pm.label}
-                    </button>
-                  ))}
+                <div className="flex flex-col gap-1.5 pt-1">
+                  <div className="flex gap-1.5">
+                    {(["cash", "card", "wallet"] as const).map(method => {
+                      const active = payments.some(p => p.method === method);
+                      return (
+                        <button
+                          key={method}
+                          type="button"
+                          onClick={() => togglePaymentMethod(method)}
+                          className={`flex-1 py-2 text-[11px] sm:text-[12px] font-black rounded-lg transition-all ${active ? "bg-slate-700 text-white shadow-lg shadow-black/30" : "bg-slate-800 text-slate-500 hover:text-slate-300 border border-white/5"}`}
+                        >
+                          {PAYMENT_METHOD_LABELS[method]}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {payments.length === 2 && (
+                    <div className="flex gap-1.5">
+                      {payments.map(p => (
+                        <div key={p.method} className="flex-1 bg-slate-900 px-2 py-1.5 rounded-lg border border-white/5 flex items-center gap-1">
+                          <span className="text-[10px] font-black text-slate-500 shrink-0">{PAYMENT_METHOD_LABELS[p.method]}</span>
+                          <input
+                            type="number"
+                            value={p.amount || ""}
+                            onChange={e => updatePaymentAmount(p.method, parseFloat(e.target.value) || 0)}
+                            className="flex-1 min-w-0 bg-transparent text-center text-[11px] font-black text-white outline-none"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {payments.length > 0 && Math.abs(paymentsDiff) >= 0.01 && (
+                    <div className={`text-[10px] font-black rounded-lg px-2.5 py-1.5 ${paymentsDiff > 0 ? "text-amber-400 bg-amber-500/10 border border-amber-500/20" : "text-red-400 bg-red-500/10 border border-red-500/20"}`}>
+                      {paymentsDiff > 0
+                        ? `متبقٍ ${paymentsDiff.toFixed(2)} ₪ من إجمالي الفاتورة`
+                        : `المبلغ المُدخل يتجاوز الإجمالي بمقدار ${Math.abs(paymentsDiff).toFixed(2)} ₪`}
+                    </div>
+                  )}
+                  {payments.length === 0 && (
+                    <div className="text-[10px] font-black text-slate-600 px-1">اختر طريقة دفع واحدة على الأقل</div>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 pt-1">
+                <div className={`grid ${scheduleEnabled ? "grid-cols-1" : "grid-cols-2"} gap-2 pt-1`}>
                   <button
-                    onClick={() => { if (cart.length === 0) return; submitOrder(); }}
-                    disabled={cart.length === 0 || submitting}
+                    onClick={() => submitOrder(false)}
+                    disabled={cart.length === 0 || submitting || !paymentsValid}
                     className="py-2.5 sm:py-3 bg-slate-800 text-white rounded-xl font-black text-[11px] sm:text-[12px] flex items-center justify-center gap-1.5 hover:bg-slate-700 disabled:opacity-30 transition-all active:scale-95"
                   >
                     {submitting ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                     حفظ
                   </button>
+                  {!scheduleEnabled && (
+                    <button
+                      onClick={() => submitOrder(true)}
+                      disabled={cart.length === 0 || submitting || !paymentsValid}
+                      className="py-2.5 sm:py-3 bg-red-600 text-white rounded-xl font-black text-[11px] sm:text-[12px] flex items-center justify-center gap-1.5 hover:bg-red-700 shadow-xl shadow-red-900/20 disabled:opacity-30 transition-all active:scale-95"
+                    >
+                      {submitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                      {submitting ? "جارِ الإرسال..." : "تنفيذ"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Menu Area — العنصر الثاني بالـ DOM، فيظهر على اليسار */}
+            {/* min-w-0 (بدل min-w-[240px]) — الحد الأدنى الثابت كان يمنع العمود من الانكماش تحت عرض معيّن،
+                فيدفع مجموع عرض عمود التصنيفات + السلة لتجاوز عرض الحاوية ويطلع مقطوعًا (خصوصًا لما يتوسّع
+                الـ Sidebar). التصنيفات وقائمة الأصناف عندها overflow-x-auto/truncate خاص فيها فبتنكمش بأمان */}
+            <div className="flex-1 flex flex-col min-w-0 p-3 sm:p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex-1 relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    value={menuSearchQuery}
+                    onChange={e => setMenuSearchQuery(e.target.value)}
+                    placeholder="ابحث عن صنف بالاسم أو الكود..."
+                    className="w-full pl-9 pr-3 py-2.5 bg-slate-900 border border-white/10 rounded-xl text-sm font-bold text-white outline-none focus:ring-1 focus:ring-red-600 placeholder:text-slate-600"
+                  />
+                </div>
+                <div className="flex bg-slate-800 px-2.5 py-2 rounded-lg shrink-0">
+                  <span className="text-[11px] font-black text-slate-400">{filteredItems.length} صنف</span>
+                </div>
+                <div className="flex bg-slate-800 p-1 rounded-lg shrink-0">
                   <button
-                    onClick={() => { if (cart.length === 0) return; submitOrder(); }}
-                    disabled={cart.length === 0 || submitting}
-                    className="py-2.5 sm:py-3 bg-red-600 text-white rounded-xl font-black text-[11px] sm:text-[12px] flex items-center justify-center gap-1.5 hover:bg-red-700 shadow-xl shadow-red-900/20 disabled:opacity-30 transition-all active:scale-95"
+                    type="button"
+                    onClick={() => setMenuViewMode("grid")}
+                    title="عرض كارد"
+                    aria-pressed={menuViewMode === "grid"}
+                    className={`p-1.5 rounded-md transition-colors ${menuViewMode === "grid" ? "bg-slate-700 text-white" : "text-slate-500 hover:text-slate-300"}`}
                   >
-                    {submitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-                    {submitting ? "جارِ الإرسال..." : "تنفيذ"}
+                    <LayoutGrid size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMenuViewMode("list")}
+                    title="عرض قائمة"
+                    aria-pressed={menuViewMode === "list"}
+                    className={`p-1.5 rounded-md transition-colors ${menuViewMode === "list" ? "bg-slate-700 text-white" : "text-slate-500 hover:text-slate-300"}`}
+                  >
+                    <ListIcon size={14} />
                   </button>
                 </div>
+              </div>
+
+              {/* Category Tabs */}
+              <div className="mb-3 flex min-w-0 shrink-0 gap-1.5 overflow-x-auto custom-scrollbar py-1 whitespace-nowrap">
+                <button
+                  onClick={() => setSelectedCategory("all")}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg whitespace-nowrap text-[11px] font-black transition-all duration-200 border shrink-0 ${selectedCategory === "all" ? "bg-slate-700 text-white border-slate-700 shadow-sm" : "bg-slate-900 text-slate-400 border-white/5 hover:bg-slate-800"}`}
+                >
+                  <span>الكل</span>
+                </button>
+                {categories.map((cat, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`flex items-center gap-1 px-3 py-1.5 rounded-lg whitespace-nowrap text-[11px] font-black transition-all duration-200 border shrink-0 ${selectedCategory === cat ? "bg-slate-700 text-white border-slate-700 shadow-sm" : "bg-slate-900 text-slate-400 border-white/5 hover:bg-slate-800"}`}
+                  >
+                    <span>{cat}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Items — كارد (شبكة، مع صورة لو متوفرة) أو قائمة مضغوطة (صف أفقي)، حسب menuViewMode المحفوظ بـ localStorage */}
+              {/* grid-cols-[repeat(auto-fill,minmax(110px,1fr))] بدل sm:/md:/xl:grid-cols الثابتة — تلك تعتمد
+                  على عرض الشاشة (viewport) مش عرض هالحاوية الفعلي، فلما تنضغط الحاوية (مثلاً عمود الفاتورة
+                  المجاور ياخد مساحة أكبر) كانت تفرض نفس عدد الأعمدة بعرض شبه صفري وتتراكب الكروت فوق بعضها.
+                  auto-fill/minmax يحسبوا عدد الأعمدة من عرض الحاوية نفسها دايمًا، وما بينزل كرت تحت 110px */}
+              <div
+                className={
+                  menuViewMode === "grid"
+                    ? "flex-1 grid grid-cols-[repeat(auto-fill,minmax(110px,1fr))] auto-rows-max gap-2 overflow-y-auto pr-1 pb-6 custom-scrollbar"
+                    : "flex-1 flex flex-col gap-1.5 overflow-y-auto pr-1 pb-6 custom-scrollbar"
+                }
+              >
+                {menuLoading ? (
+                  <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-600 gap-3">
+                    <Loader2 size={32} className="animate-spin" />
+                    <p className="font-black text-sm">جاري تحميل المنيو...</p>
+                  </div>
+                ) : filteredItems.length === 0 ? (
+                  <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-600 gap-3">
+                    <Package size={40} strokeWidth={1} />
+                    <p className="font-black text-xs">{menuSearchQuery ? "لا توجد نتائج مطابقة" : "لا توجد أصناف متاحة"}</p>
+                  </div>
+                ) : menuViewMode === "grid" ? (
+                  filteredItems.map(item => (
+                    <div
+                      key={item.id}
+                      onClick={() => addToCart(item)}
+                      className="cursor-pointer flex flex-col gap-1.5 p-2.5 rounded-xl border border-white/5 bg-slate-900/40 hover:border-slate-500 hover:bg-white/5 active:scale-95 transition-all duration-150"
+                    >
+                      {item.image ? (
+                        <div className="w-full aspect-square rounded-lg overflow-hidden bg-slate-800">
+                          <img
+                            src={item.image}
+                            alt={item.name_ar || item.name}
+                            className="w-full h-full object-cover"
+                            onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
+                          />
+                        </div>
+                      ) : item.code ? (
+                        <span className="self-start text-[9px] font-black text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded" dir="ltr">{item.code}</span>
+                      ) : null}
+                      <h4 className="font-black text-slate-100 text-[12px] leading-snug line-clamp-2">{item.name_ar || item.name}</h4>
+                      <span className="mt-auto text-[12px] font-black text-slate-200">{item.price > 0 ? `${item.price.toFixed(2)} ₪` : "—"}</span>
+                    </div>
+                  ))
+                ) : (
+                  filteredItems.map(item => (
+                    <div
+                      key={item.id}
+                      className="group flex flex-row items-center gap-2 px-2.5 py-2 rounded-lg border border-white/5 bg-slate-900/40 hover:border-slate-500 hover:bg-white/5 transition-colors duration-150"
+                    >
+                      {item.code && (
+                        <span className="shrink-0 text-[9px] font-black text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded" dir="ltr">{item.code}</span>
+                      )}
+                      <h4 className="flex-1 min-w-0 font-black text-slate-100 text-[12px] truncate">{item.name_ar || item.name}</h4>
+                      <span className="shrink-0 text-[12px] font-black text-slate-200">{item.price > 0 ? `${item.price.toFixed(2)} ₪` : "—"}</span>
+                      <button
+                        type="button"
+                        onClick={() => addToCart(item)}
+                        title="إضافة إلى السلة"
+                        className="shrink-0 w-6 h-6 rounded-md bg-slate-800 text-slate-400 group-hover:bg-slate-700 group-hover:text-white flex items-center justify-center transition-colors active:scale-90"
+                      >
+                        <Plus size={13} />
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
         </div>
-      </div>
+        }
+      />
     </div>
   );
 };

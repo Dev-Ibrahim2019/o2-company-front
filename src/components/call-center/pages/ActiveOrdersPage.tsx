@@ -1,12 +1,17 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ShoppingCart, Clock, ChefHat, Truck, CreditCard, RefreshCw,
   Loader2, Package, ArrowLeft, User, Phone, MapPin, Filter,
-  Search, Eye, Edit3, AlertCircle,
+  Search, Eye, Edit3, AlertCircle, CalendarClock,
 } from "lucide-react";
 import { colors, typography, radius, shadows, transitions } from "../design/tokens";
 import { callCenterService, type ActiveCallCenterOrder, type ActiveOrderScope } from "../services/callCenterService";
+import { toast } from "../../shared/Toast";
+
+// مدة التحضير الافتراضية (بالدقائق) قبل موعد الطلب المجدول — تُستخدم لتنبيه الموظف مسبقًا.
+// MVP بالفرونت عبر polling كل دقيقة؛ الأفضل لاحقًا نقل هذا المنطق لـ cron job بالباك اند.
+const SCHEDULED_PREP_MINUTES = 20;
 
 const SCOPE_CONFIG: Record<ActiveOrderScope, { label: string; icon: React.ReactNode; color: string; bgColor: string }> = {
   operational_active: { label: "قيد التنفيذ", icon: <Package size={18} />, color: colors.semantic.info, bgColor: colors.semantic.infoBg },
@@ -32,6 +37,16 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
   DELIVERED: { label: "تم التوصيل", color: colors.semantic.success },
   cancelled: { label: "ملغي", color: colors.semantic.error },
   CANCELLED: { label: "ملغي", color: colors.semantic.error },
+  scheduled: { label: "مجدول", color: "#8b5cf6" },
+};
+
+const scheduleCountdown = (scheduledAt: string) => {
+  const diffMin = Math.round((new Date(scheduledAt).getTime() - Date.now()) / 60000);
+  if (diffMin <= 0) return "حان موعده";
+  if (diffMin < 60) return `بعد ${diffMin} دقيقة`;
+  const hrs = Math.floor(diffMin / 60);
+  const mins = diffMin % 60;
+  return `بعد ${hrs} ساعة${mins > 0 ? ` و${mins} دقيقة` : ""}`;
 };
 
 const ORDER_TYPE_MAP: Record<string, string> = {
@@ -89,20 +104,50 @@ export const ActiveOrdersPage: React.FC = () => {
     return () => clearInterval(interval);
   }, [fetchOrders]);
 
+  // تنبيه بسيط عند اقتراب موعد الطلبات المجدولة (فرق موعد الجدولة عن الآن أقل من مدة التحضير الافتراضية).
+  // MVP بالفرونت via polling كل دقيقة — الأفضل لاحقًا تحويله لـ cron job بالباك اند يغيّر الحالة تلقائيًا.
+  const notifiedScheduledIds = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    const list = Object.values(orders).flat();
+    const checkSchedule = () => {
+      list.forEach(o => {
+        if (o.status !== "scheduled" || !o.scheduled_at) return;
+        const prepStartsAt = new Date(o.scheduled_at).getTime() - SCHEDULED_PREP_MINUTES * 60000;
+        if (Date.now() >= prepStartsAt && !notifiedScheduledIds.current.has(o.id)) {
+          notifiedScheduledIds.current.add(o.id);
+          toast.info("طلب مجدول اقترب موعده", `#${o.order_number} — حان وقت بدء التحضير`);
+        }
+      });
+    };
+    checkSchedule();
+    const interval = setInterval(checkSchedule, 60000);
+    return () => clearInterval(interval);
+  }, [orders]);
+
   const allOrders = Object.values(orders).flat();
-  const filtered = allOrders.filter(o => {
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      const match = (o.customer_name || "").toLowerCase().includes(q)
-        || o.order_number.toLowerCase().includes(q)
-        || (o.customer_phone || "").includes(q);
-      if (!match) return false;
-    }
-    if (activeScope !== "all") {
-      if (!o.scopes.includes(activeScope)) return false;
-    }
-    return true;
-  });
+  const filtered = allOrders
+    .filter(o => {
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        const match = (o.customer_name || "").toLowerCase().includes(q)
+          || o.order_number.toLowerCase().includes(q)
+          || (o.customer_phone || "").includes(q);
+        if (!match) return false;
+      }
+      if (activeScope !== "all") {
+        if (!o.scopes.includes(activeScope)) return false;
+      }
+      return true;
+    })
+    // الطلبات المجدولة تعلو القائمة، الأقرب موعدًا أولاً — بقية الطلبات تحافظ على ترتيبها الأصلي (الأحدث أولاً من الباك اند)
+    .sort((a, b) => {
+      const aScheduled = a.status === "scheduled" && a.scheduled_at;
+      const bScheduled = b.status === "scheduled" && b.scheduled_at;
+      if (aScheduled && bScheduled) return new Date(a.scheduled_at!).getTime() - new Date(b.scheduled_at!).getTime();
+      if (aScheduled) return -1;
+      if (bScheduled) return 1;
+      return 0;
+    });
 
   const totalActive = allOrders.length;
   const scopeCounts = Object.entries(orders).map(([scope, items]) => ({
@@ -313,6 +358,16 @@ const OrderCard: React.FC<{ order: ActiveCallCenterOrder; onClick: () => void }>
           }}>
             {ORDER_TYPE_MAP[order.order_type] || order.order_type}
           </span>
+          {order.status === "scheduled" && order.scheduled_at && (
+            <span style={{
+              display: "inline-flex", alignItems: "center", gap: 4,
+              padding: "2px 8px", borderRadius: radius.full,
+              fontSize: "11px", fontWeight: typography.weight.semibold,
+              background: "rgba(139,92,246,0.1)", color: "#8b5cf6",
+            }}>
+              <CalendarClock size={11} /> {formatTime(order.scheduled_at)} · {scheduleCountdown(order.scheduled_at)}
+            </span>
+          )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, fontSize: typography.size.xs, color: colors.neutral[500] }}>
           {order.customer_name && (

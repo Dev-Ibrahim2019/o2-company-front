@@ -197,6 +197,8 @@ export interface ActiveCallCenterOrder {
   total: number;
   branch: { id: number; name: string } | null;
   created_at: string;
+  scheduled_at?: string | null;
+  payments?: Array<{ method: "cash" | "card" | "wallet"; amount: number }> | null;
   scopes: ActiveOrderScope[];
 }
 export type ActiveOrderGroups = Record<ActiveOrderScope, ActiveCallCenterOrder[]>;

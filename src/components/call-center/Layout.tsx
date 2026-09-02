@@ -184,10 +184,15 @@ export const CallCenterLayout: React.FC<{ children?: React.ReactNode }> = ({ chi
         className={`cc-main ${isSidebarOpen ? "cc-main-open" : "cc-main-closed"}`}
       >
         <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+          {/* lg:hidden كان بلا أثر فعليًا لأن الـ style inline (display:"flex") أعلى تخصيصًا من قاعدة
+              lg:hidden الـ CSS، فكان الهيدر هذا يظهر بكل الأحجام — مما سبب تكرار شعار "الكول سنتر"
+              مع شعار السايدبار الأكبر على الديسكتوب. الحل: display ينتقل من inline لصنف Tailwind
+              (flex) حتى يقدر lg:hidden يتغلّب عليه فعليًا، والمحتوى صار يركّز على السياق (اسم
+              الموظف الحالي) بدل تكرار الشعار. */}
           <header
-            className="lg:hidden"
+            className="lg:hidden flex"
             style={{
-              padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: 14, alignItems: "center", justifyContent: "space-between",
               borderBottom: `1px solid ${colors.border.subtle}`, background: colors.surface.raised,
             }}
           >
@@ -203,12 +208,15 @@ export const CallCenterLayout: React.FC<{ children?: React.ReactNode }> = ({ chi
                 <div style={{ width: 30, height: 30, borderRadius: radius.md, background: colors.brand[500], display: "flex", alignItems: "center", justifyContent: "center", color: "#fff" }}>
                   <Headphones size={16} />
                 </div>
-                <h1 style={{ fontSize: typography.size.base, fontWeight: typography.weight.extrabold, color: colors.neutral[900] }}>الكول سنتر</h1>
+                <p style={{ fontSize: typography.size.sm, fontWeight: typography.weight.bold, color: colors.neutral[800], overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140 }}>
+                  {currentUser?.name || "مركز الاتصال"}
+                </p>
               </div>
               <CallCenterThemeToggle size={30} />
             </div>
           </header>
           <div
+            className="custom-scrollbar"
             style={isFullBleed
               ? { flex: 1, overflow: "hidden" }
               : { flex: 1, overflow: "auto", padding: 20 }}
