@@ -316,6 +316,110 @@ export interface CrmOccasionListQuery {
   occasion_type?: string;
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// Loyalty — mirrors app/Models/LoyaltyRule.php, LoyaltyTransaction.php and
+// the two controllers behind /crm/loyalty/*. The engine (LoyaltyEngine,
+// driven by the OrderPaid event) is the only writer of `earn` rows; every
+// type here describes what that already-built, already-tested pipeline
+// produces, not a new calculation.
+// ═══════════════════════════════════════════════════════════════════════
+
+export type CrmLoyaltyScopeType = "global" | "customer" | "group" | "category" | "product";
+export type CrmLoyaltyTxnType = "earn" | "redeem" | "referral_bonus" | "manual_adjustment" | "campaign_reversal";
+export type CrmLoyaltyTxnStatus = "pending" | "confirmed" | "reversed";
+export type CrmLoyaltyCampaignMetric = "spend" | "points" | "order_count";
+
+export interface CrmLoyaltyRule {
+  id: CrmId;
+  name: string;
+  scope_type: CrmLoyaltyScopeType;
+  /** Meaningless for scope_type="global" — no id to point at. */
+  scope_id?: number | null;
+  /** Present only on the one permanent base rule. */
+  points_per_amount?: number | string | null;
+  per_amount?: number | string | null;
+  multiplier: number | string;
+  /** Presence (not value) is what marks a rule invoice-level rather than item-level. */
+  min_order_value?: number | string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  priority: number;
+  is_campaign: boolean;
+  campaign_target?: number | string | null;
+  campaign_target_metric?: CrmLoyaltyCampaignMetric | null;
+  group_cascade_percent?: number | string | null;
+  is_active: boolean;
+  created_by?: number | null;
+  creator?: { id: CrmId; name: string } | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface CrmLoyaltyRuleInput {
+  name: string;
+  scope_type: CrmLoyaltyScopeType;
+  scope_id?: number | null;
+  points_per_amount?: number | null;
+  per_amount?: number | null;
+  multiplier?: number | null;
+  min_order_value?: number | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  priority?: number | null;
+  is_campaign?: boolean | null;
+  campaign_target?: number | null;
+  campaign_target_metric?: CrmLoyaltyCampaignMetric | null;
+  group_cascade_percent?: number | null;
+  is_active?: boolean | null;
+}
+
+export interface CrmLoyaltyRuleExclusion {
+  id: CrmId;
+  rule_id: CrmId;
+  customer_id: CrmId;
+  customer?: { id: CrmId; name: string; code?: string | null } | null;
+}
+
+export interface CrmLoyaltyTransaction {
+  id: CrmId;
+  owner_type: "customer" | "group";
+  owner_id: CrmId;
+  /** Only present on GET /crm/loyalty/transactions — the cross-owner listing. */
+  owner_name?: string | null;
+  type: CrmLoyaltyTxnType;
+  points: number | string;
+  status: CrmLoyaltyTxnStatus;
+  source_order_id?: CrmId | null;
+  order?: { id: CrmId; order_number: string } | null;
+  rule_id?: CrmId | null;
+  rule?: { id: CrmId; name: string } | null;
+  notes?: string | null;
+  created_by?: number | null;
+  creator?: { id: CrmId; name: string } | null;
+  created_at?: string | null;
+}
+
+export interface CrmLoyaltyOwnerSummary {
+  owner_type: "customer" | "group";
+  owner_id: CrmId;
+  balance: number;
+  total_earned: number;
+  total_redeemed: number;
+}
+
+export interface CrmLoyaltyGlobalSummary {
+  total_points_issued: number;
+  total_transactions: number;
+  active_rules_count: number;
+}
+
+export interface CrmLoyaltyAdjustmentInput {
+  owner_type: "customer" | "group";
+  owner_id: CrmId;
+  points: number;
+  notes: string;
+}
+
 /** GET /crm/occasions/summary — nested counts, each closed by window_ends. */
 export interface CrmOccasionsSummary {
   today: number;

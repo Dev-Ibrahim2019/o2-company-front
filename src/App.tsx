@@ -83,6 +83,7 @@ import {
   CrmGroupsPage,
   CrmOccasionsPage,
   CrmGroupProfilePage,
+  CrmLoyaltyPage,
 } from "./features/crm";
 
 // ── مكونات الكول سنتر ──
@@ -336,6 +337,7 @@ function AppRoutes() {
           <Route path="complaints" element={<CrmComplaintsPage />} />
           <Route path="groups" element={<CrmGroupsPage />} />
           <Route path="occasions" element={<CrmOccasionsPage />} />
+          <Route path="loyalty" element={<CrmLoyaltyPage />} />
           <Route path="groups/:groupId" element={<CrmGroupProfilePage />} />
           <Route path="orders" element={<CrmOrdersPage mode="all" />} />
           <Route path="orders/active" element={<CrmOrdersPage mode="active" />} />

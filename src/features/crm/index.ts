@@ -10,3 +10,4 @@ export { ComplaintsPage as CrmComplaintsPage } from "./ComplaintsPage";
 export { GroupsPage as CrmGroupsPage } from "./GroupsPage";
 export { OccasionsPage as CrmOccasionsPage } from "./OccasionsPage";
 export { GroupProfilePage as CrmGroupProfilePage } from "./GroupProfilePage";
+export { LoyaltyPage as CrmLoyaltyPage } from "./LoyaltyPage";

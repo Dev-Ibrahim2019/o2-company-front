@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { Link, NavLink, Navigate, Route, Routes, useParams } from "react-router-dom";
 import { ArrowRight, Award, Banknote, CalendarClock, Copy, MoreVertical, Plus, Wallet } from "lucide-react";
 import { useAuth } from "../../auth";
-import { CUSTOMER_FINANCIAL_READ_PERMISSIONS } from "../../auth/permissions";
+import { CRM_PERMISSIONS, CUSTOMER_FINANCIAL_READ_PERMISSIONS } from "../../auth/permissions";
 import { crmApi } from "./api";
 import { CrmState, getCrmError, StatusChip } from "./components";
 import "./customers-ui/crmx.css";
@@ -43,7 +43,7 @@ function relativeFromNow(value?: string | null): string | undefined {
 const TABS = [
   ["overview", "نظرة عامة"], ["orders", "الطلبات"], ["activity", "النشاطات"],
   ["complaints", "الشكاوى"], ["addresses", "العناوين"], ["notes", "الملاحظات والمناسبات"],
-  ["financial", "المالية"],
+  ["loyalty", "الولاء"], ["financial", "المالية"],
 ] as const;
 
 const OverviewTab = lazy(() => import("./tabs/OverviewTab"));
@@ -53,6 +53,7 @@ const AddressesTab = lazy(() => import("./tabs/AddressesTab"));
 const ComplaintsTab = lazy(() => import("./tabs/ComplaintsTab"));
 const NotesOccasionsTab = lazy(() => import("./tabs/NotesOccasionsTab"));
 const FinancialTab = lazy(() => import("./tabs/FinancialTab"));
+const LoyaltyTab = lazy(() => import("./tabs/LoyaltyTab"));
 
 function HeaderMoreMenu({ code }: { code?: string | null }) {
   const [open, setOpen] = useState(false);
@@ -148,6 +149,7 @@ export function Customer360Page() {
   // reading receivables data — checking only the CRM one would hide the
   // tab from Accounting users who are entitled to it.
   const canFinancial = CUSTOMER_FINANCIAL_READ_PERMISSIONS.some((p) => hasPermission(p));
+  const canLoyalty = hasPermission(CRM_PERMISSIONS.LOYALTY_VIEW);
   const [customer, setCustomer] = useState<CrmCustomerProfile>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ status?: number; message: string }>();
@@ -252,7 +254,7 @@ export function Customer360Page() {
 
       {/* ── Tabs ── */}
       <div className="flex flex-wrap gap-1.5 border-b border-[var(--crmx-border)] pb-0.5">
-        {TABS.filter(([key]) => key !== "financial" || canFinancial).map(([key, label]) => {
+        {TABS.filter(([key]) => (key !== "financial" || canFinancial) && (key !== "loyalty" || canLoyalty)).map(([key, label]) => {
           const count = key === "orders" ? summary.orders_count : key === "complaints" ? summary.open_complaints_count : undefined;
           return (
             <NavLink
@@ -307,6 +309,7 @@ export function Customer360Page() {
                   />
                 }
               />
+              {canLoyalty && <Route path="loyalty" element={<LoyaltyTab />} />}
               {canFinancial && <Route path="financial" element={<FinancialTab />} />}
               <Route path="*" element={<CrmState kind="empty" title="القسم غير موجود" />} />
             </Routes>

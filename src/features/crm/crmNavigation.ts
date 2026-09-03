@@ -85,7 +85,13 @@ export const CRM_NAVIGATION: CrmNavItem[] = [
     to: "/admin/crm/complaints",
     permission: CRM_PERMISSIONS.COMPLAINTS_VIEW,
   },
-  { key: "loyalty", label: "الولاء", icon: Gift, comingSoon: true },
+  {
+    key: "loyalty",
+    label: "الولاء",
+    icon: Gift,
+    to: "/admin/crm/loyalty",
+    permission: CRM_PERMISSIONS.LOYALTY_VIEW,
+  },
   {
     key: "occasions",
     label: "المناسبات",

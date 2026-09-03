@@ -6,6 +6,8 @@ import type {
   CrmCustomerGroup, CrmCustomerGroupInput, CrmOccasion, CrmOccasionDetail,
   CrmOccasionFollowup, CrmOccasionInput, CrmOccasionListQuery,
   CrmOccasionListRow, CrmOccasionsSummary,
+  CrmLoyaltyRule, CrmLoyaltyRuleInput, CrmLoyaltyRuleExclusion,
+  CrmLoyaltyTransaction, CrmLoyaltyOwnerSummary, CrmLoyaltyGlobalSummary, CrmLoyaltyAdjustmentInput,
 } from "./types";
 
 const payload = <T,>(raw: unknown): T => {
@@ -80,6 +82,38 @@ export const crmApi = {
   },
   occasionsSummary: async () =>
     payload<CrmOccasionsSummary>((await api.get("/crm/occasions/summary")).data),
+
+  // ── Loyalty ──
+  loyaltyRules: async (params: Record<string, string> = {}) =>
+    list<CrmLoyaltyRule>((await api.get("/crm/loyalty/rules", { params })).data),
+  createLoyaltyRule: async (data: CrmLoyaltyRuleInput) =>
+    payload<CrmLoyaltyRule>((await api.post("/crm/loyalty/rules", data)).data),
+  updateLoyaltyRule: async (id: CrmId, data: Partial<CrmLoyaltyRuleInput>) =>
+    payload<CrmLoyaltyRule>((await api.put(`/crm/loyalty/rules/${id}`, data)).data),
+  // Soft in effect: the backend flips is_active=false, never deletes the row —
+  // a rule already referenced by loyalty_transactions.rule_id must stay
+  // dereferenceable. Rejected with 422 when it is the sole active base rule.
+  deactivateLoyaltyRule: async (id: CrmId) =>
+    payload<CrmLoyaltyRule>((await api.delete(`/crm/loyalty/rules/${id}`)).data),
+  loyaltyRuleExclusions: async (ruleId: CrmId) =>
+    payload<CrmLoyaltyRuleExclusion[]>((await api.get(`/crm/loyalty/rules/${ruleId}/exclusions`)).data),
+  addLoyaltyRuleExclusion: async (ruleId: CrmId, customerId: CrmId) =>
+    payload<CrmLoyaltyRuleExclusion>((await api.post(`/crm/loyalty/rules/${ruleId}/exclusions`, { customer_id: customerId })).data),
+  removeLoyaltyRuleExclusion: async (ruleId: CrmId, customerId: CrmId) =>
+    payload<{ deleted: boolean }>((await api.delete(`/crm/loyalty/rules/${ruleId}/exclusions/${customerId}`)).data),
+
+  loyaltyOwnerSummary: async (owner: "customers" | "groups", ownerId: CrmId) =>
+    payload<CrmLoyaltyOwnerSummary>((await api.get(`/crm/${owner}/${ownerId}/loyalty/summary`)).data),
+  loyaltyOwnerTransactions: async (owner: "customers" | "groups", ownerId: CrmId, params: Record<string, string> = {}) =>
+    list<CrmLoyaltyTransaction>((await api.get(`/crm/${owner}/${ownerId}/loyalty/transactions`, { params })).data),
+
+  loyaltyTransactions: async (params: Record<string, string> = {}) =>
+    list<CrmLoyaltyTransaction>((await api.get("/crm/loyalty/transactions", { params })).data),
+  loyaltySummary: async () =>
+    payload<CrmLoyaltyGlobalSummary>((await api.get("/crm/loyalty/summary")).data),
+  createLoyaltyAdjustment: async (data: CrmLoyaltyAdjustmentInput) =>
+    payload<CrmLoyaltyTransaction>((await api.post("/crm/loyalty/adjustments", data)).data),
+
   // ── Identity-conflict tickets ──
   // Read rides on crm.view-customers; resolving/dismissing needs
   // crm.manage-identity-conflicts (enforced per-route on the backend).

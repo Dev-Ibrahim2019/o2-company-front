@@ -134,6 +134,8 @@ export const CRM_PERMISSIONS = {
   OCCASIONS_CREATE: "crm.occasions.create",
   OCCASIONS_UPDATE: "crm.occasions.update",
   OCCASIONS_DELETE: "crm.occasions.delete",
+  LOYALTY_VIEW: "crm.loyalty.view",
+  LOYALTY_MANAGE: "crm.loyalty.manage",
 } as const;
 
 /** نوع يمثل جميع قيم الصلاحيات الممكنة */

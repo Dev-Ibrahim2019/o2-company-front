@@ -9,15 +9,17 @@ import { CrmState, getCrmError } from "./components";
 import { CustomerPicker } from "./CustomerPicker";
 import { CrmKpiCard } from "./customers-ui";
 import { GROUP_PILL, GROUP_TYPE_LABELS, GROUP_TYPE_TONE, GroupFormDrawer } from "./GroupsPage";
+import { LoyaltyPanel } from "./LoyaltyPanel";
 import { OccasionsPanel } from "./OccasionsPanel";
 import type { CrmCustomer, CrmCustomerGroup, CrmCustomerGroupInput } from "./types";
 
-type Tab = "overview" | "members" | "occasions";
+type Tab = "overview" | "members" | "occasions" | "loyalty";
 
 const TABS: Array<[Tab, string]> = [
   ["overview", "نظرة عامة"],
   ["members", "الأعضاء"],
   ["occasions", "المناسبات"],
+  ["loyalty", "الولاء"],
 ];
 
 const cardCls = "rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)]";
@@ -246,6 +248,10 @@ export function GroupProfilePage() {
       {/* The same panel the customer profile uses — customer_occasions is
           polymorphic, so only the owner segment differs. */}
       {tab === "occasions" && <OccasionsPanel owner="groups" ownerId={groupId} />}
+
+      {/* Same structural mirror: one LoyaltyPanel, owner="groups" here and
+          owner="customers" on the profile page — see LoyaltyPanel's docblock. */}
+      {tab === "loyalty" && <LoyaltyPanel owner="groups" ownerId={groupId} />}
 
       {editOpen && (
         <GroupFormDrawer
