@@ -23,7 +23,12 @@ type Level = "item" | "invoice";
 // backend) or, if it carried an end date, read as a temporary campaign,
 // which this prompt explicitly keeps out of scope. So the generic form
 // offers only the four scopes a non-base rule can safely target.
-const SELECTABLE_SCOPES: CrmLoyaltyScopeType[] = ["customer", "group", "category", "product"];
+//
+// Ordered to match LoyaltyRule::SCOPE_RANK exactly (product > category >
+// customer > group > global) — the same order LoyaltyEngine actually
+// resolves ties by. A dropdown in any other order teaches the wrong
+// priority just by being browsed.
+const SELECTABLE_SCOPES: CrmLoyaltyScopeType[] = ["product", "category", "customer", "group"];
 
 interface FormState {
   name: string;
@@ -155,6 +160,10 @@ export function LoyaltyRuleFormDrawer({
     }
   };
 
+  // Split into a headline number plus context, rather than one flat
+  // sentence — the number is the entire point of a live preview and needs
+  // its own visual weight in the render below, not to sit at the same size
+  // as the sentence around it.
   const preview = useMemo(() => {
     const multiplier = Number(form.multiplier || "1");
     const sampleTotal = 100;
@@ -163,17 +172,26 @@ export function LoyaltyRuleFormDrawer({
 
     if (form.level === "invoice") {
       const min = Number(form.min_order_value || "0");
-      if (!form.min_order_value) return { text: "أدخل الحد الأدنى للفاتورة لعرض المعاينة." };
+      if (!form.min_order_value) {
+        return { kind: "incomplete" as const, text: "أدخل الحد الأدنى للفاتورة لعرض المعاينة." };
+      }
       if (sampleTotal < min) {
-        return { text: `على فاتورة ${sampleTotal} ₪ — لن تُطبَّق هذه القاعدة (الحد الأدنى ${min} ₪).` };
+        return { kind: "blocked" as const, text: `على فاتورة ${sampleTotal} ₪ — لن تُطبَّق هذه القاعدة (الحد الأدنى ${min} ₪).` };
       }
       const basePoints = (sampleTotal / baseRate.per_amount) * baseRate.points_per_amount;
-      const finalPoints = basePoints * multiplier;
-      return { text: `على فاتورة ${sampleTotal} ₪ تستوفي الحد الأدنى، سيكسب العميل ${round(finalPoints)} نقطة.` };
+      return {
+        kind: "result" as const,
+        context: `على فاتورة ${sampleTotal} ₪ تستوفي الحد الأدنى، سيكسب العميل`,
+        points: round(basePoints * multiplier),
+      };
     }
 
     const points = (sampleTotal / baseRate.per_amount) * baseRate.points_per_amount * multiplier;
-    return { text: `على بند بقيمة ${sampleTotal} ₪ من هذا النطاق، سيكسب العميل ${round(points)} نقطة.` };
+    return {
+      kind: "result" as const,
+      context: `على بند بقيمة ${sampleTotal} ₪ من هذا النطاق، سيكسب العميل`,
+      points: round(points),
+    };
   }, [form.level, form.multiplier, form.min_order_value, baseRate]);
 
   const canSubmit = form.name.trim() !== ""
@@ -257,6 +275,15 @@ export function LoyaltyRuleFormDrawer({
 
           <div>
             <label className={labelCls}>نطاق التطبيق</label>
+            {/* A fixed explanation of the precedence rule, not just a hint
+                tied to whichever scope happens to be selected — the goal is
+                that browsing this list alone teaches the priority order,
+                which the dropdown's own new product-first ordering (see
+                SELECTABLE_SCOPES) only shows, it doesn't explain. */}
+            <p className="mb-1.5 text-[12.5px] text-[var(--crmx-text-muted)]">
+              كلما كان النطاق أكثر تحديداً، فاز تلقائياً على القواعد الأعم عند التعارض —
+              منتج، فقسم، فعميل محدَّد، فمجموعة، فعام أخيراً.
+            </p>
             <select
               className={inputCls}
               value={form.scope_type}
@@ -340,11 +367,26 @@ export function LoyaltyRuleFormDrawer({
           </div>
 
           {/* Preview — see the docblock above for exactly what this does and
-              does not simulate. */}
+              does not simulate. Solid border and a visibly tinted ground
+              (not the very pale --crmx-primary-soft token) so this reads as
+              the headline feature of the form, not a footnote; the point
+              total itself is the single largest number on the whole screen. */}
           {preview && (
-            <div className="rounded-xl border border-dashed border-[var(--crmx-primary)]/40 bg-[var(--crmx-primary-soft)] p-3">
-              <p className="text-[13px] font-semibold text-[var(--crmx-primary-text)]">{preview.text}</p>
-              <p className="mt-1 text-[11px] text-[var(--crmx-text-muted)]">
+            <div className="rounded-xl border-2 border-[var(--crmx-primary)] bg-[var(--crmx-primary)]/[0.08] p-4">
+              {preview.kind === "result" ? (
+                <>
+                  <p className="text-[13px] font-semibold text-[var(--crmx-text-secondary)]">{preview.context}</p>
+                  <p className="mt-1 flex items-baseline gap-1.5 text-[28px] font-extrabold leading-none text-[var(--crmx-primary)]">
+                    {preview.points}
+                    <span className="text-[16px] font-bold text-[var(--crmx-primary-text)]">نقطة</span>
+                  </p>
+                </>
+              ) : (
+                <p className={`text-[14px] font-bold ${preview.kind === "blocked" ? "text-[var(--crmx-danger-text)]" : "text-[var(--crmx-text-secondary)]"}`}>
+                  {preview.text}
+                </p>
+              )}
+              <p className="mt-2 text-[13px] text-[var(--crmx-text-secondary)]">
                 معاينة تقريبية: تفترض أن كامل المبلغ يقع ضمن هذه القاعدة وحدها، ولا تحسب تنافسها مع قواعد أخرى أو استثناءات حقيقية.
               </p>
             </div>

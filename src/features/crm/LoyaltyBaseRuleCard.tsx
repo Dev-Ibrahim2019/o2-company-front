@@ -59,10 +59,16 @@ export function LoyaltyBaseRuleCard({
   };
 
   return (
-    <div className="rounded-2xl border-2 border-[var(--crmx-primary)]/25 bg-[var(--crmx-primary-soft)] p-5">
+    // Neutral navy, not the brand red: this card is a normal, healthy
+    // setting whenever a rule exists — reusing --crmx-primary (the same red
+    // used for danger/urgent accents elsewhere in this module) made it read
+    // as a warning even while everything was fine. The actual warning state
+    // below keeps its own explicit danger-red box; the card around it no
+    // longer competes with that signal.
+    <div className="rounded-2xl border-2 border-[var(--crmx-navy)]/15 bg-[var(--crmx-navy-soft)] p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--crmx-primary)] text-white">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[var(--crmx-navy)] text-white">
             <Coins className="h-5 w-5" />
           </span>
           <div>

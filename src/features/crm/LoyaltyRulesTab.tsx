@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth";
 import { CRM_PERMISSIONS } from "../../auth/permissions";
 import { toast } from "../../components/shared/Toast";
+import { departmentService } from "../../services/departmentService";
+import { fetchItems } from "../../services/itemService";
 import { crmApi } from "./api";
 import { CrmState, getCrmError } from "./components";
 import { LoyaltyBaseRuleCard } from "./LoyaltyBaseRuleCard";
@@ -50,6 +52,58 @@ export function LoyaltyRulesTab({ onChanged }: { onChanged?: () => void }) {
   const reload = async () => { await load(); onChanged?.(); };
 
   useEffect(() => { void load(); }, [load]);
+
+  // The scope column used to say "قسم" and stop there — correct but useless
+  // for telling two category rules apart without opening each one. Resolved
+  // once per rule set, keyed by "scope_type:scope_id" so a customer-scoped
+  // and a group-scoped rule can never collide on a numeric id.
+  const [targetNames, setTargetNames] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let alive = true;
+
+    void (async () => {
+      const names: Record<string, string> = {};
+
+      const productIds = new Set(rules.filter((r) => r.scope_type === "product" && r.scope_id != null).map((r) => r.scope_id as number));
+      const categoryIds = new Set(rules.filter((r) => r.scope_type === "category" && r.scope_id != null).map((r) => r.scope_id as number));
+      const groupIds = new Set(rules.filter((r) => r.scope_type === "group" && r.scope_id != null).map((r) => r.scope_id as number));
+      const customerIds = new Set(rules.filter((r) => r.scope_type === "customer" && r.scope_id != null).map((r) => r.scope_id as number));
+
+      if (productIds.size > 0) {
+        const items = await fetchItems().catch(() => []);
+        items.forEach((i) => { if (productIds.has(i.id)) names[`product:${i.id}`] = i.name_ar || i.name; });
+      }
+      if (categoryIds.size > 0) {
+        const departments = await departmentService.getAll().catch(() => []);
+        departments.forEach((d) => { if (categoryIds.has(d.id)) names[`category:${d.id}`] = d.nameAr || d.name; });
+      }
+      if (groupIds.size > 0) {
+        const groups = await crmApi.customerGroups().catch(() => []);
+        groups.forEach((g) => { if (groupIds.has(Number(g.id))) names[`group:${g.id}`] = g.name; });
+      }
+      if (customerIds.size > 0) {
+        // No bulk "customers by ids" endpoint exists — a rule scoped to one
+        // specific customer is expected to be rare, so N small requests here
+        // is the honest cost rather than a reason to leave the name blank.
+        await Promise.all([...customerIds].map(async (id) => {
+          try {
+            const c = await crmApi.customer(id);
+            names[`customer:${id}`] = c.name;
+          } catch { /* leave unresolved — falls back to the id below */ }
+        }));
+      }
+
+      if (alive) setTargetNames(names);
+    })();
+
+    return () => { alive = false; };
+  }, [rules]);
+
+  const scopeTarget = (r: CrmLoyaltyRule): string | null => {
+    if (r.scope_type === "global" || r.scope_id == null) return null;
+    return targetNames[`${r.scope_type}:${r.scope_id}`] ?? `#${r.scope_id}`;
+  };
 
   // is_base_rule is computed server-side (LoyaltyRule::isBaseRule()) and
   // appended to every rule the API returns — the frontend must never
@@ -162,7 +216,10 @@ export function LoyaltyRulesTab({ onChanged }: { onChanged?: () => void }) {
                     <td className="px-4 py-3 text-[13px] font-bold text-[var(--crmx-text)]">{r.name}</td>
                     <td className="whitespace-nowrap px-4 py-3">
                       <span className={`${pill} bg-[var(--crmx-info-soft)] text-[var(--crmx-info-text)]`}>
-                        {SCOPE_TYPE_LABELS[r.scope_type]}
+                        {/* "قسم: الكيك" not just "قسم" — the point of a table
+                            row is answering "what does this rule do?" without
+                            opening it, and the scope type alone never did. */}
+                        {scopeTarget(r) ? `${SCOPE_TYPE_LABELS[r.scope_type]}: ${scopeTarget(r)}` : SCOPE_TYPE_LABELS[r.scope_type]}
                       </span>
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]">
@@ -171,9 +228,21 @@ export function LoyaltyRulesTab({ onChanged }: { onChanged?: () => void }) {
                     <td className="whitespace-nowrap px-4 py-3 text-[13px] font-bold text-[var(--crmx-text)]">×{num(r.multiplier)}</td>
                     <td className="whitespace-nowrap px-4 py-3 text-[12.5px] text-[var(--crmx-text-muted)]">
                       {r.starts_at || r.ends_at ? (
+                        // "من X إلى Y", not "X → Y": an RTL paragraph holding
+                        // an arrow glyph between two Latin-digit dates is
+                        // exactly the shape the bidi algorithm reorders —
+                        // the arrow read as pointing the wrong way and the
+                        // end date could appear to precede the start date.
+                        // Explicit "من/إلى" removes the ambiguous glyph
+                        // entirely; each date is also isolated in its own
+                        // dir="ltr" span so its internal YYYY-MM-DD order
+                        // can never be affected by the surrounding RTL run.
                         <span className="inline-flex items-center gap-1">
-                          <CalendarOff className="h-3 w-3" />
-                          {r.starts_at ? fmtDate(r.starts_at) : "—"} → {r.ends_at ? fmtDate(r.ends_at) : "بلا نهاية"}
+                          <CalendarOff className="h-3 w-3 shrink-0" />
+                          <span>من</span>
+                          <span dir="ltr">{r.starts_at ? fmtDate(r.starts_at) : "—"}</span>
+                          <span>إلى</span>
+                          <span dir="ltr">{r.ends_at ? fmtDate(r.ends_at) : "بلا نهاية"}</span>
                         </span>
                       ) : "دائمة"}
                     </td>
