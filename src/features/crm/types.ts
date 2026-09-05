@@ -98,12 +98,23 @@ export interface CrmWorkAddress {
 export interface CrmCustomerProfile {
   id: CrmId;
   identity: {
-    name: string; code?: string | null; status?: string | null;
+    name: string;
+    // customers.name_en — was accepted by the form and persisted since this
+    // module's first version, but Customer360QueryService::profile() never
+    // returned it, so the edit form always reloaded it blank. Fixed on the
+    // backend alongside salesperson below.
+    name_en?: string | null;
+    code?: string | null; status?: string | null;
     engagement_status?: string | null;
     group_id?: CrmId | null;
     group?: { id: CrmId; name: string; group_type: string } | null;
     primary_phone?: string | null; phones?: CrmCustomerPhone[]; email?: string | null;
     branch?: CrmBranch | null;
+    // customers.salesperson_id — same missing-from-profile() gap as name_en.
+    // salesperson is the resolved employee (id, name) for display; the form
+    // still submits/selects by salesperson_id, never by this object.
+    salesperson_id?: CrmId | null;
+    salesperson?: { id: CrmId; name: string } | null;
     // customers.address is a plain text column (not a related object) —
     // Customer360QueryService::profile() returns it as-is.
     default_address?: string | null;

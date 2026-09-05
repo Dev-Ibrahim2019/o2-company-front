@@ -68,7 +68,17 @@ function CrmSidebar({ mobileOpen, onClose, delayedCount }: { mobileOpen: boolean
         />
       )}
       <aside
-        className={`crmx-sidebar-scroll fixed inset-y-0 start-0 z-40 flex w-[252px] shrink-0 flex-col overflow-y-auto bg-[var(--crmx-navy)] px-3.5 py-5 transition-transform duration-200 lg:static lg:h-screen lg:translate-x-0 ${
+        // Mobile: fixed inset-y-0 + translate-x slide, exactly as before — the
+        // off-canvas overlay behavior is untouched. Desktop (lg:): the
+        // sidebar used to switch to `static` positioning, which cancels
+        // `fixed` and drops it back into normal document flow — with no
+        // height-capped ancestor to contain it, it then scrolled away with
+        // the page (App Shell root cause). `lg:relative lg:h-full` keeps it
+        // a normal flex item (so it never overlaps content, same as
+        // `static` did) but sized by the now height-capped `.crmx-root`
+        // flex row in CrmShell's return below, so it stays put while
+        // `<main>` — the one true scroll owner — scrolls independently.
+        className={`crmx-sidebar-scroll fixed inset-y-0 start-0 z-40 flex w-[252px] shrink-0 flex-col overflow-y-auto bg-[var(--crmx-navy)] px-3.5 py-5 transition-transform duration-200 lg:relative lg:inset-auto lg:h-full lg:translate-x-0 ${
           mobileOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0"
         }`}
       >
@@ -268,11 +278,24 @@ export function CrmShell() {
 
   return (
     <CrmOperationalContext.Provider value={operational}>
-      <div className="crmx-root flex" dir="rtl">
+      {/*
+        App Shell: this row is the ONLY height-capped, overflow-hidden
+        container in the CRM module. Everything below it sizes itself off
+        this instead of the document, so <main> — not the page — is the
+        single scroll owner. `h-dvh` (not `h-screen`) so a mobile browser's
+        chrome showing/hiding doesn't leave a gap or clip content, same
+        reasoning OccasionsPage's calendar grid already documents for
+        preferring dvh-safe sizing.
+      */}
+      <div className="crmx-root flex h-dvh overflow-hidden" dir="rtl">
         <CrmSidebar mobileOpen={mobileNavOpen} onClose={() => setMobileNavOpen(false)} delayedCount={operational.delayedCount} />
-        <div className="flex min-h-screen min-w-0 flex-1 flex-col">
+        {/* min-h-0 overrides flexbox's default min-height:auto on a flex
+            item — without it, this column (and <main> below) refuse to
+            shrink below their content's natural height, and the capped
+            height above becomes decorative while the page scrolls anyway. */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <CrmHeader onMenuClick={() => setMobileNavOpen(true)} />
-          <main className="flex-1 bg-[var(--crmx-bg)]">
+          <main className="min-h-0 flex-1 overflow-y-auto bg-[var(--crmx-bg)]">
             <Outlet />
           </main>
         </div>

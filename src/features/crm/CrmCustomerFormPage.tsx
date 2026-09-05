@@ -133,7 +133,7 @@ export function CrmCustomerFormPage() {
       const work = identity.work_address;
       setForm({
         name: identity.name ?? "",
-        name_en: "",
+        name_en: identity.name_en ?? "",
         title: identity.title ?? "",
         gender: identity.gender ?? "",
         phone: identity.primary_phone ?? "",
@@ -146,7 +146,10 @@ export function CrmCustomerFormPage() {
         group_id: identity.group_id != null ? String(identity.group_id) : "",
         status: identity.status ?? "active",
         branch_id: identity.branch?.id != null ? String(identity.branch.id) : "",
-        salesperson_id: "",
+        // Kept as the id, matching the <select> below whose value/options are
+        // both ids from /api/employees — never substitute the resolved
+        // identity.salesperson name here, that field exists only for display.
+        salesperson_id: identity.salesperson_id != null ? String(identity.salesperson_id) : "",
         notes: "",
         birth_date: identity.birth_date ?? "",
         work_city: work?.city ?? "",

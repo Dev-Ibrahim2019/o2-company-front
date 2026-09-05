@@ -102,26 +102,42 @@ body {
  * to take its parent's size and a `text-[14px]` on the control itself did
  * nothing. The :where() wrapper was already there to make this rule
  * overridable; the layer is what the wrapper needs to actually work. */
+/* Same fix as font: inherit above, applied to the rest of that rule's
+ * siblings — background-color/border-color/color, ::placeholder, and
+ * :focus were left unlayered when font: inherit was moved, on the reasoning
+ * that moving them would let bg-white / border- / text- utilities override
+ * the dark O2 defaults app-wide. Proven wrong by live measurement: those CRM
+ * utilities are the intended, authored styling — the unlayered rule was
+ * overriding THEM, not the other way around. A real CRM input with explicit
+ * bg-white and text-[var(--crmx-text)] classes computed to the dark
+ * --o2-surface/--o2-text values under the app's own default (dark) theme,
+ * because unlayered CSS beats every layered rule (all Tailwind utilities)
+ * regardless of specificity or which one was "meant" to win.
+ *
+ * :focus's !important is dropped, not just relocated: it existed to force a
+ * win over layered utilities, which @layer base now achieves structurally —
+ * an explicit focus-ring utility on a specific input can still override this
+ * base default, exactly as :where()'s zero specificity always intended. */
 @layer base {
   :where(button, input, textarea, select) {
     font: inherit;
   }
-}
 
-:where(input, textarea, select) {
-  background-color: var(--o2-surface-raised);
-  border-color: var(--o2-border);
-  color: var(--o2-text);
-}
+  :where(input, textarea, select) {
+    background-color: var(--o2-surface-raised);
+    border-color: var(--o2-border);
+    color: var(--o2-text);
+  }
 
-:where(input, textarea, select)::placeholder {
-  color: color-mix(in srgb, var(--o2-muted) 72%, transparent);
-}
+  :where(input, textarea, select)::placeholder {
+    color: color-mix(in srgb, var(--o2-muted) 72%, transparent);
+  }
 
-:where(input, textarea, select):focus {
-  border-color: var(--o2-brand) !important;
-  box-shadow: 0 0 0 3px var(--o2-brand-ring) !important;
-  outline: none;
+  :where(input, textarea, select):focus {
+    border-color: var(--o2-brand);
+    box-shadow: 0 0 0 3px var(--o2-brand-ring);
+    outline: none;
+  }
 }
 
 :where(input[type="email"], input[type="url"], input[type="tel"], input[type="number"], [dir="ltr"], .ltr) {
@@ -195,8 +211,24 @@ body {
 }
 
 .bg-slate-900,
-.bg-gray-900,
-.bg-white {
+.bg-gray-900 {
+  background-color: var(--o2-surface) !important;
+}
+
+/* .bg-white split out of the bridge above and scoped away from CRM.
+ *
+ * The bridge exists so pre-CRM screens written with plain Tailwind class
+ * names (bg-slate-900/bg-gray-900/bg-white) render this app's actual dark
+ * theme without editing every old screen — until CRM, nothing in this app
+ * ever wanted a literal white background. CRM is the first light-themed
+ * module and explicitly authors `bg-white` on its inputs to mean white; this
+ * same unconditional, !important, unlayered rule was silently overriding
+ * that everywhere inside .crmx-root, which is the real explanation for
+ * "CRM inputs render dark even with bg-white in their class list" — moving
+ * the :where(input...) block into @layer base (see above) was necessary but
+ * not sufficient, because this rule out-prioritizes any layer via !important
+ * regardless of where the losing declaration lives. Rest of the app: unchanged. */
+.bg-white:not(.crmx-root, .crmx-root *) {
   background-color: var(--o2-surface) !important;
 }
 
