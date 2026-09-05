@@ -102,9 +102,13 @@ export function LoyaltyRuleFormDrawer({
 
   useEffect(() => {
     let alive = true;
-    void crmApi.loyaltyRules({ scope_type: "global", is_active: "1" }).then((page) => {
+    // is_base_rule comes from the API (LoyaltyRule::isBaseRule()) — the
+    // shape is never re-derived here from scope_type/min_order_value/ends_at,
+    // which is exactly the duplication that let three independent copies of
+    // this check drift before it existed.
+    void crmApi.loyaltyRules({ is_active: "1" }).then((page) => {
       if (!alive) return;
-      const base = page.items.find((r) => r.min_order_value == null && r.ends_at == null && r.points_per_amount != null);
+      const base = page.items.find((r) => r.is_base_rule);
       if (base) {
         setBaseRate({
           points_per_amount: Number(base.points_per_amount),

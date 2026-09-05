@@ -17,15 +17,6 @@ const selectCls =
 const fieldLabelCls = "flex flex-col gap-1 text-[13px] font-semibold text-[var(--crmx-text-secondary)]";
 const pill = "inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-bold whitespace-nowrap";
 
-/** Exactly the shape LoyaltyEngine::baseRule() and the backend's own invariant guard look for. */
-function isActiveBaseRule(rule: CrmLoyaltyRule): boolean {
-  return rule.scope_type === "global"
-    && rule.min_order_value == null
-    && rule.ends_at == null
-    && rule.points_per_amount != null
-    && rule.is_active;
-}
-
 export function LoyaltyRulesTab({ onChanged }: { onChanged?: () => void }) {
   const { hasPermission } = useAuth();
   const canManage = hasPermission(CRM_PERMISSIONS.LOYALTY_MANAGE);
@@ -60,7 +51,11 @@ export function LoyaltyRulesTab({ onChanged }: { onChanged?: () => void }) {
 
   useEffect(() => { void load(); }, [load]);
 
-  const baseRule = rules.find(isActiveBaseRule) ?? null;
+  // is_base_rule is computed server-side (LoyaltyRule::isBaseRule()) and
+  // appended to every rule the API returns — the frontend must never
+  // re-derive this shape locally, or the two definitions can drift apart
+  // exactly as they already had before this field existed.
+  const baseRule = rules.find((r) => r.is_base_rule) ?? null;
   const otherRules = rules.filter((r) => r.id !== baseRule?.id);
 
   const saveBaseRate = async (pointsPerAmount: number, perAmount: number) => {

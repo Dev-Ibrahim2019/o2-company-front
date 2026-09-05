@@ -349,6 +349,13 @@ export interface CrmLoyaltyRule {
   campaign_target_metric?: CrmLoyaltyCampaignMetric | null;
   group_cascade_percent?: number | string | null;
   is_active: boolean;
+  /**
+   * Computed server-side by LoyaltyRule::isBaseRule() and appended to every
+   * API response for a rule. This is the single source of truth for "is
+   * this the permanent base rule" — never re-derive the shape (global scope,
+   * no min_order_value, no ends_at, a real rate) from the raw fields here.
+   */
+  is_base_rule: boolean;
   created_by?: number | null;
   creator?: { id: CrmId; name: string } | null;
   created_at?: string | null;
