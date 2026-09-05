@@ -50,6 +50,8 @@ export interface SubmitOrderPayload {
   branch_id: number;
   cashier_id?: number;
   order_type: "dine_in" | "takeaway" | "delivery";
+  /** طلب «فوري» (بيع كاشير سريع) — يُخزّن مستقلاً عن order_type */
+  is_fawri?: boolean;
   table_number?: string;
   customer_name?: string;
   customer_phone?: string;

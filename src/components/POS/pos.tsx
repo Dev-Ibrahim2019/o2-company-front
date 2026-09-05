@@ -1220,6 +1220,8 @@ const handlePrintInvoice = async (
         branch_id: branchId,
         cashier_id: currentUser?.id ? Number(currentUser.id) : undefined,
         order_type: effectiveOrderType,
+        // «فوري» = تبويب Takeaway في نقطة البيع — يُحفظ مستقلاً عن order_type
+        is_fawri: cartOrderType === OrderType.TAKEAWAY,
         table_number: activeTable?.table_number || activeTable?.number.toString(),
         dining_table_id: activeTable ? Number(activeTable.id) : undefined,
         customer_name: meta.name || undefined,
@@ -1531,14 +1533,13 @@ const handlePrintInvoice = async (
         customerName={customerName}
         setCustomerName={setCustomerName}
         setPosError={setPosError}
-        onConfirm={() =>
-          submitOrder(
-            OrderStatus.DELIVERED,
-            paymentMethod,
-            calculatedDiscount,
-            { name: customerName, phone: customerPhone, note: invoiceNote },
-          )
-        }
+        onConfirm={() => {
+          // بدل الإغلاق مباشرة بطريقة دفع افتراضية "كاش" — نفتح مودال طريقة الدفع
+          // ليختار الكاشير كاش/بطاقة/محفظة.
+          setShowCustomerModal(false);
+          setPendingCloseKind("dine_in");
+          setShowPaymentMethodModal(true);
+        }}
       />
 
       <PaymentMethodModal

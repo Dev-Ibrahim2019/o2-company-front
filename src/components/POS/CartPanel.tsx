@@ -247,7 +247,13 @@ export const CartPanel: React.FC<CartPanelProps> = ({
 
       const doCloseTakeaway = async () => {
         if (currentCart.length === 0) return;
-        // "فوري" = دفع + إغلاق ثم فاتورة منفصلة لكل قسم، كلها على طابعة الكاشير.
+        // الإغلاق يمرّ عبر PaymentMethodModal حتى يختار الكاشير طريقة الدفع فعلياً
+        // (كاش/بطاقة/محفظة) بدل الافتراضي الثابت "كاش".
+        if (onRequestClose) {
+          onRequestClose("takeaway");
+          return;
+        }
+        // fallback فقط لو ما في onRequestClose (نادر) — "فوري" = دفع + إغلاق ثم طباعة.
         const result = await submitOrder(
           OrderStatus.DELIVERED,
           paymentMethod,
@@ -268,6 +274,12 @@ export const CartPanel: React.FC<CartPanelProps> = ({
           setPosError("يرجى إدخال رقم الطاولة أولاً");
           return;
         }
+        // الإغلاق يمرّ عبر PaymentMethodModal (يجمع اسم الزبون + طريقة الدفع).
+        if (onRequestClose) {
+          onRequestClose("dine_in");
+          return;
+        }
+        // fallback فقط لو ما في onRequestClose (نادر).
         if (
           !customerName ||
           (customerName === "صندوق مبيعات" && paymentMethod !== PaymentMethod.CASH)
@@ -275,7 +287,6 @@ export const CartPanel: React.FC<CartPanelProps> = ({
           setShowCustomerModal(true);
           return;
         }
-        // "محلي" = دفع + إغلاق ثم فاتورة الكاشير المدمجة على طابعة الكاشير.
         const result = await submitOrder(
           OrderStatus.DELIVERED,
           paymentMethod,
