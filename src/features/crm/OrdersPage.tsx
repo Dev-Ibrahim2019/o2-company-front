@@ -76,6 +76,75 @@ const SEVERITY_STYLE: Record<DelaySeverity, { row: string; time: string; icon: b
   critical: { row: "bg-[var(--crmx-danger-soft)]/40", time: "text-[var(--crmx-danger-text)]", icon: true },
 };
 
+// SLA indicator — "الطلبات النشطة" only, independent of the delayed-mode
+// severity above (that one is relative to an operator-chosen threshold;
+// this one is a fixed traffic-light read on how long the order has been
+// sitting since it was placed).
+//
+// Measured from created_at, not a "confirmed"/"prep started" timestamp:
+// per CrmOrderRow's own doc comment, no reliable order-level per-status
+// timestamp exists today, so created_at is the only semantically honest
+// clock available — it's also literally the same field elapsed_minutes
+// is derived from server-side. If a dedicated "confirmed_at" ever lands
+// on `orders`, this is the one place to repoint.
+//
+// Both thresholds live here, nowhere else, so changing them later is a
+// one-line edit.
+const SLA_GREEN_MAX_MINUTES = 15;
+const SLA_YELLOW_MAX_MINUTES = 25;
+
+type SlaTier = "green" | "yellow" | "red";
+
+function slaTier(createdAt: string | null | undefined, nowMs: number): SlaTier | null {
+  if (!createdAt) return null;
+  const createdMs = new Date(createdAt).getTime();
+  if (Number.isNaN(createdMs)) return null;
+  const elapsedMinutes = (nowMs - createdMs) / 60000;
+  if (elapsedMinutes < SLA_GREEN_MAX_MINUTES) return "green";
+  if (elapsedMinutes < SLA_YELLOW_MAX_MINUTES) return "yellow";
+  return "red";
+}
+
+const SLA_DOT_CLASS: Record<SlaTier, string> = {
+  green: "bg-[var(--crmx-success)]",
+  yellow: "bg-[var(--crmx-warning)]",
+  red: "bg-[var(--crmx-danger)]",
+};
+const SLA_DOT_LABEL: Record<SlaTier, string> = {
+  green: `أقل من ${SLA_GREEN_MAX_MINUTES} دقيقة منذ إنشاء الطلب`,
+  yellow: `بين ${SLA_GREEN_MAX_MINUTES} و${SLA_YELLOW_MAX_MINUTES} دقيقة منذ إنشاء الطلب`,
+  red: `أكثر من ${SLA_YELLOW_MAX_MINUTES} دقيقة منذ إنشاء الطلب`,
+};
+
+function SlaDot({ createdAt, nowMs }: { createdAt: string | null | undefined; nowMs: number }) {
+  const tier = slaTier(createdAt, nowMs);
+  if (!tier) return null;
+  return (
+    <span
+      role="img"
+      aria-label={SLA_DOT_LABEL[tier]}
+      title={SLA_DOT_LABEL[tier]}
+      className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${SLA_DOT_CLASS[tier]}`}
+    />
+  );
+}
+
+/**
+ * Re-renders active-orders rows once a minute so each SlaDot's colour keeps
+ * up with the clock, without ever re-querying the server — the value it
+ * feeds into is wall-clock time, computed fresh against the same
+ * already-loaded `created_at` on every tick.
+ */
+function useMinuteTick(enabled: boolean) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!enabled) return;
+    const id = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, [enabled]);
+  return nowMs;
+}
+
 function orderTypeLabel(order: CrmOrderRow) {
   if (order.table?.zone || order.table?.table_number) {
     const parts = [order.table.zone, order.table.table_number ? `طاولة ${order.table.table_number}` : null].filter(Boolean);
@@ -123,6 +192,7 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
   const [openOrderId, setOpenOrderId] = useState<string | number | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
   const toggle = (id: string | number) => setOpenOrderId((cur) => (cur === id ? null : id));
+  const slaNowMs = useMinuteTick(mode === "active");
 
   useEffect(() => {
     if (!isGlobal) return;
@@ -339,7 +409,12 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
                         <td className="px-2 text-center">
                           <ChevronDown className={`mx-auto h-4 w-4 text-[var(--crmx-text-muted)] transition-transform ${isOpen ? "rotate-180" : ""}`} />
                         </td>
-                        <td className="px-4 py-4 text-[14px] font-bold text-[var(--crmx-text)]" dir="ltr">{order.order_number}</td>
+                        <td className="px-4 py-4 text-[14px] font-bold text-[var(--crmx-text)]" dir="ltr">
+                          <span className="flex items-center gap-2">
+                            {mode === "active" && <SlaDot createdAt={order.created_at} nowMs={slaNowMs} />}
+                            {order.order_number}
+                          </span>
+                        </td>
                         <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">
                           {order.customer?.name ? (
                             <span className="font-semibold text-[var(--crmx-text)]">{order.customer.name}</span>
