@@ -50,6 +50,54 @@ const ORDER_TYPE_LABELS: Record<string, string> = {
   delivery: "توصيل",
 };
 
+// Channel colour for the thin mark on the leading edge of each row — a new,
+// CRM-only convention (no existing screen colours by channel today). Keyed
+// on order_type first — the real, always-present field — falling back to
+// order.source === "call_center" only when order_type doesn't match one of
+// the three known values (mirrors the Call Center reference component's own
+// `order.order_type || order.source` fallback, adapted to real CRM field
+// semantics).
+//
+// This is a deliberately different axis from CrmStatusBadge's tones (order
+// STATUS: pending/confirmed/in_progress/ready/served/paid/cancelled) — the
+// mark communicates CHANNEL instead, rendered as a short coloured pill
+// rather than a status pill, so reusing --crmx-success/--crmx-info/
+// --crmx-accent here does not collide with what those tones mean on the
+// status badge next to it.
+//
+// Implementation history (both tried and rejected in-browser before this
+// one): a dedicated "bar" <td> got stretched wide by the table's auto-layout
+// column algorithm, which redistributes leftover row width into any
+// under-specified column. A border-inline-start on the leading <td> fixed
+// the width problem but, under border-collapse, adjacent rows sharing a
+// channel fuse into one unbroken stripe with no per-row boundary — exactly
+// the "reads as a scrollbar, not data" failure this component must avoid.
+// The fix here is an absolutely-positioned pill *inside* the chevron <td>
+// (not a border, so it never enters column-width negotiation, and not full
+// height, so consecutive same-channel rows never visually fuse): each row
+// draws its own short mark with real gaps above and below it.
+const CHANNEL_MARK_CLASS: Record<string, string> = {
+  dine_in: "bg-[var(--crmx-success)]",
+  takeaway: "bg-[var(--crmx-orange)]",
+  delivery: "bg-[var(--crmx-info)]",
+};
+const CHANNEL_MARK_FALLBACK = "bg-[var(--crmx-accent)]"; // فوري (call_center source, unmatched order_type)
+const CHANNEL_MARK_NONE = "bg-[var(--crmx-border)]"; // unrecognised, non-call-center channel
+const CHANNEL_LABEL_FALLBACK = "فوري";
+const CHANNEL_LABEL_NONE = "غير معروف";
+
+/**
+ * Same accessibility shape as SlaDot below (role="img" + aria-label + title)
+ * — a colour-only signal is invisible to colour-blind users and undocumented
+ * for everyone else, so the mark always carries a real Arabic label too.
+ */
+function channelMark(order: CrmOrderRow): { cls: string; label: string } {
+  const knownClass = CHANNEL_MARK_CLASS[order.order_type];
+  if (knownClass) return { cls: knownClass, label: ORDER_TYPE_LABELS[order.order_type] };
+  if (order.source === "call_center") return { cls: CHANNEL_MARK_FALLBACK, label: CHANNEL_LABEL_FALLBACK };
+  return { cls: CHANNEL_MARK_NONE, label: CHANNEL_LABEL_NONE };
+}
+
 function formatElapsed(minutes: number) {
   if (minutes < 60) return `منذ ${num(minutes)} دقيقة`;
   const hours = Math.floor(minutes / 60);
@@ -400,13 +448,27 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
                   const isFlagged = mode === "delayed" && order.is_delayed;
                   const severity = isFlagged ? delaySeverity(order.elapsed_minutes, minutes) : null;
                   const style = severity ? SEVERITY_STYLE[severity] : null;
+                  const channel = channelMark(order);
                   return (
                     <Fragment key={order.id}>
                       <tr
                         onClick={() => toggle(order.id)}
                         className={`crmx-table-row cursor-pointer border-b border-[var(--crmx-border)] transition-colors last:border-0 ${style?.row ?? ""}`}
                       >
-                        <td className="px-2 text-center">
+                        {/* Channel mark: an absolutely-positioned pill inset within this
+                            leading (chevron) cell — not a border, so it never enters the
+                            table's column-width negotiation, and not full-height, so it
+                            never visually fuses with the same mark on an adjacent row (see
+                            the CHANNEL_MARK_CLASS comment above for the two approaches this
+                            replaced). RTL means this first DOM cell is already the row's
+                            rightmost, i.e. leading, edge; `start-0.5` pins the pill there. */}
+                        <td className="relative px-2 text-center">
+                          <span
+                            role="img"
+                            aria-label={`قناة الطلب: ${channel.label}`}
+                            title={`قناة الطلب: ${channel.label}`}
+                            className={`absolute inset-y-1.5 start-0.5 w-1 rounded-[var(--crmx-radius-pill)] ${channel.cls}`}
+                          />
                           <ChevronDown className={`mx-auto h-4 w-4 text-[var(--crmx-text-muted)] transition-transform ${isOpen ? "rotate-180" : ""}`} />
                         </td>
                         <td className="px-4 py-4 text-[14px] font-bold text-[var(--crmx-text)]" dir="ltr">
@@ -437,7 +499,11 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
                         </td>
                       </tr>
                       {isOpen && (
-                        <tr className="border-b border-[var(--crmx-border)] bg-[var(--crmx-bg)] last:border-0">
+                        // Distinctly green "this is now open" tint — --crmx-success-soft is
+                        // already the module's soft-green token, used as-is (not further
+                        // diluted) so the expansion reads as clearly open without looking
+                        // like a validation-success banner.
+                        <tr className="border-b border-[var(--crmx-border)] bg-[var(--crmx-success-soft)] last:border-0">
                           <td colSpan={COLUMNS.length} className="p-0">
                             <CrmOrderExpandedPanel orderId={order.id} />
                           </td>
