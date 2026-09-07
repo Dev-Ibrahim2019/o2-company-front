@@ -86,12 +86,11 @@ export default function OrdersTab() {
                           <td className="px-4 py-3"><CrmYesNoBadge value={Boolean(r.has_complaint)} /></td>
                         </tr>
                         {isOpen && id != null && (
-                          // bg-[var(--crmx-bg)] here used to match the (neutral) panel
-                          // background; the panel itself now paints --crmx-success-soft
-                          // as its "this is open" signal (see OrdersPage.tsx), which
-                          // fully occludes whatever this <tr> sets — kept in sync so the
-                          // declaration here isn't a dead, misleading leftover.
-                          <tr className="border-b border-[var(--crmx-border)] bg-[var(--crmx-success-soft)] last:border-0">
+                          // Neutral wrapper: the panel itself now owns the real, payment-
+                          // conditional colour (green only when order.is_paid, see
+                          // CrmOrderExpandedPanel.tsx) — hardcoding a colour here regardless
+                          // of that would just be a second, unsynced copy of the same rule.
+                          <tr className="border-b border-[var(--crmx-border)] bg-[var(--crmx-bg)] last:border-0">
                             <td colSpan={8} className="p-0">
                               <CrmOrderExpandedPanel orderId={id} />
                             </td>

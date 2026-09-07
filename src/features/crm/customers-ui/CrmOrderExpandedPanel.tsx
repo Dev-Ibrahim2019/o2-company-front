@@ -170,17 +170,25 @@ export function CrmOrderExpandedPanel({ orderId }: { orderId: string | number })
 
   return (
     // Two nested divs, deliberately: `.crmx-root` (crmx.css) sets an opaque
-    // `background: var(--crmx-bg)`, so putting the green tint on the SAME
-    // element as `crmx-root` is a same-specificity cascade coin-flip decided
-    // by stylesheet injection order, not by class order in this file —
-    // verified in-browser to actually lose (the opaque --crmx-bg painted
-    // over the tint). Keeping `crmx-root` on an outer, unstyled wrapper still
-    // resolves every --crmx-* token/font-family for descendants (custom
-    // properties inherit down the DOM regardless of which element re-declares
-    // the class), while the inner div is the only rule that ever sets this
+    // `background: var(--crmx-bg)`, so putting the tint on the SAME element
+    // as `crmx-root` is a same-specificity cascade coin-flip decided by
+    // stylesheet injection order, not by class order in this file — verified
+    // in-browser to actually lose (the opaque --crmx-bg painted over the
+    // tint). Keeping `crmx-root` on an outer, unstyled wrapper still resolves
+    // every --crmx-* token/font-family for descendants (custom properties
+    // inherit down the DOM regardless of which element re-declares the
+    // class), while the inner div is the only rule that ever sets this
     // panel's background, so it always wins.
+    //
+    // The green only appears when order.is_paid is actually true — an
+    // earlier version painted it unconditionally, which read as "this order
+    // is paid" on orders that were not (caught by a real payment-status
+    // mismatch during visual review, on an order that was still unpaid).
+    // Unpaid orders get the plain neutral panel background instead of an
+    // invented "unpaid" colour — silence is the correct signal for "nothing
+    // special to report" here, not a competing hue.
     <div className="crmx-root">
-      <div className="grid grid-cols-1 gap-5 bg-[var(--crmx-success-soft)] p-5 lg:grid-cols-2">
+      <div className={`grid grid-cols-1 gap-5 p-5 lg:grid-cols-2 ${order.is_paid ? "bg-[var(--crmx-success-soft)]" : "bg-[var(--crmx-bg)]"}`}>
         <div className="space-y-5">
           <div className="rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-4">
             <div className="mb-3 flex items-center justify-between">

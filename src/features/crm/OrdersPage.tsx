@@ -50,9 +50,9 @@ const ORDER_TYPE_LABELS: Record<string, string> = {
   delivery: "توصيل",
 };
 
-// Channel colour for the thin mark on the leading edge of each row — a new,
-// CRM-only convention (no existing screen colours by channel today). Keyed
-// on order_type first — the real, always-present field — falling back to
+// Channel colour for a small dot beside the order number — a new, CRM-only
+// convention (no existing screen colours by channel today). Keyed on
+// order_type first — the real, always-present field — falling back to
 // order.source === "call_center" only when order_type doesn't match one of
 // the three known values (mirrors the Call Center reference component's own
 // `order.order_type || order.source` fallback, adapted to real CRM field
@@ -60,42 +60,44 @@ const ORDER_TYPE_LABELS: Record<string, string> = {
 //
 // This is a deliberately different axis from CrmStatusBadge's tones (order
 // STATUS: pending/confirmed/in_progress/ready/served/paid/cancelled) — the
-// mark communicates CHANNEL instead, rendered as a short coloured pill
-// rather than a status pill, so reusing --crmx-success/--crmx-info/
-// --crmx-accent here does not collide with what those tones mean on the
-// status badge next to it.
+// dot communicates CHANNEL instead.
 //
-// Implementation history (both tried and rejected in-browser before this
-// one): a dedicated "bar" <td> got stretched wide by the table's auto-layout
-// column algorithm, which redistributes leftover row width into any
-// under-specified column. A border-inline-start on the leading <td> fixed
-// the width problem but, under border-collapse, adjacent rows sharing a
-// channel fuse into one unbroken stripe with no per-row boundary — exactly
-// the "reads as a scrollbar, not data" failure this component must avoid.
-// The fix here is an absolutely-positioned pill *inside* the chevron <td>
-// (not a border, so it never enters column-width negotiation, and not full
-// height, so consecutive same-channel rows never visually fuse): each row
-// draws its own short mark with real gaps above and below it.
-const CHANNEL_MARK_CLASS: Record<string, string> = {
+// Implementation history: a full-row background was rejected outright (a
+// real visual review called it out as competing with the status/payment
+// badges for attention, with no dominant signal left on the row). A
+// dedicated "bar" <td> got stretched wide by the table's auto-layout column
+// algorithm. A border-inline-start on the leading <td> fixed the width
+// problem but fused adjacent same-channel rows into one unbroken stripe
+// under border-collapse. An absolutely-positioned pill inset in that <td>
+// fixed both of those, but at a near-full-row height it still read as a
+// second prominent colour block next to the SLA dot's colour and the
+// payment badge's colour — the same review asked for at most two dominant
+// colours per row (SLA + payment), with channel as a minor, secondary cue.
+// A small dot the same size as SlaDot, sitting right beside it, is the
+// version of this that stays a minor cue: same visual weight as a signal
+// this codebase has already established as "small and secondary".
+const CHANNEL_DOT_CLASS: Record<string, string> = {
   dine_in: "bg-[var(--crmx-success)]",
   takeaway: "bg-[var(--crmx-orange)]",
   delivery: "bg-[var(--crmx-info)]",
 };
-const CHANNEL_MARK_FALLBACK = "bg-[var(--crmx-accent)]"; // فوري (call_center source, unmatched order_type)
-const CHANNEL_MARK_NONE = "bg-[var(--crmx-border)]"; // unrecognised, non-call-center channel
+const CHANNEL_DOT_FALLBACK = "bg-[var(--crmx-accent)]"; // فوري (call_center source, unmatched order_type)
+const CHANNEL_DOT_NONE = "bg-[var(--crmx-border)]"; // unrecognised, non-call-center channel
 const CHANNEL_LABEL_FALLBACK = "فوري";
 const CHANNEL_LABEL_NONE = "غير معروف";
 
-/**
- * Same accessibility shape as SlaDot below (role="img" + aria-label + title)
- * — a colour-only signal is invisible to colour-blind users and undocumented
- * for everyone else, so the mark always carries a real Arabic label too.
- */
-function channelMark(order: CrmOrderRow): { cls: string; label: string } {
-  const knownClass = CHANNEL_MARK_CLASS[order.order_type];
+function channelDot(order: CrmOrderRow): { cls: string; label: string } {
+  const knownClass = CHANNEL_DOT_CLASS[order.order_type];
   if (knownClass) return { cls: knownClass, label: ORDER_TYPE_LABELS[order.order_type] };
-  if (order.source === "call_center") return { cls: CHANNEL_MARK_FALLBACK, label: CHANNEL_LABEL_FALLBACK };
-  return { cls: CHANNEL_MARK_NONE, label: CHANNEL_LABEL_NONE };
+  if (order.source === "call_center") return { cls: CHANNEL_DOT_FALLBACK, label: CHANNEL_LABEL_FALLBACK };
+  return { cls: CHANNEL_DOT_NONE, label: CHANNEL_LABEL_NONE };
+}
+
+/** Same accessibility shape as SlaDot below (role="img" + aria-label + title). */
+function ChannelDot({ order }: { order: CrmOrderRow }) {
+  const { cls, label } = channelDot(order);
+  const text = `قناة الطلب: ${label}`;
+  return <span role="img" aria-label={text} title={text} className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${cls}`} />;
 }
 
 function formatElapsed(minutes: number) {
@@ -448,31 +450,23 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
                   const isFlagged = mode === "delayed" && order.is_delayed;
                   const severity = isFlagged ? delaySeverity(order.elapsed_minutes, minutes) : null;
                   const style = severity ? SEVERITY_STYLE[severity] : null;
-                  const channel = channelMark(order);
                   return (
                     <Fragment key={order.id}>
                       <tr
                         onClick={() => toggle(order.id)}
                         className={`crmx-table-row cursor-pointer border-b border-[var(--crmx-border)] transition-colors last:border-0 ${style?.row ?? ""}`}
                       >
-                        {/* Channel mark: an absolutely-positioned pill inset within this
-                            leading (chevron) cell — not a border, so it never enters the
-                            table's column-width negotiation, and not full-height, so it
-                            never visually fuses with the same mark on an adjacent row (see
-                            the CHANNEL_MARK_CLASS comment above for the two approaches this
-                            replaced). RTL means this first DOM cell is already the row's
-                            rightmost, i.e. leading, edge; `start-0.5` pins the pill there. */}
-                        <td className="relative px-2 text-center">
-                          <span
-                            role="img"
-                            aria-label={`قناة الطلب: ${channel.label}`}
-                            title={`قناة الطلب: ${channel.label}`}
-                            className={`absolute inset-y-1.5 start-0.5 w-1 rounded-[var(--crmx-radius-pill)] ${channel.cls}`}
-                          />
+                        <td className="px-2 text-center">
                           <ChevronDown className={`mx-auto h-4 w-4 text-[var(--crmx-text-muted)] transition-transform ${isOpen ? "rotate-180" : ""}`} />
                         </td>
                         <td className="px-4 py-4 text-[14px] font-bold text-[var(--crmx-text)]" dir="ltr">
+                          {/* Channel dot next to the SLA dot, not a row-wide background or
+                              a full-height bar — a real visual review flagged both of those
+                              as competing with the status/payment badges for attention.
+                              This stays a small, secondary cue at the same visual weight as
+                              SlaDot, whose colour is the one that's actually load-bearing. */}
                           <span className="flex items-center gap-2">
+                            <ChannelDot order={order} />
                             {mode === "active" && <SlaDot createdAt={order.created_at} nowMs={slaNowMs} />}
                             {order.order_number}
                           </span>
@@ -499,11 +493,12 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
                         </td>
                       </tr>
                       {isOpen && (
-                        // Distinctly green "this is now open" tint — --crmx-success-soft is
-                        // already the module's soft-green token, used as-is (not further
-                        // diluted) so the expansion reads as clearly open without looking
-                        // like a validation-success banner.
-                        <tr className="border-b border-[var(--crmx-border)] bg-[var(--crmx-success-soft)] last:border-0">
+                        // Neutral wrapper: the panel itself now owns the real, payment-
+                        // conditional colour (green only when order.is_paid, per a real
+                        // visual-review finding — an unpaid order was showing green here
+                        // before this fix). Hardcoding green on this <tr> regardless of
+                        // payment status would just reintroduce that bug one layer up.
+                        <tr className="border-b border-[var(--crmx-border)] bg-[var(--crmx-bg)] last:border-0">
                           <td colSpan={COLUMNS.length} className="p-0">
                             <CrmOrderExpandedPanel orderId={order.id} />
                           </td>

@@ -553,6 +553,12 @@ export interface CrmOrderItem {
 }
 export interface CrmOrderDetails {
   id: CrmId; order_number: string; status: string; order_type?: string | null; source?: OrderSource | null;
+  payment_status?: string | null;
+  // Same derived "is this actually paid" signal as CrmOrderRow.is_paid — see
+  // that field's comment. status alone reads 'paid' only on the POS path;
+  // payment_status alone is null for most historically-paid POS orders. Use
+  // this, never the two raw fields, to decide anything payment-conditional.
+  is_paid?: boolean;
   customer_id?: CrmId | null; subtotal: number; discount_amount: number; total: number;
   note?: string | null; customer_name?: string | null; customer_phone?: string | null;
   branch?: CrmBranch | null; cashier?: { id: CrmId; name: string } | null;
