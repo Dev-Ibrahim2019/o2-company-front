@@ -1,68 +1,31 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Clock, Loader2, Package, ArrowLeft, User, Search, Eye, Edit3,
-  AlertCircle, RefreshCw, CheckCircle2, XCircle, Ban, Filter,
+  Clock, Loader2, Package, User, Phone, Search, Eye, Receipt,
+  AlertCircle, RefreshCw, CheckCircle2, XCircle,
 } from "lucide-react";
 import { colors, typography, radius, shadows, transitions } from "../design/tokens";
-import { useAuth } from "../../../auth";
-import { ROLES } from "../../../auth/permissions";
-import api from "../../../api/axios";
+import { callCenterService, type ClosedCallCenterOrder } from "../services/callCenterService";
+import { dedupeById, getOrderReference, formatShekel, PAYMENT_STATUS_LABELS } from "../activeOrdersView";
 
 // ============================================================================
-// TYPES
+// STATUS MAPS
 // ============================================================================
 
-interface ClosedOrder {
-  id: number;
-  order_number: string;
-  status: string;
-  order_type: string;
-  customer_name: string | null;
-  customer_phone: string | null;
-  total: number;
-  payment_method: string | null;
-  paid_at: string | null;
-  created_at: string;
-  updated_at: string;
-  branch?: { id: number; name: string } | null;
-  items?: Array<{
-    id: number;
-    item_name: string;
-    item_name_ar?: string;
-    quantity: number;
-    price: number;
-    total: number;
-  }>;
-}
-
-interface Pagination {
-  current_page: number;
-  last_page: number;
-  per_page: number;
-  total: number;
-}
-
-const CLOSED_STATUSES = ["served", "paid", "cancelled", "DELIVERED", "CANCELLED", "FAILED_DELIVERY"];
-
+// طلب "مغلق" هون معناه: انصنّف closed فعليًا بالباك اند (CallCenterService::determineLifecycle) —
+// إما ملغي، أو حالته اكتملت (تم التقديم/التوصيل) والفاتورة مدفوعة بالكامل معًا. الدفع وحده
+// أبدًا ما يغلق الطلب (لهيك الفلتر هون على status الطلب نفسه بس، مش على "مدفوع").
 const STATUS_MAP: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  served:          { label: "تم التقديم", color: colors.semantic.success, icon: <CheckCircle2 size={14} /> },
-  paid:            { label: "مدفوع", color: colors.semantic.success, icon: <CheckCircle2 size={14} /> },
-  DELIVERED:       { label: "تم التوصيل", color: colors.semantic.success, icon: <CheckCircle2 size={14} /> },
-  cancelled:       { label: "ملغي", color: colors.semantic.error, icon: <XCircle size={14} /> },
-  CANCELLED:       { label: "ملغي", color: colors.semantic.error, icon: <XCircle size={14} /> },
-  FAILED_DELIVERY: { label: "فشل التوصيل", color: colors.semantic.error, icon: <Ban size={14} /> },
+  served:    { label: "تم التقديم", color: colors.semantic.success, icon: <CheckCircle2 size={14} /> },
+  DELIVERED: { label: "تم التوصيل", color: colors.semantic.success, icon: <CheckCircle2 size={14} /> },
+  cancelled: { label: "ملغي", color: colors.semantic.error, icon: <XCircle size={14} /> },
+  CANCELLED: { label: "ملغي", color: colors.semantic.error, icon: <XCircle size={14} /> },
 };
 
 const ORDER_TYPE_MAP: Record<string, string> = {
   dine_in: "محلي", takeaway: "فوري", delivery: "توصيل",
 };
 
-const PAYMENT_MAP: Record<string, string> = {
-  cash: "نقدي", card: "بطاقة", wallet: "محفظة", bank: "تحويل", account: "حساب",
-};
-
-const formatCurrency = (n: number) => `${n.toLocaleString("ar-EG", { minimumFractionDigits: 2 })} د.إ`;
 const formatDate = (dateStr: string) => {
   const d = new Date(dateStr);
   return d.toLocaleDateString("ar-EG", { year: "numeric", month: "short", day: "numeric" });
@@ -78,37 +41,26 @@ const formatTime = (dateStr: string) => {
 
 export const ClosedOrdersPage: React.FC = () => {
   const navigate = useNavigate();
-  const { hasRole } = useAuth();
-  const [orders, setOrders] = useState<ClosedOrder[]>([]);
+  const [orders, setOrders] = useState<ClosedCallCenterOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [pagination, setPagination] = useState<Pagination | null>(null);
+  const [pagination, setPagination] = useState<{ current_page: number; last_page: number; total: number } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-
-  const canEditClosedOrders = hasRole(ROLES.SUPER_ADMIN) || hasRole(ROLES.BRANCH_MANAGER) || hasRole(ROLES.ACCOUNTANT);
 
   const fetchOrders = useCallback(async (page = 1) => {
     try {
       setLoading(true);
       setError(null);
-      const params: Record<string, any> = { page, per_page: 20 };
-      if (searchQuery) params.search = searchQuery;
-      if (statusFilter !== "all") params.status = statusFilter;
-      else params.statuses = CLOSED_STATUSES.join(",");
-
-      const { data } = await api.get("/orders", { params });
-      const raw = data?.data;
-      if (Array.isArray(raw)) {
-        setOrders(raw);
-        setPagination(data?.meta || null);
-      } else if (raw?.data) {
-        setOrders(raw.data);
-        setPagination(raw?.meta || data?.meta || null);
-      } else {
-        setOrders([]);
-      }
+      const res = await callCenterService.getClosedOrders({
+        page, perPage: 20,
+        search: searchQuery || undefined,
+        status: statusFilter,
+      });
+      // إزالة تكرار دفاعية بالاعتماد على id الحقيقي — راجع activeOrdersView.ts للتفاصيل.
+      setOrders(dedupeById(res.data.data));
+      setPagination(res.data.meta);
     } catch (err: any) {
       setError(err?.response?.data?.message || "تعذر تحميل الطلبات المغلقة");
     } finally {
@@ -117,8 +69,6 @@ export const ClosedOrdersPage: React.FC = () => {
   }, [searchQuery, statusFilter]);
 
   useEffect(() => { fetchOrders(currentPage); }, [currentPage, fetchOrders]);
-
-  const filtered = orders.filter(o => CLOSED_STATUSES.includes(o.status));
 
   return (
     <div dir="rtl" style={{ fontFamily: typography.fontFamily.sans, minHeight: "100%" }}>
@@ -129,12 +79,8 @@ export const ClosedOrdersPage: React.FC = () => {
             الطلبات المغلقة
           </h1>
           <p style={{ fontSize: typography.size.sm, color: colors.neutral[500], marginTop: 4 }}>
-            {pagination?.total || filtered.length} طلب مغلق
-            {!canEditClosedOrders && (
-              <span style={{ color: colors.semantic.warning, marginRight: 8 }}>
-                — للقراءة فقط
-              </span>
-            )}
+            {pagination?.total ?? orders.length} طلب مغلق
+            <span style={{ color: colors.semantic.warning, marginRight: 8 }}>— للقراءة فقط</span>
           </p>
         </div>
         <button
@@ -155,7 +101,6 @@ export const ClosedOrdersPage: React.FC = () => {
 
       {/* Filters */}
       <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
-        {/* Search */}
         <div style={{ flex: 1, minWidth: 250, position: "relative" }}>
           <Search size={16} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", color: colors.neutral[400] }} />
           <input
@@ -169,7 +114,6 @@ export const ClosedOrdersPage: React.FC = () => {
             }}
           />
         </div>
-        {/* Status filter */}
         <select
           value={statusFilter}
           onChange={e => { setStatusFilter(e.target.value); setCurrentPage(1); }}
@@ -181,7 +125,6 @@ export const ClosedOrdersPage: React.FC = () => {
         >
           <option value="all">جميع الحالات</option>
           <option value="served">تم التقديم</option>
-          <option value="paid">مدفوع</option>
           <option value="DELIVERED">تم التوصيل</option>
           <option value="cancelled">ملغي</option>
         </select>
@@ -200,7 +143,7 @@ export const ClosedOrdersPage: React.FC = () => {
           <AlertCircle size={32} style={{ color: colors.semantic.error, marginBottom: 12 }} />
           <p style={{ fontSize: typography.size.sm, color: colors.semantic.error }}>{error}</p>
         </div>
-      ) : filtered.length === 0 ? (
+      ) : orders.length === 0 ? (
         <div style={{
           display: "flex", flexDirection: "column", alignItems: "center", padding: "60px 0",
           background: colors.neutral[50], borderRadius: radius.xl,
@@ -212,115 +155,17 @@ export const ClosedOrdersPage: React.FC = () => {
         </div>
       ) : (
         <>
-          {/* Orders table */}
-          <div style={{
-            background: colors.neutral[0], borderRadius: radius.xl,
-            border: `1px solid ${colors.border.subtle}`, overflow: "hidden",
-          }}>
-            {/* Table header */}
-            <div style={{
-              display: "grid", gridTemplateColumns: "80px 100px 1fr 100px 100px 120px 100px 80px",
-              gap: 12, padding: "12px 20px", background: colors.neutral[50],
-              borderBottom: `1px solid ${colors.border.subtle}`,
-              fontSize: typography.size.xs, fontWeight: typography.weight.semibold, color: colors.neutral[500],
-            }}>
-              <span>رقم</span>
-              <span>الحالة</span>
-              <span>العميل</span>
-              <span>النوع</span>
-              <span>الدفع</span>
-              <span>التاريخ</span>
-              <span style={{ textAlign: "left" }}>المبلغ</span>
-              <span style={{ textAlign: "center" }}>إجراءات</span>
-            </div>
-
-            {/* Rows */}
-            {filtered.map(order => {
-              const statusInfo = STATUS_MAP[order.status] || { label: order.status, color: colors.neutral[500], icon: null };
-              return (
-                <div
-                  key={order.id}
-                  style={{
-                    display: "grid", gridTemplateColumns: "80px 100px 1fr 100px 100px 120px 100px 80px",
-                    gap: 12, padding: "14px 20px", alignItems: "center",
-                    borderBottom: `1px solid ${colors.border.subtle}`,
-                    fontSize: typography.size.sm, transition: `background ${transitions.fast}`,
-                    cursor: "pointer",
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = colors.neutral[50]}
-                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-                  onClick={() => navigate(`/call-center/orders/${order.id}`)}
-                >
-                  <span style={{ fontWeight: typography.weight.bold, color: colors.neutral[900] }}>
-                    #{order.order_number}
-                  </span>
-                  <span style={{
-                    display: "inline-flex", alignItems: "center", gap: 4,
-                    padding: "3px 8px", borderRadius: radius.full, width: "fit-content",
-                    background: `color-mix(in srgb, ${statusInfo.color} 12%, transparent)`, color: statusInfo.color,
-                    fontSize: "11px", fontWeight: typography.weight.semibold,
-                  }}>
-                    {statusInfo.icon}
-                    {statusInfo.label}
-                  </span>
-                  <div>
-                    <p style={{ fontWeight: typography.weight.semibold, color: colors.neutral[800] }}>
-                      {order.customer_name || "بدون اسم"}
-                    </p>
-                    {order.customer_phone && (
-                      <p style={{ fontSize: "11px", color: colors.neutral[400], fontFamily: typography.fontFamily.mono }}>
-                        {order.customer_phone}
-                      </p>
-                    )}
-                  </div>
-                  <span style={{ color: colors.neutral[600] }}>
-                    {ORDER_TYPE_MAP[order.order_type] || order.order_type}
-                  </span>
-                  <span style={{ color: colors.neutral[600] }}>
-                    {PAYMENT_MAP[order.payment_method || ""] || "—"}
-                  </span>
-                  <div>
-                    <p style={{ color: colors.neutral[700] }}>{formatDate(order.created_at)}</p>
-                    <p style={{ fontSize: "11px", color: colors.neutral[400] }}>{formatTime(order.created_at)}</p>
-                  </div>
-                  <span style={{ fontWeight: typography.weight.extrabold, color: colors.neutral[900], textAlign: "left" }}>
-                    {formatCurrency(order.total)}
-                  </span>
-                  <div style={{ display: "flex", justifyContent: "center" }}>
-                    {canEditClosedOrders ? (
-                      <button
-                        onClick={e => { e.stopPropagation(); navigate(`/call-center/orders/${order.id}?edit=true`); }}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 4,
-                          padding: "4px 10px", borderRadius: radius.md,
-                          background: `color-mix(in srgb, ${colors.brand[500]} 3%, transparent)`, border: `1px solid color-mix(in srgb, ${colors.brand[500]} 13%, transparent)`,
-                          color: colors.brand[600], fontSize: "11px", fontWeight: typography.weight.semibold,
-                          cursor: "pointer", transition: `all ${transitions.fast}`,
-                        }}
-                      >
-                        <Edit3 size={12} /> تعديل
-                      </button>
-                    ) : (
-                      <button
-                        onClick={e => { e.stopPropagation(); navigate(`/call-center/orders/${order.id}`); }}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 4,
-                          padding: "4px 10px", borderRadius: radius.md,
-                          background: colors.neutral[100], border: `1px solid ${colors.border.subtle}`,
-                          color: colors.neutral[600], fontSize: "11px", fontWeight: typography.weight.semibold,
-                          cursor: "pointer", transition: `all ${transitions.fast}`,
-                        }}
-                      >
-                        <Eye size={12} /> عرض
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 16 }}>
+            {orders.map(order => (
+              <ClosedOrderCard
+                key={order.id}
+                order={order}
+                onOpen={() => navigate(`/call-center/orders/${order.id}`)}
+                onViewInvoice={() => navigate(`/call-center/orders/${order.id}?invoice=true`)}
+              />
+            ))}
           </div>
 
-          {/* Pagination */}
           {pagination && pagination.last_page > 1 && (
             <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 20 }}>
               {Array.from({ length: pagination.last_page }, (_, i) => i + 1).map(page => (
@@ -343,6 +188,113 @@ export const ClosedOrdersPage: React.FC = () => {
           )}
         </>
       )}
+    </div>
+  );
+};
+
+// ============================================================================
+// CLOSED ORDER CARD — للقراءة فقط لغالبية الموظفين: بدون Edit/Add Item/Cancel/Delete إطلاقًا،
+// فقط View Details (فتح الطلب) وView Invoice (من داخل صفحة التفاصيل). التعديل يبقى محصور
+// بالأدوار المُصرّح لها فقط (نفس القاعدة الموجودة أصلاً بالمشروع) بزر منفصل واضح.
+// ============================================================================
+
+export const ClosedOrderCard: React.FC<{
+  order: ClosedCallCenterOrder; onOpen: () => void; onViewInvoice: () => void;
+}> = ({ order, onOpen, onViewInvoice }) => {
+  const statusInfo = STATUS_MAP[order.status] || { label: order.status, color: colors.neutral[500], icon: null };
+  const paymentColor = order.payment_status === "paid" ? colors.semantic.success
+    : order.payment_status === "pending" ? colors.semantic.warning
+    : colors.neutral[500];
+  const paymentLabel = order.payment_status === "paid" ? PAYMENT_STATUS_LABELS.paid
+    : order.payment_status === "pending" ? PAYMENT_STATUS_LABELS.awaiting_payment
+    : PAYMENT_STATUS_LABELS.unpaid;
+
+  return (
+    <div style={{
+      display: "flex", flexDirection: "column", gap: 10,
+      padding: "16px 18px", borderRadius: radius.xl,
+      background: colors.neutral[0], border: `1px solid ${colors.border.subtle}`,
+      boxShadow: shadows.xs,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span title={order.order_number} style={{ fontSize: typography.size.lg, fontWeight: typography.weight.extrabold, color: colors.neutral[900] }}>
+          {getOrderReference(order.order_number)}
+        </span>
+        <span style={{
+          padding: "2px 8px", borderRadius: radius.full,
+          fontSize: "11px", fontWeight: typography.weight.semibold,
+          background: colors.neutral[100], color: colors.neutral[600],
+        }}>
+          {ORDER_TYPE_MAP[order.order_type] || order.order_type}
+        </span>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.neutral[800] }}>
+          <User size={13} style={{ color: colors.neutral[400] }} /> {order.customer_name || "بدون اسم"}
+        </span>
+        {order.customer_phone && (
+          <span dir="ltr" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: typography.size.xs, color: colors.neutral[500] }}>
+            <Phone size={12} style={{ color: colors.neutral[400] }} /> {order.customer_phone}
+          </span>
+        )}
+      </div>
+
+      <span style={{ fontSize: typography.size.xl, fontWeight: typography.weight.extrabold, color: colors.neutral[900] }}>
+        {formatShekel(order.total)}
+      </span>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+        <span style={{
+          display: "inline-flex", alignItems: "center", gap: 4,
+          padding: "3px 9px", borderRadius: radius.full,
+          fontSize: "11px", fontWeight: typography.weight.semibold,
+          background: `color-mix(in srgb, ${statusInfo.color} 12%, transparent)`, color: statusInfo.color,
+        }}>
+          {statusInfo.icon} {statusInfo.label}
+        </span>
+        <span style={{
+          display: "inline-flex", alignItems: "center", gap: 4,
+          padding: "3px 9px", borderRadius: radius.full,
+          fontSize: "11px", fontWeight: typography.weight.semibold,
+          background: `color-mix(in srgb, ${paymentColor} 12%, transparent)`, color: paymentColor,
+        }}>
+          ● {paymentLabel}
+        </span>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: typography.size.xs, color: colors.neutral[500] }}>
+        <Clock size={12} /> {formatDate(order.created_at)} — {formatTime(order.created_at)}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+        <button
+          onClick={onOpen}
+          style={{
+            flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            padding: "9px 12px", borderRadius: radius.lg,
+            background: colors.neutral[100], border: `1px solid ${colors.border.subtle}`,
+            color: colors.neutral[700], fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
+            cursor: "pointer", transition: `all ${transitions.fast}`,
+          }}
+        >
+          <Eye size={14} /> عرض التفاصيل
+        </button>
+        {/* طلب مغلق = للقراءة فقط دائمًا، بلا استثناء أدوار: عرض التفاصيل وعرض الفاتورة بس —
+            بدون تعديل/إضافة صنف/إلغاء إطلاقًا. */}
+        <button
+          onClick={onViewInvoice}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            padding: "9px 12px", borderRadius: radius.lg,
+            background: `color-mix(in srgb, ${colors.brand[500]} 3%, transparent)`, border: `1px solid color-mix(in srgb, ${colors.brand[500]} 13%, transparent)`,
+            color: colors.brand[600], fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
+            cursor: "pointer",
+          }}
+        >
+          <Receipt size={14} /> عرض الفاتورة
+        </button>
+      </div>
     </div>
   );
 };

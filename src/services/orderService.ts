@@ -241,6 +241,26 @@ export interface InvoiceFromApi {
   paid_amount?: number;
   remaining_amount?: number;
   paid_at?: string | null;
+  entity_name?: string | null;
+  branch_name?: string | null;
+  payment_method_display?: string | null;
+  tax_total?: number;
+  // تفاصيل عرض الفاتورة كما ترجع فعليًا من InvoiceResource::toArray بالباك اند —
+  // invoice_date نفسه مقسوم هون لتاريخ/وقت جاهزين للعرض.
+  details?: {
+    number: string;
+    date: string | null;
+    time: string | null;
+    currency?: string;
+    account_number?: string | null;
+  };
+  // تُملأ فقط لما تُقفل الفاتورة (تُدفع بالكامل) — راجع InvoiceController::addPayment.
+  closing?: {
+    user?: { id: number; name: string } | null;
+    pos_name?: string | null;
+    date: string | null;
+    time: string | null;
+  } | null;
   created_at: string;
   updated_at?: string;
   payments?: InvoicePaymentResponse[];
@@ -269,6 +289,7 @@ export interface InvoicePaymentPayload {
   payment_method?: PaymentMethod | string;
   method?: PaymentMethod | string;
   amount: number;
+  notes?: string;
   reference_number?: string;
   entity_type?: "customer" | "employee" | "supplier";
   entity_id?: number;
@@ -284,14 +305,17 @@ export interface InvoicePaymentResponse {
   id: number;
   invoice_id: number;
   amount: number;
-  payment_method: string;
+  payment_method?: string;
   method?: string;
+  number?: string;
+  paid_at?: string | null;
+  notes?: string | null;
   reference_number?: string;
   entity_type?: "customer" | "employee" | "supplier" | null;
   entity_id?: number | null;
   subledger_type?: "customer" | "employee" | "supplier" | null;
   subledger_id?: number | null;
-  created_at: string;
+  created_at?: string;
 }
 
 // ── نتيجة التحقق من الرقم المرجعي ───────────────────────────────────────────
@@ -383,13 +407,19 @@ export interface OrderFromApi {
   tickets: ProductionTicketFromApi[];
   payments?: InvoicePaymentResponse[];
   cashier?: { id: number; name: string };
-  branch?: { id: number; name: string } | null;
+  branch?: { id: number; name: string; phone?: string | null; address?: string | null } | null;
   delivery_fee?: number;
   delivery_address_snapshot?: { address?: string } | null;
   tax_rate?: number;
   tax_amount?: number;
   scheduled_at?: string | null;
   has_unsent_items?: boolean;
+  cancellation_reason?: string | null;
+  cancelled_at?: string | null;
+  // مستقلة عن status — مشتقة من Invoice.status الحقيقي (المصدر الوحيد الموثوق لحالة الدفع).
+  // راجع CallCenterService::derivePaymentStatus بالباك اند.
+  payment_status?: "paid" | "pending" | "unpaid";
+  invoice?: InvoiceFromApi | null;
   created_at: string;
   updated_at: string;
 }
@@ -872,8 +902,8 @@ export const orderService = {
     return data.data?.transaction || data.data;
   },
 
-  cancel: async (id: number): Promise<OrderFromApi> => {
-    const { data } = await api.post(`/orders/${id}/cancel`);
+  cancel: async (id: number, reason?: string): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${id}/cancel`, reason ? { reason } : undefined);
     return data.data as OrderFromApi;
   },
 

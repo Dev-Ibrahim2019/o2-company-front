@@ -294,6 +294,36 @@ body {
   background: rgba(226, 0, 4, 0.7);
 }
 
+/* Light mode: the same red thumb reads as an alert/error streak against white
+   surfaces (most visible on tall scrollable panels, e.g. the "الأكثر طلبًا"
+   card) — swap it for a quiet neutral gray, thinner, that only firms up on
+   hover instead of sitting there always-on. Dark mode is untouched above. */
+:root[data-theme="light"] .custom-scrollbar::-webkit-scrollbar,
+.theme-light .custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+:root[data-theme="light"] .custom-scrollbar::-webkit-scrollbar-thumb,
+.theme-light .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--o2-text) 14%, transparent);
+}
+
+:root[data-theme="light"] .custom-scrollbar::-webkit-scrollbar-thumb:hover,
+.theme-light .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--o2-text) 24%, transparent);
+}
+
+:root[data-theme="light"] .custom-scrollbar::-webkit-scrollbar-thumb:active,
+.theme-light .custom-scrollbar::-webkit-scrollbar-thumb:active {
+  background: color-mix(in srgb, var(--o2-text) 34%, transparent);
+}
+
+:root[data-theme="light"] .custom-scrollbar,
+.theme-light .custom-scrollbar {
+  scrollbar-color: color-mix(in srgb, var(--o2-text) 14%, transparent) transparent;
+}
+
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
@@ -761,10 +791,8 @@ body {
   color: var(--o2-text) !important;
 }
 
-:root[data-theme="light"] .text-slate-300,
 :root[data-theme="light"] .text-slate-400,
 :root[data-theme="light"] .text-slate-500,
-.theme-light .text-slate-300,
 .theme-light .text-slate-400,
 .theme-light .text-slate-500 {
   color: var(--o2-muted) !important;
@@ -863,4 +891,168 @@ body {
   background: color-mix(in srgb, var(--o2-surface) 85%, transparent);
   backdrop-filter: blur(20px) saturate(1.2);
   -webkit-backdrop-filter: blur(20px) saturate(1.2);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   hover:/group-hover: bridges for slate & gray utilities
+   ──────────────────────────────────────────────────────────────────────────
+   The base .text-slate-500 / .bg-slate-800 rules earlier in this file use
+   !important, which ALWAYS wins over a plain (non-!important) Tailwind
+   hover/group-hover rule — regardless of :hover actually being active.
+   Result: any element combining e.g. text-slate-500 with
+   hover:text-slate-300 never visibly changed on hover, in either theme,
+   because the base !important rule kept pinning the color.
+   Relocating these rules later in the file was NOT enough to fix it: this
+   project's CSS pipeline (@tailwindcss/vite) does not resolve same-
+   specificity !important ties by plain source order the way vanilla CSS
+   does. So instead every selector below is prefixed with ":root " to push
+   its specificity to (0,3,0) — one level above the highest-specificity
+   competing rule in this file, ":root[data-theme=light] .text-slate-500"
+   at (0,2,0) — which makes it win on SPECIFICITY, independent of source
+   order or bundler quirks. Verified via CDP CSS.forcePseudoState, not just
+   a real-mouse test (headless :hover can be flaky to simulate). ═════════ */
+
+:root .hover\:text-slate-100:hover,
+:root .hover\:text-slate-200:hover,
+:root .hover\:text-slate-300:hover,
+:root .hover\:text-slate-800:hover,
+:root .hover\:text-slate-900:hover,
+:root .hover\:text-white:hover,
+:root .group:hover .group-hover\:text-slate-100,
+:root .group:hover .group-hover\:text-slate-200,
+:root .group:hover .group-hover\:text-slate-300,
+:root .group:hover .group-hover\:text-white {
+  color: var(--o2-text) !important;
+}
+
+:root .hover\:text-slate-400:hover,
+:root .hover\:text-slate-500:hover,
+:root .hover\:text-slate-600:hover,
+:root .hover\:text-slate-700:hover,
+:root .group:hover .group-hover\:text-slate-400,
+:root .group:hover .group-hover\:text-slate-500 {
+  color: var(--o2-muted) !important;
+}
+
+:root .hover\:bg-slate-950:hover {
+  background-color: var(--o2-bg) !important;
+}
+
+:root .hover\:bg-slate-900:hover,
+:root .hover\:bg-gray-900:hover {
+  background-color: var(--o2-surface) !important;
+}
+
+:root .hover\:bg-slate-800:hover,
+:root .hover\:bg-gray-800:hover,
+:root .group:hover .group-hover\:bg-slate-800 {
+  background-color: var(--o2-surface-raised) !important;
+}
+
+:root .hover\:bg-slate-700:hover,
+:root .hover\:bg-gray-700:hover,
+:root .group:hover .group-hover\:bg-slate-700 {
+  background-color: color-mix(in srgb, var(--o2-surface-raised) 82%, var(--o2-text) 18%) !important;
+}
+
+:root .hover\:bg-slate-600:hover,
+:root .group:hover .group-hover\:bg-slate-600 {
+  background-color: color-mix(in srgb, var(--o2-surface-raised) 70%, var(--o2-text) 30%) !important;
+}
+
+:root .hover\:bg-slate-500:hover {
+  background-color: color-mix(in srgb, var(--o2-surface-raised) 55%, var(--o2-text) 45%) !important;
+}
+
+/* Light-toned surfaces (bg-slate-50/100/200/300/400) — mostly used by
+   light-styled admin screens for subtle hover/selected backgrounds, not by
+   the dark call-center panels. No base (non-hover) rule existed for these
+   either, so a plain bg-slate-100 usage was leaking Tailwind default raw
+   hardcoded gray instead of following the theme — fixed here too. These
+   base (non-hover) ones don't need the :root specificity bump since
+   nothing else in the file targets them, but kept consistent anyway. */
+.bg-slate-50,
+.bg-gray-50 {
+  background-color: color-mix(in srgb, var(--o2-surface) 96%, var(--o2-text) 4%) !important;
+}
+:root .hover\:bg-slate-50:hover,
+:root .hover\:bg-gray-50:hover {
+  background-color: color-mix(in srgb, var(--o2-surface) 96%, var(--o2-text) 4%) !important;
+}
+
+.bg-slate-100,
+.bg-gray-100 {
+  background-color: color-mix(in srgb, var(--o2-surface) 92%, var(--o2-text) 8%) !important;
+}
+:root .hover\:bg-slate-100:hover,
+:root .hover\:bg-gray-100:hover {
+  background-color: color-mix(in srgb, var(--o2-surface) 92%, var(--o2-text) 8%) !important;
+}
+
+.bg-slate-200,
+.bg-gray-200 {
+  background-color: color-mix(in srgb, var(--o2-surface) 85%, var(--o2-text) 15%) !important;
+}
+:root .hover\:bg-slate-200:hover,
+:root .hover\:bg-gray-200:hover {
+  background-color: color-mix(in srgb, var(--o2-surface) 85%, var(--o2-text) 15%) !important;
+}
+
+.bg-slate-300,
+.bg-gray-300 {
+  background-color: color-mix(in srgb, var(--o2-surface) 75%, var(--o2-text) 25%) !important;
+}
+
+.bg-slate-400,
+.bg-gray-400 {
+  background-color: var(--o2-muted) !important;
+}
+
+.bg-slate-500,
+.bg-gray-500 {
+  background-color: color-mix(in srgb, var(--o2-muted) 70%, var(--o2-text) 30%) !important;
+}
+
+.bg-slate-600,
+.bg-gray-600 {
+  background-color: color-mix(in srgb, var(--o2-surface-raised) 55%, var(--o2-text) 45%) !important;
+}
+
+/* ── text-gray-*/border-gray-* — same scale as text-slate-*/border-slate-*
+   above, just never had a bridge of their own (only bg-gray-* did). Any
+   text-gray-500 usage was rendering Tailwind default raw OKLCH gray
+   instead of the theme muted-text token. ────────────────────────────── */
+.text-gray-100,
+.text-gray-200,
+.text-gray-300,
+.text-gray-800,
+.text-gray-900 {
+  color: var(--o2-text) !important;
+}
+
+.text-gray-400,
+.text-gray-500,
+.text-gray-600,
+.text-gray-700 {
+  color: var(--o2-muted) !important;
+}
+
+:root .hover\:text-gray-100:hover,
+:root .hover\:text-gray-200:hover,
+:root .hover\:text-gray-300:hover,
+:root .hover\:text-gray-800:hover,
+:root .hover\:text-gray-900:hover {
+  color: var(--o2-text) !important;
+}
+
+:root .hover\:text-gray-400:hover,
+:root .hover\:text-gray-500:hover,
+:root .hover\:text-gray-600:hover,
+:root .hover\:text-gray-700:hover {
+  color: var(--o2-muted) !important;
+}
+
+.border-gray-200,
+.border-gray-300 {
+  border-color: var(--o2-border) !important;
 }

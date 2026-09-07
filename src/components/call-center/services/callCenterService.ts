@@ -186,6 +186,9 @@ export interface OrderFeedbackPayload {
 }
 
 export type ActiveOrderScope = "operational_active" | "awaiting_payment" | "kitchen_active" | "delivery_active" | "no_branch";
+// مشتقة من Invoice.status الحقيقي (المصدر الوحيد الموثوق لحالة الدفع بالمشروع) — راجع
+// CallCenterService::derivePaymentStatus بالباك اند. مستقلة تمامًا عن order.status.
+export type BackendPaymentStatus = "paid" | "pending" | "unpaid";
 export interface ActiveCallCenterOrder {
   id: number;
   order_number: string;
@@ -199,9 +202,27 @@ export interface ActiveCallCenterOrder {
   created_at: string;
   scheduled_at?: string | null;
   payments?: Array<{ method: "cash" | "card" | "wallet"; amount: number }> | null;
+  payment_status?: BackendPaymentStatus;
   scopes: ActiveOrderScope[];
 }
 export type ActiveOrderGroups = Record<ActiveOrderScope, ActiveCallCenterOrder[]>;
+
+export interface ClosedCallCenterOrder {
+  id: number;
+  order_number: string;
+  status: string;
+  order_type: string;
+  customer_id: number | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  total: number;
+  branch: { id: number; name: string } | null;
+  created_at: string;
+  updated_at: string;
+  payment_status: BackendPaymentStatus;
+}
+export interface ClosedOrdersPageMeta { current_page: number; last_page: number; per_page: number; total: number }
+export interface ClosedOrdersResponse { data: ClosedCallCenterOrder[]; meta: ClosedOrdersPageMeta }
 
 export interface OrderDetailItem {
   id: number;
@@ -418,6 +439,18 @@ export interface CustomerDirectoryPage { data: Array<Omit<CustomerSearchResult,'
 export const callCenterService = {
   getActiveOrders: async (branchId?: number): Promise<ApiResponse<ActiveOrderGroups>> => {
     const res = await api.get("/call-center/active-orders", { params: branchId ? { branch_id: branchId } : undefined });
+    return res.data;
+  },
+  getClosedOrders: async (params: {
+    branchId?: number; search?: string; status?: string; page?: number; perPage?: number;
+  } = {}): Promise<ApiResponse<ClosedOrdersResponse>> => {
+    const res = await api.get("/call-center/closed-orders", {
+      params: {
+        branch_id: params.branchId, search: params.search || undefined,
+        status: params.status && params.status !== "all" ? params.status : undefined,
+        page: params.page, per_page: params.perPage,
+      },
+    });
     return res.data;
   },
   resolveCustomerByPhone: async (phone: string, signal?: AbortSignal): Promise<ApiResponse<CustomerResolution>> => {

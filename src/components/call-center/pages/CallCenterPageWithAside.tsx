@@ -3,6 +3,7 @@ import {
   Phone, Search, ShoppingCart, Star, MapPin, User,
   Trash2, Save, Package, TrendingUp, Loader2, CheckCircle, Eye,
   MessageSquare, Sparkles, Users, Receipt, LayoutGrid, List as ListIcon, Plus,
+  Banknote, CreditCard, Wallet, Check,
 } from "lucide-react";
 import { colors, typography, radius, shadows, transitions } from "../design/tokens";
 import { Button, Badge, Card } from "../design/components";
@@ -87,6 +88,7 @@ interface FavoriteItem {
 type PaymentMethod = "cash" | "card" | "wallet";
 type PaymentSplit = { method: PaymentMethod; amount: number };
 const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = { cash: "نقداً", card: "بطاقة", wallet: "محفظة" };
+const PAYMENT_METHOD_ICONS: Record<PaymentMethod, React.ComponentType<{ size?: number }>> = { cash: Banknote, card: CreditCard, wallet: Wallet };
 const MENU_VIEW_MODE_STORAGE_KEY = "callCenterMenuViewMode";
 
 // يطابق بالاسم (عربي/انجليزي) أو بكود الصنف (نصي زي ITM-40513 أو رقمي زي 901) — نفس المنطق يُستخدم
@@ -947,7 +949,7 @@ export const CallCenterPageWithAside: React.FC = () => {
           <Card padding="20px" style={{ boxShadow: shadows.xs }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
               <h2 style={{ display: "flex", alignItems: "center", gap: 8, fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.neutral[900] }}>
-                <Users size={16} style={{ color: colors.brand[500] }} />
+                <Users size={16} style={{ color: colors.neutral[400] }} />
                 البحث برقم العميل
               </h2>
               {customer && (
@@ -1011,7 +1013,7 @@ export const CallCenterPageWithAside: React.FC = () => {
           <Card padding="20px" style={{ boxShadow: shadows.xs }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
               <h2 style={{ display: "flex", alignItems: "center", gap: 8, fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.neutral[900] }}>
-                <Receipt size={16} style={{ color: colors.brand[500] }} />
+                <Receipt size={16} style={{ color: colors.neutral[400] }} />
                 آخر 5 أوردرات لهذا العميل
               </h2>
               <div style={{ position: "relative", width: "100%", maxWidth: 200 }}>
@@ -1030,12 +1032,13 @@ export const CallCenterPageWithAside: React.FC = () => {
                 <Loader2 size={22} className="animate-spin" style={{ color: colors.brand[500] }} />
               </div>
             ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px", minWidth: 560 }}>
+              <div style={{ position: "relative" }}>
+                <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", minWidth: 460 }}>
                   <thead>
                     <tr style={{ borderBottom: `2px solid ${colors.border.subtle}` }}>
                       {["رقم الطلب", "تاريخ الطلب", "مكان الاستلام", "المبلغ الإجمالي", "عرض التفاصيل"].map(h => (
-                        <th key={h} style={{ padding: "12px 16px", textAlign: "right", fontWeight: 600, color: colors.neutral[500], fontSize: "12px" }}>
+                        <th key={h} style={{ padding: "10px 8px", textAlign: "right", fontWeight: 600, color: colors.neutral[500], fontSize: "11px", whiteSpace: "nowrap" }}>
                           {h}
                         </th>
                       ))}
@@ -1045,18 +1048,19 @@ export const CallCenterPageWithAside: React.FC = () => {
                     {filteredRecentOrders.map(order => (
                       <React.Fragment key={order.id}>
                         <tr style={{ borderBottom: `1px solid ${colors.neutral[100]}` }}>
-                          <td style={{ padding: "14px 16px", color: colors.neutral[900], fontWeight: 500 }}>#{order.order_number}</td>
-                          <td style={{ padding: "14px 16px", color: colors.neutral[500] }}>{formatDate(order.created_at)}</td>
-                          <td style={{ padding: "14px 16px", color: colors.neutral[500] }}>{pickupLabel(order)}</td>
-                          <td style={{ padding: "14px 16px", fontWeight: 600, color: colors.neutral[900] }}>{formatCurrency(order.total)}</td>
-                          <td style={{ padding: "14px 16px" }}>
+                          <td style={{ padding: "10px 8px", color: colors.neutral[900], fontWeight: 500, whiteSpace: "nowrap" }}>#{order.order_number}</td>
+                          <td style={{ padding: "10px 8px", color: colors.neutral[500], whiteSpace: "nowrap" }}>{formatDate(order.created_at)}</td>
+                          <td style={{ padding: "10px 8px", color: colors.neutral[500] }}>{pickupLabel(order)}</td>
+                          <td style={{ padding: "10px 8px", fontWeight: 600, color: colors.neutral[900], whiteSpace: "nowrap" }}>{formatCurrency(order.total)}</td>
+                          <td style={{ padding: "10px 8px" }}>
                             <button
                               onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}
                               style={{
                                 display: "inline-flex", alignItems: "center", gap: 6,
-                                padding: "6px 16px", borderRadius: radius.full,
+                                padding: "6px 12px", borderRadius: radius.full,
                                 border: `1.5px solid ${colors.semantic.success}`, background: "transparent",
-                                color: colors.semantic.success, fontSize: "12px", fontWeight: 600, cursor: "pointer",
+                                color: colors.semantic.success, fontSize: "11px", fontWeight: 600, cursor: "pointer",
+                                whiteSpace: "nowrap",
                                 transition: `all ${transitions.fast}`,
                               }}
                               onMouseEnter={e => { e.currentTarget.style.background = colors.semantic.success; e.currentTarget.style.color = "#fff"; }}
@@ -1154,6 +1158,16 @@ export const CallCenterPageWithAside: React.FC = () => {
                     ))}
                   </tbody>
                 </table>
+                </div>
+                {/* تلميح بصري إنه في محتوى إضافي يقدر يمرّر له أفقيًا — الجدول أعرض من حاويته بمساحات ضيقة */}
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute", top: 0, bottom: 0, left: 0, width: 28,
+                    background: `linear-gradient(to left, transparent, ${colors.surface.raised})`,
+                    pointerEvents: "none",
+                  }}
+                />
               </div>
             )}
           </Card>
@@ -1161,7 +1175,7 @@ export const CallCenterPageWithAside: React.FC = () => {
           {/* ── Details Section ── */}
           <Card padding="20px" style={{ boxShadow: shadows.xs }}>
             <h2 style={{ display: "flex", alignItems: "center", gap: 8, fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.neutral[900], marginBottom: 16 }}>
-              <MessageSquare size={16} style={{ color: colors.brand[500] }} />
+              <MessageSquare size={16} style={{ color: colors.neutral[400] }} />
               التفاصيل
             </h2>
 
@@ -1205,7 +1219,7 @@ export const CallCenterPageWithAside: React.FC = () => {
           <Card padding="20px" style={{ boxShadow: shadows.xs }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
               <h2 style={{ display: "flex", alignItems: "center", gap: 8, fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.neutral[900] }}>
-                <TrendingUp size={16} style={{ color: colors.brand[500] }} />
+                <TrendingUp size={16} style={{ color: colors.neutral[400] }} />
                 الأكثر طلبًا لهذا العميل
               </h2>
               <Badge variant="brand"><Sparkles size={11} /> تتبعي</Badge>
@@ -1268,7 +1282,7 @@ export const CallCenterPageWithAside: React.FC = () => {
                         <button
                           key={id}
                           title={ORDER_TYPE_TOOLTIPS[id]}
-                          className={`px-2 sm:px-2.5 py-1 text-[10px] sm:text-[11px] font-black rounded-md transition-all whitespace-nowrap ${orderType === id ? "bg-slate-700 text-white shadow-lg" : "text-slate-500 hover:text-slate-300"}`}
+                          className={`px-2 sm:px-2.5 py-1.5 text-[12px] sm:text-[13px] font-black rounded-md transition-all whitespace-nowrap ${orderType === id ? "bg-slate-700 text-white shadow-lg" : "text-slate-500 hover:text-slate-300"}`}
                           onClick={() => setOrderType(id)}
                         >
                           {ORDER_TYPE_LABELS[id]}
@@ -1538,14 +1552,22 @@ export const CallCenterPageWithAside: React.FC = () => {
                   <div className="flex gap-1.5">
                     {(["cash", "card", "wallet"] as const).map(method => {
                       const active = payments.some(p => p.method === method);
+                      const Icon = PAYMENT_METHOD_ICONS[method];
                       return (
                         <button
                           key={method}
                           type="button"
                           onClick={() => togglePaymentMethod(method)}
-                          className={`flex-1 py-2 text-[11px] sm:text-[12px] font-black rounded-lg transition-all ${active ? "bg-slate-700 text-white shadow-lg shadow-black/30" : "bg-slate-800 text-slate-500 hover:text-slate-300 border border-white/5"}`}
+                          aria-pressed={active}
+                          className={`relative flex-1 py-2.5 text-[12px] sm:text-[13px] font-black rounded-lg transition-all flex items-center justify-center gap-1.5 ${active ? "bg-slate-700 text-white shadow-lg shadow-black/30 ring-2 ring-white/20" : "bg-slate-800 text-slate-500 hover:text-slate-300 border border-white/5"}`}
                         >
+                          <Icon size={14} />
                           {PAYMENT_METHOD_LABELS[method]}
+                          {active && (
+                            <span className="absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center">
+                              <Check size={10} strokeWidth={3} />
+                            </span>
+                          )}
                         </button>
                       );
                     })}
