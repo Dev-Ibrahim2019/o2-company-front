@@ -7,9 +7,12 @@ import { crmApi } from "./api";
 import { money as formatMoney, num } from "./format";
 import { getCrmError } from "./components";
 import "./customers-ui/crmx.css";
-import { CrmOrderExpandedPanel, CrmPageHeader, CrmPagination, CrmSearchBar, CrmStatusBadge, CrmToolbarSkeleton } from "./customers-ui";
-import { CRM_ORDER_SOURCE_LABELS } from "./customers-ui/sourceOptions";
-import type { CrmOrderRow, CrmPage } from "./types";
+import {
+  CrmOrderExpandedPanel, CrmOrderQuickView, CrmPageHeader, CrmPagination, CrmSearchBar,
+  CrmStatusBadge, CrmToolbarSkeleton, PaymentStatusBadge,
+} from "./customers-ui";
+import { CRM_ORDER_SOURCE_LABELS, CRM_ORDER_TYPE_LABELS, crmOrderTypeLabel } from "./customers-ui/sourceOptions";
+import type { CrmOrderDetails, CrmOrderRow, CrmPage } from "./types";
 
 // Real orders.status values this filter exposes — matches CrmStatusBadge's
 // own mapping exactly (see database/migrations/..._create_orders_table.php).
@@ -43,12 +46,6 @@ const SOURCE_FILTER_OPTIONS: Array<[string, string]> = [
 // ordersIndex()/ordersDelayed() already computed from the real `orders`
 // table. "All"/"Active"/"Delayed" are the same component with different
 // query params, not three separate implementations.
-
-const ORDER_TYPE_LABELS: Record<string, string> = {
-  dine_in: "صالة",
-  takeaway: "سفري",
-  delivery: "توصيل",
-};
 
 // Channel colour for a small dot beside the order number — a new, CRM-only
 // convention (no existing screen colours by channel today). Keyed on
@@ -88,7 +85,7 @@ const CHANNEL_LABEL_NONE = "غير معروف";
 
 function channelDot(order: CrmOrderRow): { cls: string; label: string } {
   const knownClass = CHANNEL_DOT_CLASS[order.order_type];
-  if (knownClass) return { cls: knownClass, label: ORDER_TYPE_LABELS[order.order_type] };
+  if (knownClass) return { cls: knownClass, label: CRM_ORDER_TYPE_LABELS[order.order_type] };
   if (order.source === "call_center") return { cls: CHANNEL_DOT_FALLBACK, label: CHANNEL_LABEL_FALLBACK };
   return { cls: CHANNEL_DOT_NONE, label: CHANNEL_LABEL_NONE };
 }
@@ -195,42 +192,7 @@ function useMinuteTick(enabled: boolean) {
   return nowMs;
 }
 
-function orderTypeLabel(order: CrmOrderRow) {
-  if (order.table?.zone || order.table?.table_number) {
-    const parts = [order.table.zone, order.table.table_number ? `طاولة ${order.table.table_number}` : null].filter(Boolean);
-    return parts.join(" · ");
-  }
-  return ORDER_TYPE_LABELS[order.order_type] || order.order_type;
-}
-
 const COLUMNS = ["", "رقم الطلب", "العميل", "المصدر", "النوع / الطاولة", "الفرع", "الحالة", "الدفع", "الإجمالي", "منذ"];
-
-const PAYMENT_BADGE_TONE_CLASS: Record<"success" | "warning" | "neutral", string> = {
-  success: "bg-[var(--crmx-success-soft)] text-[var(--crmx-success-text)]",
-  warning: "bg-[var(--crmx-warning-soft)] text-[var(--crmx-warning-text)]",
-  neutral: "bg-[var(--crmx-neutral-soft)] text-[var(--crmx-text-secondary)]",
-};
-
-// `is_paid` is the backend-derived source of truth (status === 'paid' ||
-// payment_status === 'paid') — raw payment_status alone is blank for most
-// actually-paid orders (POS path never writes it), so it must not be read
-// directly here.
-function PaymentBadge({ order }: { order: CrmOrderRow }) {
-  let tone: "success" | "warning" | "neutral" = "neutral";
-  let label = "غير مدفوع";
-  if (order.is_paid) {
-    tone = "success";
-    label = "مدفوع";
-  } else if (order.payment_status && order.payment_status !== "unpaid") {
-    tone = "warning";
-    label = PAYMENT_STATUS_FILTER_OPTIONS.find(([v]) => v === order.payment_status)?.[1] || order.payment_status;
-  }
-  return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-bold whitespace-nowrap ${PAYMENT_BADGE_TONE_CLASS[tone]}`}>
-      {label}
-    </span>
-  );
-}
 
 export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) {
   const { user } = useAuth();
@@ -243,6 +205,16 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
   const [branches, setBranches] = useState<Branch[]>([]);
   const toggle = (id: string | number) => setOpenOrderId((cur) => (cur === id ? null : id));
   const slaNowMs = useMinuteTick(mode === "active");
+
+  // Order Quick View — clicking a row opens this instead of jumping straight
+  // to the full expansion below; "عرض الطلب" inside it is what actually
+  // calls toggle(). preloadedDetails carries whatever the quick view already
+  // fetched for its items summary, keyed by order id, so CrmOrderExpandedPanel
+  // doesn't re-fetch the same /crm/orders/{id} the moment it opens.
+  const [quickView, setQuickView] = useState<{ order: CrmOrderRow; anchorEl: HTMLElement } | null>(null);
+  const [preloadedDetails, setPreloadedDetails] = useState<Record<string, CrmOrderDetails>>({});
+  const closeQuickView = useCallback(() => setQuickView(null), []);
+  const openQuickView = (order: CrmOrderRow, anchorEl: HTMLElement) => setQuickView({ order, anchorEl });
 
   useEffect(() => {
     if (!isGlobal) return;
@@ -450,11 +422,32 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
                   const isFlagged = mode === "delayed" && order.is_delayed;
                   const severity = isFlagged ? delaySeverity(order.elapsed_minutes, minutes) : null;
                   const style = severity ? SEVERITY_STYLE[severity] : null;
+                  const isSelected = quickView?.order.id === order.id;
                   return (
                     <Fragment key={order.id}>
+                      {/* Clicking (or Enter/Space-activating) the row opens the quick view,
+                          not the full expansion directly — "عرض الطلب" inside the quick view
+                          is what calls toggle() now. The closest(...) guard mirrors the same
+                          fix just applied to DomainTable's row handler (see tabs/shared.tsx):
+                          nothing interactive lives inside this row's cells today, but the
+                          guard costs nothing and prevents the same class of bug the moment
+                          one is added. isSelected keeps the row visibly "picked" while its
+                          quick view is open, the way a selected list item should look. */}
                       <tr
-                        onClick={() => toggle(order.id)}
-                        className={`crmx-table-row cursor-pointer border-b border-[var(--crmx-border)] transition-colors last:border-0 ${style?.row ?? ""}`}
+                        onClick={(e) => {
+                          if ((e.target as HTMLElement).closest("button, select, a, input, textarea, label")) return;
+                          openQuickView(order, e.currentTarget);
+                        }}
+                        tabIndex={0}
+                        role="button"
+                        aria-haspopup="dialog"
+                        onKeyDown={(e) => {
+                          if ((e.target as HTMLElement).closest("button, select, a, input, textarea, label")) return;
+                          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openQuickView(order, e.currentTarget); }
+                        }}
+                        className={`crmx-table-row cursor-pointer border-b border-[var(--crmx-border)] transition-colors focus:outline-none last:border-0 ${style?.row ?? ""} ${
+                          isSelected ? "bg-[var(--crmx-primary-soft)]/40" : ""
+                        }`}
                       >
                         <td className="px-2 text-center">
                           <ChevronDown className={`mx-auto h-4 w-4 text-[var(--crmx-text-muted)] transition-transform ${isOpen ? "rotate-180" : ""}`} />
@@ -480,10 +473,10 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
                           {order.customer_phone && <div className="text-[12.5px] text-[var(--crmx-text-muted)]" dir="ltr">{order.customer_phone}</div>}
                         </td>
                         <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">{CRM_ORDER_SOURCE_LABELS[order.source ?? ""] || order.source || "—"}</td>
-                        <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">{orderTypeLabel(order)}</td>
+                        <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">{crmOrderTypeLabel(order)}</td>
                         <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">{order.branch?.name || "—"}</td>
                         <td className="px-4 py-4"><CrmStatusBadge value={order.status} /></td>
-                        <td className="px-4 py-4"><PaymentBadge order={order} /></td>
+                        <td className="px-4 py-4"><PaymentStatusBadge isPaid={order.is_paid} paymentStatus={order.payment_status} /></td>
                         <td className="px-4 py-4 text-[14px] font-bold text-[var(--crmx-text)]">{formatMoney(order.total)}</td>
                         <td className={`px-4 py-4 text-[14px] font-semibold ${style?.time ?? "text-[var(--crmx-text-secondary)]"}`}>
                           <span className="flex items-center gap-1.5">
@@ -500,7 +493,7 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
                         // payment status would just reintroduce that bug one layer up.
                         <tr className="border-b border-[var(--crmx-border)] bg-[var(--crmx-bg)] last:border-0">
                           <td colSpan={COLUMNS.length} className="p-0">
-                            <CrmOrderExpandedPanel orderId={order.id} />
+                            <CrmOrderExpandedPanel orderId={order.id} preloadedOrder={preloadedDetails[String(order.id)]} />
                           </td>
                         </tr>
                       )}
@@ -521,6 +514,17 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
           />
         </div>
       )}
+
+      <CrmOrderQuickView
+        order={quickView?.order ?? null}
+        anchorEl={quickView?.anchorEl ?? null}
+        onClose={closeQuickView}
+        onViewOrder={(order, details) => {
+          closeQuickView();
+          if (details) setPreloadedDetails((prev) => ({ ...prev, [String(order.id)]: details }));
+          if (openOrderId !== order.id) toggle(order.id);
+        }}
+      />
     </section>
   );
 }

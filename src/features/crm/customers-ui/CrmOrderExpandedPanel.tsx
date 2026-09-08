@@ -139,9 +139,24 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return <h4 className="mb-2 text-[13px] font-bold uppercase tracking-wide text-[var(--crmx-text-muted)]">{children}</h4>;
 }
 
-export function CrmOrderExpandedPanel({ orderId }: { orderId: string | number }) {
-  const [order, setOrder] = useState<CrmOrderDetails>();
-  const [loading, setLoading] = useState(true);
+export function CrmOrderExpandedPanel({
+  orderId,
+  preloadedOrder,
+}: {
+  orderId: string | number;
+  /**
+   * Skip the initial fetch when the caller already has this exact order's
+   * details — the order quick view popover fetches /crm/orders/{id} to build
+   * its own items summary, and hands the result here when "عرض الطلب" opens
+   * this panel moments later, so the same order is never fetched twice for
+   * one click-through. Ignored (falls back to the normal fetch) if it's for
+   * a different order than `orderId`.
+   */
+  preloadedOrder?: CrmOrderDetails;
+}) {
+  const preloadMatches = preloadedOrder && String(preloadedOrder.id) === String(orderId);
+  const [order, setOrder] = useState<CrmOrderDetails | undefined>(preloadMatches ? preloadedOrder : undefined);
+  const [loading, setLoading] = useState(!preloadMatches);
   const [error, setError] = useState<{ status?: number; message: string }>();
   const [showTimeline, setShowTimeline] = useState(false);
 
@@ -153,7 +168,11 @@ export function CrmOrderExpandedPanel({ orderId }: { orderId: string | number })
       .catch((e) => setError(getCrmError(e)))
       .finally(() => setLoading(false));
   };
-  useEffect(load, [orderId]);
+  useEffect(() => {
+    if (preloadMatches) { setOrder(preloadedOrder); setLoading(false); setError(undefined); return; }
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId]);
 
   if (loading) {
     return <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-[var(--crmx-text-muted)]" /></div>;

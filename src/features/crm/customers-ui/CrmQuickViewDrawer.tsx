@@ -13,12 +13,16 @@ import { CRM_CUSTOMER_SOURCE_LABELS, CRM_GENDER_LABELS } from "./sourceOptions";
 import { CrmAvatar } from "./CrmAvatar";
 import { CrmStatusBadge } from "./CrmStatusBadge";
 
-type Fact = { label: string; value: string; ltr?: boolean; strong?: boolean };
+export type Fact = { label: string; value: string; ltr?: boolean; strong?: boolean };
 
 // A borderless label/value row — the section header + a single top divider
 // between sections carries the grouping, so individual facts don't each
 // need their own box (fewer borders, calmer reading rhythm).
-function FactRow({ label, value, ltr, strong }: Fact) {
+//
+// Exported alongside Section below so other quick-view-style surfaces (the
+// order quick view popover, for one) render facts identically instead of
+// growing a second copy of the same two components.
+export function FactRow({ label, value, ltr, strong }: Fact) {
   return (
     <div className="flex items-baseline justify-between gap-3 py-1.5 text-[13px]">
       <dt className="shrink-0 text-[var(--crmx-text-secondary)]">{label}</dt>
@@ -32,7 +36,7 @@ function FactRow({ label, value, ltr, strong }: Fact) {
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+export function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="border-t border-[var(--crmx-border)] py-4 first:border-t-0 first:pt-0">
       <h3 className="mb-1 text-[11px] font-bold uppercase tracking-wide text-[var(--crmx-text-muted)]">{title}</h3>

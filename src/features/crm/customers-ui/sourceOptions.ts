@@ -1,4 +1,4 @@
-import type { CrmCustomerSource, CrmGender } from "../types";
+import type { CrmCustomerSource, CrmGender, CrmOrderRow } from "../types";
 
 // Single source of truth for Customer Source labels/options across the CRM
 // frontend — matches CrmController::CUSTOMER_SOURCE_VALUES/SOURCE_LABELS on
@@ -25,6 +25,28 @@ export const CRM_ORDER_SOURCE_LABELS: Record<string, string> = {
   pos: "نقطة بيع (POS)",
   call_center: "كول سنتر",
 };
+
+// orders.order_type — the three real values. Moved here (out of
+// OrdersPage.tsx) so the order quick view can show the same label without a
+// second copy of this map.
+export const CRM_ORDER_TYPE_LABELS: Record<string, string> = {
+  dine_in: "صالة",
+  takeaway: "سفري",
+  delivery: "توصيل",
+};
+
+/**
+ * "النوع / الطاولة" — a dine-in order with a seated table reads as its zone
+ * and table number instead of the generic "صالة" label, exactly as the
+ * orders table's own column already showed it before this was extracted.
+ */
+export function crmOrderTypeLabel(order: Pick<CrmOrderRow, "order_type" | "table">): string {
+  if (order.table?.zone || order.table?.table_number) {
+    const parts = [order.table.zone, order.table.table_number ? `طاولة ${order.table.table_number}` : null].filter(Boolean);
+    return parts.join(" · ");
+  }
+  return CRM_ORDER_TYPE_LABELS[order.order_type] || order.order_type;
+}
 
 export const CRM_GENDER_LABELS: Record<CrmGender, string> = {
   male: "ذكر",
