@@ -29,6 +29,7 @@
 
 import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
+import { O2LoadingSpinner } from "../components/shared/O2LoadingSpinner";
 import { useAuth } from "./AuthContext";
 
 interface ProtectedRouteProps {
@@ -49,8 +50,8 @@ interface ProtectedRouteProps {
 const LoadingScreen: React.FC = () => (
   <div className="min-h-screen bg-slate-950 flex items-center justify-center">
     <div className="text-center">
-      <div className="w-16 h-16 border-4 border-red-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-      <p className="text-slate-400 font-bold text-sm">جاري التحقق من الصلاحيات...</p>
+      <O2LoadingSpinner size={128} />
+      <p className="text-slate-400 font-bold text-sm mt-4">جاري التحقق من الصلاحيات...</p>
     </div>
   </div>
 );
