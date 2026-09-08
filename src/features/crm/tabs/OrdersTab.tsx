@@ -1,8 +1,9 @@
 import { ChevronDown, Star } from "lucide-react";
-import { Fragment, useState } from "react";
+import { Fragment, useCallback, useState } from "react";
 import { CrmState } from "../components";
 import { CrmOrderExpandedPanel, CrmStatusBadge, CrmYesNoBadge } from "../customers-ui";
 import { CRM_ORDER_SOURCE_LABELS } from "../customers-ui/sourceOptions";
+import { CustomerOrderQuickView } from "./CustomerOrderQuickView";
 import { date, money, SectionFrame, text, unwrapRows, useCrmSection, type Row } from "./shared";
 
 /**
@@ -38,6 +39,15 @@ export default function OrdersTab() {
 
   const toggle = (id: string | number) => setOpenOrderId((cur) => (cur === id ? null : id));
 
+  // Order Quick View — a row click opens this instead of jumping straight to
+  // the full expansion below; "عرض الطلب" inside it is what calls toggle()
+  // now. Scoped to this tab only, per the brief ("لا تقم بتغيير الـ global
+  // Orders experience في بقية النظام") — the CRM-wide Orders screens keep
+  // their own separate quick view untouched.
+  const [quickView, setQuickView] = useState<{ row: Row; anchorEl: HTMLElement } | null>(null);
+  const closeQuickView = useCallback(() => setQuickView(null), []);
+  const openQuickView = (row: Row, anchorEl: HTMLElement) => setQuickView({ row, anchorEl });
+
   return (
     <div className="crmx-root">
       <SectionFrame state={state} empty="لا توجد طلبات مسجلة">
@@ -63,13 +73,34 @@ export default function OrdersTab() {
                   {rows.map((r: Row, i: number) => {
                     const id = r.id as string | number | undefined;
                     const isOpen = id != null && openOrderId === id;
+                    const isSelected = id != null && quickView?.row.id === id;
                     const branchName = text(r.branch_name ?? (r.branch as { name?: unknown })?.name);
                     const source = r.source ? CRM_ORDER_SOURCE_LABELS[String(r.source)] || String(r.source) : null;
                     return (
                       <Fragment key={String(r.id ?? i)}>
+                        {/* Opens the quick view, not the full expansion directly — "عرض
+                            الطلب" inside it calls toggle() now. closest(...) guards
+                            against nothing today (no interactive control lives inside
+                            this row's cells) but costs nothing and matches the same
+                            fix already applied to the other order tables this session.
+                            isSelected uses --o2-brand-soft, not a --crmx-* colour, per
+                            this task's explicit instruction — that token is one of the
+                            few not redefined between the light/dark --o2-* blocks, so
+                            it reads the same regardless of the app's current theme. */}
                         <tr
-                          onClick={() => id != null && toggle(id)}
-                          className="crmx-table-row cursor-pointer border-b border-[var(--crmx-border)] last:border-0"
+                          onClick={(e) => {
+                            if ((e.target as HTMLElement).closest("button, select, a, input, textarea, label")) return;
+                            if (id != null) openQuickView(r, e.currentTarget);
+                          }}
+                          tabIndex={id != null ? 0 : undefined}
+                          role={id != null ? "button" : undefined}
+                          onKeyDown={(e) => {
+                            if ((e.target as HTMLElement).closest("button, select, a, input, textarea, label")) return;
+                            if ((e.key === "Enter" || e.key === " ") && id != null) { e.preventDefault(); openQuickView(r, e.currentTarget); }
+                          }}
+                          className={`crmx-table-row cursor-pointer border-b border-[var(--crmx-border)] transition-colors focus:outline-none last:border-0 ${
+                            isSelected ? "bg-[var(--o2-brand-soft)]" : ""
+                          }`}
                         >
                           <td className="px-2 text-center">
                             <ChevronDown className={`mx-auto h-4 w-4 text-[var(--crmx-text-muted)] transition-transform ${isOpen ? "rotate-180" : ""}`} />
@@ -105,6 +136,17 @@ export default function OrdersTab() {
           );
         }}
       </SectionFrame>
+
+      <CustomerOrderQuickView
+        row={quickView?.row ?? null}
+        anchorEl={quickView?.anchorEl ?? null}
+        onClose={closeQuickView}
+        onViewOrder={(row) => {
+          closeQuickView();
+          const id = row.id as string | number | undefined;
+          if (id != null && openOrderId !== id) toggle(id);
+        }}
+      />
     </div>
   );
 }
