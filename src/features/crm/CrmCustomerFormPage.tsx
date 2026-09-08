@@ -363,8 +363,13 @@ export function CrmCustomerFormPage() {
         mobile: secondaryPhone ?? "",
         email: identity.email ?? "",
         address: identity.default_address ?? "",
-        city: "",
-        country: "",
+        // Were hardcoded blank here — profile() never returned them, so
+        // there was nothing to read regardless. Fixed on the backend
+        // alongside this (Customer360QueryService::profile()) — this was
+        // the "loads blank" half of a real save/read split, not a save bug:
+        // city/country were being persisted correctly the whole time.
+        city: identity.city ?? "",
+        country: identity.country ?? "",
         engagement_status: identity.engagement_status ?? "",
         group_id: identity.group_id != null ? String(identity.group_id) : "",
         status: identity.status ?? "active",

@@ -118,6 +118,11 @@ export interface CrmCustomerProfile {
     // customers.address is a plain text column (not a related object) —
     // Customer360QueryService::profile() returns it as-is.
     default_address?: string | null;
+    // customers.city / customers.country — were saved correctly on both
+    // create and update but never returned by profile(), so the edit form
+    // always reloaded them blank. Fixed on the backend alongside this.
+    city?: string | null;
+    country?: string | null;
     loyalty_points?: number | null;
     // How this customer was acquired — see CrmController::SOURCE_LABELS
     // (website/fawri/families/call_center/walk_in). Null until set.
