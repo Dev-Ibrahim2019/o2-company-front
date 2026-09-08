@@ -1403,7 +1403,7 @@ const handlePrintInvoice = async (
   }
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col lg:flex-row gap-4 h-full bg-slate-950 overflow-y-auto lg:overflow-hidden p-2 sm:p-4 lg:p-0 custom-scrollbar relative">
+    <div className="flex flex-col lg:flex-row-reverse gap-4 h-full bg-slate-950 overflow-y-auto lg:overflow-hidden p-2 sm:p-4 lg:p-0 custom-scrollbar relative">
       {/* Submitting Overlay */}
       <AnimatePresence>
         {submitting && (
@@ -1423,7 +1423,7 @@ const handlePrintInvoice = async (
         )}
       </AnimatePresence>
 
-      {/* Left Panel: Menu Area */}
+      {/* Menu Area — left side on desktop */}
       <div
         className={`flex-1 flex flex-col min-w-0 h-full ${isCartOpen ? "hidden lg:flex" : "flex"}`}
       >
@@ -1489,7 +1489,7 @@ const handlePrintInvoice = async (
         </div>
       </div>
 
-      {/* Right Panel: Cart */}
+      {/* Invoice / Cart — right side on desktop */}
       <CartPanel {...commonCartProps} />
 
       {/* Mobile Cart Button */}

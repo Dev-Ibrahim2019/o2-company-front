@@ -188,6 +188,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
     useState<SearchableItem | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const roundMoney = (value: number) =>
     Math.round((Number(value) || 0) * 100) / 100;
@@ -403,6 +404,102 @@ export const CartPanel: React.FC<CartPanelProps> = ({
     setShowCustomerModal,
   ]);
 
+  // ── تشغيل زر "تنفيذ" الأساسي حسب وضع الفاتورة (نفس منطق الزر الأحمر/الأخضر) ──
+  const runPrimaryExecute = () => {
+    if (currentCart.length === 0 || isSubmitting) return;
+    if (isHospitality) {
+      if (cartOrderType === OrderType.DINE_IN && !manualTable) {
+        setPosError("يرجى إدخال رقم الطاولة أولاً");
+        return;
+      }
+      submitOrder(OrderStatus.CONFIRMED, PaymentMethod.CASH, calculatedDiscount, {
+        name: customerName,
+        phone: customerPhone,
+        note: invoiceNote,
+      });
+      return;
+    }
+    if (cartOrderType === OrderType.DINE_IN && !manualTable) {
+      setPosError("يرجى إدخال رقم الطاولة أولاً");
+      return;
+    }
+    onRequestClose?.(
+      cartOrderType === OrderType.TAKEAWAY ? "takeaway" : "dine_in",
+    );
+  };
+
+  // ── التنقل داخل صفوف الفاتورة بالأسهم + Enter للتنفيذ ──────────────────────
+  //   يُفعّل فقط لما يكون صف من صفوف الفاتورة مركّز عليه (tabIndex).
+  //   يعمل في طور الالتقاط (capture) ويوقف انتشار الحدث حتى لا يتعارض مع
+  //   تنقّل شبكة الأصناف (MenuGrid) اللي بيستمع على نفس النافذة.
+  //   RTL: سهم اليسار = زيادة الكمية ، سهم اليمين = إنقاصها.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter"].includes(e.key)) {
+        return;
+      }
+      // أثناء الكتابة داخل حقول الصف (الاسم/الكمية/الإجمالي) نترك المفاتيح طبيعية
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+      const ae = document.activeElement as HTMLElement | null;
+      const row = ae?.closest?.("[data-cart-row]") as HTMLElement | null;
+      if (!row || !rootRef.current?.contains(row)) return;
+
+      const idx = Number(row.getAttribute("data-cart-row"));
+      if (Number.isNaN(idx)) return;
+
+      e.preventDefault();
+      e.stopImmediatePropagation();
+
+      if (e.key === "Enter") {
+        runPrimaryExecute();
+        return;
+      }
+
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        const nextIdx = e.key === "ArrowDown" ? idx + 1 : idx - 1;
+        const target = rootRef.current?.querySelector(
+          `[data-cart-row="${nextIdx}"]`,
+        ) as HTMLElement | null;
+        if (target) {
+          target.focus();
+          target.scrollIntoView({ block: "nearest" });
+        }
+        return;
+      }
+
+      // ArrowLeft / ArrowRight → زيادة/إنقاص كمية الصف الحالي
+      const item = currentCart[idx];
+      if (!item || item.is_printed_direct) return;
+      const delta = e.key === "ArrowLeft" ? 1 : -1;
+      const nextQty = item.quantity + delta;
+      if (nextQty >= 1) {
+        updateCartItem(item.uniqueId, { quantity: nextQty });
+      }
+    };
+
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [
+    currentCart,
+    updateCartItem,
+    isHospitality,
+    cartOrderType,
+    manualTable,
+    isSubmitting,
+    calculatedDiscount,
+    customerName,
+    customerPhone,
+    invoiceNote,
+    submitOrder,
+    onRequestClose,
+    setPosError,
+  ]);
+
   const filteredSearchItems = useMemo(() => {
     if (!inlineSearch || inlineSearch.length < 1) return [];
     const q = inlineSearch.toLowerCase();
@@ -467,6 +564,7 @@ export const CartPanel: React.FC<CartPanelProps> = ({
 
   return (
     <div
+      ref={rootRef}
       className={`w-full lg:w-[450px] xl:w-[500px] bg-slate-900 rounded-[1.5rem] sm:rounded-[2rem] border border-white/10 flex flex-col shadow-2xl overflow-hidden h-auto lg:h-full shrink-0 ${isCartOpen ? "fixed inset-0 z-50 lg:relative lg:z-0" : "hidden lg:flex"}`}
     >
       {/* 1. Header & Table Info */}
@@ -799,7 +897,9 @@ export const CartPanel: React.FC<CartPanelProps> = ({
           {currentCart.map((item, index) => (
             <div
               key={item.uniqueId}
-              className={`${isDineIn ? CART_GRID_COLS : CART_GRID_COLS_TAKEAWAY} group hover:bg-white/5 transition-colors items-center`}
+              data-cart-row={index}
+              tabIndex={0}
+              className={`${isDineIn ? CART_GRID_COLS : CART_GRID_COLS_TAKEAWAY} group hover:bg-white/5 transition-colors items-center outline-none focus:bg-red-600/10 focus:ring-2 focus:ring-inset focus:ring-red-500`}
             >
               <div className="px-1 py-1.5 sm:px-2 sm:py-2 text-[8px] sm:text-[10px] font-black text-slate-600">
                 {index + 1}

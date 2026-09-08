@@ -116,8 +116,88 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
   const [lines, setLines] = useState<LineState[]>([]);
   const [error, setError] = useState("");
   const accountSearchInputRef = useRef<HTMLInputElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const methodsGridRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
 
   const showAccountFields = !!setCustomerName;
+
+  // ── التنقل بالأسهم بين عناصر المودال (أزرار + بوكسات الإدخال) ────────────
+  // الأزرار: أي سهم ينقل للعنصر التالي/السابق (يسار/أسفل = التالي RTL).
+  // البوكسات (input/select): أعلى/أسفل تنقل بين الحقول ، يمين/يسار تبقى داخل النص.
+  // Enter = تفعيل الزر المحدّد ، Esc = إغلاق.
+  useEffect(() => {
+    if (!show) return;
+
+    const SELECTOR =
+      "button:not(:disabled), input:not(:disabled):not([type=hidden]), select:not(:disabled), textarea:not(:disabled)";
+
+    const getNavEls = () =>
+      Array.from(
+        modalRef.current?.querySelectorAll<HTMLElement>(SELECTOR) ?? [],
+      ).filter((el) => el.offsetParent !== null);
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter"].includes(e.key)) return;
+
+      const ae = document.activeElement as HTMLElement | null;
+      const isButton = ae instanceof HTMLButtonElement;
+      const isField =
+        !!ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT");
+
+      if (e.key === "Enter") {
+        if (isButton) {
+          e.preventDefault();
+          ae!.click();
+        }
+        return; // داخل الحقول: Enter يبقى للسلوك الأصلي (بحث الحساب مثلاً)
+      }
+
+      // داخل بوكس نص: يمين/يسار تحرّك المؤشر — ما بنتدخل
+      if (isField && (e.key === "ArrowLeft" || e.key === "ArrowRight")) return;
+
+      const els = getNavEls();
+      if (els.length === 0) return;
+
+      const forward = e.key === "ArrowLeft" || e.key === "ArrowDown"; // RTL
+      const cur = ae ? els.indexOf(ae) : -1;
+      const next =
+        cur === -1
+          ? forward
+            ? 0
+            : els.length - 1
+          : (cur + (forward ? 1 : -1) + els.length) % els.length;
+
+      const target = els[next];
+      target.focus();
+      if (target instanceof HTMLInputElement && target.type !== "checkbox" && target.type !== "radio") {
+        target.select();
+      }
+      e.preventDefault();
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [show]);
+
+  // تركيز أول طريقة دفع عند فتح المودال حتى تشتغل الأسهم فوراً
+  useEffect(() => {
+    if (!show) return;
+    const t = setTimeout(() => {
+      methodsGridRef.current
+        ?.querySelector<HTMLButtonElement>("button:not(:disabled)")
+        ?.focus();
+    }, 50);
+    return () => clearTimeout(t);
+  }, [show]);
 
   // ── بحث الحساب (عميل/مورد/موظف) ─────────────────────────────────────────
   const [showAccountSuggestions, setShowAccountSuggestions] = useState(false);
@@ -310,28 +390,8 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
     emit([{ method: entityPaymentMethod, amount: roundMoney(total), reference: undefined }]);
   };
 
-  return (
-    <AnimatePresence>
-      {show && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" dir="rtl">
-          <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
-            className="bg-slate-900 w-full max-w-md rounded-[2rem] border border-white/10 shadow-2xl overflow-hidden p-7 space-y-5 max-h-[90vh] overflow-y-auto custom-scrollbar"
-          >
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-black text-white">إتمام الفاتورة</h3>
-              <button
-                onClick={handleClose}
-                className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-800 text-slate-500 hover:text-white hover:bg-slate-700 transition-colors"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            {showAccountFields && (
-              <div className="space-y-3 border-b border-white/5 pb-5">
+  const accountSection = showAccountFields && (
+    <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-black text-white">بيانات الزبون والحساب</h4>
                   {(setAccountType || setShowSearchModal) && (
@@ -488,15 +548,17 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
                     </span>
                   </div>
                 )}
-              </div>
-            )}
+    </div>
+  );
 
+  const totalSection = (
             <div className="text-center">
               <p className="text-slate-500 text-xs font-bold">المبلغ المطلوب تحصيله</p>
               <p className="text-3xl font-black text-white mt-1">{total.toFixed(2)} ₪</p>
             </div>
+  );
 
-            {/* شريط المخصّص / المتبقّي */}
+  const allocationSection = (
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-slate-800/60 border border-white/5 rounded-xl p-2.5 text-center">
                 <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">المخصّص</p>
@@ -511,11 +573,12 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
                 </p>
               </div>
             </div>
+  );
 
-            {/* أزرار إضافة طريقة دفع */}
+  const addMethodsSection = (
             <div className="space-y-2">
               <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mr-1">أضف طريقة دفع</p>
-              <div className="grid grid-cols-3 gap-2">
+              <div ref={methodsGridRef} className="grid grid-cols-3 gap-2">
                 {DIRECT_METHODS.map((method) => {
                   const meta = METHOD_META[method]!;
                   const Icon = meta.icon;
@@ -548,9 +611,9 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
                 </button>
               )}
             </div>
+  );
 
-            {/* أسطر الدفع */}
-            {lines.length > 0 && (
+  const linesSection = lines.length > 0 && (
               <div className="space-y-2">
                 {lines.map((line) => {
                   const meta = METHOD_META[line.method]!;
@@ -596,9 +659,9 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
                   );
                 })}
               </div>
-            )}
+  );
 
-            {selectedEntity && (
+  const entityConfirmSection = selectedEntity && (
               <button
                 onClick={handleEntityConfirm}
                 disabled={confirming}
@@ -607,12 +670,13 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
                 {entityTypeLabel === "عميل" ? <Users size={14} /> : entityTypeLabel === "مورد" ? <Truck size={14} /> : <UserCheck size={14} />}
                 تحميل كامل المبلغ على حساب {entityTypeLabel}
               </button>
-            )}
+  );
 
-            {error && (
+  const errorSection = error && (
               <p className="text-red-400 text-xs font-bold text-center">{error}</p>
-            )}
+  );
 
+  const actionsSection = (
             <div className="flex flex-col gap-2">
               <button
                 onClick={handleConfirm}
@@ -628,6 +692,59 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
                 إلغاء
               </button>
             </div>
+  );
+
+  return (
+    <AnimatePresence>
+      {show && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" dir="rtl">
+          <motion.div
+            ref={modalRef}
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            className={`bg-slate-900 w-full rounded-[2rem] border border-white/10 shadow-2xl overflow-hidden p-7 [&_button:focus]:outline-none [&_button:focus]:ring-2 [&_button:focus]:ring-red-500 [&_button:focus]:ring-offset-2 [&_button:focus]:ring-offset-slate-900 ${
+              showAccountFields
+                ? "max-w-[64rem] max-h-[95vh]"
+                : "max-w-md space-y-5 max-h-[90vh] overflow-y-auto custom-scrollbar"
+            }`}
+          >
+            <div className={`flex items-center justify-between ${showAccountFields ? "mb-6" : ""}`}>
+              <h3 className="text-lg font-black text-white">إتمام الفاتورة</h3>
+              <button
+                onClick={handleClose}
+                className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-800 text-slate-500 hover:text-white hover:bg-slate-700 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {showAccountFields ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 items-start">
+                <div className="space-y-5 md:border-l md:border-white/10 md:pl-8">
+                  {accountSection}
+                  {totalSection}
+                  {allocationSection}
+                </div>
+                <div className="space-y-5">
+                  {addMethodsSection}
+                  {linesSection}
+                  {entityConfirmSection}
+                  {errorSection}
+                  {actionsSection}
+                </div>
+              </div>
+            ) : (
+              <>
+                {totalSection}
+                {allocationSection}
+                {addMethodsSection}
+                {linesSection}
+                {entityConfirmSection}
+                {errorSection}
+                {actionsSection}
+              </>
+            )}
           </motion.div>
         </div>
       )}
