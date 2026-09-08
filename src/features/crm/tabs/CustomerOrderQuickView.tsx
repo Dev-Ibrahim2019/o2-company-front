@@ -31,13 +31,23 @@ import { text, type Row } from "./shared";
  * math, escape/outside-click/focus handling) rather than sharing a base —
  * an intentional trade-off so this change cannot touch the already-shipped,
  * already-verified CRM-wide popover.
+ *
+ * Visual correction pass: the first version reused this same structure at
+ * 360px wide with 12-14px text nearly everywhere, which read as "the order,
+ * just shrunk" rather than a purpose-built quick view. This version is
+ * explicitly sized and typeset against the extracted CRM scale
+ * (12/14/16/18/20/24) with real differentiation between labels, values, and
+ * the order number/total — see each element's own comment below for which
+ * tier it's on and why.
  */
 
 const DESKTOP_QUERY = "(min-width: 1024px)";
-const POPUP_WIDTH = 360;
-const POPUP_MAX_HEIGHT = 440;
+// A real contextual panel, not a shrunk-down order page: 480px sits in the
+// middle of the 420-520 range this was audited against.
+const POPUP_WIDTH = 480;
+const POPUP_MAX_HEIGHT = 560;
 const GAP = 8;
-const VIEWPORT_MARGIN = 12;
+const VIEWPORT_MARGIN = 16;
 const Z_INDEX = 80; // same layer the CRM-wide order quick view already uses; nothing else in the app claims it.
 
 function useIsDesktop(): boolean {
@@ -62,7 +72,7 @@ function computePlacement(anchorEl: HTMLElement): Placement {
   let left = rect.left + rect.width / 2 - POPUP_WIDTH / 2;
   left = Math.max(VIEWPORT_MARGIN, Math.min(left, window.innerWidth - POPUP_WIDTH - VIEWPORT_MARGIN));
 
-  const maxHeight = Math.max(220, Math.min(POPUP_MAX_HEIGHT, placeBelow ? spaceBelow : spaceAbove));
+  const maxHeight = Math.max(280, Math.min(POPUP_MAX_HEIGHT, placeBelow ? spaceBelow : spaceAbove));
 
   return placeBelow
     ? { left, width: POPUP_WIDTH, maxHeight, top: rect.bottom + GAP }
@@ -92,34 +102,36 @@ const TONE_CLASS: Record<"success" | "warning" | "danger" | "info" | "neutral", 
   neutral: "bg-[var(--o2-surface-muted)] text-[var(--o2-muted)]",
 };
 
+// 14px, semibold — badges are a label-tier element, not secondary text (that
+// tier is 12px, reserved for genuinely minor annotations further down).
+const BADGE_CLASS = "inline-flex items-center rounded-md px-2.5 py-1 text-sm font-semibold whitespace-nowrap";
+
 function OrderStatusBadge({ value }: { value?: string | null }) {
   const key = (value || "").toLowerCase();
   const label = STATUS_LABELS[key] || value || "—";
   const tone = STATUS_TONE[key] || "neutral";
-  return (
-    <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-bold whitespace-nowrap ${TONE_CLASS[tone]}`}>
-      {label}
-    </span>
-  );
+  return <span className={`${BADGE_CLASS} ${TONE_CLASS[tone]}`}>{label}</span>;
 }
 
 function PaymentBadge({ isPaid, paymentStatus }: { isPaid?: boolean; paymentStatus?: string | null }) {
-  if (isPaid) return <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-bold ${TONE_CLASS.success}`}>مدفوع</span>;
-  if (paymentStatus && paymentStatus !== "unpaid") {
-    return <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-bold ${TONE_CLASS.warning}`}>{paymentStatus}</span>;
-  }
-  return <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-bold ${TONE_CLASS.neutral}`}>غير مدفوع</span>;
+  if (isPaid) return <span className={`${BADGE_CLASS} ${TONE_CLASS.success}`}>مدفوع</span>;
+  if (paymentStatus && paymentStatus !== "unpaid") return <span className={`${BADGE_CLASS} ${TONE_CLASS.warning}`}>{paymentStatus}</span>;
+  return <span className={`${BADGE_CLASS} ${TONE_CLASS.neutral}`}>غير مدفوع</span>;
 }
 
+// Section titles (العميل / معلومات الطلب / الأصناف): 14px semibold — one
+// tier above the 12px secondary text below it, one tier below the 16px
+// values inside each section, so "this is a heading" is never confused with
+// "this is data" at a glance.
 function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <h4 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-[var(--o2-muted)]">{children}</h4>;
+  return <h4 className="mb-2.5 text-sm font-semibold uppercase tracking-wide text-[var(--o2-muted)]">{children}</h4>;
 }
 
 function ItemsSkeleton() {
   return (
-    <div className="space-y-1.5">
-      <div className="h-3.5 w-20 animate-pulse rounded bg-[var(--o2-surface-muted)]" />
-      <div className="h-3.5 w-36 animate-pulse rounded bg-[var(--o2-surface-muted)]" />
+    <div className="space-y-2">
+      <div className="h-4 w-24 animate-pulse rounded bg-[var(--o2-surface-muted)]" />
+      <div className="h-4 w-44 animate-pulse rounded bg-[var(--o2-surface-muted)]" />
     </div>
   );
 }
@@ -131,8 +143,8 @@ function ItemsSkeleton() {
  * `row` is what the tab already has in hand (no fetch); `details` is the
  * lazily fetched /crm/orders/{id} response this component requests itself
  * the moment it opens, purely for the items summary and the fields the row
- * doesn't carry (order type, payment, customer phone) — never fetched twice
- * for the same open.
+ * doesn't carry (order type, payment, customer name/phone) — never fetched
+ * twice for the same open.
  */
 function QuickViewBody({
   row,
@@ -175,129 +187,147 @@ function QuickViewBody({
     }
   };
 
+  // Each metadata cell is its own label-over-value stack in a 2-column grid,
+  // not a cramped label/value row squeezed onto one line. Label 12px, value
+  // 16px — a full step apart on the scale, so the two roles read distinctly
+  // instead of blurring into one undifferentiated 14px block.
+  const MetaCell = ({ label, value }: { label: string; value: React.ReactNode }) => (
+    <div>
+      <dt className="text-xs font-medium text-[var(--o2-muted)]">{label}</dt>
+      <dd className="mt-1 text-base font-medium text-[var(--o2-text)]">{value}</dd>
+    </div>
+  );
+
   return (
     <>
-      <header className="flex items-center justify-between gap-3 border-b border-[var(--o2-border)] px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <h2 id={titleId} className="truncate text-base font-bold text-[var(--o2-text)]" dir="ltr">
-            {orderNumber}
-          </h2>
-          <OrderStatusBadge value={String(row.status ?? "")} />
+      {/* Order # is the single most important thing in this popup — 20px
+          bold, a full tier above every label around it. The status badge
+          sits on its own line under it, not squeezed onto the same line, so
+          neither has to compete for space with a long order number. */}
+      <header className="border-b border-[var(--o2-border)] px-5 py-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 id={titleId} className="truncate text-xl font-bold leading-tight text-[var(--o2-text)]" dir="ltr">
+              {orderNumber}
+            </h2>
+            <div className="mt-2"><OrderStatusBadge value={String(row.status ?? "")} /></div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="إغلاق"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--o2-muted)] transition-colors hover:bg-[var(--o2-surface-muted)] hover:text-[var(--o2-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--o2-brand-ring)]"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="إغلاق"
-          className="shrink-0 rounded-md p-1 text-[var(--o2-muted)] transition-colors hover:bg-[var(--o2-surface-muted)] hover:text-[var(--o2-text)]"
-        >
-          <X className="h-4 w-4" />
-        </button>
       </header>
 
-      <div className="flex-1 space-y-4 overflow-y-auto px-4 py-3">
+      <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
+        {/* Customer identity is real content here too, not just page chrome
+            above this popover — a manager scanning a busy order history can
+            open several quick views in a row and lose track of whose order
+            they're on without it. Only rendered once resolved: customer_name/
+            phone live on the fetched details, not the row the table already
+            had in hand. */}
+        {(loading || details?.customer_name || details?.customer_phone) && (
+          <div>
+            <SectionLabel>العميل</SectionLabel>
+            {loading ? (
+              <div className="space-y-2">
+                <div className="h-4 w-32 animate-pulse rounded bg-[var(--o2-surface-muted)]" />
+                <div className="h-3.5 w-24 animate-pulse rounded bg-[var(--o2-surface-muted)]" />
+              </div>
+            ) : (
+              <div>
+                {details?.customer_name && <p className="text-base font-medium text-[var(--o2-text)]">{details.customer_name}</p>}
+                {details?.customer_phone && <p className="mt-0.5 text-sm text-[var(--o2-muted)]" dir="ltr">{details.customer_phone}</p>}
+                {details?.customer_phone && (
+                  <div className="mt-2.5">
+                    <OccasionContactActions contact={{ phone: details.customer_phone, name: details.customer_name }} />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <div>
           <SectionLabel>معلومات الطلب</SectionLabel>
-          <dl className="space-y-1 text-sm">
-            <div className="flex items-baseline justify-between gap-3">
-              <dt className="text-[var(--o2-muted)]">التاريخ</dt>
-              <dd className="font-semibold text-[var(--o2-text)]">{formatDateTime(String(row.created_at ?? ""))}</dd>
-            </div>
-            {source && (
-              <div className="flex items-baseline justify-between gap-3">
-                <dt className="text-[var(--o2-muted)]">المصدر</dt>
-                <dd className="font-semibold text-[var(--o2-text)]">{source}</dd>
-              </div>
-            )}
-            {branchName && branchName !== "—" && (
-              <div className="flex items-baseline justify-between gap-3">
-                <dt className="text-[var(--o2-muted)]">الفرع</dt>
-                <dd className="font-semibold text-[var(--o2-text)]">{branchName}</dd>
-              </div>
-            )}
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+            <MetaCell label="التاريخ" value={formatDateTime(String(row.created_at ?? ""))} />
             {/* order_type only exists on the fetched details, not the row
                 the table already has — shown once it resolves, omitted (not
                 "—") while loading, since a value about to arrive is not the
                 same thing as a value that doesn't exist. */}
-            {details?.order_type && (
-              <div className="flex items-baseline justify-between gap-3">
-                <dt className="text-[var(--o2-muted)]">النوع</dt>
-                <dd className="font-semibold text-[var(--o2-text)]">{CRM_ORDER_TYPE_LABELS[details.order_type] || details.order_type}</dd>
-              </div>
-            )}
-            <div className="flex items-baseline justify-between gap-3">
-              <dt className="text-[var(--o2-muted)]">حالة الدفع</dt>
-              {/* Real payment status is only known once `details` resolves.
-                  Defaulting the badge's isPaid/paymentStatus to undefined
-                  while loading — or after a failed fetch — would render as
-                  "غير مدفوع", a confidently wrong answer for an order that
-                  actually is paid, not an honest "don't know yet". */}
-              <dd>
-                {details ? (
+            {details?.order_type && <MetaCell label="النوع" value={CRM_ORDER_TYPE_LABELS[details.order_type] || details.order_type} />}
+            {source && <MetaCell label="المصدر" value={source} />}
+            {branchName && branchName !== "—" && <MetaCell label="الفرع" value={branchName} />}
+            <MetaCell
+              label="حالة الدفع"
+              value={
+                // Real payment status is only known once `details` resolves.
+                // Defaulting to "unpaid" while loading — or after a failed
+                // fetch — would show a confidently wrong answer for an order
+                // that actually is paid, not an honest "don't know yet".
+                details ? (
                   <PaymentBadge isPaid={details.is_paid} paymentStatus={details.payment_status} />
                 ) : loading ? (
-                  <div className="h-4 w-14 animate-pulse rounded bg-[var(--o2-surface-muted)]" />
+                  <div className="h-5 w-16 animate-pulse rounded bg-[var(--o2-surface-muted)]" />
                 ) : (
-                  <span className="text-sm text-[var(--o2-muted)]">—</span>
-                )}
-              </dd>
-            </div>
+                  "—"
+                )
+              }
+            />
           </dl>
         </div>
 
         <div>
-          <SectionLabel>الأصناف</SectionLabel>
+          <SectionLabel>{!loading && details ? `الأصناف · ${num(details.items.length)}` : "الأصناف"}</SectionLabel>
           {loading ? (
             <ItemsSkeleton />
           ) : error ? (
             <div className="flex items-center justify-between gap-2">
               <span className="flex items-center gap-1.5 text-sm text-[var(--o2-danger)]">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> تعذّر تحميل تفاصيل الطلب
+                <AlertTriangle className="h-4 w-4 shrink-0" /> تعذّر تحميل تفاصيل الطلب
               </span>
-              <button type="button" onClick={load} className="text-sm font-bold text-[var(--o2-brand-text)] hover:underline">
+              <button type="button" onClick={load} className="text-sm font-semibold text-[var(--o2-brand-text)] hover:underline">
                 إعادة المحاولة
               </button>
             </div>
           ) : !details || details.items.length === 0 ? (
             <p className="text-sm text-[var(--o2-muted)]">لا توجد أصناف مسجلة</p>
           ) : (
-            <div className="space-y-1">
-              <p className="text-xs font-bold text-[var(--o2-muted)]">{num(details.items.length)} صنف</p>
-              <ul className="space-y-0.5">
-                {details.items.slice(0, 2).map((item) => (
-                  <li key={item.id} className="flex items-baseline justify-between gap-2 text-sm">
+            <div className="space-y-2">
+              <ul className="space-y-1.5">
+                {details.items.slice(0, 3).map((item) => (
+                  <li key={item.id} className="flex items-center justify-between gap-3 text-base">
                     <span className="min-w-0 truncate text-[var(--o2-text)]">{item.item_name_ar || item.item_name}</span>
-                    <span className="shrink-0 text-[var(--o2-muted)]">× {num(item.quantity)}</span>
+                    <span className="shrink-0 text-sm text-[var(--o2-muted)]">× {num(item.quantity)}</span>
                   </li>
                 ))}
               </ul>
-              {details.items.length > 2 && (
-                <p className="text-xs text-[var(--o2-muted)]">+ {num(details.items.length - 2)} أخرى</p>
+              {details.items.length > 3 && (
+                <p className="text-sm text-[var(--o2-muted)]">+ {num(details.items.length - 3)} أخرى</p>
               )}
             </div>
           )}
         </div>
 
-        <div className="flex items-baseline justify-between border-t border-[var(--o2-border)] pt-3">
-          <span className="text-sm font-bold text-[var(--o2-muted)]">الإجمالي</span>
-          <span className="text-xl font-bold text-[var(--o2-text)]">{formatMoney(Number(row.total ?? 0))}</span>
+        {/* Its own visually distinct block, not one more metadata row — 24px,
+            the top of the scale, on a tinted surface so it reads at a glance
+            without needing to be read alongside everything else. */}
+        <div className="flex items-center justify-between rounded-lg bg-[var(--o2-surface-muted)] px-4 py-3">
+          <span className="text-sm font-semibold text-[var(--o2-muted)]">الإجمالي</span>
+          <span className="text-2xl font-bold text-[var(--o2-text)]">{formatMoney(Number(row.total ?? 0))}</span>
         </div>
-
-        {/* Only once resolved — customer_phone isn't on the row (this tab
-            already lives inside one customer's own profile, so the row
-            itself never repeats their identity), and showing an empty
-            contact row while it's still loading would flash then vanish. */}
-        {details?.customer_phone && (
-          <div className="border-t border-[var(--o2-border)] pt-3">
-            <OccasionContactActions contact={{ phone: details.customer_phone, name: details.customer_name }} />
-          </div>
-        )}
       </div>
 
-      <footer className="flex items-center gap-2 border-t border-[var(--o2-border)] px-4 py-3">
+      <footer className="flex items-center gap-2.5 border-t border-[var(--o2-border)] px-5 py-4">
         <button
           type="button"
           onClick={onViewOrder}
-          className="flex h-9 flex-1 items-center justify-center rounded-lg bg-[var(--o2-brand)] text-sm font-bold text-white transition-colors hover:bg-[var(--o2-brand-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--o2-brand-ring)]"
+          className="flex h-11 flex-1 items-center justify-center rounded-lg bg-[var(--o2-brand)] text-base font-semibold text-white transition-colors hover:bg-[var(--o2-brand-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--o2-brand-ring)]"
         >
           عرض الطلب
         </button>
@@ -306,9 +336,9 @@ function QuickViewBody({
           onClick={copyOrderNumber}
           aria-label="نسخ رقم الطلب"
           title="نسخ رقم الطلب"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--o2-border)] text-[var(--o2-muted)] transition-colors hover:bg-[var(--o2-surface-muted)] hover:text-[var(--o2-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--o2-brand-ring)]"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-[var(--o2-border)] text-[var(--o2-muted)] transition-colors hover:bg-[var(--o2-surface-muted)] hover:text-[var(--o2-text)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--o2-brand-ring)]"
         >
-          <Copy className="h-4 w-4" />
+          <Copy className="h-4.5 w-4.5" />
         </button>
       </footer>
     </>
