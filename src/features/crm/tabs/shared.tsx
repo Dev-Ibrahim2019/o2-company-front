@@ -83,12 +83,25 @@ export function DomainTable({ columns, rows, empty, onRowClick }: {
                 // Rows carry their own controls (status selects, toggle
                 // buttons). A click that started on one of those is that
                 // control's business, not a request to open the row.
-                if ((e.target as HTMLElement).closest("button, select, a, input, label")) return;
+                if ((e.target as HTMLElement).closest("button, select, a, input, textarea, label")) return;
                 onRowClick(row);
               } : undefined}
               tabIndex={onRowClick ? 0 : undefined}
               role={onRowClick ? "button" : undefined}
               onKeyDown={onRowClick ? (e) => {
+                // Same guard as onClick above, and just as necessary here —
+                // arguably more so. A row's own status-change control opens a
+                // dialog rendered via createPortal(dialog, document.body): the
+                // dialog's DOM lives outside this <tr>, but React still bubbles
+                // its synthetic events through the React tree (this row is a
+                // real React ancestor of that portalled content), not the DOM
+                // tree. Without this check, every Space keystroke typed into a
+                // portalled textarea inside this row — e.g. the complaint
+                // resolution note — bubbled up here, got preventDefault()'d
+                // before the browser could insert the character, and fired
+                // onRowClick as an unwanted side effect. Confirmed live: typing
+                // in that field silently dropped every space.
+                if ((e.target as HTMLElement).closest("button, select, a, input, textarea, label")) return;
                 if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onRowClick(row); }
               } : undefined}
               className={`crmx-table-row border-b border-[var(--crmx-border)] last:border-0 ${
