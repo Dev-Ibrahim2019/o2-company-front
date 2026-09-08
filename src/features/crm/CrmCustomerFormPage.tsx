@@ -1,6 +1,6 @@
 import { AlertTriangle, Check, ChevronLeft, ChevronRight, Loader2, Plus, RotateCw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth";
 import { CRM_PERMISSIONS } from "../../auth/permissions";
 import { toast } from "../../components/shared/Toast";
@@ -43,11 +43,24 @@ import type { CrmCustomerGroup, CrmCustomerProfile, CrmOccasionType } from "./ty
 // support since that pending-section comment was written (the Occasions
 // module: POST /crm/customers/{id}/occasions, CrmController@createOccasion,
 // enum in database/migrations/2027_01_18_000001) — enabled for real below.
-
+//
+// No "ملاحظات" (notes) field here on purpose, removed after the field
+// inventory audit found it: customers.notes is real, fillable, and this
+// form used to write to it — but Customer360QueryService::profile() never
+// returned it, so nothing (not even this form on its own next load) ever
+// read it back. It duplicated, by name only, the real "الملاحظات" tab
+// (customer_notes — a full history with author, timestamps, sensitivity
+// flags, and its own permissions) closely enough that a user filed this as
+// a bug: they wrote a note here expecting it to show up there. It never
+// could — two unrelated tables sharing a label. customers.notes itself is
+// deliberately NOT dropped (a real customer already has one non-empty
+// historical value in it — see the audit's field-inventory report); it's
+// just dead from this form's perspective now, kept for whoever needs to
+// reconcile that value later, not silently discarded by this change.
 const emptyForm = {
   name: "", name_en: "", title: "", gender: "", phone: "", mobile: "", email: "",
   address: "", city: "", country: "", engagement_status: "", group_id: "", status: "active",
-  branch_id: "", salesperson_id: "", notes: "",
+  branch_id: "", salesperson_id: "",
   birth_date: "",
   work_city: "", work_street: "", work_area: "", work_building_no: "", work_phone: "",
 };
@@ -122,7 +135,7 @@ function InlineValidIcon({ show }: { show: boolean }) {
  */
 const COMPLETION_FIELDS: Array<keyof FormState> = [
   "name", "phone", "email", "title", "gender", "engagement_status",
-  "group_id", "birth_date", "address", "notes",
+  "group_id", "birth_date", "address", "city",
 ];
 function completionPercent(form: FormState): number {
   const filled = COMPLETION_FIELDS.filter((k) => form[k].trim() !== "").length;
@@ -378,7 +391,6 @@ export function CrmCustomerFormPage() {
         // both ids from /api/employees — never substitute the resolved
         // identity.salesperson name here, that field exists only for display.
         salesperson_id: identity.salesperson_id != null ? String(identity.salesperson_id) : "",
-        notes: "",
         birth_date: identity.birth_date ?? "",
         work_city: work?.city ?? "",
         work_street: work?.street ?? "",
@@ -472,7 +484,11 @@ export function CrmCustomerFormPage() {
         status: continueLater ? "inactive" : (form.status || undefined),
         branch_id: form.branch_id ? Number(form.branch_id) : null,
         salesperson_id: form.salesperson_id ? Number(form.salesperson_id) : null,
-        notes: form.notes.trim() || undefined,
+        // No `notes` key here — deliberately. See the comment on emptyForm
+        // above for why the field was removed from this form entirely.
+        // Omitting the key (not sending "" or null) means an update leaves
+        // whatever is already in customers.notes untouched, rather than
+        // wiping a real historical value the moment this form is next saved.
         birth_date: form.birth_date || (isEdit ? null : undefined),
         work_address: hasWorkAddress ? {
           city: form.work_city.trim() || undefined,
@@ -793,14 +809,26 @@ export function CrmCustomerFormPage() {
                 </div>
               </FormSection>
 
-              <FormSection title="ملاحظات أخرى">
-                <textarea
-                  className="h-28 w-full resize-none rounded-xl border border-[var(--crmx-border)] bg-white p-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
-                  value={form.notes}
-                  onChange={(e) => set("notes", e.target.value)}
-                  placeholder="أي ملاحظات إضافية حول العميل..."
-                />
-              </FormSection>
+              {/* No notes field here — removed after it was confirmed to be
+                  a second, disconnected "notes" (customers.notes, never
+                  read back anywhere) sharing a label with the real one. This
+                  pointer replaces it specifically for edit mode, the exact
+                  situation the original bug report came from: someone typed
+                  a note here expecting it to land in the real tab. A new,
+                  unsaved customer has no id to link to yet, so the pointer
+                  only makes sense once one exists. */}
+              {isEdit && customerId && (
+                <div className="rounded-2xl border border-dashed border-[var(--crmx-border)] bg-[var(--crmx-neutral-soft)]/40 p-4 text-center text-[13px] text-[var(--crmx-text-secondary)]">
+                  لإضافة ملاحظة على هذا العميل، استخدم{" "}
+                  <Link
+                    to={`/admin/crm/customers/${customerId}/notes`}
+                    className="font-bold text-[var(--crmx-primary-text)] hover:underline"
+                  >
+                    تبويب الملاحظات والمناسبات
+                  </Link>
+                  {" "}بملفه الكامل.
+                </div>
+              )}
             </>
           )}
         </div>
