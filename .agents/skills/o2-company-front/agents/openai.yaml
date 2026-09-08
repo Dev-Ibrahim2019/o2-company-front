@@ -1,0 +1,6 @@
+interface:
+  display_name: "O2 Company Front"
+  short_description: "Repo-specific patterns and workflows for o2-company-front"
+  default_prompt: "Use the o2-company-front repo skill to follow existing architecture, testing, and workflow conventions."
+policy:
+  allow_implicit_invocation: true
