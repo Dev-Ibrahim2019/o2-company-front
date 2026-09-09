@@ -19,12 +19,15 @@ export function CrmTableSkeleton({ rows = 8 }: { rows?: number }) {
 }
 
 export function CrmToolbarSkeleton() {
+  // Placeholder pills for CrmFilterBar, which now only renders at lg — kept
+  // in step so the skeleton doesn't flash three filter placeholders at
+  // 768-1023px that the loaded toolbar will never actually show there.
   return (
     <div className="flex flex-wrap items-center gap-3">
       <span className="crmx-skeleton h-11 min-w-[220px] flex-1" />
-      <span className="crmx-skeleton hidden h-11 w-36 md:block" />
-      <span className="crmx-skeleton hidden h-11 w-36 md:block" />
-      <span className="crmx-skeleton hidden h-11 w-40 md:block" />
+      <span className="crmx-skeleton hidden h-11 w-36 lg:block" />
+      <span className="crmx-skeleton hidden h-11 w-36 lg:block" />
+      <span className="crmx-skeleton hidden h-11 w-40 lg:block" />
     </div>
   );
 }

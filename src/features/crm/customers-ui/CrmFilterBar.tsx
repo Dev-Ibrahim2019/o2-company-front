@@ -52,7 +52,11 @@ export function CrmFilterBar({
   onOpenAdvanced: () => void;
 }) {
   return (
-    <div className="hidden flex-wrap items-center gap-2.5 md:flex">
+    // Matches CrmTable's breakpoint (lg, not md) — this bar and the desktop
+    // table used to switch on together at 768px, the exact width where the
+    // table needed a forced horizontal scrollbar and this row itself wrapped
+    // to two lines. Below lg the mobile filter drawer covers the same ground.
+    <div className="hidden flex-wrap items-center gap-2.5 lg:flex">
       <select className={selectCls} value={status} onChange={(e) => onStatusChange(e.target.value)} aria-label="الحالة">
         <option value="">كل الحالات</option>
         <option value="active">نشط</option>

@@ -74,7 +74,12 @@ export function CrmTable({
 }) {
   return (
     <div>
-      <div className="crmx-scrollbar hidden overflow-x-auto md:block">
+      {/* At 768px (the old md breakpoint) this table needs 1040px of width —
+          a forced 501px horizontal scrollbar — while the filter bar below
+          simultaneously wraps to two lines. The card layout below fits this
+          width fine, so the switch now happens at lg (1024px) instead,
+          leaving cards to cover the whole 768-1023px range. */}
+      <div className="crmx-scrollbar hidden overflow-x-auto lg:block">
         <table className="w-full min-w-[1040px] border-collapse text-right">
           <thead>
             <tr className="border-b border-[var(--crmx-border)] bg-[#FAFBFC]">
@@ -91,7 +96,7 @@ export function CrmTable({
         </table>
       </div>
 
-      <div className="divide-y divide-[var(--crmx-border)] md:hidden">
+      <div className="divide-y divide-[var(--crmx-border)] lg:hidden">
         {items.map((c) => (
           <CrmCustomerCard key={c.id} customer={c} onQuickView={onQuickView} onEdit={onEdit} />
         ))}

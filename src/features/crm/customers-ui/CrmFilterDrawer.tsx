@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { Branch } from "../../../services/branchService";
 import { CRM_ENGAGEMENT_OPTIONS } from "./engagementOptions";
+import { CRM_OCCASION_OPTIONS } from "./occasionOptions";
 import { CRM_GENDER_FILTER_OPTIONS, CRM_SOURCE_FILTER_OPTIONS } from "./sourceOptions";
 
 export interface CrmFilterDrawerValues {
@@ -10,6 +11,14 @@ export interface CrmFilterDrawerValues {
   branchId: string;
   source: string;
   gender: string;
+  // Mirror CrmFilterBar's tri-state "لديه مشكلة"/"لديه مناسبة" and
+  // "نوع المناسبة" — real, backend-working filters that used to live only
+  // in the inline bar (hidden below lg), making them unreachable on a
+  // phone-width screen. Added here so the drawer covers the same three
+  // filters regardless of viewport width.
+  hasComplaints: string;
+  hasOccasion: string;
+  occasionType: string;
 }
 
 const inputCls =
@@ -99,6 +108,34 @@ export function CrmFilterDrawer({
           )}
 
           <div>
+            <label className={labelCls}>لديه مشكلة</label>
+            <select className={inputCls} value={local.hasComplaints} onChange={(e) => setLocal((s) => ({ ...s, hasComplaints: e.target.value }))}>
+              <option value="">الكل</option>
+              <option value="1">نعم</option>
+              <option value="0">لا</option>
+            </select>
+          </div>
+
+          <div>
+            <label className={labelCls}>لديه مناسبة</label>
+            <select className={inputCls} value={local.hasOccasion} onChange={(e) => setLocal((s) => ({ ...s, hasOccasion: e.target.value }))}>
+              <option value="">الكل</option>
+              <option value="1">نعم</option>
+              <option value="0">لا</option>
+            </select>
+          </div>
+
+          <div>
+            <label className={labelCls}>نوع المناسبة</label>
+            <select className={inputCls} value={local.occasionType} onChange={(e) => setLocal((s) => ({ ...s, occasionType: e.target.value }))}>
+              <option value="">كل المناسبات</option>
+              {CRM_OCCASION_OPTIONS.map(([v, l]) => (
+                <option key={v} value={v}>{l}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
             <label className={labelCls}>مصدر العميل</label>
             <select className={inputCls} value={local.source} onChange={(e) => setLocal((s) => ({ ...s, source: e.target.value }))}>
               {CRM_SOURCE_FILTER_OPTIONS.map(([v, l]) => (
@@ -116,9 +153,16 @@ export function CrmFilterDrawer({
             </select>
           </div>
 
-          <ComingSoonField label="المدينة" />
-          <ComingSoonField label="تاريخ الإضافة" />
-          <ComingSoonField label="نطاق الطلبات" />
+          {/* This drawer is shared by the mobile trigger and the desktop
+              "فلترة متقدمة" button — on a phone the three real filters
+              above already fill the panel, and space here is scarce, so
+              these three inactive placeholders are hidden below lg and
+              only take up room on desktop, where there's slack to spare. */}
+          <div className="hidden space-y-5 lg:block">
+            <ComingSoonField label="المدينة" />
+            <ComingSoonField label="تاريخ الإضافة" />
+            <ComingSoonField label="نطاق الطلبات" />
+          </div>
         </div>
 
         <footer className="flex items-center gap-2.5 border-t border-[var(--crmx-border)] px-5 py-4">
@@ -129,7 +173,7 @@ export function CrmFilterDrawer({
             تطبيق الفلاتر
           </button>
           <button
-            onClick={() => { const cleared = { status: "", category: "", branchId: "", source: "", gender: "" }; setLocal(cleared); onReset(); }}
+            onClick={() => { const cleared = { status: "", category: "", branchId: "", source: "", gender: "", hasComplaints: "", hasOccasion: "", occasionType: "" }; setLocal(cleared); onReset(); }}
             className="h-11 rounded-xl border border-[var(--crmx-border)] px-4 text-[14px] font-semibold text-[var(--crmx-text-secondary)] hover:bg-[var(--crmx-neutral-soft)]"
           >
             إعادة تعيين

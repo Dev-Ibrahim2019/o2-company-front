@@ -151,6 +151,9 @@ export function CrmCustomersPage() {
     values.source ? next.set("source", values.source) : next.delete("source");
     values.gender ? next.set("gender", values.gender) : next.delete("gender");
     values.branchId ? next.set("branch_id", values.branchId) : next.delete("branch_id");
+    values.hasComplaints ? next.set("has_complaints", values.hasComplaints) : next.delete("has_complaints");
+    values.hasOccasion ? next.set("has_occasion", values.hasOccasion) : next.delete("has_occasion");
+    values.occasionType ? next.set("occasion_type", values.occasionType) : next.delete("occasion_type");
     setParams(next);
   };
 
@@ -222,7 +225,7 @@ export function CrmCustomersPage() {
           <button
             type="button"
             onClick={() => setAdvancedOpen(true)}
-            className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--crmx-border)] bg-white text-[var(--crmx-text)] md:hidden"
+            className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--crmx-border)] bg-white text-[var(--crmx-text)] lg:hidden"
             aria-label="فلاتر"
           >
             {advancedActiveCount > 0 && (
@@ -282,7 +285,7 @@ export function CrmCustomersPage() {
       <CrmFilterDrawer
         open={advancedOpen}
         onClose={() => setAdvancedOpen(false)}
-        values={{ status, category, branchId, source, gender }}
+        values={{ status, category, branchId, source, gender, hasComplaints, hasOccasion, occasionType }}
         branches={branches}
         showBranchFilter={isGlobal}
         onApply={applyAdvanced}
