@@ -116,6 +116,14 @@ export const PERMISSIONS = {
 export const CRM_PERMISSIONS = {
   ACCESS: "crm.access",
   VIEW_CUSTOMER_FINANCIAL: "crm.view-customer-financial",
+  // CrmController::statement() (routes/api.php) gates specifically on this —
+  // separate from crm.view-customer-financial, which only covers the
+  // financial-summary and aging endpoints. Was never referenced anywhere in
+  // the frontend before this, which is exactly why a viewer with only
+  // crm.view-customer-financial saw the statement section's own heading
+  // render with nothing underneath it: nothing here checked for the
+  // permission the backend actually enforces on that one section.
+  VIEW_CUSTOMER_STATEMENT: "crm.view-customer-statement",
   ACCOUNTING_VIEW: "view-accounting",
   ACCOUNTING_MANAGE: "manage-accounting",
   VIEW_SENSITIVE_NOTES: "crm.view-sensitive-notes",

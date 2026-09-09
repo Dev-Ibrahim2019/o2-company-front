@@ -1,7 +1,22 @@
 // The two purchase charts are shared with the Overview tab (where the
 // mockup places them) — see customers-ui/CrmPurchaseCharts.
+import { useAuth } from "../../../auth";
+import { CRM_PERMISSIONS } from "../../../auth/permissions";
 import { CrmFavoriteProductsChart, CrmPurchaseHistoryChart } from "../customers-ui";
 import { DomainTable, SectionFrame, date, money, num, text, unwrapRows, useCrmSection, type Row } from "./shared";
+
+// customer_accounting getAging()'s real bucket order and the labels already
+// established for the exact same keys elsewhere in the app (Administration's
+// aging reports — CustomerAgingReport.tsx, CustomerDashboard.tsx, etc.) —
+// reused verbatim rather than inventing a second wording for the same five
+// buckets.
+const AGING_BUCKETS: Array<[key: string, label: string]> = [
+  ["current", "الحالي"],
+  ["1_30", "1-30 يوم"],
+  ["31_60", "31-60 يوم"],
+  ["61_90", "61-90 يوم"],
+  ["over_90", "أكثر من 90 يوم"],
+];
 
 // Labels for the payment-terms codes the backend stores (net15/net30/…).
 // Unmapped values fall through unchanged rather than being hidden.
@@ -69,11 +84,51 @@ function Summary() {
   );
 }
 
-function Statement(){const s=useCrmSection("statement");return <SectionFrame state={s} hideOnForbidden>{d=><DomainTable empty="لا توجد حركات مالية" rows={unwrapRows(d,["transactions","statement"])} columns={[{key:"date",label:"التاريخ",render:(v,r)=>date(v??r.created_at)},{key:"description",label:"البيان",render:(v,r)=>text(v??r.reference)},{key:"debit",label:"مدين",render:money},{key:"credit",label:"دائن",render:money},{key:"balance",label:"الرصيد",render:money}]}/>}</SectionFrame>}
-function Aging(){const s=useCrmSection("aging");return <SectionFrame state={s} hideOnForbidden>{d=><DomainTable empty="لا توجد أرصدة مستحقة" rows={unwrapRows(d,["buckets","aging"])} columns={[{key:"label",label:"الفترة",render:(v,r)=>text(v??r.period)},{key:"amount",label:"القيمة",render:money}]}/>}</SectionFrame>}
+// GET .../statement's real shape is {..., lines: [...], ...} (SubledgerService::
+// getFullStatement()) — "lines" was missing from this list entirely, so
+// unwrapRows() never found an array to unwrap and fell back to wrapping the
+// whole response object as one fake row (every cell showing "—"/"0 ₪",
+// regardless of whether the customer actually had statement lines or not).
+// Added here only — unwrapRows() itself is untouched, and every other call
+// site (ComplaintsTab, NotesOccasionsTab, OrdersTab, OverviewTab,
+// AddressesTab) passes its own distinct keys, so this cannot affect them.
+function Statement(){const s=useCrmSection("statement");return <SectionFrame state={s} hideOnForbidden>{d=><DomainTable empty="لا توجد حركات مالية" rows={unwrapRows(d,["lines","transactions","statement"])} columns={[{key:"date",label:"التاريخ",render:(v,r)=>date(v??r.created_at)},{key:"description",label:"البيان",render:(v,r)=>text(v??r.reference)},{key:"debit",label:"مدين",render:money},{key:"credit",label:"دائن",render:money},{key:"balance",label:"الرصيد",render:money}]}/>}</SectionFrame>}
+
+// GET .../aging returns a flat bucket object ({current, 1_30, 31_60, 61_90,
+// over_90, total}), never an array — unwrapRows() is an array-unwrapper, not
+// a shape-transformer, so no key added to its list would ever fix this the
+// way it fixed Statement above; it would keep falling back to the same
+// "wrap the whole object as one fake row" behaviour. Reshaped here instead,
+// at the one place that actually needs rows, rather than changing what the
+// backend returns — CustomerFinancialController's own /aging endpoint
+// returns this identical shape for other real consumers (Administration's
+// aging reports) that want the bucket keys directly, not a generic table.
+function Aging(){
+  const s=useCrmSection("aging");
+  return <SectionFrame state={s} hideOnForbidden>{(d)=>{
+    const r = d as Row;
+    // All five buckets, always — including ones sitting at 0. A 0 here is a
+    // real computed answer ("nothing owed in this window"), not a missing
+    // value; filtering them out would make an aging report that only shows
+    // the customer's problems, never confirms the absence of one.
+    const rows = AGING_BUCKETS.map(([key, label]) => ({ label, amount: r[key] }));
+    return <DomainTable empty="لا توجد أرصدة مستحقة" rows={rows} columns={[{key:"label",label:"الفترة"},{key:"amount",label:"القيمة",render:money}]}/>;
+  }}</SectionFrame>;
+}
 
 const sectionTitle = "mb-3 text-[15px] font-bold text-[var(--crmx-text)] border-b border-[var(--crmx-border)] pb-2.5";
-export default function FinancialTab(){return <div className="crmx-root grid gap-6">
+export default function FinancialTab(){
+  const { hasPermission } = useAuth();
+  // CrmController::statement() gates on this permission alone, not the
+  // broader set that gets the rest of the tab open (crm.view-customer-
+  // financial / view-accounting / manage-accounting) — a viewer with only
+  // one of those could open this tab and reach a "كشف الحساب" heading with
+  // nothing under it (SectionFrame's hideOnForbidden only ever hid the
+  // content, never the heading above it). Checked here, once, so the whole
+  // section — heading included — simply isn't in the page for someone the
+  // backend was always going to 403 anyway.
+  const canStatement = hasPermission(CRM_PERMISSIONS.VIEW_CUSTOMER_STATEMENT);
+  return <div className="crmx-root grid gap-6">
   <section>
     <h3 className={sectionTitle}>تحليلات الشراء</h3>
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -82,6 +137,7 @@ export default function FinancialTab(){return <div className="crmx-root grid gap
     </div>
   </section>
   <section><h3 className={sectionTitle}>الملخص المالي</h3><Summary/></section>
-  <section><h3 className={sectionTitle}>كشف الحساب</h3><Statement/></section>
+  {canStatement && <section><h3 className={sectionTitle}>كشف الحساب</h3><Statement/></section>}
   <section><h3 className={sectionTitle}>أعمار الديون</h3><Aging/></section>
-</div>}
+</div>;
+}
