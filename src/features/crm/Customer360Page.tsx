@@ -122,6 +122,11 @@ function CustomerFacts({ customer }: { customer: CrmCustomerProfile }) {
     ...(identity.gender ? [["الجنس", CRM_GENDER_LABELS[identity.gender]] as [string, string]] : []),
     ...(identity.birth_date ? [["تاريخ الميلاد", formatDate(identity.birth_date)] as [string, string]] : []),
     ...(identity.created_at ? [["تاريخ التسجيل", formatDate(identity.created_at)] as [string, string]] : []),
+    // customers.salesperson_id was already round-tripped by the edit form
+    // (see that form's own comment on the field) but never shown anywhere
+    // read-only — profile() already resolves the name via the salesperson
+    // relation, this is just the first place that reads it.
+    ...(identity.salesperson?.name ? [["الموظف المسؤول", identity.salesperson.name] as [string, string]] : []),
     ["العنوان الرئيسي", identity.default_address || "لا يوجد عنوان مسجل"],
     ...(workAddress ? [["عنوان العمل", workAddress] as [string, string]] : []),
   ];
@@ -185,7 +190,16 @@ export function Customer360Page() {
       {/* ── Title row ── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2.5">
-          <h1 className="text-[24px] font-extrabold text-[var(--crmx-text)]">{identity.name}</h1>
+          <div className="min-w-0">
+            <h1 className="text-[24px] font-extrabold text-[var(--crmx-text)]">{identity.name}</h1>
+            {/* Small secondary line under the Arabic name, only when set —
+                customers.name_en was accepted and persisted since this
+                module's first version but never displayed anywhere read-only
+                (see the field-inventory audit); this is that first display. */}
+            {identity.name_en && (
+              <p className="text-[13px] text-[var(--crmx-text-muted)]" dir="ltr">{identity.name_en}</p>
+            )}
+          </div>
           <StatusChip value={identity.status} />
           {identity.engagement_status && (
             <span className="text-[12.5px] font-semibold text-[var(--crmx-text-secondary)]">{engagementLabel(identity.engagement_status)}</span>
