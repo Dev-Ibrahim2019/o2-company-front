@@ -1,6 +1,7 @@
 import { ArrowLeft, ChevronDown } from "lucide-react";
 import { Fragment, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { CrmState } from "../components";
 import { CrmFavoriteProductsChart, CrmOrderExpandedPanel, CrmPurchaseHistoryChart, CrmStatusBadge } from "../customers-ui";
 import { CRM_ORDER_SOURCE_LABELS } from "../customers-ui/sourceOptions";
 import { date, money, SectionFrame, text, unwrapRows, useCrmSection } from "./shared";
@@ -34,7 +35,12 @@ function RecentOrders() {
           const all = unwrapRows(data, ["orders"]);
           const rows = all.slice(0, 5);
           if (!rows.length) {
-            return <div className="py-10 text-center text-[13px] text-[var(--crmx-text-secondary)]">لا توجد طلبات مسجلة لهذا العميل</div>;
+            // Was plain centred text — the only one of Overview's three empty
+            // states without an icon, next to the two purchase charts' shared
+            // ChartEmpty (icon + message) and SectionFrame's own default
+            // (CrmState, also icon + message). Reusing CrmState here instead
+            // of a fourth bespoke empty-state style unifies all three.
+            return <CrmState kind="empty" title="لا توجد طلبات مسجلة لهذا العميل" />;
           }
           return (
             <>

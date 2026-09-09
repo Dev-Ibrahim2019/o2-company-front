@@ -75,7 +75,7 @@ const STEPS = [
   { id: 3, title: "التفضيلات والمناسبات", hint: "تصنيف العميل ومناسباته الخاصة" },
 ] as const;
 
-const pendingLabelCls = "mb-1.5 block text-[13px] font-semibold text-[var(--crmx-text-secondary)]";
+const pendingLabelCls = "mb-1.5 block text-[14px] font-semibold text-[var(--crmx-text-secondary)]";
 const pendingInputCls = "h-11 w-full cursor-not-allowed rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-neutral-soft)] px-3 text-[14px] text-[var(--crmx-text-muted)] outline-none";
 const pendingBadge = (
   <span className="rounded-full bg-[var(--crmx-warning-soft)] px-2 py-0.5 text-[10px] font-bold text-[var(--crmx-warning-text)]">قريبًا</span>
@@ -143,8 +143,12 @@ function completionPercent(form: FormState): number {
 }
 
 function CompletionRing({ percent }: { percent: number }) {
-  const size = 56;
-  const stroke = 5;
+  // This ring exists specifically to be the eye's focal point in the
+  // sidebar preview card (a prior design pass asked for it "عصرية وجذابة")
+  // — a 12px number in the middle contradicted that on a 56px ring. Grown
+  // to 68px with a matching 20px number so it reads clearly without zoom.
+  const size = 68;
+  const stroke = 6;
   const r = (size - stroke) / 2;
   const circumference = 2 * Math.PI * r;
   const offset = circumference * (1 - percent / 100);
@@ -158,7 +162,7 @@ function CompletionRing({ percent }: { percent: number }) {
           style={{ transition: "stroke-dashoffset 300ms ease" }}
         />
       </svg>
-      <span className="absolute inset-0 flex items-center justify-center text-[12px] font-bold text-[var(--crmx-text)]">{percent}٪</span>
+      <span className="absolute inset-0 flex items-center justify-center text-[20px] font-extrabold text-[var(--crmx-text)]">{percent}٪</span>
     </div>
   );
 }
@@ -272,7 +276,7 @@ function OccasionsRepeater({ drafts, onChange }: { drafts: OccasionDraft[]; onCh
 // defines the themed versions (with error state) exists — deliberately the
 // same visual language, just without per-field error wiring since draft
 // occasion rows validate as a whole at submit time, not per keystroke.
-const labelClsStatic = "mb-1.5 block text-[13px] font-semibold text-[var(--crmx-text-secondary)]";
+const labelClsStatic = "mb-1.5 block text-[14px] font-semibold text-[var(--crmx-text-secondary)]";
 const inputClsStatic = "h-11 w-full rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none transition focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10";
 
 function Stepper({ current, furthestValid, onJump }: { current: number; furthestValid: number; onJump: (step: number) => void }) {
@@ -414,7 +418,10 @@ export function CrmCustomerFormPage() {
     `h-11 w-full rounded-xl border bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none transition focus:ring-2 focus:ring-[var(--crmx-primary)]/10 ${
       fieldErrors[key] ? "border-[var(--crmx-danger)] focus:border-[var(--crmx-danger)]" : "border-[var(--crmx-border)] focus:border-[var(--crmx-primary)]"
     }`;
-  const labelCls = "mb-1.5 block text-[13px] font-semibold text-[var(--crmx-text-secondary)]";
+  // Field label vs. field content: a label ("question") must never render
+  // smaller than the answer it's labelling — was 13px against inputCls's
+  // 14px everywhere in this wizard, an inverted size hierarchy.
+  const labelCls = "mb-1.5 block text-[14px] font-semibold text-[var(--crmx-text-secondary)]";
 
   const percent = useMemo(() => completionPercent(form), [form]);
   const groupLabel = useMemo(() => {
@@ -859,7 +866,7 @@ export function CrmCustomerFormPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="hidden text-[12.5px] font-semibold text-[var(--crmx-text-muted)] sm:inline">اكتمال الملف: {percent}٪</span>
+          <span className="hidden text-[14px] font-semibold text-[var(--crmx-text-muted)] sm:inline">اكتمال الملف: {percent}٪</span>
           <button
             type="button"
             onClick={() => navigate(isEdit ? `/admin/crm/customers/${customerId}` : "/admin/crm/customers")}
