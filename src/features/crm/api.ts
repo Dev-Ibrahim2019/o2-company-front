@@ -160,6 +160,13 @@ export const crmApi = {
     payload<{ rating: number; notes?: string | null }>(
       (await api.put(`/crm/orders/${orderId}/items/${itemId}/feedback`, data)).data,
     ),
+  // Escalate an item's rating/note into a complaint — CrmController::
+  // flagItemFeedbackAsComplaint(). Idempotent: returns the existing
+  // complaint if one was already made from this rating.
+  flagOrderItemComplaint: async (orderId: CrmId, itemId: CrmId) =>
+    payload<{ id: CrmId; order_number?: string | null }>(
+      (await api.post(`/crm/orders/${orderId}/items/${itemId}/complaint`)).data,
+    ),
   // Addresses — CrmController::storeAddress(). Read is the generic
   // section() call ("addresses"); this is the one write CRM exposes.
   createAddress: async (customerId: CrmId, data: CrmAddressInput) =>

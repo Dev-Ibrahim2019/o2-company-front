@@ -582,7 +582,9 @@ export interface CrmOrderItem {
   // order_item_feedback — a 1–5 rating + optional note, null until someone
   // rates this line from the order pop-up. Written via
   // PUT /crm/orders/{order}/items/{item}/feedback (CrmController::storeItemFeedback).
-  feedback?: { rating: number; notes?: string | null } | null;
+  // complaint_id is set once the rating is escalated into a complaint
+  // (POST .../items/{item}/complaint).
+  feedback?: { rating: number; notes?: string | null; complaint_id?: number | null } | null;
 }
 // PUT /crm/orders/{order}/items/{item}/feedback body.
 export interface CrmOrderItemFeedbackInput { rating: number; notes?: string | null }

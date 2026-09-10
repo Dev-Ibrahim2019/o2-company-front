@@ -112,6 +112,7 @@ export function FeedbackEditor({ order, onSaved, customerId: customerIdProp }: {
 const TIMELINE_DOT: Record<string, string> = {
   item_rated: "bg-[var(--crmx-gold)]",
   order_rated: "bg-[var(--crmx-gold)]",
+  item_complaint: "bg-[var(--crmx-danger)]",
   order_closed: "bg-[var(--crmx-success)]",
   invoice_printed: "bg-[var(--crmx-info)]",
 };

@@ -1,8 +1,10 @@
-import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, MessageSquare, Star, User, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Flag, Loader2, MessageSquare, Star, User, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Link } from "react-router-dom";
+import { useAuth } from "../../../auth";
+import { CRM_PERMISSIONS } from "../../../auth/permissions";
 import { crmApi } from "../api";
 import { getCrmError } from "../components";
 import { dateTime as formatDateTime, money as formatMoney, num } from "../format";
@@ -57,6 +59,9 @@ function InvoiceRow({ item }: { item: CrmOrderItem }) {
         {item.notes && <p className="truncate text-[11.5px] text-[var(--crmx-text-muted)]">{item.notes}</p>}
       </div>
       <span className="flex shrink-0 items-baseline gap-2">
+        {item.feedback?.complaint_id ? (
+          <Flag className="h-3 w-3 translate-y-0.5 fill-[var(--crmx-danger)] text-[var(--crmx-danger)]" />
+        ) : null}
         {item.feedback?.rating ? (
           <span className="inline-flex items-center gap-0.5 text-[11.5px] font-bold text-[var(--crmx-gold)]">
             <Star className="h-3 w-3 fill-[var(--crmx-gold)]" />
@@ -76,14 +81,19 @@ function ItemRatingPanel({
   items,
   onSaved,
   onError,
+  onComplaintFlagged,
 }: {
   orderId: string | number;
   items: CrmOrderItem[];
   onSaved: (itemId: CrmOrderItem["id"], feedback: NonNullable<CrmOrderItem["feedback"]>) => void;
   onError: (message: string) => void;
+  onComplaintFlagged: (itemId: CrmOrderItem["id"], complaintId: number) => void;
 }) {
+  const { hasPermission } = useAuth();
+  const canComplain = hasPermission(CRM_PERMISSIONS.COMPLAINTS_CREATE);
   const itemsRef = useRef(items);
   itemsRef.current = items;
+  const [flagging, setFlagging] = useState(false);
 
   const [selectedId, setSelectedId] = useState<CrmOrderItem["id"] | null>(
     () => items.find((i) => !i.feedback?.rating)?.id ?? items[0]?.id ?? null,
@@ -193,6 +203,24 @@ function ItemRatingPanel({
   };
   const noteDirty = note.trim() !== savedNote.trim();
   const nextName = nextUnrated ? nextUnrated.item_name_ar || nextUnrated.item_name : null;
+  const complaintId = selected.feedback?.complaint_id ?? null;
+
+  const flagAsComplaint = async () => {
+    clearAdvanceTimer();
+    noteEngaged.current = true;
+    if (noteDirty && rating >= 1) await save({ rating, notes: note }, false); // persist the note first — it becomes the complaint body
+    if (!window.confirm("تسجيل هذه الملاحظة كشكوى من العميل؟ ستُدرج ضمن شكاوى العميل وتظهر في ملفه.")) return;
+    setFlagging(true);
+    try {
+      const complaint = await crmApi.flagOrderItemComplaint(orderId, selectedId);
+      onComplaintFlagged(selectedId, Number(complaint.id));
+      toast.success("تم تسجيل الشكوى", "أُدرجت ضمن شكاوى العميل.");
+    } catch (e) {
+      toast.error("تعذّر تسجيل الشكوى", getCrmError(e).message);
+    } finally {
+      setFlagging(false);
+    }
+  };
 
   return (
     <div className="space-y-3 rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-3.5">
@@ -263,6 +291,26 @@ function ItemRatingPanel({
         </div>
         {noteDirty && rating < 1 && (
           <p className="mt-1 text-[11.5px] text-[var(--crmx-text-muted)]">قيّم الصنف أولاً لحفظ الملاحظة معه.</p>
+        )}
+
+        {rating >= 1 && (
+          <div className="mt-2">
+            {complaintId ? (
+              <span className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--crmx-danger-soft)] px-2.5 py-1 text-[12px] font-bold text-[var(--crmx-danger-text)]">
+                <Flag className="h-3.5 w-3.5" /> مُسجَّلة كشكوى من العميل
+              </span>
+            ) : canComplain ? (
+              <button
+                type="button"
+                onClick={flagAsComplaint}
+                disabled={flagging || inFlight > 0}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--crmx-danger)]/40 px-2.5 py-1 text-[12px] font-bold text-[var(--crmx-danger-text)] transition hover:bg-[var(--crmx-danger-soft)] disabled:opacity-40"
+              >
+                {flagging ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Flag className="h-3.5 w-3.5" />}
+                تسجيل كشكوى من العميل
+              </button>
+            ) : null}
+          </div>
         )}
       </div>
     </div>
@@ -346,6 +394,7 @@ function ModalBody({
   onClose,
   onItemSaved,
   onItemError,
+  onComplaintFlagged,
   feedbackVersion,
   bumpFeedbackVersion,
 }: {
@@ -357,6 +406,7 @@ function ModalBody({
   onClose: () => void;
   onItemSaved: (itemId: CrmOrderItem["id"], feedback: NonNullable<CrmOrderItem["feedback"]>) => void;
   onItemError: (message: string) => void;
+  onComplaintFlagged: (itemId: CrmOrderItem["id"], complaintId: number) => void;
   feedbackVersion: number;
   bumpFeedbackVersion: () => void;
 }) {
@@ -462,7 +512,13 @@ function ModalBody({
                 >
                   تقييم الأصناف
                 </SecHead>
-                <ItemRatingPanel orderId={details.id} items={items} onSaved={onItemSaved} onError={onItemError} />
+                <ItemRatingPanel
+                  orderId={details.id}
+                  items={items}
+                  onSaved={onItemSaved}
+                  onError={onItemError}
+                  onComplaintFlagged={onComplaintFlagged}
+                />
               </div>
             )}
 
@@ -574,6 +630,22 @@ export function CrmOrderDetailsModal({
     toast.error("تعذّر حفظ التقييم", message);
   }, []);
 
+  // Mark the item's rating as escalated — the panel flips to a "مُسجَّلة
+  // كشكوى" chip, the timeline (bumped) picks up the item_complaint event.
+  const onComplaintFlagged = useCallback((itemId: CrmOrderItem["id"], complaintId: number) => {
+    setDetails((d) =>
+      d
+        ? {
+            ...d,
+            items: d.items.map((it) =>
+              it.id === itemId && it.feedback ? { ...it, feedback: { ...it.feedback, complaint_id: complaintId } } : it,
+            ),
+          }
+        : d,
+    );
+    setFeedbackVersion((v) => v + 1);
+  }, []);
+
   return createPortal(
     // .crmx-root/contents wrapper: this tree is portalled to document.body,
     // outside the CRM shell, so without it every --crmx-* token the modal
@@ -611,6 +683,7 @@ export function CrmOrderDetailsModal({
                 onClose={onClose}
                 onItemSaved={onItemSaved}
                 onItemError={onItemError}
+                onComplaintFlagged={onComplaintFlagged}
                 feedbackVersion={feedbackVersion}
                 bumpFeedbackVersion={bumpFeedbackVersion}
               />
