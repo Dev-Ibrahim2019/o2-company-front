@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, MessageSquare, MessageSquarePlus, User, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, MessageSquare, Star, User, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
@@ -15,28 +15,27 @@ import { FeedbackEditor, Field, StarRow, TimelineSection } from "./CrmOrderExpan
 
 /**
  * Order Details — a single centred pop-up, the CRM orders screens' one
- * detail surface. No tabs: one scrollable column, sections in reading order
- * — identity/facts, items (with per-line ratings), the total, the customer,
- * then a collapsible activity block.
+ * detail surface. No tabs: one scrollable column.
  *
- * Read-only over the Order domain (see OrdersPage.tsx's own note) — the one
- * thing it writes is feedback, which CRM already owns: order-level
- * (order_feedback) and per-item (order_item_feedback), both under
- * crm.customer-orders.view. Both also land in the order's timeline
- * (OrderTimelineController) as a real action on the order.
+ * The line items read as a tight invoice — name · price · ×qty · total,
+ * plus a small "★n" where a rating exists — and stay read-only. Rating
+ * happens in ONE panel below it: pick an item, rate it, note it. A star
+ * press saves in the background (optimistic, no dialog refetch), then the
+ * picker advances to the next un-rated item so the whole order can be
+ * rated without stopping. The parent's copy of each item is patched in
+ * place so the "n / m مُقيَّم" count stays live, a debounced toast confirms
+ * the write, a failure reverts. Every rating also lands in the order's
+ * timeline (OrderTimelineController) as a real action on the order.
  *
- * A rating saves in the background on the star press — optimistic, no dialog
- * refetch. The parent's copy of that item is patched in place so the
- * "n / m مُقيَّم" count and stars stay live; a debounced toast confirms the
- * write; a failure reverts that star. Saving via the note editor collapses
- * it back to the compact "stars + إضافة ملاحظة" state.
+ * Read-only over the Order domain otherwise (see OrdersPage.tsx's note) —
+ * feedback is the only thing CRM writes here, under crm.customer-orders.view.
  */
 
 // Right-bordered heading — one consistent accent so sections separate at a
 // glance without a rainbow of colours.
 function SecHead({ children, aside }: { children: React.ReactNode; aside?: React.ReactNode }) {
   return (
-    <div className="mb-2.5 flex items-center justify-between gap-3">
+    <div className="mb-2 flex items-center justify-between gap-3">
       <h4 className="border-e-[3px] border-[var(--crmx-primary)] pe-2.5 text-[12px] font-bold uppercase tracking-wide text-[var(--crmx-text-secondary)]">
         {children}
       </h4>
@@ -45,46 +44,99 @@ function SecHead({ children, aside }: { children: React.ReactNode; aside?: React
   );
 }
 
-function ItemRow({
+// A single invoice line — read-only. The gold "★n" is the only rating
+// footprint here; the actual rating control is the panel below the list.
+function InvoiceRow({ item }: { item: CrmOrderItem }) {
+  return (
+    <li className="flex items-baseline justify-between gap-3 py-2 first:pt-0 last:pb-0">
+      <div className="min-w-0">
+        <p className="truncate">
+          <span className="text-[13.5px] font-semibold text-[var(--crmx-text)]">{item.item_name_ar || item.item_name}</span>
+          <span className="text-[12px] text-[var(--crmx-text-muted)]"> · {formatMoney(item.price)} · ×{num(item.quantity)}</span>
+        </p>
+        {item.notes && <p className="truncate text-[11.5px] text-[var(--crmx-text-muted)]">{item.notes}</p>}
+      </div>
+      <span className="flex shrink-0 items-baseline gap-2">
+        {item.feedback?.rating ? (
+          <span className="inline-flex items-center gap-0.5 text-[11.5px] font-bold text-[var(--crmx-gold)]">
+            <Star className="h-3 w-3 fill-[var(--crmx-gold)]" />
+            {num(item.feedback.rating)}
+          </span>
+        ) : null}
+        <span className="text-[13.5px] font-bold text-[var(--crmx-text)]">{formatMoney(item.total)}</span>
+      </span>
+    </li>
+  );
+}
+
+// The one rating control for the whole order — pick an item, rate it, note
+// it. Everything else about the items list stays a plain invoice.
+function ItemRatingPanel({
   orderId,
-  item,
+  items,
   onSaved,
   onError,
 }: {
   orderId: string | number;
-  item: CrmOrderItem;
+  items: CrmOrderItem[];
   onSaved: (itemId: CrmOrderItem["id"], feedback: NonNullable<CrmOrderItem["feedback"]>) => void;
   onError: (message: string) => void;
 }) {
-  const [rating, setRating] = useState(item.feedback?.rating ?? 0);
-  const [note, setNote] = useState(item.feedback?.notes ?? "");
-  const [savedNote, setSavedNote] = useState(item.feedback?.notes ?? "");
-  const [noteOpen, setNoteOpen] = useState(false);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+
+  const [selectedId, setSelectedId] = useState<CrmOrderItem["id"] | null>(
+    () => items.find((i) => !i.feedback?.rating)?.id ?? items[0]?.id ?? null,
+  );
+  const selected = items.find((i) => i.id === selectedId) ?? null;
+
+  const [rating, setRating] = useState(selected?.feedback?.rating ?? 0);
+  const [note, setNote] = useState(selected?.feedback?.notes ?? "");
+  const [savedNote, setSavedNote] = useState(selected?.feedback?.notes ?? "");
   const [inFlight, setInFlight] = useState(0);
   const [justSaved, setJustSaved] = useState(false);
-  const lastSaved = useRef({ rating: item.feedback?.rating ?? 0, notes: item.feedback?.notes ?? "" });
+  const lastSaved = useRef({ rating: selected?.feedback?.rating ?? 0, notes: selected?.feedback?.notes ?? "" });
   const checkTimer = useRef<number>();
+
+  // Re-sync the editor to the picked item — on selection change only, never
+  // on an items refresh (which would wipe an in-progress note).
+  useEffect(() => {
+    const it = itemsRef.current.find((i) => i.id === selectedId);
+    const r = it?.feedback?.rating ?? 0;
+    const n = it?.feedback?.notes ?? "";
+    setRating(r);
+    setNote(n);
+    setSavedNote(n);
+    lastSaved.current = { rating: r, notes: n };
+    setJustSaved(false);
+  }, [selectedId]);
 
   useEffect(() => () => window.clearTimeout(checkTimer.current), []);
 
-  const save = async (payload: CrmOrderItemFeedbackInput): Promise<boolean> => {
-    if (payload.rating < 1) return false;
+  if (!selected || selectedId == null) return null;
+
+  const save = async (payload: CrmOrderItemFeedbackInput, advance: boolean): Promise<void> => {
+    if (payload.rating < 1) return;
+    const id = selectedId;
     const notes = payload.notes?.trim() ?? "";
+    const wasUnrated = !itemsRef.current.find((i) => i.id === id)?.feedback?.rating;
     setInFlight((n) => n + 1);
     try {
-      await crmApi.saveOrderItemFeedback(orderId, item.id, { rating: payload.rating, notes: notes || null });
+      await crmApi.saveOrderItemFeedback(orderId, id, { rating: payload.rating, notes: notes || null });
       lastSaved.current = { rating: payload.rating, notes };
       setSavedNote(notes);
       setJustSaved(true);
       window.clearTimeout(checkTimer.current);
       checkTimer.current = window.setTimeout(() => setJustSaved(false), 2000);
-      onSaved(item.id, { rating: payload.rating, notes: notes || null });
-      return true;
+      onSaved(id, { rating: payload.rating, notes: notes || null });
+      if (advance && wasUnrated) {
+        const next = itemsRef.current.find((i) => i.id !== id && !i.feedback?.rating);
+        if (next) setSelectedId(next.id);
+      }
     } catch (e) {
       setRating(lastSaved.current.rating);
       setNote(lastSaved.current.notes);
       onError(getCrmError(e).message);
-      return false;
     } finally {
       setInFlight((n) => n - 1);
     }
@@ -92,85 +144,57 @@ function ItemRow({
 
   const onStar = (v: number) => {
     setRating(v);
-    void save({ rating: v, notes: note });
+    void save({ rating: v, notes: note }, true);
   };
-
-  const saveNote = async () => {
-    if (await save({ rating, notes: note })) setNoteOpen(false);
-  };
-
-  const name = item.item_name_ar || item.item_name;
+  const noteDirty = note.trim() !== savedNote.trim();
 
   return (
-    <li className="py-3 first:pt-0 last:pb-0">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="min-w-0 truncate">
-          <span className="text-[14px] font-semibold text-[var(--crmx-text)]">{name}</span>
-          <span className="text-[12.5px] text-[var(--crmx-text-muted)]"> · {formatMoney(item.price)} · ×{num(item.quantity)}</span>
-        </p>
-        <span className="shrink-0 text-[14px] font-bold text-[var(--crmx-text)]">{formatMoney(item.total)}</span>
-      </div>
-      {item.notes && <p className="mt-0.5 text-[12px] text-[var(--crmx-text-muted)]">{item.notes}</p>}
+    <div className="space-y-3 rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-3.5">
+      <select
+        value={String(selectedId)}
+        onChange={(e) => setSelectedId(items.find((i) => String(i.id) === e.target.value)?.id ?? null)}
+        className="h-10 w-full rounded-lg border border-[var(--crmx-border)] bg-white px-3 text-[13.5px] font-semibold text-[var(--crmx-text)] outline-none transition focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
+      >
+        {items.map((it) => (
+          <option key={it.id} value={String(it.id)}>
+            {(it.item_name_ar || it.item_name) + (it.feedback?.rating ? `  ★ ${it.feedback.rating}` : "")}
+          </option>
+        ))}
+      </select>
 
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-        {/* Never disabled mid-save — rate one item after another, no wait;
-            the server upsert is last-write-wins. */}
-        <StarRow value={rating} onChange={onStar} size={5} />
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <StarRow value={rating} onChange={onStar} size={7} />
         {inFlight > 0 ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--crmx-text-muted)]" />
+          <Loader2 className="h-4 w-4 animate-spin text-[var(--crmx-text-muted)]" />
         ) : justSaved ? (
           <span className="flex items-center gap-1 text-[12px] font-semibold text-[var(--crmx-success-text)]">
-            <CheckCircle2 className="h-3.5 w-3.5" /> محفوظ
+            <CheckCircle2 className="h-4 w-4" /> محفوظ
           </span>
         ) : null}
-        {!noteOpen && (
+      </div>
+
+      <div className="flex items-start gap-2">
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="ملاحظة على هذا الصنف (اختياري)…"
+          rows={2}
+          maxLength={1000}
+          className="flex-1 resize-none rounded-lg border border-[var(--crmx-border)] bg-white px-3 py-2 text-[13px] text-[var(--crmx-text)] outline-none transition focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
+        />
+        {noteDirty && (
           <button
             type="button"
-            onClick={() => setNoteOpen(true)}
-            className={`flex items-center gap-1 text-[12px] font-semibold transition ${
-              savedNote
-                ? "text-[var(--crmx-primary-text)]"
-                : "text-[var(--crmx-text-muted)] hover:text-[var(--crmx-primary-text)]"
-            }`}
+            onClick={() => void save({ rating, notes: note }, false)}
+            disabled={inFlight > 0 || rating < 1}
+            className="h-9 shrink-0 rounded-lg bg-[var(--crmx-primary)] px-3 text-[12.5px] font-bold text-white transition disabled:opacity-40"
+            title={rating < 1 ? "اختر تقييماً أولاً" : undefined}
           >
-            <MessageSquarePlus className="h-3.5 w-3.5" />
-            {savedNote ? "الملاحظة" : "إضافة ملاحظة"}
+            حفظ الملاحظة
           </button>
         )}
       </div>
-
-      {noteOpen && (
-        <div className="mt-2 flex items-start gap-2">
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="ملاحظة على هذا الصنف…"
-            rows={2}
-            maxLength={1000}
-            autoFocus
-            className="flex-1 resize-none rounded-lg border border-[var(--crmx-border)] bg-white px-3 py-2 text-[13px] text-[var(--crmx-text)] outline-none transition focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
-          />
-          <div className="flex shrink-0 flex-col gap-1.5">
-            <button
-              type="button"
-              onClick={saveNote}
-              disabled={inFlight > 0 || rating < 1}
-              className="h-9 rounded-lg bg-[var(--crmx-primary)] px-3 text-[12.5px] font-bold text-white transition disabled:opacity-40"
-              title={rating < 1 ? "اختر تقييماً أولاً" : undefined}
-            >
-              حفظ
-            </button>
-            <button
-              type="button"
-              onClick={() => { setNote(savedNote); setNoteOpen(false); }}
-              className="h-9 rounded-lg border border-[var(--crmx-border)] px-3 text-[12.5px] font-semibold text-[var(--crmx-text-secondary)] transition hover:bg-[var(--crmx-neutral-soft)]"
-            >
-              إلغاء
-            </button>
-          </div>
-        </div>
-      )}
-    </li>
+    </div>
   );
 }
 
@@ -178,7 +202,7 @@ function TotalBlock({ order }: { order: CrmOrderDetails }) {
   return (
     <div className="overflow-hidden rounded-xl border border-[var(--crmx-border)]">
       {(order.subtotal !== order.total || order.discount_amount > 0) && (
-        <dl className="space-y-1.5 bg-[var(--crmx-card)] px-4 py-3 text-[13px]">
+        <dl className="space-y-1.5 bg-[var(--crmx-card)] px-4 py-2.5 text-[13px]">
           <div className="flex items-center justify-between">
             <dt className="text-[var(--crmx-text-secondary)]">الإجمالي الفرعي</dt>
             <dd className="font-semibold text-[var(--crmx-text)]">{formatMoney(order.subtotal)}</dd>
@@ -191,7 +215,7 @@ function TotalBlock({ order }: { order: CrmOrderDetails }) {
           )}
         </dl>
       )}
-      <div className="flex items-center justify-between bg-[var(--crmx-primary-soft)] px-4 py-3">
+      <div className="flex items-center justify-between bg-[var(--crmx-primary-soft)] px-4 py-2.5">
         <span className="text-[13px] font-bold text-[var(--crmx-primary-text)]">الإجمالي</span>
         <span className="text-[18px] font-extrabold text-[var(--crmx-primary-text)]">{formatMoney(order.total)}</span>
       </div>
@@ -199,7 +223,15 @@ function TotalBlock({ order }: { order: CrmOrderDetails }) {
   );
 }
 
-function ActivityBlock({ order, refreshKey, onFeedbackSaved }: { order: CrmOrderDetails; refreshKey: number; onFeedbackSaved: () => void }) {
+function ActivityBlock({
+  order,
+  refreshKey,
+  onFeedbackSaved,
+}: {
+  order: CrmOrderDetails;
+  refreshKey: number;
+  onFeedbackSaved: () => void;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <div className="overflow-hidden rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)]">
@@ -209,7 +241,7 @@ function ActivityBlock({ order, refreshKey, onFeedbackSaved }: { order: CrmOrder
         aria-expanded={open}
         className="flex w-full items-center gap-2 px-4 py-3 text-[14px] font-bold text-[var(--crmx-text)]"
       >
-        سجل النشاط والتقييم
+        سجل النشاط وتقييم الطلب
         <ChevronDown className={`ms-auto h-4 w-4 text-[var(--crmx-text-muted)] transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
@@ -326,9 +358,24 @@ function ModalBody({
             )}
 
             <div>
-              <SecHead
-                aside={
-                  items.length > 0 && (
+              <SecHead>الأصناف</SecHead>
+              {items.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-[var(--crmx-border)] py-5 text-center text-[13px] text-[var(--crmx-text-muted)]">
+                  لا توجد أصناف مسجلة
+                </p>
+              ) : (
+                <ul className="divide-y divide-[var(--crmx-border)] rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] px-3.5 py-1">
+                  {items.map((item) => (
+                    <InvoiceRow key={item.id} item={item} />
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            {items.length > 0 && (
+              <div>
+                <SecHead
+                  aside={
                     <span
                       className={`text-[12px] font-bold ${
                         allRated
@@ -340,23 +387,13 @@ function ModalBody({
                     >
                       {num(ratedCount)} / {num(items.length)} مُقيَّم
                     </span>
-                  )
-                }
-              >
-                الأصناف
-              </SecHead>
-              {items.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-[var(--crmx-border)] py-6 text-center text-[13px] text-[var(--crmx-text-muted)]">
-                  لا توجد أصناف مسجلة
-                </p>
-              ) : (
-                <ul className="divide-y divide-[var(--crmx-border)] rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] px-3.5">
-                  {items.map((item) => (
-                    <ItemRow key={item.id} orderId={details.id} item={item} onSaved={onItemSaved} onError={onItemError} />
-                  ))}
-                </ul>
-              )}
-            </div>
+                  }
+                >
+                  تقييم الأصناف
+                </SecHead>
+                <ItemRatingPanel orderId={details.id} items={items} onSaved={onItemSaved} onError={onItemError} />
+              </div>
+            )}
 
             <div>
               <SecHead>الإجمالي</SecHead>
@@ -492,7 +529,7 @@ export function CrmOrderDetailsModal({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.97, y: 8 }}
               transition={{ duration: 0.16, ease: "easeOut" }}
-              className="relative flex max-h-[calc(100vh-4rem)] w-full max-w-[640px] flex-col overflow-hidden rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] shadow-[var(--crmx-shadow-md)]"
+              className="relative flex max-h-[calc(100vh-4rem)] w-full max-w-[600px] flex-col overflow-hidden rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] shadow-[var(--crmx-shadow-md)]"
             >
               <ModalBody
                 row={order}
