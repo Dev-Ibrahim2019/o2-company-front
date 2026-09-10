@@ -16,13 +16,25 @@ const BranchesPage: React.FC = () => {
 
   // ✅ جلب الموظفين من الـ API مباشرة
   const [employees, setEmployees] = useState<any[]>([]);
+
+
   useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return; // ✅ guard
+
     api
       .get("/employees")
-      .then((r) => setEmployees(r.data.data ?? []))
+      .then((r) => {
+        const payload = r.data.data;
+        // ✅ إصلاح pagination
+        if (Array.isArray(payload)) {
+          setEmployees(payload);
+        } else if (Array.isArray(payload?.data)) {
+          setEmployees(payload.data);
+        }
+      })
       .catch(() => setEmployees([]));
   }, []);
-
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredBranches = branches.filter((b) =>

@@ -1,12 +1,16 @@
 
-import React from 'react';
-import { useApp } from '../../../../store';
-import { 
-  Building2, 
-  Network, 
-  Briefcase, 
-  Users2, 
-  ChevronRight, 
+import React, { useState, useEffect } from 'react';
+import { useBranch } from '../../../hooks/useBranch';
+import { useDepartments } from '../../../hooks/useDepartments';
+import { useJobTitles } from '../../../hooks/useJobTitles';
+import { employeeService, type EmployeeFromApi } from '../../../services/employeeService';
+import type { Department } from '../../../services/departmentService';
+import {
+  Building2,
+  Network,
+  Briefcase,
+  Users2,
+  ChevronRight,
   MapPin,
   Layers,
   AlertTriangle,
@@ -15,15 +19,29 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
+const parentOf = (d: Department): number | null =>
+  (d.parentId ?? d.parent_id ?? null) as number | null;
+
+const branchIdsOf = (d: Department): number[] => (d as any).branch_ids ?? [];
+
 const RenderHierarchy: React.FC = () => {
-    const { 
-        branches, departments, jobTitles, employees
-      } = useApp();
+    const { branches } = useBranch();
+    const { departments } = useDepartments();
+    const { jobTitles } = useJobTitles();
+    const [employees, setEmployees] = useState<EmployeeFromApi[]>([]);
+
+    useEffect(() => {
+      employeeService
+        .getAll({ per_page: 1000 } as any)
+        .then(setEmployees)
+        .catch(() => setEmployees([]));
+    }, []);
+
     return (
     <div className="bg-slate-900/30 backdrop-blur-md p-6 rounded-3xl border border-white/5 min-h-[500px] flex flex-col items-center animate-in zoom-in duration-1000 overflow-hidden relative">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(220,38,38,0.15),transparent_60%)]"></div>
       <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-[0.03]"></div>
-      
+
       {/* Hierarchy Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full max-w-4xl mb-8 relative z-10">
         {[
@@ -31,7 +49,7 @@ const RenderHierarchy: React.FC = () => {
           { label: 'معدل الترابط', value: 'High', icon: Network, color: 'text-blue-500', bg: 'bg-blue-500/10' },
           { label: 'الاستقرار الإداري', value: 'Stable', icon: CheckCircle2, color: 'text-orange-500', bg: 'bg-orange-500/10' }
         ].map((stat, i) => (
-          <motion.div 
+          <motion.div
             key={i}
             initial={{ opacity: 0, y: -15 }}
             animate={{ opacity: 1, y: 0 }}
@@ -58,11 +76,11 @@ const RenderHierarchy: React.FC = () => {
           تمثيل بصري متقدم للعلاقات الإدارية والتبعية التنظيمية. تم تصميم هذا النظام ليعكس الكفاءة التشغيلية والترابط الوظيفي بين كافة الوحدات.
         </p>
       </div>
-      
+
       <div className="relative w-full max-w-7xl z-10">
         {/* Root: Company */}
         <div className="flex justify-center mb-10 relative">
-          <motion.div 
+          <motion.div
             initial={{ y: -30, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             className="bg-red-600 p-1.5 rounded-xl shadow-[0_15px_30px_rgba(220,38,38,0.3)] text-center w-32 border border-white/20 relative group cursor-pointer"
@@ -73,7 +91,7 @@ const RenderHierarchy: React.FC = () => {
             </div>
             <h4 className="text-xs font-black text-white relative z-10 tracking-tight">المقر الرئيسي</h4>
             <p className="text-[10px] text-red-100 font-black uppercase tracking-widest mt-0.5 relative z-10 opacity-80">Global Management Hub</p>
-            
+
             <div className="absolute bottom-[-40px] left-1/2 -translate-x-1/2 w-[1px] h-10 bg-gradient-to-b from-red-600 via-red-600/50 to-transparent"></div>
           </motion.div>
         </div>
@@ -81,12 +99,14 @@ const RenderHierarchy: React.FC = () => {
         {/* Level 1: Branches */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
           {branches.map((branch, idx) => {
-            const branchDepts = departments.filter(d => d.branchId === branch.id && !d.parentId);
-            const branchEmps = employees.filter(e => e.branchId === branch.id);
+            const branchDepts = departments.filter(
+              (d) => branchIdsOf(d).includes(branch.id) && !parentOf(d),
+            );
+            const branchEmps = employees.filter((e) => e.branch_id === branch.id);
 
             return (
-              <motion.div 
-                key={branch.id} 
+              <motion.div
+                key={branch.id}
                 initial={{ scale: 0.9, opacity: 0, y: 30 }}
                 animate={{ scale: 1, opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.15 }}
@@ -94,10 +114,10 @@ const RenderHierarchy: React.FC = () => {
               >
                 {/* Connector from top */}
                 <div className="absolute top-[-40px] left-1/2 -translate-x-1/2 w-[1px] h-10 bg-slate-800"></div>
-                
+
                 <div className="bg-slate-800/80 backdrop-blur-xl p-1.5 rounded-xl shadow-[0_8px_16px_rgba(0,0,0,0.2)] text-center w-full border border-white/10 hover:border-red-600/50 transition-all duration-500 group relative overflow-hidden">
                   <div className="absolute inset-0 bg-gradient-to-br from-red-600/0 to-red-600/5 opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
-                  
+
                   <div className="w-6 h-6 bg-red-600/10 text-red-500 rounded-lg flex items-center justify-center mx-auto mb-1 border border-red-600/20 group-hover:scale-110 transition-transform duration-500 relative z-10">
                     <MapPin size={12} />
                   </div>
@@ -111,24 +131,24 @@ const RenderHierarchy: React.FC = () => {
                     </span>
                   </div>
                 </div>
-                
+
                 {/* Connector to Departments */}
                 <div className="w-[1px] h-10 bg-gradient-to-b from-slate-800 to-slate-900/50"></div>
-                
+
                 <div className="bg-slate-950/60 backdrop-blur-xl p-1.5 rounded-xl border border-white/5 w-full space-y-1 shadow-xl">
                   {branchDepts.map(dept => {
-                    const deptEmps = employees.filter(e => e.departmentId === dept.id);
+                    const deptEmps = employees.filter((e) => e.department_id === dept.id);
                     return (
-                      <motion.div 
-                        key={dept.id} 
+                      <motion.div
+                        key={dept.id}
                         whileHover={{ x: -3 }}
                         className="flex items-center justify-between p-0.5 bg-slate-900/50 rounded-lg border border-white/5 hover:bg-slate-800/80 transition-all duration-300 group"
                       >
                         <div className="flex items-center gap-1.5">
-                          <div 
+                          <div
                             className="w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black border transition-transform group-hover:scale-110"
-                            style={{ 
-                              backgroundColor: dept.color ? `${dept.color}15` : 'rgba(59, 130, 246, 0.1)', 
+                            style={{
+                              backgroundColor: dept.color ? `${dept.color}15` : 'rgba(59, 130, 246, 0.1)',
                               color: dept.color || '#3b82f6',
                               borderColor: dept.color ? `${dept.color}30` : 'rgba(59, 130, 246, 0.2)'
                             }}

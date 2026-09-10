@@ -1,0 +1,57 @@
+TROUBLESHOOTING GUIDE FOR INVOICE FETCHING ISSUE
+================================================
+
+BACKEND FIXES ALREADY APPLIED:
+- Added GET /api/invoices route in Laravel backend
+- Implemented index() method in InvoiceController with filtering
+- Fixed case-sensitive search in frontend (SalesInvoicesPage.tsx)
+- Removed order fallback logic that was masking the real issue
+
+IF YOU'RE STILL SEEING ISSUES, CHECK THESE AREAS:
+
+1. BACKEND SERVER STATUS:
+   - Is your Laravel server running? (php artisan serve)
+   - Is it accessible at http://localhost:8000?
+   - Check for any PHP errors in the terminal
+
+2. AUTHENTICATION (MOST COMMON ISSUE):
+   - Are you logged into the system?
+   - Check localStorage for a 'token' key (Application > Local Storage in DevTools)
+   - The token should be sent as Bearer token in Authorization header
+   - Try logging out and back in to refresh the token
+
+3. NETWORK REQUEST VERIFICATION:
+   - Open Browser DevTools (F12) > Network tab
+   - Look for requests to /api/invoices
+   - Check the status code (should be 200, not 404)
+   - Click on the request to see:
+     * Request Headers: Verify Authorization: Bearer <token> is present
+     * Response: Should contain invoice data in JSON format
+
+4. DATABASE CONTENT:
+   - Are there actually invoices in your database?
+   - Check the invoices table via phpMyAdmin, MySQL Workbench, or:
+     php artisan tinker
+     >>> App\Models\Invoice::count();
+
+5. CORS CONFIGURATION:
+   - If frontend and backend are on different ports/domains,
+     ensure Laravel CORS is properly configured
+   - Check config/cors.php in your Laravel project
+
+6. ENVIRONMENT VARIABLES:
+   - Verify VITE_API_URL in frontend .env file
+   - Should point to your Laravel backend (usually http://localhost:8000/api)
+
+QUICK TEST TO VERIFY BACKEND:
+1. Make sure Laravel server is running
+2. Log in to your application
+3. Get your auth token from localStorage
+4. In terminal, test with curl:
+   curl -H "Authorization: Bearer YOUR_TOKEN_HERE" http://localhost:8000/api/invoices
+5. Should return JSON array of invoices
+
+IF STILL NOT WORKING:
+- Share the exact error you're seeing now
+- Check Network tab in DevTools for the failed request details
+- Look at Laravel logs (storage/logs/laravel.log) for errors

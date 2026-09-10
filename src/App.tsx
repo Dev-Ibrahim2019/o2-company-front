@@ -1,258 +1,505 @@
+/**
+ * App.tsx — النسخة المُصحّحة
+ * 1. تحويل تلقائي بعد Login حسب الدور
+ * 2. حماية مسارات Admin بالدور (role)
+ * 3. تحديث المحتوى عند تغيير الرابط (key prop)
+ */
 
+import React, { useEffect, useState, Suspense, lazy } from "react";
+import { sound } from "./services/soundService";
+import { Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
+import {
+  AuthProvider,
+  useAuth,
+  ProtectedRoute,
+  UnauthorizedPage,
+} from "./auth";
+import { ROLES } from "./auth/permissions";
+
+// ── مكونات خفيفة/هيكلية تبقى محمّلة فوراً (layouts, guards, providers) ──
+import { Login } from "./components/Login";
 import { AdminLayout } from "./components/administration/Layout";
 import { POSLayout } from "./components/POS/Layout";
-import { FinancePortal } from './components/administration/FinancePortal'
-import React, { useState, useEffect } from 'react';
-import { AppProvider, useApp } from '../store';
-import { POS } from "./components/POS/pos";
-import { TablesView } from "./components/POS/Tables";
-import { OrdersView } from "./components/POS/Orders";
-import { Login } from "./components/Login";
-import { ShiftView } from "./components/POS/Shift";
-// import api from "./api/axios";
- 
-const Main: React.FC = () => {
-  const { currentUser, currentShift, userRole, editingOrderId } = useApp();
-  const [activeView, setActiveView] = useState('finance_dashboard');
-  // useEffect(() => {
-  //   if (userRole === 'ADMIN' || userRole === 'FINANCE') {
-  //     setActiveView('finance_dashboard');
-  //   } else if (userRole === 'BRANCH_MANAGER') {
-  //     setActiveView('branch_dashboard');
-  //   } else if (userRole === 'HOSPITALITY') {
-  //     setActiveView('hospitality_tables');
-  //   } else if (userRole === 'DEPARTMENT_STAFF') {
-  //     setActiveView('dept_dashboard');
-  //   } else if (userRole === 'ORDER_AGGREGATOR') {
-  //     setActiveView('aggregator_dashboard');
-  //   } else if (userRole === 'EMPLOYEE') {
-  //     setActiveView('employee_dashboard');
-  //   } else if (userRole === 'CUSTOMER') {
-  //     setActiveView('customer_home');
-  //   } else if (editingOrderId) {
-  //     setActiveView('pos');
-  //   }
-  // }, [userRole, editingOrderId]);
+import { HospitalityLayout } from "./components/Hospitality/Layout";
+import { ToastContainer } from "./components/shared/Toast";
+import { CartProvider } from "./components/customer/cart-provider";
+import { CustomerTableProvider } from "./components/customer/CustomerTableProvider";
+import { ThemeProvider } from "./theme";
+import { CrmRouteGuard } from "./features/crm";
+import { CallCenterLayout } from "./components/call-center/Layout";
+import CallCenterGuard from "./components/call-center/CallCenterGuard";
 
-  if (!currentUser) return <Login />;
-  const showContent = () => {
-    const isAdmin = userRole === 'ADMIN';
-    const isBranchManager = userRole === 'BRANCH_MANAGER';
-    const isHospitality = userRole === 'HOSPITALITY';
-    const isDeptStaff = userRole === 'DEPARTMENT_STAFF';
-    const isAggregator = userRole === 'ORDER_AGGREGATOR';
+// ── صفحات/مكونات ثقيلة — تُحمَّل فقط عند زيارة الراوت الخاص فيها (code-splitting) ──
+const FinancePortal = lazy(() => import("./components/administration/FinancePortal").then(m => ({ default: m.FinancePortal })));
+const AccountingPortal = lazy(() => import("./components/administration/GL/AccountingPortal").then(m => ({ default: m.AccountingPortal })));
+const POS = lazy(() => import("./components/POS/pos").then(m => ({ default: m.POS })));
+const AdminPOSWrapper = lazy(() => import("./components/POS/AdminPOSWrapper"));
+const TablesView = lazy(() => import("./components/POS/Tables").then(m => ({ default: m.TablesView })));
+const DeferredTables = lazy(() => import("./components/POS/DeferredTables"));
+const OrdersView = lazy(() => import("./components/POS/Orders").then(m => ({ default: m.OrdersView })));
+const ShiftView = lazy(() => import("./components/POS/Shift").then(m => ({ default: m.ShiftView })));
+const HospitalityPOS = lazy(() => import("./components/Hospitality/HospitalityPOS").then(m => ({ default: m.HospitalityPOS })));
+const HospitalityOrders = lazy(() => import("./components/Hospitality/HospitalityOrders").then(m => ({ default: m.HospitalityOrders })));
+const HospitalityTables = lazy(() => import("./components/Hospitality/Tables").then(m => ({ default: m.HospitalityTables })));
+const FinancialInvoicesPage = lazy(() => import("./components/financial/FinancialInvoicesPage").then(m => ({ default: m.FinancialInvoicesPage })));
+const SalesInvoiceListPage = lazy(() => import("./components/sales-invoices").then(m => ({ default: m.SalesInvoiceListPage })));
+const SalesInvoiceFormPage = lazy(() => import("./components/sales-invoices").then(m => ({ default: m.SalesInvoiceFormPage })));
+const UsersManagementPage = lazy(() => import("./pages/UsersManagementPage"));
+const PosRegistersPage = lazy(() => import("./pages/PosRegistersPage"));
+const CallCenterDevicesPage = lazy(() => import("./pages/CallCenterDevicesPage"));
+const PrintersManagement = lazy(() => import("./components/administration/printers-management").then(m => ({ default: m.PrintersManagement })));
+const HospitalityDevicesPage = lazy(() => import("./pages/HospitalityDevicesPage"));
+const DiningZonesPage = lazy(() => import("./pages/DiningZonesPage"));
+const DiningTablesDashboard = lazy(() => import("./components/administration/DiningTablesDashboard"));
+const MenuPage = lazy(() => import("./pages/customer/MenuPage"));
+const CartPage = lazy(() => import("./pages/customer/CartPage"));
+const TablePage = lazy(() => import("./pages/customer/TablePage"));
+const RolesPermissionsPage = lazy(() => import("./pages/RolesPermissionsPage"));
+const DepartmentsPage = lazy(() => import("./components/administration/DepartmentsPage"));
+const DayClosePage = lazy(() => import("./components/administration/DayClosePage").then(m => ({ default: m.DayClosePage })));
+const ReconciliationBoard = lazy(() => import("./components/administration/ReconciliationBoard").then(m => ({ default: m.ReconciliationBoard })));
+const ShiftClosingsPage = lazy(() => import("./components/administration/ShiftClosingsPage").then(m => ({ default: m.ShiftClosingsPage })));
+const BusinessDayClosingPage = lazy(() => import("./components/administration/BusinessDayClosingPage").then(m => ({ default: m.BusinessDayClosingPage })));
+const FiscalYearsPage = lazy(() => import("./components/administration/FiscalYearsPage").then(m => ({ default: m.FiscalYearsPage })));
+const FiscalYearOverview = lazy(() => import("./components/administration/FiscalYearOverview").then(m => ({ default: m.FiscalYearOverview })));
+const QuotesView = lazy(() => import("./components/quotes/QuotesView").then(m => ({ default: m.QuotesView })));
+const VouchersView = lazy(() => import("./components/administration/VouchersView").then(m => ({ default: m.VouchersView })));
+const CustomerVouchersView = lazy(() => import("./components/administration/CustomerVouchersView").then(m => ({ default: m.CustomerVouchersView })));
+const SupplierVouchersView = lazy(() => import("./components/administration/SupplierVouchersView").then(m => ({ default: m.SupplierVouchersView })));
+const SupplierPaymentVouchersView = lazy(() => import("./components/administration/SupplierPaymentVouchersView").then(m => ({ default: m.SupplierPaymentVouchersView })));
+const PurchaseBillsView = lazy(() => import("./components/administration/PurchaseBillsView").then(m => ({ default: m.PurchaseBillsView })));
+const ExtensionsTestView = lazy(() => import("./components/administration/ExtensionsTestView").then(m => ({ default: m.ExtensionsTestView })));
+const PbxExtensionsTestView = lazy(() => import("./components/administration/PbxExtensionsTestView").then(m => ({ default: m.PbxExtensionsTestView })));
+const PbxRecordingsView = lazy(() => import("./components/administration/PbxRecordingsView").then(m => ({ default: m.PbxRecordingsView })));
+const FreePBXTestPage = lazy(() => import("./pages/FreePBXTestPage"));
+const CrmShell = lazy(() => import("./features/crm").then(m => ({ default: m.CrmShell })));
+const CrmDashboardPage = lazy(() => import("./features/crm").then(m => ({ default: m.CrmDashboardPage })));
+const CrmCustomersPage = lazy(() => import("./features/crm").then(m => ({ default: m.CrmCustomersPage })));
+const Customer360Page = lazy(() => import("./features/crm").then(m => ({ default: m.Customer360Page })));
 
-    // Branch Managers, Super Admins, Hospitality, and Dept Staff bypass shift check
-    if (!currentShift && !isAdmin && !isBranchManager && !isHospitality && !isDeptStaff && !isAggregator && activeView !== 'shift' && userRole !== 'CUSTOMER' && userRole !== 'EMPLOYEE') {
-      return (
-        <div className="h-full flex flex-col items-center justify-center space-y-6 bg-white rounded-[3rem] shadow-sm">
-          <div className="w-24 h-24 bg-orange-100 rounded-full flex items-center justify-center text-orange-600 shadow-inner">
-            <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
-          </div>
-          <div className="text-center max-w-sm px-6">
-            <h3 className="text-3xl font-black text-slate-800">تنبيه: الشفت مغلق</h3>
-            <p className="text-slate-500 mt-2 font-medium">يجب فتح شفت جديد وتسجيل الرصيد الافتتاحي لبدء استقبال الطلبات.</p>
-          </div>
-          <button
-            onClick={() => setActiveView('shift')}
-            className="px-12 py-4 bg-orange-500 text-white rounded-2xl font-black hover:bg-orange-600 transition-all shadow-xl shadow-orange-100"
-          >
-            فتح شفت العمل الآن
-          </button>
-        </div>
-      );
-    }
+// ── مكونات الكول سنتر ──
+const CustomerManagementDashboard = lazy(() => import("./components/call-center/CustomerManagementDashboard").then(m => ({ default: m.CustomerManagementDashboard })));
+const CrmDirectoryPage = lazy(() => import("./components/call-center/CrmDirectoryPage").then(m => ({ default: m.CrmDirectoryPage })));
+const CustomerPhoneSearch = lazy(() => import("./components/call-center/CustomerPhoneSearch").then(m => ({ default: m.CustomerPhoneSearch })));
+const ComplaintsManagement = lazy(() => import("./components/call-center/ComplaintsManagement").then(m => ({ default: m.ComplaintsManagement })));
+const OccasionsPage = lazy(() => import("./components/call-center/OccasionsPage").then(m => ({ default: m.OccasionsPage })));
+const TopCustomersTable = lazy(() => import("./components/call-center/TopCustomersTable").then(m => ({ default: m.TopCustomersTable })));
+const CallCenterEmployees = lazy(() => import("./components/call-center/CallCenterEmployees").then(m => ({ default: m.CallCenterEmployees })));
+const CallCenterPOS = lazy(() => import("./components/call-center/CallCenterPOS").then(m => ({ default: m.CallCenterPOS })));
+const ActiveOrdersPage = lazy(() => import("./components/call-center/ActiveOrdersPage").then(m => ({ default: m.ActiveOrdersPage })));
 
-    switch (activeView) {
-      case 'pos': return <POS onViewTables={() => setActiveView('tables')} />;
-      case 'tables': return <TablesView onSelect={() => setActiveView('pos')} />;
-      case 'orders': return <OrdersView />;
-      case 'shift': return <ShiftView />;
-      // case 'hospitality_tables': return <HospitalityView key="h_tables" initialTab="tables" setActiveView={setActiveView} />;
-      // case 'hospitality_pos': return <POS onViewTables={() => setActiveView('hospitality_tables')} />;
-      // case 'hospitality_new_orders': return <HospitalityView key="h_new" initialTab="new_orders" setActiveView={setActiveView} />;
-      // case 'hospitality_tracking': return <HospitalityView key="h_track" initialTab="tracking" setActiveView={setActiveView} />;
-      // case 'hospitality_feedback': return <HospitalityView key="h_feed" initialTab="feedback" setActiveView={setActiveView} />;
-      // case 'hospitality_tasks': return <HospitalityView key="h_tasks" initialTab="tasks" setActiveView={setActiveView} />;
-      // case 'dept_dashboard': return <DepartmentView key="d_dash" />;
-      // case 'dept_orders': return <DepartmentView key="d_orders" initialView="ORDERS" />;
-      // case 'departments': return <DepartmentView key="d_main" />;
-      // case 'aggregator_dashboard': return <OrderAggregatorDashboard />;
-      // case 'aggregator_shelves': return <ShelfGridView />;
-      case 'finance_dashboard': return <FinancePortal key="f_dash" initialView="DASHBOARD" />;
-      case 'finance_branches': return <FinancePortal key="f_branches" initialView="BRANCHES" />;
-      case 'finance_departments': return <FinancePortal key="f_depts" initialView="DEPARTMENTS" />;
-      case 'finance_menu': return <FinancePortal key="f_menu" initialView="MENU" />;
-      case 'finance_item_tree': return <FinancePortal key="f_item_tree" initialView="ITEM_TREE" />;
-      case 'finance_items_index': return <FinancePortal key="f_items_index" initialView="ITEMS_INDEX" />;
-      case 'finance_orders': return <FinancePortal key="f_orders" initialView="ORDERS" />;
-      case 'finance_customers': return <FinancePortal key="f_cust" initialView="CUSTOMERS" />;
-      case 'finance_suppliers': return <FinancePortal key="f_supp" initialView="SUPPLIERS" />;
-      case 'finance_employees': return <FinancePortal key="f_emp" initialView="EMPLOYEES" />;
-      case 'finance_accounting': return <FinancePortal key="f_acc" initialView="ACCOUNTING" />;
-      case 'finance_reports': return <FinancePortal key="f_rep" initialView="REPORTS" />;
-      case 'finance_audit': return <FinancePortal key="f_audit" initialView="AUDIT_LOG" />;
-      case 'finance_archive': return <FinancePortal key="f_arch" initialView="ARCHIVE" />;
-      case 'finance_settings': return <FinancePortal key="f_sett" initialView="SETTINGS" />;
-      case 'finance_orgstructure': return <FinancePortal key="f_org" initialView="ORGSTRUCTURE" />;
-      // case 'finance': return <FinanceReports />;
-      // case 'org': return <OrgStructure />;
-      // case 'branch_dashboard': return <BranchManagerPortal />;
-      // case 'branch_live': return <BranchManagerPortal />; // Shared for now
-      // case 'branch_orders': return <OrdersView />; // Reusable component
-      // case 'customer_home': return <CustomerPortal key="c_home" initialTab="home" />;
-      // case 'customer_menu': return <CustomerPortal key="c_menu" initialTab="menu" />;
-      // case 'customer_orders': return <CustomerPortal key="c_orders" initialTab="orders" />;
-      // case 'customer_wallet': return <CustomerPortal key="c_wallet" initialTab="wallet" />;
-      // case 'customer_profile': return <CustomerPortal key="c_profile" initialTab="profile" />;
-      // case 'employee_dashboard': return <EmployeeDashboard key="e_dash" initialTab="DASHBOARD" />;
-      // case 'employee_personal': return <EmployeeDashboard key="e_pers" initialTab="PERSONAL" />;
-      // case 'employee_shift': return <EmployeeDashboard key="e_shift" initialTab="SHIFT" />;
-      // case 'employee_timesheet': return <EmployeeDashboard key="e_time" initialTab="TIMESHEET" />;
-      // case 'employee_finance': return <EmployeeDashboard key="e_fin" initialTab="FINANCE" />;
-      // case 'employee_policies': return <EmployeeDashboard key="e_pol" initialTab="POLICIES" />;
-      // default: return <div className="p-10 text-center text-slate-400 font-bold">هذه الخاصية قيد التطوير</div>;
-    }
+/** يظهر أثناء تحميل جزء من الشاشة (route) بشكل كسول */
+function RouteFallback() {
+  return (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+ *  حماية الأدوار — تمنع الوصول لمن لا يملك الدور المطلوب
+ * ══════════════════════════════════════════════════════════════ */
+
+/** الأدوار المسموح بها في مسارات /admin/* */
+const ADMIN_ROLES = [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BRANCH_MANAGER];
+
+/** الأدوار المسموح بها في مسارات /pos/* */
+const POS_ROLES = [
+  ROLES.CASHIER,
+  ROLES.HOSPITALITY,
+  ROLES.DEPT_STAFF,
+  ROLES.SUPER_ADMIN,
+  ROLES.ACCOUNTANT,
+  ROLES.BRANCH_MANAGER,
+];
+
+/** الأدوار المسموح بها في مسارات /Hospitality/* */
+const HOSPITALITY_ROLES = [
+  ROLES.HOSPITALITY,
+  ROLES.SUPER_ADMIN,
+  ROLES.ACCOUNTANT,
+  ROLES.BRANCH_MANAGER,
+];
+
+/** الأدوار المسموح بها في مسارات /call-center/* */
+const CALL_CENTER_ROLES = [
+  ROLES.CALL_CENTER,
+  ROLES.SUPER_ADMIN,
+  ROLES.ACCOUNTANT,
+  ROLES.BRANCH_MANAGER,
+];
+
+/**
+ * RoleGuard — layout route يفحص الدور ثم يعرض المحتوى عبر Outlet
+ * لا يلف المحتوى بـ children بل يستخدم Outlet (النمط الصحيح في React Router)
+ */
+function RoleGuard({ allowedRoles }: { allowedRoles: string[] }) {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const hasAccess = user.roles.some((r) => allowedRoles.includes(r));
+
+  if (!hasAccess) {
+    return <Navigate to="/unauthorized" replace />;
+  }
+
+  return <Outlet />;
+}
+
+/* ══════════════════════════════════════════════════════════════
+ *  صفحات مساعدة (Wrappers) — تمرر المعاملات الصحيحة للمكونات
+ * ══════════════════════════════════════════════════════════════ */
+
+/** تحويل مسار URL إلى initialView لـ FinancePortal */
+const financeViewMap: Record<string, string> = {
+  dashboard: "DASHBOARD",
+  branches: "BRANCHES",
+  departments: "DEPARTMENTS",
+  menu: "MENU",
+  "item-tree": "ITEM_TREE",
+  "items-index": "ITEMS_INDEX",
+  orders: "ORDERS",
+  sales: "SALES",
+  customers: "CUSTOMERS",
+  suppliers: "SUPPLIERS",
+  employees: "EMPLOYEES",
+  accounting: "ACCOUNTING",
+  reports: "REPORTS",
+  audit: "AUDIT_LOG",
+  archive: "ARCHIVE",
+  settings: "SETTINGS",
+  orgstructure: "ORGSTRUCTURE",
+  "financial-invoices": "FINANCIAL_INVOICES",
+  discounts: "DISCOUNTS",
+  "shift-day-closing": "SHIFT_DAY_CLOSING",
+};
+
+/**
+ * FinanceView — يقرأ الـ view مباشرة من الرابط (useLocation)
+ * هذا يضمن تحديث المحتوى عند تغيير الرابط
+ */
+function FinanceView() {
+  const location = useLocation();
+  // استخراج الجزء الأخير من الرابط: /admin/branches → "branches"
+  const pathParts = location.pathname.split("/").filter(Boolean);
+  const lastSegment = pathParts[pathParts.length - 1] || "dashboard";
+  const mapped = financeViewMap[lastSegment] || "DASHBOARD";
+  return <FinancePortal key={lastSegment} initialView={mapped as any} />;
+}
+
+/** AccountingView — يقرأ الـ tab مباشرة من الرابط */
+function AccountingView() {
+  const location = useLocation();
+  const pathParts = location.pathname.split("/").filter(Boolean);
+  const lastSegment = pathParts[pathParts.length - 1] || "dashboard";
+  const tabMap: Record<string, string> = {
+    dashboard: "DASHBOARD",
+    gl: "GL",
+    ar: "AR",
+    ap: "AP",
+    cash: "CASH",
+    hr: "HR",
+  };
+  return (
+    <AccountingPortal
+      key={lastSegment}
+      initialTab={tabMap[lastSegment] as any}
+    />
+  );
+}
+
+/** SalesInvoicesView — page-based list ↔ form for new sales invoices module */
+function SalesInvoicesView() {
+  const [view, setView] = useState<"list" | "form">("list");
+  const [editId, setEditId] = useState<number | undefined>(undefined);
+
+  const handleOpenForm = (id?: number) => {
+    setEditId(id);
+    setView("form");
   };
 
-  if (userRole === 'ADMIN' || userRole === 'FINANCE') {
+  const handleBack = () => {
+    setView("list");
+    setEditId(undefined);
+  };
+
+  if (view === "form") {
     return (
-      <AdminLayout activeView={activeView} setActiveView={setActiveView}>
-        {showContent()}
-      </AdminLayout>
+      <div className="h-full overflow-y-auto custom-scrollbar">
+        <SalesInvoiceFormPage
+          invoiceId={editId}
+          onBack={handleBack}
+          onSaved={handleBack}
+        />
+      </div>
     );
   }
 
   return (
-    <POSLayout activeView={activeView} setActiveView={setActiveView}>
-      {showContent()}
-    </POSLayout>
+    <div className="h-full overflow-y-auto custom-scrollbar">
+      <SalesInvoiceListPage onOpenForm={handleOpenForm} />
+    </div>
   );
-};
+}
+
+/** صفحة 404 مخصصة */
+function NotFoundPage() {
+  return (
+    <div
+      className="min-h-screen bg-slate-950 flex items-center justify-center text-white"
+      dir="rtl"
+    >
+      <div className="text-center space-y-4">
+        <h1 className="text-6xl font-black text-red-600">404</h1>
+        <p className="text-slate-400 text-lg">الصفحة غير موجودة</p>
+        <a
+          href="/"
+          className="inline-block px-6 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-colors"
+        >
+          العودة للرئيسية
+        </a>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+ *  تعريف المسارات (Routes)
+ * ══════════════════════════════════════════════════════════════ */
+
+function AppRoutes() {
+  return (
+    <Suspense fallback={<RouteFallback />}>
+    <Routes>
+      {/* ── مسارات عامة ── */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/unauthorized" element={<UnauthorizedPage />} />
+
+      {/* ── مسارات عامة ── */}
+      <Route path="/freepbx/test" element={<FreePBXTestPage />} />
+
+     {/* ══════════════════════════════════════════════════════════════
+    * مسارات طلبات الطاولات عبر الـ QR Code (عامة للزبائن بدون تسجيل دخول)
+    * ══════════════════════════════════════════════════════════════ */}
+    <Route 
+      path="/customer/:qrCode" 
+      element={
+        <CustomerTableProvider>
+          <Outlet />
+        </CustomerTableProvider>
+      }
+    >
+      {/* الصفحة الرئيسية للطاولة عند مسح الـ QR مباشرة */}
+      <Route index element={<TablePage />} /> 
+
+      <Route path="menu" element={<MenuPage />} />
+      <Route path="cart" element={<CartPage />} />
+    </Route>
+
+      {/* ── مسارات محمية (تحتاج تسجيل دخول فقط) ── */}
+      <Route
+        element={
+          <ProtectedRoute>
+            <Outlet />
+          </ProtectedRoute>
+        }
+      >
+        {/* ═══ مسارات الإدارة العامة ═══
+            RoleGuard يفحص الدور → AdminLayout يعرض السايد بار → FinanceView يعرض المحتوى
+        */}
+        <Route element={<AdminLayout />}>
+          <Route
+            path="/admin/crm"
+            element={<CrmRouteGuard><CrmShell /></CrmRouteGuard>}
+          >
+            <Route index element={<CrmDashboardPage />} />
+            <Route path="customers" element={<CrmCustomersPage />} />
+            <Route path="customers/:customerId/*" element={<Customer360Page />} />
+          </Route>
+        </Route>
+        <Route element={<RoleGuard allowedRoles={ADMIN_ROLES} />}>
+          <Route element={<AdminLayout />}>
+            <Route path="/admin">
+              <Route index element={<Navigate to="dashboard" replace />} />
+              <Route path="dashboard" element={<FinanceView />} />
+              <Route path="branches" element={<FinanceView />} />
+              <Route path="departments" element={<DepartmentsPage />} />
+              <Route path="menu" element={<FinanceView />} />
+              <Route path="item-tree" element={<FinanceView />} />
+              <Route path="items-index" element={<FinanceView />} />
+              <Route path="orders" element={<FinanceView />} />
+              <Route path="sales" element={<FinanceView />} />
+              <Route path="customers" element={<FinanceView />} />
+              <Route path="suppliers" element={<FinanceView />} />
+              <Route path="employees" element={<FinanceView />} />
+              <Route path="reports" element={<FinanceView />} />
+              <Route path="audit" element={<FinanceView />} />
+              <Route path="archive" element={<FinanceView />} />
+              <Route path="settings" element={<FinanceView />} />
+              <Route path="orgstructure" element={<FinanceView />} />
+              <Route path="financial-invoices" element={<FinanceView />} />
+              <Route path="sales-invoices" element={<SalesInvoicesView />} />
+              <Route path="quotes" element={<QuotesView />} />
+              <Route path="vouchers" element={<VouchersView />} />
+              <Route
+                path="vouchers/customers"
+                element={<CustomerVouchersView />}
+              />
+              <Route
+                path="vouchers/suppliers"
+                element={<SupplierVouchersView />}
+              />
+              <Route
+                path="supplier-payment-vouchers"
+                element={<SupplierPaymentVouchersView />}
+              />
+              <Route path="purchase-bills" element={<PurchaseBillsView />} />
+              <Route path="extensions-test" element={<ExtensionsTestView />} />
+              <Route path="pbx-extensions" element={<PbxExtensionsTestView />} />
+              <Route path="pbx-recordings" element={<PbxRecordingsView />} />
+              <Route path="discounts" element={<FinanceView />} /> 
+              <Route path="shift-day-closing" element={<FinanceView />} />
+              <Route path="shift-closings" element={<ShiftClosingsPage />} />
+              <Route path="fiscal-years" element={<FiscalYearsPage />} />
+              <Route path="fiscal-years/:id" element={<FiscalYearOverview />} />
+              <Route path="business-day" element={<BusinessDayClosingPage />} />
+              <Route path="printers" element={<PrintersManagement />} />
+              <Route path="accounting">
+                <Route index element={<Navigate to="dashboard" replace />} />
+                <Route path=":tab" element={<AccountingView />} />
+              </Route>
+              <Route path="users" element={<UsersManagementPage />} />
+              <Route path="permissions" element={<RolesPermissionsPage />} />
+              <Route path="pos-registers" element={<PosRegistersPage />} />
+              <Route
+                path="hospitality-devices"
+                element={<HospitalityDevicesPage />}
+              />
+              <Route
+                path="call-center-devices"
+                element={<CallCenterDevicesPage />}
+              />
+              <Route path="dining-zones" element={<DiningZonesPage />} />
+              <Route path="dining-dashboard" element={<DiningTablesDashboard />} />
+              <Route path="pos" element={<AdminPOSWrapper />} />
+            </Route>
+          </Route>
+        </Route>
+
+        {/* ═══ مسارات نقطة البيع ═══
+            RoleGuard يفحص الدور → POSLayout يعرض السايد بار
+        */}
+        <Route element={<RoleGuard allowedRoles={POS_ROLES} />}>
+          <Route element={<POSLayout />}>
+            <Route path="/pos">
+              <Route index element={<POS onViewTables={() => {}} />} />
+              <Route path="orders" element={<OrdersView />} />
+              <Route path="tables" element={<TablesView />} />
+              <Route path="deferred" element={<DeferredTables />} />
+              <Route path="shift" element={<ShiftView />} />
+            </Route>
+          </Route>
+        </Route>
+
+        {/* ═══ مسارات قسم الضيافة ═══
+            RoleGuard يفحص الدور → HospitalityLayout يعرض السايد بار الخاص بالضيافة
+            يستخدم مكونات خاصة بالضيافة
+        */}
+        <Route element={<RoleGuard allowedRoles={HOSPITALITY_ROLES} />}>
+          <Route element={<HospitalityLayout />}>
+            <Route path="/Hospitality">
+              <Route index element={<HospitalityPOS />} />
+              <Route path="orders" element={<HospitalityOrders />} />
+              <Route path="tables" element={<HospitalityTables />} />
+            </Route>
+          </Route>
+        </Route>
+
+        {/* ═══ مسارات الكول سنتر ═══
+            RoleGuard يفحص الدور → CallCenterGuard يفحص تفعيل الجهاز → CallCenterLayout يعرض السايد بار
+        */}
+        <Route element={<RoleGuard allowedRoles={CALL_CENTER_ROLES} />}>
+          <Route element={<CallCenterGuard />}>
+            <Route element={<CallCenterLayout />}>
+              <Route path="/call-center">
+                <Route index element={<CustomerManagementDashboard />} />
+                <Route path="pos" element={<CallCenterPOS />} />
+                <Route path="orders" element={<ActiveOrdersPage />} />
+                <Route path="crm" element={<CrmDirectoryPage />} />
+                <Route path="search" element={<CustomerPhoneSearch />} />
+                <Route path="complaints" element={<ComplaintsManagement />} />
+                <Route path="occasions" element={<OccasionsPage />} />
+                <Route path="top-customers" element={<TopCustomersTable />} />
+                <Route path="employees" element={<CallCenterEmployees />} />
+              </Route>
+            </Route>
+          </Route>
+        </Route>
+
+        {/* ── إدارة الشفت ── */}
+        <Route
+          path="/shift"
+          element={React.createElement(ShiftView as any, {
+            currentShift: null,
+            summary: null,
+            shiftLoading: false,
+            currentUserName: "",
+            onOpen: async () => {},
+            onClose: async () => {},
+            onFetchSummary: async () => {},
+          })}
+        />
+
+        {/* ── إغلاق اليوم ── */}
+        <Route path="/admin/day-close" element={<DayClosePage />} />
+
+        {/* ── لوحة التسوية المالية ── */}
+        <Route path="/admin/reconciliation" element={<ReconciliationBoard />} />
+
+        {/* ── الصفحة الافتراضية ── */}
+        <Route index element={<Navigate to="/admin/dashboard" replace />} />
+      </Route>
+
+      {/* ── 404 ── */}
+      <Route path="*" element={<NotFoundPage />} />
+    </Routes>
+    </Suspense>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+ *  المكون الرئيسي
+ * ══════════════════════════════════════════════════════════════ */
 
 function App() {
-  const [activeView, setActiveView] = useState("finance_dashboard");
+  useEffect(() => {
+    const handler = () => {
+      sound.init();
+      document.removeEventListener("click", handler);
+    };
+    document.addEventListener("click", handler, { once: true });
+  }, []);
 
   return (
-    <div>
-      <Main />
-    </div>
-  )
+    <ThemeProvider>
+      <AuthProvider>
+        <ToastContainer />
+        <AppRoutes />
+      </AuthProvider>
+    </ThemeProvider>
+  );
 }
 
 export default App;
-
-// import { useState, useEffect } from "react";
-// import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-// import './App.css';
-// import api from "./api/axios";
-// import LoginForm from "./components/LoginForm";
-// import RegisterForm from "./components/RegisterForm";
-// import Dashboard from "./components/Dashboard";
-
-// function AppRoutes() {
-//   const [user, setUser]   = useState<any>(null);
-//   const [ready, setReady] = useState(false);
-
-//   // Helper to refresh user from API after login/register
-//   const refreshUser = async () => {
-//     const token = localStorage.getItem("token");
-//     if (token) {
-//       try {
-//         const { data } = await api.get("/auth/me");
-//         setUser(data.user);
-//       } catch {
-//         setUser(null);
-//         localStorage.removeItem("token");
-//       }
-//     } else {
-//       setUser(null);
-//     }
-//   };
-
-//   useEffect(() => {
-//     const token = localStorage.getItem("token");
-//     if (token) {
-//       api.get("/auth/me")
-//         .then(({ data }) => setUser(data.user))
-//         .catch(() => {
-//           setUser(null);
-//           localStorage.removeItem("token");
-//         })
-//         .finally(() => setReady(true));
-//     } else {
-//       setReady(true);
-//     }
-//   }, []);
-
-//   if (!ready) return (
-//     <div className="root">
-//       <div className="loader-wrap"><span className="spinner dark" /></div>
-//     </div>
-//   );
-
-//   return (
-//     <div className="root">
-//       <div className="bg-grid" />
-//       <div className="bg-blob b1" />
-//       <div className="bg-blob b2" />
-//       <div className={`card ${user ? "wide" : ""}`}>
-//         {!user && (
-//           <div className="card-side">
-//             <div className="side-text">
-//               <div className="logo">◈ AUTH</div>
-//               <p>A clean, secure authentication experience built with React + Axios.</p>
-//             </div>
-//             <div className="side-shapes">
-//               <div className="shape s1" />
-//               <div className="shape s2" />
-//               <div className="shape s3" />
-//             </div>
-//           </div>
-//         )}
-//         <div className="card-body">
-//           <Routes>
-//             <Route
-//               path="/login"
-//               element={
-//                 user
-//                   ? <Navigate to="/dashboard" replace />
-//                   : <LoginForm onLogin={refreshUser} />
-//               }
-//             />
-//             <Route
-//               path="/register"
-//               element={
-//                 user
-//                   ? <Navigate to="/dashboard" replace />
-//                   : <RegisterForm onLogin={refreshUser} />
-//               }
-//             />
-//             <Route
-//               path="/dashboard"
-//               element={
-//                 user
-//                   ? <Dashboard user={user} onLogout={() => { setUser(null); localStorage.removeItem("token"); }} />
-//                   : <Navigate to="/login" replace />
-//               }
-//             />
-//             <Route
-//               path="*"
-//               element={<Navigate to={user ? "/dashboard" : "/login"} replace />}
-//             />
-//           </Routes>
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
-
-// export default function AuthApp() {
-//   return (
-//     <BrowserRouter>
-//       <AppRoutes />
-//     </BrowserRouter>
-//   );
-// }

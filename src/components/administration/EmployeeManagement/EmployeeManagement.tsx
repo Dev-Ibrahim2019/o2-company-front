@@ -6,6 +6,7 @@ import { useEmployees } from '../../../hooks/useEmployees';
 import type { EmployeeFromApi, EmployeePayload } from '../../../services/employeeService';
 import { jobTitleService, type JobTitle } from '../../../services/jobTitleService';
 import api from "../../../api/axios";
+import { toast } from "../../shared/Toast";
 
 import EmployeeCard from './components/EmployeeCard';
 import EmployeeTable from './components/EmployeeTable';
@@ -18,18 +19,27 @@ interface SimpleOpt { id: number; name: string }
 
 // ── Hook لجلب الأقسام والفروع والمسميات ──────────────────────────────────────
 
+// src/components/administration/EmployeeManagement/EmployeeManagement.tsx
+
 const useOptions = () => {
     const [departments, setDepartments] = useState<SimpleOpt[]>([]);
     const [branches, setBranches] = useState<SimpleOpt[]>([]);
     const [jobTitles, setJobTitles] = useState<JobTitle[]>([]);
 
     useEffect(() => {
+        const token = localStorage.getItem('token');
+        if (!token) return; // ✅ guard
+
         api.get('/departments')
-            .then(r => setDepartments((r.data.data as any[]).map(d => ({ id: d.id, name: d.name }))))
+            .then(req => setDepartments(
+                (req.data.data as any[]).map(d => ({ id: d.id, name: d.name }))
+            ))
             .catch(() => { });
 
         api.get('/branches')
-            .then(r => setBranches((r.data.data as any[]).map(b => ({ id: b.id, name: b.name }))))
+            .then(req => setBranches(
+                (req.data.data as any[]).map(b => ({ id: b.id, name: b.name }))
+            ))
             .catch(() => { });
 
         jobTitleService.getAll()
@@ -39,7 +49,6 @@ const useOptions = () => {
 
     return { departments, branches, jobTitles };
 };
-
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 const EmployeeManagement: React.FC = () => {
@@ -85,7 +94,7 @@ const EmployeeManagement: React.FC = () => {
                 : await addEmployee(payload);
             closeModal();
         } catch (e: any) {
-            alert(e.response?.data?.message || 'فشل الحفظ');
+            toast.error('فشل الحفظ', e.response?.data?.message);
         }
     };
 
