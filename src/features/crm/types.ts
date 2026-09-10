@@ -95,6 +95,30 @@ export interface CrmWorkAddress {
   building_no?: string | null; floor?: string | null; apartment?: string | null;
   phone?: string | null;
 }
+// A full customer_addresses row as the addresses tab lists it — the work
+// address above is just one of these with a fixed label.
+export interface CrmAddress extends CrmWorkAddress {
+  delivery_notes?: string | null;
+  is_default?: boolean | null;
+  is_active?: boolean | null;
+  last_used_at?: string | null;
+}
+// The subset CrmController::storeAddress() accepts. `label` is the address
+// kind (منزل / عمل / أخرى); at least one locating line is required server-side.
+export interface CrmAddressInput {
+  label?: string;
+  city?: string;
+  area?: string;
+  district?: string;
+  street?: string;
+  landmark?: string;
+  building_no?: string;
+  floor?: string;
+  apartment?: string;
+  delivery_notes?: string;
+  phone?: string;
+  is_default?: boolean;
+}
 export interface CrmCustomerProfile {
   id: CrmId;
   identity: {

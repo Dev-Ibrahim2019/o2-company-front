@@ -115,6 +115,11 @@ export const PERMISSIONS = {
 /** صلاحيات CRM الجديدة، مستقلة عن شاشة حسابات العملاء القديمة. */
 export const CRM_PERMISSIONS = {
   ACCESS: "crm.access",
+  // The customer record's own edit gate. Also what the address-tab "add
+  // address" action rides on — CrmController::storeAddress() enforces the
+  // same, since an address is contact data about the customer, not a
+  // separately-permissioned concern (mirrors the family-members routes).
+  EDIT_CUSTOMERS: "crm.edit-customers",
   VIEW_CUSTOMER_FINANCIAL: "crm.view-customer-financial",
   // CrmController::statement() (routes/api.php) gates specifically on this —
   // separate from crm.view-customer-financial, which only covers the

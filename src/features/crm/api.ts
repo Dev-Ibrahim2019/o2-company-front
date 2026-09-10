@@ -8,6 +8,7 @@ import type {
   CrmOccasionListRow, CrmOccasionsSummary,
   CrmLoyaltyRule, CrmLoyaltyRuleInput, CrmLoyaltyRuleExclusion,
   CrmLoyaltyTransaction, CrmLoyaltyOwnerSummary, CrmLoyaltyGlobalSummary, CrmLoyaltyAdjustmentInput,
+  CrmAddress, CrmAddressInput,
 } from "./types";
 
 const payload = <T,>(raw: unknown): T => {
@@ -152,6 +153,10 @@ export const crmApi = {
   // Call Center already uses, just under the CRM route.
   saveOrderFeedback: async (customerId: CrmId, orderId: CrmId, data: CrmOrderFeedbackInput) =>
     payload<unknown>((await api.put(`/crm/customers/${customerId}/orders/${orderId}/feedback`, data)).data),
+  // Addresses — CrmController::storeAddress(). Read is the generic
+  // section() call ("addresses"); this is the one write CRM exposes.
+  createAddress: async (customerId: CrmId, data: CrmAddressInput) =>
+    payload<CrmAddress>((await api.post(`/crm/customers/${customerId}/addresses`, data)).data),
   // Notes CRUD — CrmController::createNote()/updateNote()/deleteNote().
   createNote: async (customerId: CrmId, data: CrmNoteInput) =>
     payload<CrmNote>((await api.post(`/crm/customers/${customerId}/notes`, data)).data),
