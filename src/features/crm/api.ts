@@ -194,16 +194,7 @@ export const crmApi = {
   // field is `notes`, matching that service's contract.
   addComplaintFollowup: async (id: CrmId, notes: string) =>
     payload<CrmComplaintFollowup>((await api.post(`/crm/complaints/${id}/followups`, { notes })).data),
-  // Deliberately NOT /employees: that endpoint carries Employee's global
-  // BranchScope, so it hid call-centre staff sitting at another branch from
-  // the assignment picker. This CRM route lifts the scope for assignment only.
-  assignableEmployees: async () =>
-    payload<Array<{ id: CrmId; name: string; branch_id?: CrmId | null; branch?: { id: CrmId; name: string } | null }>>(
-      (await api.get("/crm/complaints/assignable-employees")).data,
-    ),
   // The CRM assignee picker — real login accounts holding crm.complaints.update.
-  // This is what the CRM screens use; assignableEmployees stays for the Call
-  // Center's own field.
   assignableUsers: async () =>
     payload<Array<{ id: CrmId; name: string; branch_id?: CrmId | null; branch?: { id: CrmId; name: string } | null }>>(
       (await api.get("/crm/complaints/assignable-users")).data,
