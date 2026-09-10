@@ -87,7 +87,14 @@ export function CrmDashboardPage() {
   // `from`/`to`, which the endpoint never reads (it validates `date_from`/
   // `date_to`), so the date filter silently did nothing.
   const [filters, setFilters] = useState({ branch_id: "", date_from: "", date_to: "" });
+  // The one filter combination GET /crm/dashboard rejects with a 422
+  // (date_to must be after_or_equal date_from). ISO date strings compare
+  // chronologically, so a plain string compare is enough. Caught here so a
+  // half-entered range never fires the request that used to blank the whole
+  // page and leave "إعادة المحاولة" retrying the same bad values forever.
+  const rangeInvalid = Boolean(filters.date_from && filters.date_to && filters.date_from > filters.date_to);
   const load = useCallback(async () => {
+    if (rangeInvalid) { setError(undefined); return; }
     setLoading(true);
     setError(undefined);
     try {
@@ -98,10 +105,14 @@ export function CrmDashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, rangeInvalid]);
   useEffect(() => { void load(); }, [load]);
 
-  if (error) {
+  // Only take over the whole page when the first load itself failed and there
+  // is nothing to show. Once data is on screen, a later failure (a bad filter,
+  // a dropped request) shows an inline banner by the filter bar instead — the
+  // numbers stay put and the filters stay reachable to correct.
+  if (error && !data) {
     return (
       <div className="crmx-root p-6">
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] py-16 text-center">
@@ -187,26 +198,54 @@ export function CrmDashboardPage() {
         }
       />
 
-      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-4">
-        <label className="flex flex-col gap-1 text-[13px] font-semibold text-[var(--crmx-text-secondary)]">
-          الفرع
-          <select
-            value={filters.branch_id}
-            onChange={(e) => setFilters((v) => ({ ...v, branch_id: e.target.value }))}
-            className="h-11 min-w-[160px] rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
-          >
-            <option value="">جميع الفروع</option>
-            {data?.branches?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-[13px] font-semibold text-[var(--crmx-text-secondary)]">
-          <span className="flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" /> من</span>
-          <input type="date" value={filters.date_from} max={filters.date_to || undefined} onChange={(e) => setFilters((v) => ({ ...v, date_from: e.target.value }))} className="h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10" />
-        </label>
-        <label className="flex flex-col gap-1 text-[13px] font-semibold text-[var(--crmx-text-secondary)]">
-          إلى
-          <input type="date" value={filters.date_to} min={filters.date_from || undefined} onChange={(e) => setFilters((v) => ({ ...v, date_to: e.target.value }))} className="h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10" />
-        </label>
+      <div className="rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1 text-[13px] font-semibold text-[var(--crmx-text-secondary)]">
+            الفرع
+            <select
+              value={filters.branch_id}
+              onChange={(e) => setFilters((v) => ({ ...v, branch_id: e.target.value }))}
+              className="h-11 min-w-[160px] rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
+            >
+              <option value="">جميع الفروع</option>
+              {data?.branches?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[13px] font-semibold text-[var(--crmx-text-secondary)]">
+            <span className="flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" /> من</span>
+            <input type="date" value={filters.date_from} max={filters.date_to || undefined} onChange={(e) => setFilters((v) => ({ ...v, date_from: e.target.value }))} className={`h-11 rounded-xl border bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:ring-2 focus:ring-[var(--crmx-primary)]/10 ${rangeInvalid ? "border-[var(--crmx-danger)] focus:border-[var(--crmx-danger)]" : "border-[var(--crmx-border)] focus:border-[var(--crmx-primary)]"}`} />
+          </label>
+          <label className="flex flex-col gap-1 text-[13px] font-semibold text-[var(--crmx-text-secondary)]">
+            إلى
+            <input type="date" value={filters.date_to} min={filters.date_from || undefined} onChange={(e) => setFilters((v) => ({ ...v, date_to: e.target.value }))} className={`h-11 rounded-xl border bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:ring-2 focus:ring-[var(--crmx-primary)]/10 ${rangeInvalid ? "border-[var(--crmx-danger)] focus:border-[var(--crmx-danger)]" : "border-[var(--crmx-border)] focus:border-[var(--crmx-primary)]"}`} />
+          </label>
+          {(filters.date_from || filters.date_to) && (
+            <button
+              type="button"
+              onClick={() => setFilters((v) => ({ ...v, date_from: "", date_to: "" }))}
+              className="h-11 rounded-xl border border-[var(--crmx-border)] px-3 text-[13px] font-semibold text-[var(--crmx-text-secondary)] transition hover:bg-[var(--crmx-neutral-soft)]"
+            >
+              مسح التاريخ
+            </button>
+          )}
+        </div>
+
+        {rangeInvalid && (
+          <p className="mt-2.5 text-[12.5px] font-semibold text-[var(--crmx-danger-text)]">
+            تاريخ "من" يجب أن يكون قبل تاريخ "إلى" أو مساويًا له — لم يُطبَّق الفلتر.
+          </p>
+        )}
+        {error && data && !rangeInvalid && (
+          <div className="mt-2.5 flex flex-wrap items-center gap-3 text-[12.5px] font-semibold text-[var(--crmx-danger-text)]">
+            {error.message}
+            <button
+              onClick={load}
+              className="rounded-lg border border-[var(--crmx-danger)]/40 px-2.5 py-1 transition hover:bg-[var(--crmx-danger-soft)]"
+            >
+              إعادة المحاولة
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
