@@ -83,8 +83,22 @@ export function CrmDashboardPage() {
   const [data, setData] = useState<CrmDashboard>();
   const [error, setError] = useState<{ status?: number; message: string }>();
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({ branch_id: "", from: "", to: "" });
-  const load = useCallback(async () => { setLoading(true); setError(undefined); try { setData(await crmApi.dashboard(filters)); } catch (e) { setError(getCrmError(e)); } finally { setLoading(false); } }, [filters]);
+  // Keys match GET /crm/dashboard's own query params exactly. They used to be
+  // `from`/`to`, which the endpoint never reads (it validates `date_from`/
+  // `date_to`), so the date filter silently did nothing.
+  const [filters, setFilters] = useState({ branch_id: "", date_from: "", date_to: "" });
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(undefined);
+    try {
+      const params = Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== ""));
+      setData(await crmApi.dashboard(params));
+    } catch (e) {
+      setError(getCrmError(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [filters]);
   useEffect(() => { void load(); }, [load]);
 
   if (error) {
@@ -187,11 +201,11 @@ export function CrmDashboardPage() {
         </label>
         <label className="flex flex-col gap-1 text-[13px] font-semibold text-[var(--crmx-text-secondary)]">
           <span className="flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" /> من</span>
-          <input type="date" value={filters.from} onChange={(e) => setFilters((v) => ({ ...v, from: e.target.value }))} className="h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10" />
+          <input type="date" value={filters.date_from} max={filters.date_to || undefined} onChange={(e) => setFilters((v) => ({ ...v, date_from: e.target.value }))} className="h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10" />
         </label>
         <label className="flex flex-col gap-1 text-[13px] font-semibold text-[var(--crmx-text-secondary)]">
           إلى
-          <input type="date" value={filters.to} onChange={(e) => setFilters((v) => ({ ...v, to: e.target.value }))} className="h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10" />
+          <input type="date" value={filters.date_to} min={filters.date_from || undefined} onChange={(e) => setFilters((v) => ({ ...v, date_to: e.target.value }))} className="h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10" />
         </label>
       </div>
 
