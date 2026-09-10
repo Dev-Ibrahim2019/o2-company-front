@@ -66,6 +66,8 @@ interface EntityResult {
   creditLimit?: number;
   isBlocked?: boolean;
   status?: string;
+  /** الرقم الوظيفي — موظفين بس، يُستخدم كرقم الحساب بدل الـ id الداخلي */
+  employeeId?: string;
 }
 
 type AccountType = "ACCOUNT" | "SUPPLIER" | "EMPLOYEE";
@@ -109,7 +111,8 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
   setCustomerPhone,
   accountType,
   setAccountType,
-  accountNumber,
+  // accountNumber ما بينقرا هون — accountSearchText هو نص الخانة، و setAccountNumber
+  // بس بيخزّن الـ id الداخلي وقت اختيار حساب.
   setAccountNumber,
   setShowSearchModal,
 }) => {
@@ -119,6 +122,9 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
   const modalRef = useRef<HTMLDivElement>(null);
   const methodsGridRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
+  // اختصار F7 (تأكيد وتحصيل) — محفوظ بـ ref لأن مستمع الكيبورد تحت مربوط بـ
+  // [show] فقط، فلو ناديناه مباشرة رح يمسك نسخة قديمة من lines/selectedEntity.
+  const confirmHotkeyRef = useRef<() => void>(() => {});
   useEffect(() => {
     onCloseRef.current = onClose;
   });
@@ -146,6 +152,15 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
         onCloseRef.current();
         return;
       }
+      // F7 = اختصار "تأكيد وتحصيل الفاتورة" (طباعة + تنفيذ) — نفس زر "إغلاق"
+      // اللي فتح البوباب من السلة. يخلّي الكاشير يقفل الفاتورة بالكيبورد بدون
+      // ما يوصل لزر التأكيد بالماوس/التاب. يشتغل بوضع فوري ومحلي (الطباعة
+      // بتصير من onConfirm بـ pos.tsx: fawri للفوري / merged للمحلي).
+      if (e.key === "F7") {
+        e.preventDefault();
+        confirmHotkeyRef.current();
+        return;
+      }
       if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter"].includes(e.key)) return;
 
       const ae = document.activeElement as HTMLElement | null;
@@ -157,8 +172,18 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
         if (isButton) {
           e.preventDefault();
           ae!.click();
+          return;
         }
-        return; // داخل الحقول: Enter يبقى للسلوك الأصلي (بحث الحساب مثلاً)
+        // داخل حقل إدخال: Enter = "تأكيد وتحصيل الفاتورة" (نفس F7 والزر الأحمر)
+        // حتى يقدر الكاشير يعبّي كل البيانات ويضغط Enter مباشرة بدون ما يوصل
+        // للزر. الاستثناء الوحيد خانة بحث الحساب — Enter عندها بيختار أول
+        // نتيجة (لها onKeyDown خاص فيها).
+        if (isField) {
+          if (ae === accountSearchInputRef.current) return;
+          e.preventDefault();
+          confirmHotkeyRef.current();
+        }
+        return;
       }
 
       // داخل بوكس نص: يمين/يسار تحرّك المؤشر — ما بنتدخل
@@ -200,6 +225,12 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
   }, [show]);
 
   // ── بحث الحساب (عميل/مورد/موظف) ─────────────────────────────────────────
+  // accountSearchText: نص خانة البحث نفسه (اللي الكاشير بيكتبه/بيشوفه) —
+  // منفصل عمداً عن accountNumber (الـ id الداخلي الحقيقي المرسل للباكند
+  // وقت التحصيل). قبل هذا الفصل، اختيار نتيجة كان يبدّل نص الخانة لـ id
+  // داخلي مختلف عن الرقم اللي الكاشير كتبه فعلاً (مثلاً يكتب "45" ويطلع
+  // له رقم تاني بعد الإنتر) — هلق الخانة بتضل عارضة نفس اللي كتبه.
+  const [accountSearchText, setAccountSearchText] = useState("");
   const [showAccountSuggestions, setShowAccountSuggestions] = useState(false);
   const [entityResults, setEntityResults] = useState<EntityResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -217,7 +248,7 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
   );
 
   useEffect(() => {
-    if (!showAccountFields || !accountNumber || accountNumber.length < 1 || !showAccountSuggestions) {
+    if (!showAccountFields || !accountSearchText || accountSearchText.length < 1 || !showAccountSuggestions) {
       setEntityResults([]);
       return;
     }
@@ -228,7 +259,7 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
         let results: EntityResult[] = [];
 
         if (accountType === "ACCOUNT") {
-          const res = await customerService.list({ search: accountNumber, per_page: 10 });
+          const res = await customerService.list({ search: accountSearchText, per_page: 10 });
           const paginatedData: any = res?.data?.data;
           const data: any[] = Array.isArray(paginatedData) ? paginatedData : (paginatedData?.data || []);
           results = data.map((c: any) => ({
@@ -240,7 +271,7 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
             isBlocked: c.status === "blocked" || false,
           }));
         } else if (accountType === "SUPPLIER") {
-          const res = await supplierService.list({ search: accountNumber, per_page: 10 });
+          const res = await supplierService.list({ search: accountSearchText, per_page: 10 });
           const data = res?.data?.data || [];
           results = data.map((s: any) => ({
             id: s.id,
@@ -249,7 +280,7 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
             balance: s.balance || 0,
           }));
         } else if (accountType === "EMPLOYEE") {
-          const data = await employeeService.getAll({ search: accountNumber });
+          const data = await employeeService.getAll({ search: accountSearchText });
           const employeesData = Array.isArray(data) ? data : [];
           results = employeesData.map((e: any) => ({
             id: e.id,
@@ -257,6 +288,7 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
             phone: e.phone || "",
             balance: e.outstanding_advance || 0,
             status: e.employment_status,
+            employeeId: e.employeeId || undefined,
           }));
         }
 
@@ -270,7 +302,7 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [accountNumber, accountType, showAccountSuggestions, showAccountFields]);
+  }, [accountSearchText, accountType, showAccountSuggestions, showAccountFields]);
 
   useEffect(() => {
     if (!selectedEntity) return;
@@ -286,10 +318,26 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
       setSelectedEntity(null);
       setShowAccountSuggestions(false);
       setEntityResults([]);
+      setAccountSearchText("");
     }
   }, [show]);
 
+  // قفل تمرير الصفحة اللي وراء المودال حتى ما تتحرك الفاتورة أثناء فتحه
+  useEffect(() => {
+    if (!show) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [show]);
+
   const handleSelectAccount = (entity: EntityResult) => {
+    // مهم: accountNumber هون هو الـ id الداخلي الفعلي اللي بينبعت للباكند
+    // كـ entity_id/subledger_id وقت تحصيل الدفعة (راجع pos.tsx) — لازم يضل
+    // رقم قاعدة البيانات الحقيقي بغض النظر عن نوع الحساب، وإلا بتتحصّل
+    // الدفعة عالموظف/الحساب الغلط. الرقم الوظيفي يُعرض للكاشير للتأكيد بس
+    // (selectedEntity.employeeId بالبادج تحت)، ما بيغيّر قيمة accountNumber.
     setAccountNumber?.(String(entity.id));
     setSelectedEntity(entity);
     setShowAccountSuggestions(false);
@@ -390,6 +438,32 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
     emit([{ method: entityPaymentMethod, amount: roundMoney(total), reference: undefined }]);
   };
 
+  // اختصار F7 (وEnter داخل حقل إدخال) = نفس منطق الزر الأحمر "تأكيد وتحصيل"،
+  // ويحصّل الفاتورة بضغطة وحدة في الوضعين فوري ومحلي:
+  //   • في أسطر دفع مضافة → handleConfirm (بيعرض خطأ مبلغ ناقص/زائد أو مرجع
+  //     ناقص لو الفاتورة مش جاهزة)
+  //   • ما في أسطر بس في حساب محدد → تحميل كامل المبلغ على الحساب
+  //   • ما في أسطر ولا حساب → تحصيل كامل المبلغ كاش وإقفال مباشرة (بدون ما
+  //     الكاشير يضطر يضيف سطر دفع يدوي)
+  useEffect(() => {
+    confirmHotkeyRef.current = () => {
+      if (confirming) return;
+      if (lines.length > 0) {
+        handleConfirm();
+        return;
+      }
+      if (selectedEntity) {
+        handleEntityConfirm();
+        return;
+      }
+      emit(
+        total > 0
+          ? [{ method: PaymentMethod.CASH, amount: roundMoney(total), reference: undefined }]
+          : [],
+      );
+    };
+  });
+
   const accountSection = showAccountFields && (
     <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -425,6 +499,9 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
                       <div className="absolute left-1.5 top-1/2 -translate-y-1/2 flex items-center gap-1 bg-emerald-500/20 text-emerald-500 px-1 py-0.5 rounded text-[7px] font-bold">
                         <Tag size={7} />
                         {entityTypeLabel}
+                        {accountType === "EMPLOYEE" && selectedEntity.employeeId && (
+                          <span>#{selectedEntity.employeeId}</span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -444,6 +521,7 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
                       onChange={(e) => {
                         setAccountType(e.target.value as AccountType);
                         setAccountNumber?.("");
+                        setAccountSearchText("");
                         setSelectedEntity(null);
                         setEntityResults([]);
                         setShowAccountSuggestions(false);
@@ -458,9 +536,9 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
                       <input
                         ref={accountSearchInputRef}
                         type="text"
-                        value={accountNumber ?? ""}
+                        value={accountSearchText}
                         onChange={(e) => {
-                          setAccountNumber?.(e.target.value);
+                          setAccountSearchText(e.target.value);
                           setSelectedEntity(null);
                           setShowAccountSuggestions(true);
                         }}
@@ -472,7 +550,11 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
                           }
                           if (event.key === "Escape") setShowAccountSuggestions(false);
                         }}
-                        placeholder="ابحث بالاسم/الجوال..."
+                        placeholder={
+                          accountType === "EMPLOYEE"
+                            ? "ابحث بالرقم الوظيفي أو الاسم..."
+                            : "ابحث بالاسم/الجوال..."
+                        }
                         className="w-full p-2 pl-7 bg-slate-800 border border-white/5 rounded-lg outline-none focus:ring-1 focus:ring-red-600 font-black text-[10px] text-white"
                       />
                       <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500" />
@@ -516,7 +598,15 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
                                       <div className="min-w-0">
                                         <p className="text-[10px] font-black text-white truncate">{entity.name}</p>
                                         <p className="text-[8px] font-bold text-slate-500 flex items-center gap-1">
-                                          <Phone size={7} /> {entity.phone || "—"}
+                                          {accountType === "EMPLOYEE" && entity.employeeId ? (
+                                            <>
+                                              <Tag size={7} /> رقم وظيفي: {entity.employeeId}
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Phone size={7} /> {entity.phone || "—"}
+                                            </>
+                                          )}
                                         </p>
                                       </div>
                                     </div>
@@ -528,7 +618,7 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
                               </div>
                             )}
 
-                            {!isSearching && accountNumber && entityResults.length === 0 && (
+                            {!isSearching && accountSearchText && entityResults.length === 0 && (
                               <div className="flex flex-col items-center justify-center py-4 text-slate-500">
                                 <p className="text-[9px] font-black">لا توجد نتائج</p>
                               </div>
@@ -542,7 +632,12 @@ export const PaymentMethodModal: React.FC<PaymentMethodModalProps> = ({
 
                 {selectedEntity && (
                   <div className="bg-slate-800/50 border border-white/5 rounded-lg p-2 flex items-center justify-between">
-                    <span className="text-[9px] font-black text-emerald-500">✓ {entityTypeLabel} محدد #{selectedEntity.id}</span>
+                    <span className="text-[9px] font-black text-emerald-500">
+                      ✓ {entityTypeLabel} محدد #
+                      {accountType === "EMPLOYEE" && selectedEntity.employeeId
+                        ? selectedEntity.employeeId
+                        : selectedEntity.id}
+                    </span>
                     <span className={`text-[10px] font-mono font-black ${selectedEntity.balance > 0 ? "text-red-500" : "text-emerald-500"}`}>
                       رصيد: {selectedEntity.balance.toFixed(2)} ₪
                     </span>

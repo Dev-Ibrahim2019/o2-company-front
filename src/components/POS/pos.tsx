@@ -59,6 +59,14 @@ const MONEY_EPSILON = 0.01;
 const roundMoney = (value: number) =>
   Math.round((Number(value) || 0) * 100) / 100;
 
+// الكمية بتنخزن على الباك اند كـ decimal(15,4) (أصناف الوزن: كمية مشتقّة من
+// الإجمالي ÷ السعر). نقرّبها لـ4 خانات عشرية قبل ما نخزّنها بالسلة حتى:
+//   • subtotal الواجهة يطابق اللي بيحسبه الباك اند (ما يطلع «المبلغ المدفوع
+//     ناقص/زائد» وقت الإغلاق)
+//   • السطر يرجّع نفس الإجمالي اللي كتبه الكاشير (10 ÷ 35 = 0.2857 → ×35 ≈ 10)
+const roundQty = (value: number) =>
+  Math.round((Number(value) || 0) * 10000) / 10000;
+
 const requiresPaymentReference = (method: PaymentMethod) =>
   method === PaymentMethod.WALLET ||
   method === PaymentMethod.QR ||
@@ -352,6 +360,36 @@ const handleActivationSuccess = (activatedInfo: any) => {
     return () => { cancelled = true; };
   }, [searchParams]);
 
+  // ── قراءة tableId من الرابط (قادمين من صفحة الطاولات المستقلة /pos/tables)
+  //    وفتح طلب الطاولة تلقائياً بشاشة البيع مع فتح السلة ──
+  const handledTableParamRef = useRef<string | null>(null);
+  useEffect(() => {
+    const tableIdParam = searchParams.get("tableId");
+    if (!tableIdParam) return;
+    if (handledTableParamRef.current === tableIdParam) return;
+
+    const table = tables?.find((t) => String(t.id) === String(tableIdParam));
+    if (!table) return; // الطاولات لسا ما تحمّلت — رح يعيد المحاولة لما توصل
+
+    handledTableParamRef.current = tableIdParam;
+
+    // تنظيف الرابط بعد القراءة
+    const newSearchParams = new URLSearchParams(searchParams);
+    newSearchParams.delete("tableId");
+    const newUrl = `${window.location.pathname}${newSearchParams.toString() ? "?" + newSearchParams.toString() : ""}`;
+    window.history.replaceState({}, "", newUrl);
+
+    setActivePOSMode("menu");
+    setCartOrderType(OrderType.DINE_IN);
+    setSelectedTable(table);
+    setManualTable(table.table_number || table.number.toString());
+    setIsCartOpen(true);
+    void loadApiOrderForTable(table, false).catch((err) => {
+      console.error("Failed to load table order from tableId param:", err);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, tables]);
+
   // ── جلب بيانات الفاتورة عند تعديل طلب موجود ──
   useEffect(() => {
     if (!editingApiOrderId) {
@@ -538,17 +576,25 @@ const handleActivationSuccess = (activatedInfo: any) => {
     [currentCart, engineDiscountItems],
   );
 
+  // خلال إعادة حساب الخصم (loading) أو عند فشلها (error)، قيم المحرك
+  // (engineOriginalSubtotal / engineDiscountTotal) بتضل قديمة من حالة سلة
+  // سابقة. الاعتماد عليها كان بيخلي `total` غير مستقر — خصوصاً مع أصناف
+  // الوزن اللي كل ضغطة زر بتطلق نداء محرك جديد — فيطلع "المبلغ المدفوع
+  // ناقص/زائد" وقت الإغلاق رغم إن الكاشير دفع الظاهر عالشاشة. وقتها منعتمد
+  // على subtotal المحلي (Σ سعر×كمية) بدون خصم محرك.
+  const engineReady = !discountLoading && !discountError;
+  const safeEngineDiscountTotal = engineReady ? engineDiscountTotal : 0;
   const displaySubtotal =
-    engineOriginalSubtotal > 0 ? engineOriginalSubtotal : subtotal;
+    engineReady && engineOriginalSubtotal > 0 ? engineOriginalSubtotal : subtotal;
   const afterEngineSubtotal = Math.max(
     0,
-    displaySubtotal - engineDiscountTotal,
+    displaySubtotal - safeEngineDiscountTotal,
   );
   const manualDiscount =
     discountType === "PERCENT"
       ? (afterEngineSubtotal * discountValue) / 100
       : discountValue;
-  const calculatedDiscount = roundMoney(engineDiscountTotal + manualDiscount);
+  const calculatedDiscount = roundMoney(safeEngineDiscountTotal + manualDiscount);
   const total = roundMoney(Math.max(0, displaySubtotal - calculatedDiscount));
   const totalPaid = roundMoney(
     payments.reduce((sum, payment) => sum + payment.amount, 0),
@@ -830,7 +876,8 @@ const handleActivationSuccess = (activatedInfo: any) => {
 
     const isActiveTable =
       selectedTable.status === TableStatus.OCCUPIED ||
-      selectedTable.status === TableStatus.PAYMENT_PENDING;
+      selectedTable.status === TableStatus.PAYMENT_PENDING ||
+      selectedTable.status === TableStatus.BILL_PRINTED;
 
     if (!isActiveTable || editingApiOrderId || currentCart.length > 0) return;
 
@@ -872,7 +919,8 @@ const handleActivationSuccess = (activatedInfo: any) => {
   const isActiveTableForPolling =
     !!selectedTable &&
     (selectedTable.status === TableStatus.OCCUPIED ||
-      selectedTable.status === TableStatus.PAYMENT_PENDING);
+      selectedTable.status === TableStatus.PAYMENT_PENDING ||
+      selectedTable.status === TableStatus.BILL_PRINTED);
 
   const checkTableForUpdates = useCallback(async () => {
     if (!selectedTable || userActiveEditRef.current) return;
@@ -979,7 +1027,8 @@ const handleActivationSuccess = (activatedInfo: any) => {
 
     const isActiveTable =
       table.status === TableStatus.OCCUPIED ||
-      table.status === TableStatus.PAYMENT_PENDING;
+      table.status === TableStatus.PAYMENT_PENDING ||
+      table.status === TableStatus.BILL_PRINTED;
 
     if (isActiveTable) {
       try {
@@ -1084,7 +1133,7 @@ const handlePrintInvoice = async (
   };
 
   const handleQuantityBlur = (uniqueId: string, val: string) => {
-    updateCartItem(uniqueId, { quantity: Math.max(0, parseFloat(val) || 0) } as any);
+    updateCartItem(uniqueId, { quantity: roundQty(Math.max(0, parseFloat(val) || 0)) } as any);
     setEditingQty((prev) => {
       const n = { ...prev };
       delete n[uniqueId];
@@ -1100,7 +1149,7 @@ const handlePrintInvoice = async (
     const newTotal = parseFloat(val);
     if (!isNaN(newTotal))
       updateCartItem(uniqueId, {
-        quantity: price > 0 ? Math.max(0, newTotal / price) : 0,
+        quantity: price > 0 ? roundQty(Math.max(0, newTotal / price)) : 0,
       } as any);
   };
 
@@ -1321,6 +1370,11 @@ const handlePrintInvoice = async (
     }
   };
 
+  // أي بوباب مفتوح فوق الشاشة — يعطّل اختصارات/تنقّل الكاشير اللي وراءه
+  // (السلة، شبكة الأصناف، فتح صندوق النقدية...) حتى ما تتحرك الصفحة بالغلط.
+  const isModalOpen =
+    showPaymentMethodModal || showSearchModal || showQuickAddCustomer || showCustomerModal;
+
   const commonCartProps = {
     isCartOpen,
     setIsCartOpen,
@@ -1333,7 +1387,7 @@ const handlePrintInvoice = async (
     onViewTables,
     subtotal: displaySubtotal,
     calculatedDiscount,
-    engineDiscountTotal,
+    engineDiscountTotal: safeEngineDiscountTotal,
     manualDiscount,
     appliedDiscounts,
     discountLoading,
@@ -1376,6 +1430,7 @@ const handlePrintInvoice = async (
       setPendingCloseKind(kind);
       setShowPaymentMethodModal(true);
     },
+    isModalOpen,
   };
   // 1. إذا كان النظام ما زال يفحص هوية المتصفح
   if (checkingSecurity) {
@@ -1444,6 +1499,7 @@ const handlePrintInvoice = async (
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
             clearCart={clearActiveCart}
+            isModalOpen={isModalOpen}
           />
         )}
 
@@ -1458,6 +1514,7 @@ const handlePrintInvoice = async (
               searchQuery={searchQuery}
               addToCart={addToCart}
               loading={menuLoading}
+              isModalOpen={isModalOpen}
             />
           ) : activePOSMode === "contact" ? (
             <ContactInfoTab

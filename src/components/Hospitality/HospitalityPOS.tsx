@@ -631,7 +631,8 @@ export const HospitalityPOS: React.FC = () => {
 
     const isActiveTable =
       selectedTable.status === TableStatus.OCCUPIED ||
-      selectedTable.status === TableStatus.PAYMENT_PENDING;
+      selectedTable.status === TableStatus.PAYMENT_PENDING ||
+      selectedTable.status === TableStatus.BILL_PRINTED;
 
     // إذا كانت السلة مليئة أو في وضع التعديل، لا نفعل شيئاً
     if (editingApiOrderId || currentCart.length > 0) return;
@@ -744,7 +745,8 @@ export const HospitalityPOS: React.FC = () => {
 
     const isActiveTable =
       table.status === TableStatus.OCCUPIED ||
-      table.status === TableStatus.PAYMENT_PENDING;
+      table.status === TableStatus.PAYMENT_PENDING ||
+      table.status === TableStatus.BILL_PRINTED;
 
     if (isActiveTable) {
       try {

@@ -15,6 +15,9 @@ interface MenuGridProps {
   addToCart: (item: MenuItem) => void;
   loading?: boolean;
   categoryScrollable?: boolean;
+  /** بوباب مفتوح فوق الشاشة (دفع، بحث..) — يعطّل تنقّل/إضافة الأصناف بالأسهم
+   *  حتى ما تتحرك شبكة الأصناف اللي وراء البوباب. */
+  isModalOpen?: boolean;
 }
 
 export const MenuGrid: React.FC<MenuGridProps> = ({
@@ -25,6 +28,7 @@ export const MenuGrid: React.FC<MenuGridProps> = ({
   addToCart,
   loading = false,
   categoryScrollable = false,
+  isModalOpen = false,
 }) => {
   // ── Filtered items ────────────────────────────────────────────────────────
   const filteredItems = useMemo(() => {
@@ -99,6 +103,8 @@ export const MenuGrid: React.FC<MenuGridProps> = ({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (isModalOpen) return;
+
       const navKeys = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter'];
       if (!navKeys.includes(e.key)) return;
 
@@ -196,6 +202,7 @@ export const MenuGrid: React.FC<MenuGridProps> = ({
     addToCart,
     setSelectedCategory,
     getColumnCount,
+    isModalOpen,
   ]);
 
   // ── Loading skeleton ──────────────────────────────────────────────────────

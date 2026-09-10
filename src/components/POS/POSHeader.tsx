@@ -13,11 +13,14 @@ interface POSHeaderProps {
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   clearCart: () => void;
+  /** بوباب مفتوح فوق الشاشة — يعطّل اختصار فتح الصندوق (F9) حتى ما يفتح
+   *  بالغلط أثناء التركيز على بوباب تاني. */
+  isModalOpen?: boolean;
 }
 
 export const POSHeader: React.FC<POSHeaderProps> = ({
   editingOrderId, isHospitality, activePOSMode, setActivePOSMode,
-  searchQuery, setSearchQuery, clearCart,
+  searchQuery, setSearchQuery, clearCart, isModalOpen = false,
 }) => {
   const { currentShift, currentUser, rollover, userRole } = useApp();
   const { user } = useAuth();
@@ -43,6 +46,7 @@ export const POSHeader: React.FC<POSHeaderProps> = ({
   // F9 — فتح صندوق النقدية
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isModalOpen) return;
       if (e.key === 'F9') {
         e.preventDefault();
         handleOpenDrawer();
@@ -50,7 +54,7 @@ export const POSHeader: React.FC<POSHeaderProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isModalOpen]);
 
   const handleRollover = async () => {
     setRolloverLoading(true);
