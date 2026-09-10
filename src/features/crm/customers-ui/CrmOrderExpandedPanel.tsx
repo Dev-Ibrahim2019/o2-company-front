@@ -5,15 +5,17 @@ import { crmApi } from "../api";
 import { getCrmError } from "../components";
 import { dateTime as formatDate, money as formatMoney, num } from "../format";
 import type { CrmOrderDetails, CrmOrderTimeline } from "../types";
-import { CrmStatusBadge } from "./CrmStatusBadge";
-import { CRM_ORDER_SOURCE_LABELS } from "./sourceOptions";
+import { CrmStatusBadge, PaymentStatusBadge } from "./CrmStatusBadge";
+import { CRM_ORDER_SOURCE_LABELS, CRM_ORDER_TYPE_LABELS } from "./sourceOptions";
 
 
 // Sized up from the original h-5 w-5 (and the Call Center reference's own
 // ~13px icons, which read as small/secondary) so the rating reads as a
 // prominent feedback signal, not a muted footnote. Fill/empty tokens are
-// unchanged — this is a sizing-only upgrade.
-function StarRow({ value, onChange, disabled }: { value: number; onChange?: (v: number) => void; disabled?: boolean }) {
+// unchanged — this is a sizing-only upgrade. `size` lets a denser context
+// (the per-item rows in the order pop-up) ask for smaller stars.
+export function StarRow({ value, onChange, disabled, size = 7 }: { value: number; onChange?: (v: number) => void; disabled?: boolean; size?: 5 | 7 }) {
+  const cls = size === 5 ? "h-5 w-5" : "h-7 w-7";
   return (
     <div className="flex items-center gap-1.5">
       {Array.from({ length: 5 }).map((_, i) => {
@@ -24,11 +26,12 @@ function StarRow({ value, onChange, disabled }: { value: number; onChange?: (v: 
             type="button"
             disabled={disabled || !onChange}
             onClick={() => onChange?.(i + 1)}
+            aria-label={`${i + 1} من 5`}
             className={onChange ? "cursor-pointer" : "cursor-default"}
           >
             {/* A minor legibility bump for the empty-star outline against
                 --crmx-border, which touches no colour token. */}
-            <Star strokeWidth={1.5} className={`h-7 w-7 ${filled ? "fill-[var(--crmx-warning)] text-[var(--crmx-warning)]" : "text-[var(--crmx-border)]"}`} />
+            <Star strokeWidth={1.5} className={`${cls} ${filled ? "fill-[var(--crmx-warning)] text-[var(--crmx-warning)]" : "text-[var(--crmx-border)]"}`} />
           </button>
         );
       })}
@@ -36,8 +39,11 @@ function StarRow({ value, onChange, disabled }: { value: number; onChange?: (v: 
   );
 }
 
-function FeedbackEditor({ order, onSaved }: { order: CrmOrderDetails; onSaved: () => void }) {
-  const { customerId = "" } = useParams();
+export function FeedbackEditor({ order, onSaved, customerId: customerIdProp }: { order: CrmOrderDetails; onSaved: () => void; customerId?: string | number }) {
+  // Customer 360 tabs mount this inside a /:customerId route; the standalone
+  // orders pop-up passes order.customer_id explicitly instead.
+  const { customerId: routeCustomerId = "" } = useParams();
+  const customerId = customerIdProp ?? routeCustomerId;
   const isDelivery = order.order_type === "delivery";
   const [foodQuality, setFoodQuality] = useState(order.feedback?.food_quality ?? 0);
   const [serviceQuality, setServiceQuality] = useState(order.feedback?.service_quality ?? 0);
@@ -70,7 +76,7 @@ function FeedbackEditor({ order, onSaved }: { order: CrmOrderDetails; onSaved: (
   return (
     <div className="space-y-3 rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-4">
       <div className="flex items-center justify-between">
-        <span className="text-[13px] font-semibold text-[var(--crmx-text-secondary)]">تقييم الأصناف</span>
+        <span className="text-[13px] font-semibold text-[var(--crmx-text-secondary)]">جودة الطعام</span>
         <StarRow value={foodQuality} onChange={setFoodQuality} disabled={saving} />
       </div>
       <div className="flex items-center justify-between">
@@ -100,7 +106,7 @@ function FeedbackEditor({ order, onSaved }: { order: CrmOrderDetails; onSaved: (
   );
 }
 
-function TimelineSection({ orderId }: { orderId: string | number }) {
+export function TimelineSection({ orderId }: { orderId: string | number }) {
   const [timeline, setTimeline] = useState<CrmOrderTimeline>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -135,8 +141,21 @@ function TimelineSection({ orderId }: { orderId: string | number }) {
   );
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <h4 className="mb-2 text-[13px] font-bold uppercase tracking-wide text-[var(--crmx-text-muted)]">{children}</h4>;
+export function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <h4 className="mb-2.5 text-[12px] font-bold uppercase tracking-wide text-[var(--crmx-text-secondary)]">{children}</h4>;
+}
+
+// Label-over-value stack — 12px label / 14px value, a clear step apart so
+// the two roles never blur into one flat run of text.
+export function Field({ label, value, ltr }: { label: string; value: React.ReactNode; ltr?: boolean }) {
+  return (
+    <div>
+      <dt className="text-[12px] text-[var(--crmx-text-muted)]">{label}</dt>
+      <dd className="mt-0.5 text-[14px] font-semibold text-[var(--crmx-text)]" dir={ltr ? "ltr" : undefined}>
+        {value}
+      </dd>
+    </div>
+  );
 }
 
 export function CrmOrderExpandedPanel({
@@ -188,131 +207,133 @@ export function CrmOrderExpandedPanel({
   if (!order) return null;
 
   return (
-    // Two nested divs, deliberately: `.crmx-root` (crmx.css) sets an opaque
-    // `background: var(--crmx-bg)`, so putting the tint on the SAME element
-    // as `crmx-root` is a same-specificity cascade coin-flip decided by
-    // stylesheet injection order, not by class order in this file — verified
-    // in-browser to actually lose (the opaque --crmx-bg painted over the
-    // tint). Keeping `crmx-root` on an outer, unstyled wrapper still resolves
-    // every --crmx-* token/font-family for descendants (custom properties
-    // inherit down the DOM regardless of which element re-declares the
-    // class), while the inner div is the only rule that ever sets this
-    // panel's background, so it always wins.
+    // `.crmx-root` stays on an outer, unstyled wrapper so every --crmx-*
+    // token/font-family resolves for descendants (custom properties inherit
+    // down the DOM regardless of which element re-declares the class), while
+    // the inner div is the only rule that sets this panel's background.
     //
-    // The green only appears when order.is_paid is actually true — an
-    // earlier version painted it unconditionally, which read as "this order
-    // is paid" on orders that were not (caught by a real payment-status
-    // mismatch during visual review, on an order that was still unpaid).
-    // Unpaid orders get the plain neutral panel background instead of an
-    // invented "unpaid" colour — silence is the correct signal for "nothing
-    // special to report" here, not a competing hue.
+    // No payment-conditional wash: an earlier version tinted the whole panel
+    // green when order.is_paid, which read as a second, competing signal
+    // beside the badges and — on a payment-status mismatch — as a
+    // confidently-wrong "this is paid". Payment now reads only from the
+    // PaymentStatusBadge in the summary strip, the same axis, one place.
     <div className="crmx-root">
-      <div className={`grid grid-cols-1 gap-5 p-5 lg:grid-cols-2 ${order.is_paid ? "bg-[var(--crmx-success-soft)]" : "bg-[var(--crmx-bg)]"}`}>
-        <div className="space-y-5">
-          <div className="rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <span className="flex items-center gap-2 text-[14px] font-bold text-[var(--crmx-text)]">
-                {formatDate(order.created_at)}
-                {order.note && (
-                  <span
-                    title={order.note}
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--crmx-warning-soft)] text-[var(--crmx-warning-text)]"
-                  >
-                    <MessageSquare className="h-3.5 w-3.5" />
-                  </span>
-                )}
-              </span>
-              <CrmStatusBadge value={order.status} />
-            </div>
-  
-            <SectionLabel>الطلب</SectionLabel>
-            <dl className="mb-4 grid grid-cols-2 gap-3 text-[13px]">
-              <div><dt className="text-[var(--crmx-text-muted)]">الفرع</dt><dd className="mt-0.5 font-semibold text-[var(--crmx-text)]">{order.branch?.name || "—"}</dd></div>
-              <div><dt className="text-[var(--crmx-text-muted)]" title="مصدر الطلب">مصدر الطلب</dt><dd className="mt-0.5 font-semibold text-[var(--crmx-text)]">{order.source ? (CRM_ORDER_SOURCE_LABELS[order.source] || order.source) : "—"}</dd></div>
-              <div><dt className="text-[var(--crmx-text-muted)]">أنشأه</dt><dd className="mt-0.5 font-semibold text-[var(--crmx-text)]">{order.cashier?.name || "—"}</dd></div>
-            </dl>
-  
-            <SectionLabel>العميل</SectionLabel>
-            {order.customer_name ? (
-              <dl className="grid grid-cols-2 gap-3 text-[13px]">
-                <div><dt className="text-[var(--crmx-text-muted)]">الاسم</dt><dd className="mt-0.5 font-semibold text-[var(--crmx-text)]">{order.customer_name}</dd></div>
-                {order.customer_phone && (
-                  <div><dt className="text-[var(--crmx-text-muted)]">الهاتف</dt><dd className="mt-0.5 font-semibold text-[var(--crmx-text)]" dir="ltr">{order.customer_phone}</dd></div>
-                )}
-              </dl>
-            ) : (
-              <p className="text-[13px] text-[var(--crmx-text-muted)]">غير مرتبط بعميل</p>
-            )}
-          </div>
-  
-          <div>
-            <SectionLabel>الأصناف</SectionLabel>
-            {order.items.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-[var(--crmx-border)] py-5 text-center text-[13px] text-[var(--crmx-text-muted)]">لا توجد أصناف مسجلة</p>
-            ) : (
-              <div className="overflow-hidden rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)]">
-                <table className="w-full border-collapse text-right">
-                  <thead>
-                    {/* Same header-background/text-size convention as the orders table
-                        in OrdersPage.tsx, for visual consistency between the two tables. */}
-                    <tr className="border-b border-[var(--crmx-border)] bg-[var(--crmx-neutral-soft)]">
-                      <th className="px-3.5 py-2.5 text-[12px] font-bold text-[var(--crmx-text-secondary)]">الصنف</th>
-                      <th className="px-3.5 py-2.5 text-center text-[12px] font-bold text-[var(--crmx-text-secondary)]">الكمية</th>
-                      <th className="px-3.5 py-2.5 text-[12px] font-bold text-[var(--crmx-text-secondary)]">سعر الوحدة</th>
-                      <th className="px-3.5 py-2.5 text-[12px] font-bold text-[var(--crmx-text-secondary)]">الإجمالي</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--crmx-border)]">
-                    {order.items.map((item) => (
-                      <tr key={item.id}>
-                        <td className="px-3.5 py-3">
-                          <p className="truncate text-[14px] font-semibold text-[var(--crmx-text)]">{item.item_name_ar || item.item_name}</p>
-                          {item.notes && <p className="text-[12px] text-[var(--crmx-text-muted)]">{item.notes}</p>}
-                        </td>
-                        <td className="px-3.5 py-3 text-center text-[13px] text-[var(--crmx-text-secondary)]">{num(item.quantity)}</td>
-                        <td className="px-3.5 py-3 text-[13px] text-[var(--crmx-text-secondary)]">{formatMoney(item.price)}</td>
-                        <td className="px-3.5 py-3 text-[14px] font-bold text-[var(--crmx-text)]">{formatMoney(item.total)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-  
-          <div className="rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-4">
-            <SectionLabel>الماليات</SectionLabel>
-            <dl className="space-y-2 text-[13px]">
-              <div className="flex items-center justify-between"><dt className="text-[var(--crmx-text-secondary)]">الإجمالي الفرعي</dt><dd className="font-semibold text-[var(--crmx-text)]">{formatMoney(order.subtotal)}</dd></div>
-              {order.discount_amount > 0 && (
-                <div className="flex items-center justify-between"><dt className="text-[var(--crmx-text-secondary)]">الخصم</dt><dd className="font-semibold text-[var(--crmx-danger-text)]">-{formatMoney(order.discount_amount)}</dd></div>
-              )}
-              <div className="flex items-center justify-between border-t border-[var(--crmx-border)] pt-2"><dt className="font-bold text-[var(--crmx-text)]">الإجمالي</dt><dd className="text-[15px] font-bold text-[var(--crmx-text)]">{formatMoney(order.total)}</dd></div>
-            </dl>
-          </div>
-        </div>
-  
-        <div className="space-y-5">
-          <div>
-            <SectionLabel>التقييم</SectionLabel>
-            <FeedbackEditor order={order} onSaved={load} />
-          </div>
-  
-          <div className="rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-4">
-            <button
-              type="button"
-              onClick={() => setShowTimeline((v) => !v)}
-              aria-expanded={showTimeline}
-              className="flex w-full items-center gap-2 text-[14px] font-bold text-[var(--crmx-navy)] hover:text-[var(--crmx-primary)]"
+      <div className="space-y-4 bg-[var(--crmx-bg)] p-5">
+        {/* Summary strip — the at-a-glance facts (number, status, payment,
+            date, note, total) in one line so the columns below don't each
+            have to restate them. Colour is confined to the two badges. */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] px-4 py-3">
+          <span className="text-[15px] font-bold text-[var(--crmx-text)]" dir="ltr">{order.order_number}</span>
+          <CrmStatusBadge value={order.status} />
+          <PaymentStatusBadge isPaid={order.is_paid} paymentStatus={order.payment_status} />
+          <span className="text-[13px] text-[var(--crmx-text-secondary)]">{formatDate(order.created_at)}</span>
+          {order.note && (
+            <span
+              title={order.note}
+              className="inline-flex items-center gap-1 rounded-full bg-[var(--crmx-warning-soft)] px-2 py-0.5 text-[12px] font-semibold text-[var(--crmx-warning-text)]"
             >
-              <History className="h-4 w-4" /> سجل نشاط الطلب
-              <ChevronDown className={`ms-auto h-4 w-4 transition-transform ${showTimeline ? "rotate-180" : ""}`} />
-            </button>
-            {showTimeline && (
-              <div className="mt-4">
-                <TimelineSection orderId={order.id} />
+              <MessageSquare className="h-3.5 w-3.5" /> ملاحظة
+            </span>
+          )}
+          <span className="ms-auto text-[13px] text-[var(--crmx-text-secondary)]">
+            الإجمالي
+            <span className="ms-1.5 text-[16px] font-bold text-[var(--crmx-text)]">{formatMoney(order.total)}</span>
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="space-y-4 lg:col-span-2">
+            <div className="rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-4">
+              <SectionLabel>تفاصيل الطلب</SectionLabel>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
+                <Field label="الفرع" value={order.branch?.name || "—"} />
+                <Field label="مصدر الطلب" value={order.source ? (CRM_ORDER_SOURCE_LABELS[order.source] || order.source) : "—"} />
+                {order.order_type && <Field label="النوع" value={CRM_ORDER_TYPE_LABELS[order.order_type] || order.order_type} />}
+                <Field label="أنشأه" value={order.cashier?.name || "—"} />
+              </dl>
+
+              <div className="mt-4 border-t border-[var(--crmx-border)] pt-4">
+                <SectionLabel>العميل</SectionLabel>
+                {order.customer_name ? (
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
+                    <Field label="الاسم" value={order.customer_name} />
+                    {order.customer_phone && <Field label="الهاتف" value={order.customer_phone} ltr />}
+                  </dl>
+                ) : (
+                  <p className="text-[13px] text-[var(--crmx-text-muted)]">غير مرتبط بعميل</p>
+                )}
               </div>
-            )}
+            </div>
+
+            <div>
+              <SectionLabel>الأصناف</SectionLabel>
+              {order.items.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-[var(--crmx-border)] py-5 text-center text-[13px] text-[var(--crmx-text-muted)]">لا توجد أصناف مسجلة</p>
+              ) : (
+                <div className="overflow-hidden rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)]">
+                  <table className="w-full border-collapse text-right">
+                    <thead>
+                      {/* Same header-background/text-size convention as the orders table
+                          in OrdersPage.tsx, for visual consistency between the two tables. */}
+                      <tr className="border-b border-[var(--crmx-border)] bg-[var(--crmx-neutral-soft)]">
+                        <th className="px-3.5 py-2.5 text-[12px] font-bold text-[var(--crmx-text-secondary)]">الصنف</th>
+                        <th className="px-3.5 py-2.5 text-center text-[12px] font-bold text-[var(--crmx-text-secondary)]">الكمية</th>
+                        <th className="px-3.5 py-2.5 text-[12px] font-bold text-[var(--crmx-text-secondary)]">سعر الوحدة</th>
+                        <th className="px-3.5 py-2.5 text-[12px] font-bold text-[var(--crmx-text-secondary)]">الإجمالي</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[var(--crmx-border)]">
+                      {order.items.map((item) => (
+                        <tr key={item.id}>
+                          <td className="px-3.5 py-3">
+                            <p className="truncate text-[14px] font-semibold text-[var(--crmx-text)]">{item.item_name_ar || item.item_name}</p>
+                            {item.notes && <p className="text-[12px] text-[var(--crmx-text-muted)]">{item.notes}</p>}
+                          </td>
+                          <td className="px-3.5 py-3 text-center text-[13px] text-[var(--crmx-text-secondary)]">{num(item.quantity)}</td>
+                          <td className="px-3.5 py-3 text-[13px] text-[var(--crmx-text-secondary)]">{formatMoney(item.price)}</td>
+                          <td className="px-3.5 py-3 text-[14px] font-bold text-[var(--crmx-text)]">{formatMoney(item.total)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-4">
+              <SectionLabel>الماليات</SectionLabel>
+              <dl className="space-y-2 text-[13px]">
+                <div className="flex items-center justify-between"><dt className="text-[var(--crmx-text-secondary)]">الإجمالي الفرعي</dt><dd className="font-semibold text-[var(--crmx-text)]">{formatMoney(order.subtotal)}</dd></div>
+                {order.discount_amount > 0 && (
+                  <div className="flex items-center justify-between"><dt className="text-[var(--crmx-text-secondary)]">الخصم</dt><dd className="font-semibold text-[var(--crmx-danger-text)]">-{formatMoney(order.discount_amount)}</dd></div>
+                )}
+                <div className="flex items-center justify-between border-t border-[var(--crmx-border)] pt-2"><dt className="font-bold text-[var(--crmx-text)]">الإجمالي</dt><dd className="text-[15px] font-bold text-[var(--crmx-text)]">{formatMoney(order.total)}</dd></div>
+              </dl>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <SectionLabel>التقييم</SectionLabel>
+              <FeedbackEditor order={order} onSaved={load} />
+            </div>
+
+            <div className="rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-4">
+              <button
+                type="button"
+                onClick={() => setShowTimeline((v) => !v)}
+                aria-expanded={showTimeline}
+                className="flex w-full items-center gap-2 text-[14px] font-bold text-[var(--crmx-text)] hover:text-[var(--crmx-primary)]"
+              >
+                <History className="h-4 w-4" /> سجل نشاط الطلب
+                <ChevronDown className={`ms-auto h-4 w-4 transition-transform ${showTimeline ? "rotate-180" : ""}`} />
+              </button>
+              {showTimeline && (
+                <div className="mt-4">
+                  <TimelineSection orderId={order.id} />
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

@@ -579,7 +579,13 @@ export interface CrmMonthAmount { month: string; amount: number }
 export interface CrmOrderItem {
   id: CrmId; item_id: CrmId; item_name: string; item_name_ar?: string | null;
   quantity: number; price: number; total: number; notes?: string | null;
+  // order_item_feedback — a 1–5 rating + optional note, null until someone
+  // rates this line from the order pop-up. Written via
+  // PUT /crm/orders/{order}/items/{item}/feedback (CrmController::storeItemFeedback).
+  feedback?: { rating: number; notes?: string | null } | null;
 }
+// PUT /crm/orders/{order}/items/{item}/feedback body.
+export interface CrmOrderItemFeedbackInput { rating: number; notes?: string | null }
 export interface CrmOrderDetails {
   id: CrmId; order_number: string; status: string; order_type?: string | null; source?: OrderSource | null;
   payment_status?: string | null;

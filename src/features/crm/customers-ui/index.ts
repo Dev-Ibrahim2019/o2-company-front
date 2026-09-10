@@ -8,7 +8,7 @@ export { CrmFilterDrawer } from "./CrmFilterDrawer";
 export type { CrmFilterDrawerValues } from "./CrmFilterDrawer";
 export { CrmKpiCard } from "./CrmKpiCard";
 export { CrmOrderExpandedPanel } from "./CrmOrderExpandedPanel";
-export { CrmOrderQuickView } from "./CrmOrderQuickView";
+export { CrmOrderDetailsModal } from "./CrmOrderDetailsModal";
 export { CrmPageHeader } from "./CrmPageHeader";
 export { CrmFavoriteProductsChart, CrmPurchaseHistoryChart } from "./CrmPurchaseCharts";
 export { CrmProfileCard } from "./CrmProfileCard";

@@ -1,7 +1,7 @@
 import api from "../../api/axios";
 import type {
   CrmActivityEvent, CrmCustomer, CrmDashboard, CrmFavoriteProduct, CrmId, CrmNote, CrmNoteInput,
-  CrmOrderDetails, CrmOrderFeedbackInput, CrmOrderRow, CrmOrderTimeline, CrmPage, CrmPurchaseHistory,
+  CrmOrderDetails, CrmOrderFeedbackInput, CrmOrderItemFeedbackInput, CrmOrderRow, CrmOrderTimeline, CrmPage, CrmPurchaseHistory,
   CrmSection, CrmIdentityConflict, CrmConflictEnvelope, CrmComplaint, CrmComplaintInput, CrmComplaintCreateInput, CrmComplaintRow, CrmComplaintSummary, CrmComplaintFollowup,
   CrmCustomerGroup, CrmCustomerGroupInput, CrmOccasion, CrmOccasionDetail,
   CrmOccasionFollowup, CrmOccasionInput, CrmOccasionListQuery,
@@ -153,6 +153,13 @@ export const crmApi = {
   // Call Center already uses, just under the CRM route.
   saveOrderFeedback: async (customerId: CrmId, orderId: CrmId, data: CrmOrderFeedbackInput) =>
     payload<unknown>((await api.put(`/crm/customers/${customerId}/orders/${orderId}/feedback`, data)).data),
+  // Per-line-item rating — CrmController::storeItemFeedback(). Upsert by
+  // order_item_id; the order-details response carries the current value on
+  // each item.
+  saveOrderItemFeedback: async (orderId: CrmId, itemId: CrmId, data: CrmOrderItemFeedbackInput) =>
+    payload<{ rating: number; notes?: string | null }>(
+      (await api.put(`/crm/orders/${orderId}/items/${itemId}/feedback`, data)).data,
+    ),
   // Addresses — CrmController::storeAddress(). Read is the generic
   // section() call ("addresses"); this is the one write CRM exposes.
   createAddress: async (customerId: CrmId, data: CrmAddressInput) =>

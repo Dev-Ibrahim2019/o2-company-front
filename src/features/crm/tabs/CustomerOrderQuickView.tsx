@@ -14,7 +14,7 @@ import { text, type Row } from "./shared";
 /**
  * Quick view for an order row on the Customer 360 "Orders" tab — the one
  * place this brief scoped the feature to. Deliberately a second, separate
- * component from customers-ui/CrmOrderQuickView (the one already wired into
+ * component from customers-ui/CrmOrderDetailsModal (the pop-up wired into
  * the CRM-wide Orders screens): that one is styled with --crmx-* (CRM's own,
  * intentionally light-only token set — see crmx.css), and reusing it here
  * unmodified would carry that fixed-light styling into a component this

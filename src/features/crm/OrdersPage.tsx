@@ -1,5 +1,5 @@
-import { AlertTriangle, ChevronDown, Clock, Search, X } from "lucide-react";
-import { Fragment, useCallback, useEffect, useState } from "react";
+import { AlertTriangle, ChevronLeft, Clock, Search, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../auth";
 import { branchService, type Branch } from "../../services/branchService";
@@ -8,11 +8,11 @@ import { money as formatMoney, num } from "./format";
 import { getCrmError } from "./components";
 import "./customers-ui/crmx.css";
 import {
-  CrmOrderExpandedPanel, CrmOrderQuickView, CrmPageHeader, CrmPagination, CrmSearchBar,
+  CrmOrderDetailsModal, CrmPageHeader, CrmPagination, CrmSearchBar,
   CrmStatusBadge, CrmToolbarSkeleton, PaymentStatusBadge,
 } from "./customers-ui";
 import { CRM_ORDER_SOURCE_LABELS, CRM_ORDER_TYPE_LABELS, crmOrderTypeLabel } from "./customers-ui/sourceOptions";
-import type { CrmOrderDetails, CrmOrderRow, CrmPage } from "./types";
+import type { CrmOrderRow, CrmPage } from "./types";
 
 // Real orders.status values this filter exposes — matches CrmStatusBadge's
 // own mapping exactly (see database/migrations/..._create_orders_table.php).
@@ -201,20 +201,14 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
   const [result, setResult] = useState<CrmPage<CrmOrderRow>>();
   const [error, setError] = useState<{ status?: number; message: string }>();
   const [loading, setLoading] = useState(true);
-  const [openOrderId, setOpenOrderId] = useState<string | number | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
-  const toggle = (id: string | number) => setOpenOrderId((cur) => (cur === id ? null : id));
   const slaNowMs = useMinuteTick(mode === "active");
 
-  // Order Quick View — clicking a row opens this instead of jumping straight
-  // to the full expansion below; "عرض الطلب" inside it is what actually
-  // calls toggle(). preloadedDetails carries whatever the quick view already
-  // fetched for its items summary, keyed by order id, so CrmOrderExpandedPanel
-  // doesn't re-fetch the same /crm/orders/{id} the moment it opens.
-  const [quickView, setQuickView] = useState<{ order: CrmOrderRow; anchorEl: HTMLElement } | null>(null);
-  const [preloadedDetails, setPreloadedDetails] = useState<Record<string, CrmOrderDetails>>({});
-  const closeQuickView = useCallback(() => setQuickView(null), []);
-  const openQuickView = (order: CrmOrderRow, anchorEl: HTMLElement) => setQuickView({ order, anchorEl });
+  // Clicking a row opens the order-details pop-up (CrmOrderDetailsModal) —
+  // one dialog with the full breakdown, replacing the older row-click popover
+  // plus inline row expansion.
+  const [modalOrder, setModalOrder] = useState<CrmOrderRow | null>(null);
+  const closeModal = useCallback(() => setModalOrder(null), []);
 
   useEffect(() => {
     if (!isGlobal) return;
@@ -418,86 +412,69 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
               </thead>
               <tbody>
                 {result.items.map((order) => {
-                  const isOpen = openOrderId === order.id;
                   const isFlagged = mode === "delayed" && order.is_delayed;
                   const severity = isFlagged ? delaySeverity(order.elapsed_minutes, minutes) : null;
                   const style = severity ? SEVERITY_STYLE[severity] : null;
-                  const isSelected = quickView?.order.id === order.id;
+                  const isSelected = modalOrder?.id === order.id;
                   return (
-                    <Fragment key={order.id}>
-                      {/* Clicking (or Enter/Space-activating) the row opens the quick view,
-                          not the full expansion directly — "عرض الطلب" inside the quick view
-                          is what calls toggle() now. The closest(...) guard mirrors the same
-                          fix just applied to DomainTable's row handler (see tabs/shared.tsx):
-                          nothing interactive lives inside this row's cells today, but the
-                          guard costs nothing and prevents the same class of bug the moment
-                          one is added. isSelected keeps the row visibly "picked" while its
-                          quick view is open, the way a selected list item should look. */}
-                      <tr
-                        onClick={(e) => {
-                          if ((e.target as HTMLElement).closest("button, select, a, input, textarea, label")) return;
-                          openQuickView(order, e.currentTarget);
-                        }}
-                        tabIndex={0}
-                        role="button"
-                        aria-haspopup="dialog"
-                        onKeyDown={(e) => {
-                          if ((e.target as HTMLElement).closest("button, select, a, input, textarea, label")) return;
-                          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openQuickView(order, e.currentTarget); }
-                        }}
-                        className={`crmx-table-row cursor-pointer border-b border-[var(--crmx-border)] transition-colors focus:outline-none last:border-0 ${style?.row ?? ""} ${
-                          isSelected ? "bg-[var(--crmx-primary-soft)]/40" : ""
-                        }`}
-                      >
-                        <td className="px-2 text-center">
-                          <ChevronDown className={`mx-auto h-4 w-4 text-[var(--crmx-text-muted)] transition-transform ${isOpen ? "rotate-180" : ""}`} />
-                        </td>
-                        <td className="px-4 py-4 text-[14px] font-bold text-[var(--crmx-text)]" dir="ltr">
-                          {/* Channel dot next to the SLA dot, not a row-wide background or
-                              a full-height bar — a real visual review flagged both of those
-                              as competing with the status/payment badges for attention.
-                              This stays a small, secondary cue at the same visual weight as
-                              SlaDot, whose colour is the one that's actually load-bearing. */}
-                          <span className="flex items-center gap-2">
-                            <ChannelDot order={order} />
-                            {mode === "active" && <SlaDot createdAt={order.created_at} nowMs={slaNowMs} />}
-                            {order.order_number}
-                          </span>
-                        </td>
-                        <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">
-                          {order.customer?.name ? (
-                            <span className="font-semibold text-[var(--crmx-text)]">{order.customer.name}</span>
-                          ) : (
-                            <span className="text-[var(--crmx-text-muted)]">غير مرتبط بعميل</span>
-                          )}
-                          {order.customer_phone && <div className="text-[12.5px] text-[var(--crmx-text-muted)]" dir="ltr">{order.customer_phone}</div>}
-                        </td>
-                        <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">{CRM_ORDER_SOURCE_LABELS[order.source ?? ""] || order.source || "—"}</td>
-                        <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">{crmOrderTypeLabel(order)}</td>
-                        <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">{order.branch?.name || "—"}</td>
-                        <td className="px-4 py-4"><CrmStatusBadge value={order.status} /></td>
-                        <td className="px-4 py-4"><PaymentStatusBadge isPaid={order.is_paid} paymentStatus={order.payment_status} /></td>
-                        <td className="px-4 py-4 text-[14px] font-bold text-[var(--crmx-text)]">{formatMoney(order.total)}</td>
-                        <td className={`px-4 py-4 text-[14px] font-semibold ${style?.time ?? "text-[var(--crmx-text-secondary)]"}`}>
-                          <span className="flex items-center gap-1.5">
-                            {style?.icon && <Clock className="h-3.5 w-3.5" />}
-                            {formatElapsed(order.elapsed_minutes)}
-                          </span>
-                        </td>
-                      </tr>
-                      {isOpen && (
-                        // Neutral wrapper: the panel itself now owns the real, payment-
-                        // conditional colour (green only when order.is_paid, per a real
-                        // visual-review finding — an unpaid order was showing green here
-                        // before this fix). Hardcoding green on this <tr> regardless of
-                        // payment status would just reintroduce that bug one layer up.
-                        <tr className="border-b border-[var(--crmx-border)] bg-[var(--crmx-bg)] last:border-0">
-                          <td colSpan={COLUMNS.length} className="p-0">
-                            <CrmOrderExpandedPanel orderId={order.id} preloadedOrder={preloadedDetails[String(order.id)]} />
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
+                    // Clicking (or Enter/Space-activating) the row opens the
+                    // order-details pop-up. The closest(...) guard mirrors
+                    // DomainTable's row handler (tabs/shared.tsx): nothing
+                    // interactive lives in these cells today, but the guard
+                    // costs nothing and prevents that class of bug later.
+                    <tr
+                      key={order.id}
+                      onClick={(e) => {
+                        if ((e.target as HTMLElement).closest("button, select, a, input, textarea, label")) return;
+                        setModalOrder(order);
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      aria-haspopup="dialog"
+                      onKeyDown={(e) => {
+                        if ((e.target as HTMLElement).closest("button, select, a, input, textarea, label")) return;
+                        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setModalOrder(order); }
+                      }}
+                      className={`crmx-table-row cursor-pointer border-b border-[var(--crmx-border)] transition-colors focus:outline-none last:border-0 ${style?.row ?? ""} ${
+                        isSelected ? "bg-[var(--crmx-primary-soft)]/40" : ""
+                      }`}
+                    >
+                      <td className="px-2 text-center">
+                        <ChevronLeft className="mx-auto h-4 w-4 text-[var(--crmx-text-muted)]" aria-hidden />
+                      </td>
+                      <td className="px-4 py-4 text-[14px] font-bold text-[var(--crmx-text)]" dir="ltr">
+                        {/* Channel dot next to the SLA dot, not a row-wide background or
+                            a full-height bar — a real visual review flagged both of those
+                            as competing with the status/payment badges for attention.
+                            This stays a small, secondary cue at the same visual weight as
+                            SlaDot, whose colour is the one that's actually load-bearing. */}
+                        <span className="flex items-center gap-2">
+                          <ChannelDot order={order} />
+                          {mode === "active" && <SlaDot createdAt={order.created_at} nowMs={slaNowMs} />}
+                          {order.order_number}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">
+                        {order.customer?.name ? (
+                          <span className="font-semibold text-[var(--crmx-text)]">{order.customer.name}</span>
+                        ) : (
+                          <span className="text-[var(--crmx-text-muted)]">غير مرتبط بعميل</span>
+                        )}
+                        {order.customer_phone && <div className="text-[12.5px] text-[var(--crmx-text-muted)]" dir="ltr">{order.customer_phone}</div>}
+                      </td>
+                      <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">{CRM_ORDER_SOURCE_LABELS[order.source ?? ""] || order.source || "—"}</td>
+                      <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">{crmOrderTypeLabel(order)}</td>
+                      <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">{order.branch?.name || "—"}</td>
+                      <td className="px-4 py-4"><CrmStatusBadge value={order.status} /></td>
+                      <td className="px-4 py-4"><PaymentStatusBadge isPaid={order.is_paid} paymentStatus={order.payment_status} /></td>
+                      <td className="px-4 py-4 text-[14px] font-bold text-[var(--crmx-text)]">{formatMoney(order.total)}</td>
+                      <td className={`px-4 py-4 text-[14px] font-semibold ${style?.time ?? "text-[var(--crmx-text-secondary)]"}`}>
+                        <span className="flex items-center gap-1.5">
+                          {style?.icon && <Clock className="h-3.5 w-3.5" />}
+                          {formatElapsed(order.elapsed_minutes)}
+                        </span>
+                      </td>
+                    </tr>
                   );
                 })}
               </tbody>
@@ -515,16 +492,7 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
         </div>
       )}
 
-      <CrmOrderQuickView
-        order={quickView?.order ?? null}
-        anchorEl={quickView?.anchorEl ?? null}
-        onClose={closeQuickView}
-        onViewOrder={(order, details) => {
-          closeQuickView();
-          if (details) setPreloadedDetails((prev) => ({ ...prev, [String(order.id)]: details }));
-          if (openOrderId !== order.id) toggle(order.id);
-        }}
-      />
+      <CrmOrderDetailsModal order={modalOrder} onClose={closeModal} />
     </section>
   );
 }
