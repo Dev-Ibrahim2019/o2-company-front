@@ -95,12 +95,40 @@ function ItemRatingPanel({
   const [savedNote, setSavedNote] = useState(selected?.feedback?.notes ?? "");
   const [inFlight, setInFlight] = useState(0);
   const [justSaved, setJustSaved] = useState(false);
+  const [advancePending, setAdvancePending] = useState(false);
   const lastSaved = useRef({ rating: selected?.feedback?.rating ?? 0, notes: selected?.feedback?.notes ?? "" });
   const checkTimer = useRef<number>();
+  const advanceTimer = useRef<number>();
+  // Set the moment the user touches the note field. Blocks auto-advance even
+  // if the save that would schedule it is still in flight when they do — the
+  // star press and the note focus land in the same tick, and the timer is
+  // only armed after the save resolves.
+  const noteEngaged = useRef(false);
+
+  const nextUnrated = items.find((i) => i.id !== selectedId && !i.feedback?.rating) ?? null;
+
+  const clearAdvanceTimer = useCallback(() => {
+    window.clearTimeout(advanceTimer.current);
+    setAdvancePending(false);
+  }, []);
+
+  // Called from the note field — a persistent "don't move me off this item".
+  const holdForNote = useCallback(() => {
+    noteEngaged.current = true;
+    clearAdvanceTimer();
+  }, [clearAdvanceTimer]);
+
+  const goNext = useCallback(() => {
+    clearAdvanceTimer();
+    const next = itemsRef.current.find((i) => i.id !== selectedId && !i.feedback?.rating);
+    if (next) setSelectedId(next.id);
+  }, [clearAdvanceTimer, selectedId]);
 
   // Re-sync the editor to the picked item — on selection change only, never
   // on an items refresh (which would wipe an in-progress note).
   useEffect(() => {
+    clearAdvanceTimer();
+    noteEngaged.current = false;
     const it = itemsRef.current.find((i) => i.id === selectedId);
     const r = it?.feedback?.rating ?? 0;
     const n = it?.feedback?.notes ?? "";
@@ -109,13 +137,16 @@ function ItemRatingPanel({
     setSavedNote(n);
     lastSaved.current = { rating: r, notes: n };
     setJustSaved(false);
-  }, [selectedId]);
+  }, [selectedId, clearAdvanceTimer]);
 
-  useEffect(() => () => window.clearTimeout(checkTimer.current), []);
+  useEffect(() => () => {
+    window.clearTimeout(checkTimer.current);
+    window.clearTimeout(advanceTimer.current);
+  }, []);
 
   if (!selected || selectedId == null) return null;
 
-  const save = async (payload: CrmOrderItemFeedbackInput, advance: boolean): Promise<void> => {
+  const save = async (payload: CrmOrderItemFeedbackInput, fromStar: boolean): Promise<void> => {
     if (payload.rating < 1) return;
     const id = selectedId;
     const notes = payload.notes?.trim() ?? "";
@@ -129,9 +160,23 @@ function ItemRatingPanel({
       window.clearTimeout(checkTimer.current);
       checkTimer.current = window.setTimeout(() => setJustSaved(false), 2000);
       onSaved(id, { rating: payload.rating, notes: notes || null });
-      if (advance && wasUnrated) {
-        const next = itemsRef.current.find((i) => i.id !== id && !i.feedback?.rating);
-        if (next) setSelectedId(next.id);
+      // Auto-advance only after a star press that newly rated the item, and
+      // only after a pause — so there's room to add a note first. Any touch
+      // of the note field (below) cancels it; the "التالي" button skips it.
+      if (
+        fromStar &&
+        wasUnrated &&
+        !noteEngaged.current &&
+        itemsRef.current.some((i) => i.id !== id && !i.feedback?.rating)
+      ) {
+        window.clearTimeout(advanceTimer.current);
+        setAdvancePending(true);
+        advanceTimer.current = window.setTimeout(() => {
+          setAdvancePending(false);
+          if (noteEngaged.current) return;
+          const next = itemsRef.current.find((i) => i.id !== id && !i.feedback?.rating);
+          if (next) setSelectedId(next.id);
+        }, 2500);
       }
     } catch (e) {
       setRating(lastSaved.current.rating);
@@ -147,6 +192,7 @@ function ItemRatingPanel({
     void save({ rating: v, notes: note }, true);
   };
   const noteDirty = note.trim() !== savedNote.trim();
+  const nextName = nextUnrated ? nextUnrated.item_name_ar || nextUnrated.item_name : null;
 
   return (
     <div className="space-y-3 rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-3.5">
@@ -171,27 +217,52 @@ function ItemRatingPanel({
             <CheckCircle2 className="h-4 w-4" /> محفوظ
           </span>
         ) : null}
-      </div>
-
-      <div className="flex items-start gap-2">
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="ملاحظة على هذا الصنف (اختياري)…"
-          rows={2}
-          maxLength={1000}
-          className="flex-1 resize-none rounded-lg border border-[var(--crmx-border)] bg-white px-3 py-2 text-[13px] text-[var(--crmx-text)] outline-none transition focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
-        />
-        {noteDirty && (
+        {nextName && (
           <button
             type="button"
-            onClick={() => void save({ rating, notes: note }, false)}
-            disabled={inFlight > 0 || rating < 1}
-            className="h-9 shrink-0 rounded-lg bg-[var(--crmx-primary)] px-3 text-[12.5px] font-bold text-white transition disabled:opacity-40"
-            title={rating < 1 ? "اختر تقييماً أولاً" : undefined}
+            onClick={goNext}
+            className={`ms-auto rounded-lg px-2.5 py-1 text-[12px] font-bold transition ${
+              advancePending
+                ? "animate-pulse bg-[var(--crmx-primary-soft)] text-[var(--crmx-primary-text)]"
+                : "text-[var(--crmx-primary-text)] hover:bg-[var(--crmx-neutral-soft)]"
+            }`}
+            title={advancePending ? "سينتقل تلقائياً — اضغط للانتقال الآن" : undefined}
           >
-            حفظ الملاحظة
+            التالي: {nextName} ←
           </button>
+        )}
+      </div>
+
+      <div>
+        <div className="flex items-start gap-2">
+          <textarea
+            value={note}
+            onFocus={holdForNote}
+            onChange={(e) => { holdForNote(); setNote(e.target.value); }}
+            onBlur={(e) => {
+              // Don't double-fire when the blur is the user clicking "حفظ".
+              if ((e.relatedTarget as HTMLElement | null)?.dataset?.noteSave) return;
+              if (noteDirty && rating >= 1) void save({ rating, notes: note }, false);
+            }}
+            placeholder="ملاحظة على هذا الصنف (اختياري)…"
+            rows={2}
+            maxLength={1000}
+            className="flex-1 resize-none rounded-lg border border-[var(--crmx-border)] bg-white px-3 py-2 text-[13px] text-[var(--crmx-text)] outline-none transition focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
+          />
+          {noteDirty && (
+            <button
+              type="button"
+              data-note-save="1"
+              onClick={() => void save({ rating, notes: note }, false)}
+              disabled={inFlight > 0 || rating < 1}
+              className="h-9 shrink-0 rounded-lg bg-[var(--crmx-primary)] px-3 text-[12.5px] font-bold text-white transition disabled:opacity-40"
+            >
+              حفظ
+            </button>
+          )}
+        </div>
+        {noteDirty && rating < 1 && (
+          <p className="mt-1 text-[11.5px] text-[var(--crmx-text-muted)]">قيّم الصنف أولاً لحفظ الملاحظة معه.</p>
         )}
       </div>
     </div>
