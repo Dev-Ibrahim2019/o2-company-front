@@ -106,7 +106,17 @@ export function FeedbackEditor({ order, onSaved, customerId: customerIdProp }: {
   );
 }
 
-export function TimelineSection({ orderId }: { orderId: string | number }) {
+// One colour per kind of event so the trail reads at a glance — rating
+// actions in gold (they're the CRM-added ones), payment/close in green,
+// print in blue, everything else the neutral primary dot.
+const TIMELINE_DOT: Record<string, string> = {
+  item_rated: "bg-[var(--crmx-gold)]",
+  order_rated: "bg-[var(--crmx-gold)]",
+  order_closed: "bg-[var(--crmx-success)]",
+  invoice_printed: "bg-[var(--crmx-info)]",
+};
+
+export function TimelineSection({ orderId, refreshKey = 0 }: { orderId: string | number; refreshKey?: number }) {
   const [timeline, setTimeline] = useState<CrmOrderTimeline>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
@@ -120,7 +130,7 @@ export function TimelineSection({ orderId }: { orderId: string | number }) {
       .catch((e) => !cancelled && setError(getCrmError(e).message))
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
-  }, [orderId]);
+  }, [orderId, refreshKey]);
 
   if (loading) return <div className="crmx-skeleton h-16 w-full rounded-xl" />;
   if (error) return <p className="text-[13px] text-[var(--crmx-danger-text)]">{error}</p>;
@@ -130,7 +140,7 @@ export function TimelineSection({ orderId }: { orderId: string | number }) {
     <ul className="space-y-3 border-s-2 border-[var(--crmx-border)] ps-4">
       {timeline.events.map((ev, i) => (
         <li key={i} className="relative">
-          <span className="absolute -start-[21px] top-0.5 h-2.5 w-2.5 rounded-full bg-[var(--crmx-primary)]" />
+          <span className={`absolute -start-[21px] top-0.5 h-2.5 w-2.5 rounded-full ${TIMELINE_DOT[ev.type] ?? "bg-[var(--crmx-primary)]"}`} />
           <p className="text-[14px] font-semibold text-[var(--crmx-text)]">{ev.label}</p>
           <p className="text-[12.5px] text-[var(--crmx-text-muted)]">
             {ev.user?.name || "النظام"} · {ev.timestamp ? formatDate(ev.timestamp) : "التاريخ غير متوفر"}
