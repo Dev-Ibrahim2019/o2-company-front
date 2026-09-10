@@ -502,9 +502,18 @@ export interface CrmComplaintRow extends Omit<CrmComplaint, "assigned_to"> {
    * whether this is a number or an object depends on whether the endpoint
    * eager-loaded it. Read it through `assignedId()` rather than directly.
    */
-  assigned_to?: CrmId | { id: CrmId; name: string } | null;
+  assigned_to?: CrmId | { id: CrmId; name: string; branch_id?: CrmId | null } | null;
   customer?: { id: CrmId; name: string; code?: string | null; phone?: string | null } | null;
   assigned_to_user?: { id: CrmId; name: string } | null;
+  // Present on GET /crm/complaints/{id} (Crm\ComplaintController::show) only —
+  // the list endpoint omits them.
+  created_by?: CrmId | null;
+  createdBy?: { id: CrmId; name: string } | null;
+  order_id?: CrmId | null;
+  order?: { id: CrmId; order_number?: string | null } | null;
+  updated_at?: string | null;
+  resolved_at?: string | null;
+  closed_at?: string | null;
 }
 
 // One entry of the followup trail returned by GET /crm/complaints/{id}.

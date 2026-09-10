@@ -139,6 +139,13 @@ export const CRM_PERMISSIONS = {
   COMPLAINTS_VIEW: "crm.complaints.view",
   COMPLAINTS_CREATE: "crm.complaints.create",
   COMPLAINTS_UPDATE: "crm.complaints.update",
+  // "Decide who works a complaint" — separate from COMPLAINTS_UPDATE, which is
+  // "work the complaint you hold". Once a complaint is assigned it stays on
+  // that person until it's resolved; only a manager can (re)assign it.
+  // Backend: CrmController::updateComplaint() gates any assigned_to change on
+  // this, granted to super-admin + crm-manager only (migration
+  // 2027_01_28_000001).
+  COMPLAINTS_ASSIGN: "crm.complaints.assign",
   GROUPS_VIEW: "crm.groups.view",
   GROUPS_CREATE: "crm.groups.create",
   GROUPS_UPDATE: "crm.groups.update",

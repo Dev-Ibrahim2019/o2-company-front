@@ -1,9 +1,8 @@
-import { AlertOctagon, BellRing, Building2, CalendarDays, ChevronLeft, Inbox, Loader2, Plus, RotateCcw } from "lucide-react";
+import { AlertOctagon, BellRing, BookOpen, Building2, CalendarDays, ChevronLeft, Inbox, Loader2, Plus, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { crmApi } from "./api";
-import { ComplaintDrawer } from "./ComplaintDrawer";
 import { ComplaintFormDrawer } from "./ComplaintFormDrawer";
 import { useAuth } from "../../auth";
 import { CRM_PERMISSIONS } from "../../auth/permissions";
@@ -70,6 +69,7 @@ function ChartCard({ title, children, empty }: { title: string; children?: React
  * get wrong.
  */
 export function ComplaintsPage() {
+  const navigate = useNavigate();
   const { hasPermission } = useAuth();
   const canCreate = hasPermission(CRM_PERMISSIONS.COMPLAINTS_CREATE);
   const [filters, setFilters] = useState<Filters>(EMPTY);
@@ -82,7 +82,6 @@ export function ComplaintsPage() {
   const [rows, setRows] = useState<CrmComplaintRow[]>([]);
   const [meta, setMeta] = useState({ currentPage: 1, lastPage: 1, total: 0 });
   const [summary, setSummary] = useState<CrmComplaintSummary | null>(null);
-  const [openId, setOpenId] = useState<CrmId | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [employees, setEmployees] = useState<Array<{ id: CrmId; name: string }>>([]);
@@ -180,6 +179,12 @@ export function ComplaintsPage() {
               <Plus className="h-4 w-4" /> إنشاء شكوى
             </button>
           )}
+          <Link
+            to="/admin/crm/complaints/guide"
+            className="flex h-11 items-center gap-2 rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] px-4 text-[14px] font-bold text-[var(--crmx-navy)] transition hover:bg-[var(--crmx-neutral-soft)]"
+          >
+            <BookOpen className="h-4 w-4" /> دليل الحالات
+          </Link>
           <button
             onClick={() => void load()}
             className="flex h-11 items-center gap-2 rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] px-4 text-[14px] font-bold text-[var(--crmx-navy)] transition hover:bg-[var(--crmx-neutral-soft)]"
@@ -378,10 +383,10 @@ export function ComplaintsPage() {
                   return (
                     <tr
                       key={String(c.id)}
-                      onClick={() => setOpenId(c.id)}
+                      onClick={() => navigate(`/admin/crm/complaints/${c.id}`)}
                       tabIndex={0}
                       role="button"
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpenId(c.id); } }}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate(`/admin/crm/complaints/${c.id}`); } }}
                       // The whole row is the target, so it has to look like one:
                       // a tinted ground, a start-edge accent, and the chevron in
                       // the last cell all say "this opens".
@@ -443,16 +448,6 @@ export function ComplaintsPage() {
         />
       )}
 
-      {openId !== null && (
-        <ComplaintDrawer
-          complaintId={openId}
-          onClose={() => setOpenId(null)}
-          // The panel edits the same rows the table shows, so any save has to
-          // refresh the list — a department set in the drawer must appear in
-          // the column behind it.
-          onChanged={() => void load()}
-        />
-      )}
     </div>
   );
 }

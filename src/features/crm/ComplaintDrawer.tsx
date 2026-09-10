@@ -73,6 +73,11 @@ export function ComplaintDrawer({
 }) {
   const { hasPermission } = useAuth();
   const canUpdate = hasPermission(CRM_PERMISSIONS.COMPLAINTS_UPDATE);
+  // "Decide who works it" — a manager-only key, separate from canUpdate
+  // ("work the complaint you hold"). The backend rejects an assigned_to
+  // change without it (CrmController::updateComplaint), so the picker is
+  // hidden rather than left to fail with a 403.
+  const canAssign = hasPermission(CRM_PERMISSIONS.COMPLAINTS_ASSIGN);
   // Same two-part rule the notes and complaints tabs apply: the action
   // permission AND clearance for the category.
   const canReclassify = canUpdate && hasPermission(CRM_PERMISSIONS.VIEW_SENSITIVE_NOTES);
@@ -237,24 +242,34 @@ export function ComplaintDrawer({
 
                   <div>
                     <label className={sectionLabel}>الموظف المسؤول</label>
-                    <select
-                      className={fieldCls}
-                      disabled={saving || employees.length === 0}
-                      value={assignedId(complaint.assigned_to)}
-                      onChange={(e) => void patch(
-                        { assigned_to: e.target.value === "" ? null : Number(e.target.value) },
-                        e.target.value === "" ? "تم إلغاء الإسناد" : "تم إسناد الشكوى",
-                      )}
-                    >
-                      <option value="">بلا إسناد</option>
-                      {employees.map((emp) => (
-                        <option key={String(emp.id)} value={String(emp.id)}>{emp.name}</option>
-                      ))}
-                    </select>
-                    {employees.length === 0 && (
-                      <p className="mt-1.5 text-[11px] text-[var(--crmx-text-muted)]">
-                        لا يوجد موظفون متاحون في فرعك للإسناد.
-                      </p>
+                    {canAssign ? (
+                      <>
+                        <select
+                          className={fieldCls}
+                          disabled={saving || employees.length === 0}
+                          value={assignedId(complaint.assigned_to)}
+                          onChange={(e) => void patch(
+                            { assigned_to: e.target.value === "" ? null : Number(e.target.value) },
+                            e.target.value === "" ? "تم إلغاء الإسناد" : "تم إسناد الشكوى",
+                          )}
+                        >
+                          <option value="">بلا إسناد</option>
+                          {employees.map((emp) => (
+                            <option key={String(emp.id)} value={String(emp.id)}>{emp.name}</option>
+                          ))}
+                        </select>
+                        {employees.length === 0 && (
+                          <p className="mt-1.5 text-[11px] text-[var(--crmx-text-muted)]">
+                            لا يوجد موظفون متاحون في فرعك للإسناد.
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <div className="flex h-11 items-center rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-neutral-soft)] px-3 text-[13px] font-semibold text-[var(--crmx-text-secondary)]">
+                        {typeof complaint.assigned_to === "object" && complaint.assigned_to
+                          ? complaint.assigned_to.name
+                          : "بلا إسناد"}
+                      </div>
                     )}
                   </div>
 

@@ -81,6 +81,8 @@ import {
   CrmOrdersPage,
   CrmIdentityConflictsPage,
   CrmComplaintsPage,
+  CrmComplaintDetailPage,
+  CrmComplaintsGuidePage,
   CrmGroupsPage,
   CrmOccasionsPage,
   CrmGroupProfilePage,
@@ -336,6 +338,9 @@ function AppRoutes() {
               see the Order Domain Audit. Same page, different `mode`. */}
           <Route path="identity-conflicts" element={<CrmIdentityConflictsPage />} />
           <Route path="complaints" element={<CrmComplaintsPage />} />
+          {/* "guide" before ":complaintId" so the literal segment wins. */}
+          <Route path="complaints/guide" element={<CrmComplaintsGuidePage />} />
+          <Route path="complaints/:complaintId" element={<CrmComplaintDetailPage />} />
           <Route path="groups" element={<CrmGroupsPage />} />
           <Route path="occasions" element={<CrmOccasionsPage />} />
           <Route path="loyalty" element={<CrmLoyaltyPage />} />
