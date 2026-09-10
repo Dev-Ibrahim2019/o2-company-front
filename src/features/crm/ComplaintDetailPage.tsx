@@ -1,9 +1,9 @@
 import {
-  ArrowRightLeft, BadgeCheck, CheckCircle2, ChevronLeft, ClipboardList,
+  ArrowRightLeft, BadgeCheck, CheckCircle2, ChevronLeft, ClipboardList, Hand,
   History, Info, Loader2, Lock, MessageSquarePlus, Send,
   ShieldAlert, ShieldOff, User2, UserCog, X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth";
@@ -22,17 +22,18 @@ import type {
 } from "./types";
 
 /**
- * Full-page detail for one complaint — the screen a supervisor lands on from
- * the queue, and where a complaint is actually worked.
+ * Full-page detail for one complaint — where a complaint is actually worked.
  *
- * Everything the drawer did, laid out for a whole viewport: the lifecycle as a
- * visible track, the "who is on this" contract stated plainly, and the follow-
- * up log with one-tap common entries. Assignment is a separate, manager-only
- * control here — the field is read-only for an agent, matching the backend
- * guard on PUT /crm/complaints/{id}.
+ * The lifecycle as a visible track, a plain statement of who owns the ticket,
+ * and the follow-up log. Assignment follows the backend rule: any agent may
+ * TAKE an unassigned complaint; only a manager may hand one to someone else or
+ * lift it off its owner. Starting work (open / in_progress) auto-claims an
+ * unassigned complaint for the actor.
+ *
+ * Every write returns the full { data, followups } envelope, so the page
+ * patches its own state from the response and never flashes a reload.
  */
 
-/** Prefer the server's own sentence over a generic mapped one. */
 const serverMessage = (error: unknown): string => {
   const body = (error as { response?: { data?: { message?: unknown } } })?.response?.data;
   return typeof body?.message === "string" && body.message.trim() !== ""
@@ -40,21 +41,24 @@ const serverMessage = (error: unknown): string => {
     : getCrmError(error).message;
 };
 
-/** The assignee id whichever shape show() sent (relation object or column). */
-const assignedId = (value: CrmComplaintRow["assigned_to"]): string =>
-  value == null ? "" : String(typeof value === "object" ? value.id : value);
+/** The CRM assignee (a user), whichever shape the endpoint sent. */
+const assigneeId = (c: CrmComplaintRow): number | null => {
+  if (c.assigned_user && typeof c.assigned_user === "object") return Number(c.assigned_user.id);
+  return c.assigned_user_id == null ? null : Number(c.assigned_user_id);
+};
+const assigneeName = (c: CrmComplaintRow): string | null =>
+  c.assigned_user && typeof c.assigned_user === "object" ? c.assigned_user.name : null;
 
-const assignedName = (value: CrmComplaintRow["assigned_to"]): string | null =>
-  value != null && typeof value === "object" ? value.name : null;
+const createdByName = (c: CrmComplaintRow): string | null => {
+  if (c.createdBy?.name) return c.createdBy.name;
+  if (c.created_by && typeof c.created_by === "object") return c.created_by.name;
+  return null;
+};
 
 /** Button label for a transition, given where the complaint is now. */
 const transitionLabel = (from: CrmComplaintStatus, to: CrmComplaintStatus): string => {
-  if (to === "open" && (from === "resolved" || from === "closed" || from === "cancelled")) {
-    return "إعادة فتح";
-  }
-  if (to === "in_progress" && from === "waiting_customer") {
-    return "استئناف المعالجة";
-  }
+  if (to === "open" && (from === "resolved" || from === "closed" || from === "cancelled")) return "إعادة فتح";
+  if (to === "in_progress" && from === "waiting_customer") return "استئناف المعالجة";
   return {
     new: "إرجاع إلى «جديدة»",
     open: "فتح الشكوى",
@@ -82,6 +86,8 @@ const transitionTone = (to: CrmComplaintStatus): string => {
   }
 };
 
+/** Quick-log presets — clicking one seeds the note box for the agent to
+ *  finish the sentence, rather than posting a bare canned line. */
 const QUICK_FOLLOWUPS = [
   "تم التواصل مع العميل",
   "تم تحويلها للمشرف",
@@ -90,8 +96,8 @@ const QUICK_FOLLOWUPS = [
 
 function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-3 py-2.5">
-      <span className="shrink-0 text-[12.5px] font-bold text-[var(--crmx-text-muted)]">{label}</span>
+    <div className="flex items-start justify-between gap-3 py-2">
+      <span className="shrink-0 text-[12px] font-bold text-[var(--crmx-text-muted)]">{label}</span>
       <span className="min-w-0 text-left text-[13px] font-semibold text-[var(--crmx-text)]">{children}</span>
     </div>
   );
@@ -109,14 +115,15 @@ function SecHead({ icon, children }: { icon: React.ReactNode; children: React.Re
 export function ComplaintDetailPage() {
   const { complaintId = "" } = useParams();
   const navigate = useNavigate();
-  const { hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
+  const myId = user?.id ?? null;
   const canUpdate = hasPermission(CRM_PERMISSIONS.COMPLAINTS_UPDATE);
   const canAssign = hasPermission(CRM_PERMISSIONS.COMPLAINTS_ASSIGN);
   const canReclassify = canUpdate && hasPermission(CRM_PERMISSIONS.VIEW_SENSITIVE_NOTES);
 
   const [complaint, setComplaint] = useState<CrmComplaintRow | null>(null);
   const [followups, setFollowups] = useState<CrmComplaintFollowup[]>([]);
-  const [employees, setEmployees] = useState<Array<{ id: CrmId; name: string; branch?: { id: CrmId; name: string } | null }>>([]);
+  const [users, setUsers] = useState<Array<{ id: CrmId; name: string; branch?: { id: CrmId; name: string } | null }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ status?: number; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -125,6 +132,7 @@ export function ComplaintDetailPage() {
   const [assignOpen, setAssignOpen] = useState(false);
   const [resolveOpen, setResolveOpen] = useState(false);
   const [resolveNotes, setResolveNotes] = useState("");
+  const noteRef = useRef<HTMLTextAreaElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -144,15 +152,18 @@ export function ComplaintDetailPage() {
 
   useEffect(() => {
     if (!canAssign) return;
-    void crmApi.assignableEmployees().then(setEmployees).catch(() => setEmployees([]));
+    void crmApi.assignableUsers().then(setUsers).catch(() => setUsers([]));
   }, [canAssign]);
 
+  // Every write returns the same envelope show() does — patch state in place,
+  // no spinner, no refetch.
   const patch = async (data: Record<string, unknown>, successText: string) => {
     setSaving(true);
     try {
-      await crmApi.updateComplaint(complaintId, data);
+      const resp = await crmApi.updateComplaint(complaintId, data);
+      setComplaint(resp.data);
+      setFollowups(resp.followups ?? []);
       toast.success(successText);
-      await load();
     } catch (e) {
       toast.error("تعذّر حفظ التغيير", serverMessage(e));
     } finally {
@@ -165,10 +176,10 @@ export function ComplaintDetailPage() {
     if (value === "") return;
     setPosting(true);
     try {
-      await crmApi.addComplaintFollowup(complaintId, value);
+      const created = await crmApi.addComplaintFollowup(complaintId, value);
+      setFollowups((prev) => [created, ...prev]);
       setNote("");
       toast.success("تمت إضافة المتابعة");
-      await load();
     } catch (e) {
       toast.error("تعذّر إضافة المتابعة", serverMessage(e));
     } finally {
@@ -176,17 +187,26 @@ export function ComplaintDetailPage() {
     }
   };
 
+  const seedNote = (preset: string) => {
+    setNote((cur) => (cur.trim() === "" ? `${preset} — ` : `${cur}\n${preset} — `));
+    requestAnimationFrame(() => {
+      const el = noteRef.current;
+      if (el) { el.focus(); el.selectionStart = el.selectionEnd = el.value.length; }
+    });
+  };
+
   const status = complaint?.status ?? null;
   const statusTone = status ? COMPLAINT_STATUS_TONE[status] : null;
   const priorityTone = complaint ? COMPLAINT_PRIORITY_TONE[complaint.priority] : null;
   const severity = (complaint?.severity ?? "info") as CrmComplaintSeverity;
   const severityTone = COMPLAINT_SEVERITY_TONE[severity] ?? COMPLAINT_SEVERITY_TONE.info;
-
   const transitions = status ? COMPLAINT_TRANSITIONS[status] ?? [] : [];
 
-  // Where the complaint sits on the happy-path track. waiting_customer has no
-  // node of its own — it parks at the "in progress" position and colours it
-  // amber; cancelled is off the track entirely and handled above it.
+  const ownerId = complaint ? assigneeId(complaint) : null;
+  const ownerName = complaint ? assigneeName(complaint) : null;
+  const ownedByMe = ownerId != null && myId != null && ownerId === myId;
+  const unassigned = ownerId == null;
+
   const stepIndex = useMemo(() => {
     if (!status) return -1;
     if (status === "waiting_customer") return COMPLAINT_STATUS_STEPS.indexOf("in_progress");
@@ -194,38 +214,33 @@ export function ComplaintDetailPage() {
   }, [status]);
 
   return (
-    <div className="crmx-root space-y-5 p-4 sm:p-6">
-      {/* ── Breadcrumb + title ─────────────────────────────────────── */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <button
-            onClick={() => navigate("/admin/crm/complaints")}
-            className="mb-1 flex items-center gap-1 text-[12px] font-bold text-[var(--crmx-text-muted)] transition hover:text-[var(--crmx-primary)]"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" /> الشكاوى
-          </button>
-          <h1 className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[22px] font-extrabold text-[var(--crmx-text)] md:text-[26px]">
-            <span
-              dir="ltr"
-              className="rounded-lg bg-[var(--crmx-neutral-soft)] px-2 py-0.5 text-[16px] font-bold text-[var(--crmx-text-muted)]"
-            >
-              #{String(complaintId)}
-            </span>
-            <span className="min-w-0 break-words">{complaint?.title || "—"}</span>
-          </h1>
-          {complaint && (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {statusTone && <span className={`${COMPLAINT_PILL} ${statusTone.tone}`}>{statusTone.label}</span>}
-              {priorityTone && <span className={`${COMPLAINT_PILL} ${priorityTone.tone}`}>{priorityTone.label}</span>}
-              <span className={`${COMPLAINT_PILL} ${severityTone.tone}`}>خطورة: {severityTone.label}</span>
-              {complaint.is_sensitive && (
-                <span className={`${COMPLAINT_PILL} gap-1 bg-[var(--crmx-danger-soft)] text-[var(--crmx-danger-text)]`}>
-                  <ShieldAlert className="h-3 w-3" /> حساسة
-                </span>
-              )}
-            </div>
-          )}
-        </div>
+    <div className="crmx-root space-y-4 p-4 sm:p-6">
+      {/* ── Breadcrumb + title ──────────────────────────────────────── */}
+      <div className="min-w-0">
+        <button
+          onClick={() => navigate("/admin/crm/complaints")}
+          className="mb-1 flex items-center gap-1 text-[12px] font-bold text-[var(--crmx-text-muted)] transition hover:text-[var(--crmx-primary)]"
+        >
+          <ChevronLeft className="h-3.5 w-3.5" /> الشكاوى
+        </button>
+        <h1 className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[22px] font-extrabold text-[var(--crmx-text)] md:text-[26px]">
+          <span dir="ltr" className="rounded-lg bg-[var(--crmx-neutral-soft)] px-2 py-0.5 text-[16px] font-bold text-[var(--crmx-text-muted)]">
+            #{String(complaintId)}
+          </span>
+          <span className="min-w-0 break-words">{complaint?.title || "—"}</span>
+        </h1>
+        {complaint && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {statusTone && <span className={`${COMPLAINT_PILL} ${statusTone.tone}`}>{statusTone.label}</span>}
+            {priorityTone && <span className={`${COMPLAINT_PILL} ${priorityTone.tone}`}>{priorityTone.label}</span>}
+            <span className={`${COMPLAINT_PILL} ${severityTone.tone}`}>خطورة: {severityTone.label}</span>
+            {complaint.is_sensitive && (
+              <span className={`${COMPLAINT_PILL} gap-1 bg-[var(--crmx-danger-soft)] text-[var(--crmx-danger-text)]`}>
+                <ShieldAlert className="h-3 w-3" /> حساسة
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -235,7 +250,7 @@ export function ComplaintDetailPage() {
       ) : !complaint || !status ? null : (
         <>
           {/* ── مسار المعالجة ──────────────────────────────────────── */}
-          <div className="rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-5 shadow-[var(--crmx-shadow-sm)]">
+          <div className="rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-4 shadow-[var(--crmx-shadow-sm)] sm:p-5">
             <SecHead icon={<ClipboardList className="h-4 w-4" />}>مسار المعالجة</SecHead>
             {status === "cancelled" ? (
               <div className="flex items-center gap-2 rounded-xl border border-[var(--crmx-danger-soft)] bg-[var(--crmx-danger-soft)] px-4 py-3 text-[13px] font-bold text-[var(--crmx-danger-text)]">
@@ -272,7 +287,7 @@ export function ComplaintDetailPage() {
                         </span>
                       </div>
                       {i < COMPLAINT_STATUS_STEPS.length - 1 && (
-                        <span className={`mx-1 h-0.5 w-10 rounded-full sm:w-16 ${i < stepIndex ? "bg-[var(--crmx-success)]" : "bg-[var(--crmx-border)]"}`} />
+                        <span className={`mx-1 h-0.5 w-9 rounded-full sm:w-14 ${i < stepIndex ? "bg-[var(--crmx-success)]" : "bg-[var(--crmx-border)]"}`} />
                       )}
                     </li>
                   );
@@ -283,16 +298,21 @@ export function ComplaintDetailPage() {
               {COMPLAINT_STATUS_DESCRIPTIONS[status]}
             </p>
 
-            {/* Contextual lifecycle actions */}
             {canUpdate && transitions.length > 0 && (
-              <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--crmx-border)] pt-4">
+              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--crmx-border)] pt-4">
                 {transitions.map((to) => (
                   <button
                     key={to}
                     disabled={saving}
                     onClick={() => {
                       if (to === "resolved") { setResolveNotes(""); setResolveOpen(true); return; }
-                      void patch({ status: to }, `تم نقل الشكوى إلى «${COMPLAINT_STATUS_TONE[to].label}»`);
+                      const willClaim = (to === "open" || to === "in_progress") && unassigned;
+                      void patch(
+                        { status: to },
+                        willClaim
+                          ? `تم نقل الشكوى إلى «${COMPLAINT_STATUS_TONE[to].label}» وأصبحت مُسندة إليك`
+                          : `تم نقل الشكوى إلى «${COMPLAINT_STATUS_TONE[to].label}»`,
+                      );
                     }}
                     className={`h-10 rounded-xl px-4 text-[13px] font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${transitionTone(to)}`}
                   >
@@ -304,11 +324,10 @@ export function ComplaintDetailPage() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
             {/* ── Main column ──────────────────────────────────────── */}
-            <div className="space-y-5">
-              {/* تفاصيل الشكوى */}
-              <div className="rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-5 shadow-[var(--crmx-shadow-sm)]">
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-4 shadow-[var(--crmx-shadow-sm)] sm:p-5">
                 <SecHead icon={<Info className="h-4 w-4" />}>تفاصيل الشكوى</SecHead>
                 {complaint.description?.trim() ? (
                   <p className="whitespace-pre-wrap text-[13.5px] leading-7 text-[var(--crmx-text-secondary)]">{complaint.description}</p>
@@ -317,28 +336,26 @@ export function ComplaintDetailPage() {
                 )}
               </div>
 
-              {/* الحل */}
               {complaint.resolution_notes?.trim() && (
-                <div className="rounded-2xl border border-[var(--crmx-success-soft)] bg-[var(--crmx-success-soft)]/40 p-5">
+                <div className="rounded-2xl border border-[var(--crmx-success-soft)] bg-[var(--crmx-success-soft)]/40 p-4 sm:p-5">
                   <SecHead icon={<BadgeCheck className="h-4 w-4" />}>الحل المُنفَّذ</SecHead>
                   <p className="whitespace-pre-wrap text-[13.5px] leading-7 text-[var(--crmx-text-secondary)]">{complaint.resolution_notes}</p>
                 </div>
               )}
 
-              {/* سجل المتابعة */}
-              <div className="rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-5 shadow-[var(--crmx-shadow-sm)]">
+              <div className="rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-4 shadow-[var(--crmx-shadow-sm)] sm:p-5">
                 <SecHead icon={<History className="h-4 w-4" />}>سجل المتابعة</SecHead>
 
                 {canUpdate && (
-                  <div className="mb-4 flex flex-wrap gap-2">
-                    {QUICK_FOLLOWUPS.map((text) => (
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {QUICK_FOLLOWUPS.map((preset) => (
                       <button
-                        key={text}
-                        disabled={posting}
-                        onClick={() => void addFollowup(text)}
-                        className="flex items-center gap-1.5 rounded-full border border-[var(--crmx-primary)]/25 bg-[var(--crmx-primary-soft)] px-3 py-1.5 text-[12px] font-bold text-[var(--crmx-primary-text)] transition hover:brightness-95 disabled:opacity-50"
+                        key={preset}
+                        type="button"
+                        onClick={() => seedNote(preset)}
+                        className="flex items-center gap-1.5 rounded-full border border-[var(--crmx-primary)]/25 bg-[var(--crmx-primary-soft)] px-3 py-1.5 text-[12px] font-bold text-[var(--crmx-primary-text)] transition hover:brightness-95"
                       >
-                        <MessageSquarePlus className="h-3.5 w-3.5" /> {text}
+                        <MessageSquarePlus className="h-3.5 w-3.5" /> {preset}
                       </button>
                     ))}
                   </div>
@@ -351,7 +368,7 @@ export function ComplaintDetailPage() {
                     {followups.map((f) => (
                       <li key={String(f.id)} className="relative">
                         <span className="absolute -start-[21px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--crmx-card)] bg-[var(--crmx-primary)]" />
-                        <p className="text-[13px] font-semibold text-[var(--crmx-text)]">{f.notes || f.action || "—"}</p>
+                        <p className="whitespace-pre-wrap text-[13px] font-semibold text-[var(--crmx-text)]">{f.notes || f.action || "—"}</p>
                         <p className="mt-0.5 text-[11px] text-[var(--crmx-text-muted)]">
                           {f.user?.name ? `${f.user.name} · ` : ""}{fmtDateTime(f.created_at ?? null)}
                           {f.old_status && f.new_status
@@ -366,10 +383,11 @@ export function ComplaintDetailPage() {
                 {canUpdate && (
                   <div className="mt-4 border-t border-[var(--crmx-border)] pt-4">
                     <textarea
+                      ref={noteRef}
                       className="h-20 w-full resize-none rounded-xl border border-[var(--crmx-border)] bg-white px-3 py-2.5 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
-                      placeholder="اكتب ما جرى في هذه المتابعة…"
+                      placeholder="اكتب بالتفصيل ما تم فعله في هذه المتابعة…"
                       maxLength={2000}
                     />
                     <button
@@ -385,9 +403,8 @@ export function ComplaintDetailPage() {
             </div>
 
             {/* ── Sidebar ──────────────────────────────────────────── */}
-            <div className="space-y-5">
-              {/* معلومات الشكوى */}
-              <div className="rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-5 shadow-[var(--crmx-shadow-sm)]">
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-4 shadow-[var(--crmx-shadow-sm)] sm:p-5">
                 <SecHead icon={<Info className="h-4 w-4" />}>معلومات الشكوى</SecHead>
                 <div className="divide-y divide-[var(--crmx-border)]">
                   <InfoRow label="العميل">
@@ -412,97 +429,116 @@ export function ComplaintDetailPage() {
                   <InfoRow label="الخطورة">
                     <span className={`${COMPLAINT_PILL} ${severityTone.tone}`}>{severityTone.label}</span>
                   </InfoRow>
-                  <InfoRow label="رقم الطلب المرتبط">
-                    {complaint.order?.order_number
-                      ? <span dir="ltr" className="font-bold">#{complaint.order.order_number}</span>
-                      : complaint.order_id
-                        ? <span dir="ltr" className="font-bold">#{String(complaint.order_id)}</span>
-                        : "—"}
-                  </InfoRow>
-                  <InfoRow label="سجّلها">
-                    {complaint.createdBy?.name ?? "—"}
-                  </InfoRow>
+                  {(complaint.order?.order_number || complaint.order_id) && (
+                    <InfoRow label="رقم الطلب المرتبط">
+                      <span dir="ltr" className="font-bold">
+                        #{complaint.order?.order_number ?? String(complaint.order_id)}
+                      </span>
+                    </InfoRow>
+                  )}
+                  {createdByName(complaint) && <InfoRow label="سجّلها">{createdByName(complaint)}</InfoRow>}
                   <InfoRow label="تاريخ التسجيل">{fmtDateTime(complaint.created_at ?? null)}</InfoRow>
                 </div>
               </div>
 
               {/* المسؤول عن المتابعة */}
-              <div className="rounded-2xl border border-[var(--crmx-navy)]/15 bg-[var(--crmx-navy-soft)] p-5">
+              <div className="rounded-2xl border border-[var(--crmx-navy)]/15 bg-[var(--crmx-navy-soft)] p-4 sm:p-5">
                 <SecHead icon={<UserCog className="h-4 w-4" />}>المسؤول عن المتابعة</SecHead>
 
                 <div className="flex items-center gap-3 rounded-xl bg-[var(--crmx-card)] p-3 shadow-[var(--crmx-shadow-sm)]">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--crmx-primary-soft)] text-[var(--crmx-primary-text)]">
+                  <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+                    unassigned ? "bg-[var(--crmx-neutral-soft)] text-[var(--crmx-text-muted)]" : "bg-[var(--crmx-primary-soft)] text-[var(--crmx-primary-text)]"
+                  }`}>
                     <User2 className="h-5 w-5" />
                   </span>
                   <div className="min-w-0">
                     <p className="truncate text-[14px] font-extrabold text-[var(--crmx-text)]">
-                      {assignedName(complaint.assigned_to) ?? "بلا إسناد"}
+                      {ownedByMe ? `${ownerName ?? "أنت"} (أنت)` : ownerName ?? "بلا إسناد"}
                     </p>
                     <p className="text-[11.5px] font-semibold text-[var(--crmx-text-muted)]">
-                      {assignedName(complaint.assigned_to)
-                        ? "الشكوى مُسندة إليه حتى إغلاقها"
-                        : "لم تُسند الشكوى لأي موظف بعد"}
+                      {unassigned ? "لم يمسك أحد هذه الشكوى بعد" : "الشكوى مُسندة إليه حتى إغلاقها"}
                     </p>
                   </div>
                 </div>
 
+                {/* Take it — any agent, only while unassigned */}
+                {unassigned && canUpdate && !canAssign && (
+                  <button
+                    disabled={saving}
+                    onClick={() => void patch({ assigned_user_id: myId }, "أصبحت الشكوى مُسندة إليك")}
+                    className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[var(--crmx-primary)] text-[13px] font-bold text-white transition hover:bg-[var(--crmx-primary-hover)] disabled:opacity-50"
+                  >
+                    <Hand className="h-4 w-4" /> مسك الشكوى (تُسنَد إليّ)
+                  </button>
+                )}
+
+                {/* Manager: take, hand over, or lift */}
                 {canAssign ? (
-                  <>
+                  <div className="mt-3 space-y-2">
+                    {unassigned && myId != null && (
+                      <button
+                        disabled={saving}
+                        onClick={() => void patch({ assigned_user_id: myId }, "أصبحت الشكوى مُسندة إليك")}
+                        className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[var(--crmx-primary)] text-[13px] font-bold text-white transition hover:bg-[var(--crmx-primary-hover)] disabled:opacity-50"
+                      >
+                        <Hand className="h-4 w-4" /> مسك الشكوى بنفسي
+                      </button>
+                    )}
                     {!assignOpen ? (
                       <button
                         onClick={() => setAssignOpen(true)}
-                        className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-[var(--crmx-navy)]/20 bg-[var(--crmx-card)] text-[13px] font-bold text-[var(--crmx-navy)] transition hover:bg-[var(--crmx-neutral-soft)]"
+                        className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-[var(--crmx-navy)]/20 bg-[var(--crmx-card)] text-[13px] font-bold text-[var(--crmx-navy)] transition hover:bg-[var(--crmx-neutral-soft)]"
                       >
-                        <ArrowRightLeft className="h-4 w-4" />
-                        {assignedName(complaint.assigned_to) ? "تحويل لموظف آخر" : "إسناد لموظف"}
+                        <ArrowRightLeft className="h-4 w-4" /> {unassigned ? "إسناد لموظف" : "تحويل لموظف آخر"}
                       </button>
                     ) : (
-                      <div className="mt-3 space-y-2">
+                      <div className="space-y-2">
                         <select
                           autoFocus
                           disabled={saving}
-                          defaultValue={assignedId(complaint.assigned_to)}
+                          defaultValue={ownerId != null ? String(ownerId) : ""}
                           onChange={(e) => {
                             const next = e.target.value === "" ? null : Number(e.target.value);
                             setAssignOpen(false);
+                            if (next === ownerId) return;
                             void patch(
-                              { assigned_to: next },
-                              next == null ? "تم إلغاء الإسناد" : "تم تحويل الشكوى للموظف",
+                              { assigned_user_id: next },
+                              next == null ? "تم رفع الإسناد عن الشكوى" : "تم تحويل الشكوى",
                             );
                           }}
                           className="h-11 w-full rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10 disabled:opacity-50"
                         >
-                          <option value="">بلا إسناد</option>
-                          {employees.map((emp) => (
-                            <option key={String(emp.id)} value={String(emp.id)}>
-                              {emp.name}{emp.branch?.name ? ` — ${emp.branch.name}` : ""}
+                          <option value="">— بلا إسناد —</option>
+                          {users.map((u) => (
+                            <option key={String(u.id)} value={String(u.id)}>
+                              {u.name}{u.branch?.name ? ` — ${u.branch.name}` : ""}
                             </option>
                           ))}
                         </select>
-                        <button
-                          onClick={() => setAssignOpen(false)}
-                          className="text-[12px] font-semibold text-[var(--crmx-text-muted)] hover:text-[var(--crmx-text)]"
-                        >
+                        <button onClick={() => setAssignOpen(false)} className="text-[12px] font-semibold text-[var(--crmx-text-muted)] hover:text-[var(--crmx-text)]">
                           إلغاء
                         </button>
                       </div>
                     )}
-                  </>
+                  </div>
                 ) : (
-                  <p className="mt-3 flex items-start gap-2 rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] px-3 py-2.5 text-[12px] font-semibold text-[var(--crmx-text-secondary)]">
-                    <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--crmx-text-muted)]" />
-                    إسناد الشكوى أو تحويلها لموظف آخر من صلاحية مدير قسم CRM وحده.
-                  </p>
+                  !unassigned && (
+                    <p className="mt-3 flex items-start gap-2 rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] px-3 py-2.5 text-[12px] font-semibold text-[var(--crmx-text-secondary)]">
+                      <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--crmx-text-muted)]" />
+                      {ownedByMe
+                        ? "لا يمكنك رفع الشكوى عن نفسك — تحويلها من صلاحية مدير قسم CRM وحده."
+                        : "تحويل الشكوى لموظف آخر من صلاحية مدير قسم CRM وحده."}
+                    </p>
+                  )
                 )}
               </div>
 
-              {/* تصنيف الحساسية */}
               {canReclassify && (
                 <button
                   disabled={saving}
                   onClick={() => void patch(
                     { is_sensitive: !complaint.is_sensitive },
-                    complaint.is_sensitive ? "تم إلغاء تصنيف الشكوى" : "تم تصنيف الشكوى كحساسة",
+                    complaint.is_sensitive ? "تم إلغاء تصنيف الحساسية" : "تم تصنيف الشكوى كحساسة",
                   )}
                   className={`flex h-11 w-full items-center justify-center gap-2 rounded-xl border text-[13px] font-bold transition disabled:opacity-50 ${
                     complaint.is_sensitive

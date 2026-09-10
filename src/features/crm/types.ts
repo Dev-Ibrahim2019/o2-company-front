@@ -505,9 +505,14 @@ export interface CrmComplaintRow extends Omit<CrmComplaint, "assigned_to"> {
   assigned_to?: CrmId | { id: CrmId; name: string; branch_id?: CrmId | null } | null;
   customer?: { id: CrmId; name: string; code?: string | null; phone?: string | null } | null;
   assigned_to_user?: { id: CrmId; name: string } | null;
+  /** The CRM assignee — a real login account. The column, always sent. */
+  assigned_user_id?: CrmId | null;
+  /** The eager-loaded relation (index + show). Laravel serialises `assignedUser`
+   *  under this snake_case key. */
+  assigned_user?: { id: CrmId; name: string; branch_id?: CrmId | null } | null;
   // Present on GET /crm/complaints/{id} (Crm\ComplaintController::show) only —
   // the list endpoint omits them.
-  created_by?: CrmId | null;
+  created_by?: CrmId | { id: CrmId; name: string } | null;
   createdBy?: { id: CrmId; name: string } | null;
   order_id?: CrmId | null;
   order?: { id: CrmId; order_number?: string | null } | null;
@@ -560,9 +565,30 @@ export interface CrmComplaintInput {
   title?: string;
   description?: string;
   assigned_to?: CrmId | null;
+  /** The CRM assignee. Any agent may set this to their own id on an
+   *  unassigned complaint; every other change needs crm.complaints.assign. */
+  assigned_user_id?: CrmId | null;
   resolution_notes?: string;
   is_sensitive?: boolean;
   department?: CrmComplaintDepartment | null;
+}
+
+// GET /crm/notifications — the current user's feed for the CRM shell bell.
+// One row of Laravel's `notifications` table; `data` is the payload
+// ComplaintActivityNotification::toArray() wrote.
+export interface CrmNotification {
+  id: string;
+  type: string;
+  read_at?: string | null;
+  created_at?: string | null;
+  data: {
+    complaint_id?: CrmId;
+    complaint_title?: string;
+    action?: string;
+    actor_name?: string;
+    message?: string;
+    url?: string;
+  };
 }
 
 // GET /crm/customers/{id}/financial-summary — Customer360QueryService::financial()

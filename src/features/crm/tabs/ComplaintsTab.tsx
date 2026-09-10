@@ -1,11 +1,10 @@
 import { Plus, ShieldAlert, ShieldOff } from "lucide-react";
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../../auth";
 import { CRM_PERMISSIONS } from "../../../auth/permissions";
 import { toast } from "../../../components/shared/Toast";
 import { crmApi } from "../api";
-import { ComplaintDrawer } from "../ComplaintDrawer";
 import { ComplaintFormDrawer } from "../ComplaintFormDrawer";
 import { ComplaintStatusControl } from "../ComplaintStatusControl";
 import { getCrmError } from "../components";
@@ -38,6 +37,7 @@ const serverMessage = (error: unknown): string => {
 
 export default function ComplaintsTab() {
   const { customerId = "" } = useParams();
+  const navigate = useNavigate();
   const state = useCrmSection("complaints");
   const { hasPermission } = useAuth();
 
@@ -52,7 +52,6 @@ export default function ComplaintsTab() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pendingId, setPendingId] = useState<CrmId | null>(null);
-  const [openId, setOpenId] = useState<CrmId | null>(null);
 
   const create = async (targetCustomerId: CrmId, data: CrmComplaintCreateInput) => {
     setSaving(true);
@@ -117,9 +116,9 @@ export default function ComplaintsTab() {
           <DomainTable
             empty="لا توجد شكاوى مسجلة"
             rows={unwrapRows(d, ["complaints"])}
-            // The same drawer the CRM-wide screen opens — one component, so a
-            // complaint reads identically wherever it is opened from.
-            onRowClick={(row) => setOpenId(row.id as CrmId)}
+            // Opens the full complaint page — one screen, so a complaint reads
+            // and is worked identically wherever it is opened from.
+            onRowClick={(row) => navigate(`/admin/crm/complaints/${row.id as CrmId}`)}
             columns={[
               { key: "id", label: "رقم الشكوى", render: (v, r) => text(v ?? r.code) },
               {
@@ -205,14 +204,6 @@ export default function ComplaintsTab() {
           />
         )}
       </SectionFrame>
-
-      {openId !== null && (
-        <ComplaintDrawer
-          complaintId={openId}
-          onClose={() => setOpenId(null)}
-          onChanged={() => void state.load()}
-        />
-      )}
 
       {drawerOpen && (
         // Inside a profile the subject is already known, so the shared drawer

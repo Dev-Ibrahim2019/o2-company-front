@@ -172,15 +172,23 @@ export function ComplaintsGuidePage() {
         <GuideCard
           icon={<ClipboardList className="h-5 w-5" />}
           title="قاعدة الإسناد"
-          subtitle="من يعمل على الشكوى، ومن يقرّر ذلك."
+          subtitle="من يعمل على الشكوى، ومتى تلتصق به، ومن يقرّر تحويلها."
         >
           <GuideRow
-            pill={<span className={`${COMPLAINT_PILL} bg-[var(--crmx-warning-soft)] text-[var(--crmx-warning-text)]`}>مُسندة</span>}
-            description="بمجرد إسناد الشكوى لموظف تبقى معه حتى يُغلقها؛ لا يستطيع تحويلها عنه أو إعادتها للطابور."
+            pill={<span className={`${COMPLAINT_PILL} bg-[var(--crmx-primary-soft)] text-[var(--crmx-primary-text)]`}>مسك الشكوى</span>}
+            description="أي موظف يملك صلاحية معالجة الشكاوى يستطيع «مسك» شكوى غير مُسندة فتُسنَد إليه. كما أن بدء المعالجة (فتح / قيد المعالجة) يُسند الشكوى تلقائياً لمن بدأها إن لم تكن مُسندة."
+          />
+          <GuideRow
+            pill={<span className={`${COMPLAINT_PILL} bg-[var(--crmx-warning-soft)] text-[var(--crmx-warning-text)]`}>تلتصق به</span>}
+            description="بمجرد أن تُسند الشكوى لموظف تبقى معه حتى يُغلقها؛ لا يستطيع رفعها عن نفسه ولا إعادتها للطابور — وهذا يدخل في تقييم أدائه."
           />
           <GuideRow
             pill={<span className={`${COMPLAINT_PILL} bg-[var(--crmx-navy-soft)] text-[var(--crmx-navy)]`}>مدير CRM</span>}
-            description="تغيير المُسنَد إليه — إسناداً أو تحويلاً — من صلاحية مدير قسم CRM وحده."
+            description="تحويل الشكوى من موظف لآخر، أو رفع الإسناد عنه، من صلاحية مدير قسم CRM وحده."
+          />
+          <GuideRow
+            pill={<span className={`${COMPLAINT_PILL} bg-[var(--crmx-info-soft)] text-[var(--crmx-info-text)]`}>إشعار</span>}
+            description="يصل إشعار للمدير عند مسك الشكوى أو حلّها أو إلغائها، وإشعار للموظف عند إسناد شكوى إليه أو رفعها عنه."
           />
         </GuideCard>
       </div>

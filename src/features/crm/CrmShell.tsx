@@ -1,8 +1,9 @@
-import { Bell, ChevronDown, ChevronLeft, Menu, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, Menu, X } from "lucide-react";
 import { createContext, useContext, useEffect, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../../auth";
 import { crmApi } from "./api";
+import { CrmNotificationBell } from "./CrmNotificationBell";
 import { CRM_NAVIGATION } from "./crmNavigation";
 import { num } from "./format";
 import "./customers-ui/crmx.css";
@@ -223,14 +224,7 @@ function CrmHeader({ onMenuClick }: { onMenuClick: () => void }) {
       </div>
 
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          title="الإشعارات"
-          aria-label="الإشعارات"
-          className="flex h-10 w-10 items-center justify-center rounded-xl text-[var(--crmx-text-muted)] transition-colors hover:bg-[var(--crmx-neutral-soft)] hover:text-[var(--crmx-navy)]"
-        >
-          <Bell className="h-[18px] w-[18px]" />
-        </button>
+        <CrmNotificationBell />
 
         <div className="ms-1 flex items-center gap-2.5 border-s border-[var(--crmx-border)] ps-3">
           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--crmx-navy-soft)] text-[13px] font-black text-[var(--crmx-navy)]">

@@ -2,7 +2,7 @@ import api from "../../api/axios";
 import type {
   CrmActivityEvent, CrmCustomer, CrmDashboard, CrmFavoriteProduct, CrmId, CrmNote, CrmNoteInput,
   CrmOrderDetails, CrmOrderFeedbackInput, CrmOrderItemFeedbackInput, CrmOrderRow, CrmOrderTimeline, CrmPage, CrmPurchaseHistory,
-  CrmSection, CrmIdentityConflict, CrmConflictEnvelope, CrmComplaint, CrmComplaintInput, CrmComplaintCreateInput, CrmComplaintRow, CrmComplaintSummary, CrmComplaintFollowup,
+  CrmSection, CrmIdentityConflict, CrmConflictEnvelope, CrmComplaint, CrmComplaintInput, CrmComplaintCreateInput, CrmComplaintRow, CrmComplaintSummary, CrmComplaintFollowup, CrmNotification,
   CrmCustomerGroup, CrmCustomerGroupInput, CrmOccasion, CrmOccasionDetail,
   CrmOccasionFollowup, CrmOccasionInput, CrmOccasionListQuery,
   CrmOccasionListRow, CrmOccasionsSummary,
@@ -201,13 +201,31 @@ export const crmApi = {
     payload<Array<{ id: CrmId; name: string; branch_id?: CrmId | null; branch?: { id: CrmId; name: string } | null }>>(
       (await api.get("/crm/complaints/assignable-employees")).data,
     ),
+  // The CRM assignee picker — real login accounts holding crm.complaints.update.
+  // This is what the CRM screens use; assignableEmployees stays for the Call
+  // Center's own field.
+  assignableUsers: async () =>
+    payload<Array<{ id: CrmId; name: string; branch_id?: CrmId | null; branch?: { id: CrmId; name: string } | null }>>(
+      (await api.get("/crm/complaints/assignable-users")).data,
+    ),
   // CrmController::createComplaint(). No channel field: the server stamps it
   // from the route it arrived on, so there is nothing for the form to send.
   createComplaint: async (customerId: CrmId, data: CrmComplaintCreateInput) =>
     payload<CrmComplaint>((await api.post(`/crm/customers/${customerId}/complaints`, data)).data),
-  // CrmController::updateComplaint() — one PUT for every field of a complaint.
-  // Reclassifying sensitivity is just another field on it, guarded server-side
-  // by crm.view-sensitive-notes in both directions.
+  // CrmController::updateComplaint(). Returns the same { data, followups }
+  // envelope as complaint() so the caller patches its state from the response
+  // without a follow-up GET.
   updateComplaint: async (complaintId: CrmId, data: CrmComplaintInput) =>
-    payload<CrmComplaint>((await api.put(`/crm/complaints/${complaintId}`, data)).data),
+    (await api.put(`/crm/complaints/${complaintId}`, data)).data as { data: CrmComplaintRow; followups: CrmComplaintFollowup[] },
+
+  // ── Notifications (Crm\NotificationController) — the CRM shell bell ──
+  notifications: async () =>
+    (await api.get("/crm/notifications")).data as {
+      data: { data: CrmNotification[]; current_page: number; last_page: number; total: number };
+      unread_count: number;
+    },
+  markNotificationRead: async (id: string) =>
+    (await api.post(`/crm/notifications/${id}/read`)).data as { unread_count: number },
+  markAllNotificationsRead: async () =>
+    (await api.post("/crm/notifications/read-all")).data as { data: { unread_count: number } },
 };

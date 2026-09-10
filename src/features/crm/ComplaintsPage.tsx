@@ -21,11 +21,14 @@ import type {
 
 type Filters = {
   status: string; priority: string; channel: string; department: string;
-  assigned_to: string; date_from: string; date_to: string; search: string;
+  // A user id, or the literals "mine" / "none". Maps to assigned_user_id
+  // on Crm\ComplaintController.
+  assigned_user_id: string;
+  date_from: string; date_to: string; search: string;
 };
 
 const EMPTY: Filters = {
-  status: "", priority: "", channel: "", department: "", assigned_to: "",
+  status: "", priority: "", channel: "", department: "", assigned_user_id: "",
   date_from: "", date_to: "", search: "",
 };
 
@@ -84,7 +87,7 @@ export function ComplaintsPage() {
   const [summary, setSummary] = useState<CrmComplaintSummary | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [employees, setEmployees] = useState<Array<{ id: CrmId; name: string }>>([]);
+  const [users, setUsers] = useState<Array<{ id: CrmId; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ status?: number; message: string } | null>(null);
 
@@ -118,9 +121,10 @@ export function ComplaintsPage() {
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    // Branch-scoped server-side, so this is already the assignable set. A
-    // failure leaves the filter empty rather than breaking the toolbar.
-    void crmApi.assignableEmployees().then(setEmployees).catch(() => setEmployees([]));
+    // The login accounts that may work a complaint — the same set the detail
+    // page assigns from. A failure leaves the filter's name list empty rather
+    // than breaking the toolbar.
+    void crmApi.assignableUsers().then(setUsers).catch(() => setUsers([]));
   }, []);
 
   const createComplaint = async (customerId: CrmId, data: CrmComplaintCreateInput) => {
@@ -137,7 +141,13 @@ export function ComplaintsPage() {
     }
   };
 
-  const apply = () => { setPage(1); setApplied(filters); };
+  // from > to is the one combination the backend rejects with a 422; catch it
+  // here so the button explains itself instead of the whole screen turning
+  // into an error state.
+  const dateRangeInvalid =
+    filters.date_from !== "" && filters.date_to !== "" && filters.date_from > filters.date_to;
+  const dirty = JSON.stringify(filters) !== JSON.stringify(applied);
+  const apply = () => { if (dateRangeInvalid) return; setPage(1); setApplied(filters); };
   const reset = () => { setPage(1); setFilters(EMPTY); setApplied(EMPTY); };
   const activeCount = Object.values(applied).filter(Boolean).length;
 
@@ -267,11 +277,14 @@ export function ComplaintsPage() {
               groups rather than six equal controls in a row. */}
           <span aria-hidden className="mx-1 hidden h-11 w-px self-end bg-[var(--crmx-border)] lg:block" />
           <label className={fieldLabelCls}>
-            الموظف المسؤول
-            <select className={selectCls} value={filters.assigned_to} onChange={(e) => setFilters((f) => ({ ...f, assigned_to: e.target.value }))}>
-              <option value="">كل الموظفين</option>
-              {employees.map((emp) => (
-                <option key={String(emp.id)} value={String(emp.id)}>{emp.name}</option>
+            المسؤول
+            <select className={selectCls} value={filters.assigned_user_id} onChange={(e) => setFilters((f) => ({ ...f, assigned_user_id: e.target.value }))}>
+              <option value="">كل الشكاوى</option>
+              <option value="mine">المُسندة إليّ</option>
+              <option value="none">غير المُسندة</option>
+              {users.length > 0 && <option disabled>──────────</option>}
+              {users.map((u) => (
+                <option key={String(u.id)} value={String(u.id)}>{u.name}</option>
               ))}
             </select>
           </label>
@@ -290,8 +303,12 @@ export function ComplaintsPage() {
           </div>
 
           <div className="flex items-end gap-2">
-          <button onClick={apply} className="h-11 rounded-xl bg-[var(--crmx-primary)] px-4 text-[14px] font-bold text-white transition hover:bg-[var(--crmx-primary-hover)]">
-            تطبيق
+          <button
+            onClick={apply}
+            disabled={dateRangeInvalid || !dirty}
+            className="h-11 rounded-xl bg-[var(--crmx-primary)] px-4 text-[14px] font-bold text-white transition hover:bg-[var(--crmx-primary-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {dirty ? "تطبيق الفلاتر" : "مُطبَّقة"}
           </button>
           {activeCount > 0 && (
             <button onClick={reset} className="h-11 rounded-xl border border-[var(--crmx-border)] px-4 text-[14px] font-semibold text-[var(--crmx-text-secondary)] transition hover:bg-[var(--crmx-neutral-soft)]">
@@ -300,6 +317,16 @@ export function ComplaintsPage() {
           )}
           </div>
         </div>
+        {dateRangeInvalid && (
+          <p className="mt-2 text-[12px] font-semibold text-[var(--crmx-danger-text)]">
+            «من تاريخ» يجب أن يسبق «إلى تاريخ».
+          </p>
+        )}
+        {dirty && !dateRangeInvalid && (
+          <p className="mt-2 text-[12px] text-[var(--crmx-text-muted)]">
+            غيّرت الفلاتر — اضغط «تطبيق الفلاتر» لتحديث القائمة (البحث يُطبَّق تلقائياً).
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -368,10 +395,10 @@ export function ComplaintsPage() {
       ) : (
         <div className={cardCls}>
           <div className="crmx-scrollbar overflow-x-auto">
-            <table className="w-full min-w-[980px] border-collapse text-right">
+            <table className="w-full min-w-[1080px] border-collapse text-right">
               <thead>
                 <tr className="border-b border-[var(--crmx-border)] bg-[#FAFBFC]">
-                  {["رقم", "الموضوع", "العميل", "القناة", "القسم", "الأولوية", "الحالة", "تاريخ التسجيل", ""].map((h, i) => (
+                  {["رقم", "الموضوع", "العميل", "المسؤول", "القناة", "القسم", "الأولوية", "الحالة", "تاريخ التسجيل", ""].map((h, i) => (
                     <th key={h || `sp-${i}`} className="whitespace-nowrap px-4 py-3.5 text-[12.5px] font-bold text-[var(--crmx-text-secondary)]">{h}</th>
                   ))}
                 </tr>
@@ -400,6 +427,13 @@ export function ComplaintsPage() {
                             {c.customer.name}
                           </Link>
                         ) : "—"}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-[13px]">
+                        {c.assigned_user && typeof c.assigned_user === "object" ? (
+                          <span className="font-semibold text-[var(--crmx-text)]">{c.assigned_user.name}</span>
+                        ) : (
+                          <span className="text-[12px] font-semibold text-[var(--crmx-warning-text)]">غير مُسندة</span>
+                        )}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
                         <span className={`${COMPLAINT_PILL} bg-[var(--crmx-neutral-soft)] text-[var(--crmx-text-secondary)]`}>

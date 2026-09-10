@@ -80,3 +80,24 @@ export const dateTime = (value?: string | null): string => {
  * activity at all, which reads better than a bare dash.
  */
 export const lastOrder = (value?: string | null): string => (value ? date(value) : "لا يوجد نشاط");
+
+/**
+ * Arabic relative time — "الآن", "قبل 5 د", "قبل 3 س", "أمس", then falls back
+ * to the absolute dateTime for anything older than a week. For the
+ * notification feed, where "when" matters more than the exact timestamp.
+ */
+export const relativeTime = (value?: string | null): string => {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  const diffSec = Math.round((Date.now() - d.getTime()) / 1000);
+  if (diffSec < 45) return "الآن";
+  const min = Math.round(diffSec / 60);
+  if (min < 60) return `قبل ${min} د`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `قبل ${hr} س`;
+  const day = Math.round(hr / 24);
+  if (day === 1) return "أمس";
+  if (day < 7) return `قبل ${day} أيام`;
+  return dateTime(value);
+};
