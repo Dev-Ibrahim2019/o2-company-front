@@ -337,8 +337,9 @@ function AppRoutes() {
           {/* Read-only order monitoring — CRM never creates/edits orders,
               see the Order Domain Audit. Same page, different `mode`. */}
           <Route path="identity-conflicts" element={<CrmIdentityConflictsPage />} />
-          <Route path="complaints" element={<CrmComplaintsPage />} />
-          {/* "guide" before ":complaintId" so the literal segment wins. */}
+          <Route path="complaints" element={<CrmComplaintsPage mode="all" />} />
+          {/* "open"/"guide" before ":complaintId" so the literal segments win. */}
+          <Route path="complaints/open" element={<CrmComplaintsPage mode="open" />} />
           <Route path="complaints/guide" element={<CrmComplaintsGuidePage />} />
           <Route path="complaints/:complaintId" element={<CrmComplaintDetailPage />} />
           <Route path="groups" element={<CrmGroupsPage />} />

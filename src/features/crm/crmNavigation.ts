@@ -84,6 +84,11 @@ export const CRM_NAVIGATION: CrmNavItem[] = [
     icon: BellRing,
     to: "/admin/crm/complaints",
     permission: CRM_PERMISSIONS.COMPLAINTS_VIEW,
+    children: [
+      { key: "complaints-all", label: "جميع الشكاوى", to: "/admin/crm/complaints", icon: ListOrdered },
+      { key: "complaints-open", label: "الشكاوى المفتوحة", to: "/admin/crm/complaints/open", icon: Zap },
+      { key: "complaints-guide", label: "دليل الحالات", to: "/admin/crm/complaints/guide", icon: ShieldAlert },
+    ],
   },
   {
     key: "loyalty",

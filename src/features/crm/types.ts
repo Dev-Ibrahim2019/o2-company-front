@@ -555,6 +555,15 @@ export interface CrmComplaintCreateInput {
   description?: string;
   priority?: CrmComplaintPriority;
   severity?: CrmComplaintSeverity;
+  department?: CrmComplaintDepartment | null;
+}
+
+// POST /crm/complaints — CrmController::createGeneralComplaint(). A "شكوى
+// عامة": not about any one customer. Same shape as the per-customer form,
+// except department is required — with no customer to imply who should see
+// it, the department is the only routing signal the complaint carries.
+export interface CrmGeneralComplaintCreateInput extends Omit<CrmComplaintCreateInput, "department"> {
+  department: CrmComplaintDepartment;
 }
 
 // PUT /crm/complaints/{id} — CrmController::updateComplaint(). Every field is

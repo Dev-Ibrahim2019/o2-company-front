@@ -188,7 +188,7 @@ export function ComplaintsGuidePage() {
           />
           <GuideRow
             pill={<span className={`${COMPLAINT_PILL} bg-[var(--crmx-info-soft)] text-[var(--crmx-info-text)]`}>إشعار</span>}
-            description="يصل إشعار للمدير عند مسك الشكوى أو حلّها أو إلغائها، وإشعار للموظف عند إسناد شكوى إليه أو رفعها عنه."
+            description="يصل إشعار لمدير CRM عند تسجيل شكوى جديدة، أو عند مسك موظف لها أو حلّها أو إلغائها. وإشعار للموظف عند إسناد شكوى إليه أو رفعها عنه، أو عند إضافة متابعة على شكوى مُسندة إليه. لا يصلك إشعار عن فعل قمت به أنت بنفسك."
           />
         </GuideCard>
       </div>

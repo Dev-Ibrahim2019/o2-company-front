@@ -2,7 +2,8 @@ import api from "../../api/axios";
 import type {
   CrmActivityEvent, CrmCustomer, CrmDashboard, CrmFavoriteProduct, CrmId, CrmNote, CrmNoteInput,
   CrmOrderDetails, CrmOrderFeedbackInput, CrmOrderItemFeedbackInput, CrmOrderRow, CrmOrderTimeline, CrmPage, CrmPurchaseHistory,
-  CrmSection, CrmIdentityConflict, CrmConflictEnvelope, CrmComplaint, CrmComplaintInput, CrmComplaintCreateInput, CrmComplaintRow, CrmComplaintSummary, CrmComplaintFollowup, CrmNotification,
+  CrmSection, CrmIdentityConflict, CrmConflictEnvelope, CrmComplaint, CrmComplaintInput, CrmComplaintCreateInput,
+  CrmGeneralComplaintCreateInput, CrmComplaintRow, CrmComplaintSummary, CrmComplaintFollowup, CrmNotification,
   CrmCustomerGroup, CrmCustomerGroupInput, CrmOccasion, CrmOccasionDetail,
   CrmOccasionFollowup, CrmOccasionInput, CrmOccasionListQuery,
   CrmOccasionListRow, CrmOccasionsSummary,
@@ -203,6 +204,9 @@ export const crmApi = {
   // from the route it arrived on, so there is nothing for the form to send.
   createComplaint: async (customerId: CrmId, data: CrmComplaintCreateInput) =>
     payload<CrmComplaint>((await api.post(`/crm/customers/${customerId}/complaints`, data)).data),
+  // CrmController::createGeneralComplaint() — a "شكوى عامة" with no customer.
+  createGeneralComplaint: async (data: CrmGeneralComplaintCreateInput) =>
+    payload<CrmComplaint>((await api.post("/crm/complaints", data)).data),
   // CrmController::updateComplaint(). Returns the same { data, followups }
   // envelope as complaint() so the caller patches its state from the response
   // without a follow-up GET.

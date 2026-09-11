@@ -15,9 +15,11 @@ import type { CrmNotification } from "./types";
  */
 
 const ACTION_ACCENT: Record<string, string> = {
+  created: "bg-[var(--crmx-info-soft)] text-[var(--crmx-info-text)]",
   self_assigned: "bg-[var(--crmx-warning-soft)] text-[var(--crmx-warning-text)]",
   assigned_to_you: "bg-[var(--crmx-primary-soft)] text-[var(--crmx-primary-text)]",
   unassigned_from_you: "bg-[var(--crmx-neutral-soft)] text-[var(--crmx-text-secondary)]",
+  followup_added: "bg-[var(--crmx-accent-soft)] text-[var(--crmx-accent-text)]",
   resolved: "bg-[var(--crmx-success-soft)] text-[var(--crmx-success-text)]",
   cancelled: "bg-[var(--crmx-danger-soft)] text-[var(--crmx-danger-text)]",
 };

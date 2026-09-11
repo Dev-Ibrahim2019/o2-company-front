@@ -1,4 +1,4 @@
-import { AlertOctagon, BellRing, BookOpen, Building2, CalendarDays, ChevronLeft, Inbox, Loader2, Plus, RotateCcw } from "lucide-react";
+import { AlertOctagon, BellRing, BookOpen, Building2, CalendarDays, ChevronLeft, Inbox, Loader2, Megaphone, Plus, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -16,7 +16,7 @@ import {
 import { date as fmtDate } from "./format";
 import type {
   CrmComplaintChannel, CrmComplaintDepartment, CrmComplaintPriority,
-  CrmComplaintCreateInput, CrmComplaintRow, CrmComplaintStatus, CrmComplaintSummary, CrmId,
+  CrmComplaintCreateInput, CrmGeneralComplaintCreateInput, CrmComplaintRow, CrmComplaintStatus, CrmComplaintSummary, CrmId,
 } from "./types";
 
 type Filters = {
@@ -71,7 +71,25 @@ function ChartCard({ title, children, empty }: { title: string; children?: React
  * shows what it is given: there is no client-side confidentiality logic to
  * get wrong.
  */
-export function ComplaintsPage() {
+const PAGE_TITLES: Record<"all" | "open", { title: string; description: string; empty: string }> = {
+  all: {
+    title: "الشكاوى",
+    description: "كل شكاوى العملاء عبر القنوات في مكان واحد — للمتابعة وقياس تركّز الشكاوى حسب القسم.",
+    empty: "لا توجد شكاوى مسجلة",
+  },
+  open: {
+    title: "الشكاوى المفتوحة",
+    description: "الشكاوى الجديدة أو التي ما زالت قيد المعالجة فقط — جديدة، مفتوحة، قيد المعالجة، أو بانتظار العميل.",
+    empty: "لا توجد شكاوى مفتوحة حالياً",
+  },
+};
+
+// The open view's status filter offers only the statuses it contains —
+// mirrors CustomerComplaint::scopeOpen() exactly, so the dropdown can never
+// offer a value the page itself would never show.
+const OPEN_STATUSES: CrmComplaintStatus[] = ["new", "open", "in_progress", "waiting_customer"];
+
+export function ComplaintsPage({ mode = "all" }: { mode?: "all" | "open" }) {
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
   const canCreate = hasPermission(CRM_PERMISSIONS.COMPLAINTS_CREATE);
@@ -94,8 +112,11 @@ export function ComplaintsPage() {
   const params = useMemo(() => {
     const out: Record<string, string> = {};
     for (const [k, v] of Object.entries(applied)) if (v) out[k] = v;
+    // Not a user-editable filter — the route itself decides this page shows
+    // only the open lifecycle statuses.
+    if (mode === "open") out.view = "open";
     return out;
-  }, [applied]);
+  }, [applied, mode]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -127,10 +148,14 @@ export function ComplaintsPage() {
     void crmApi.assignableUsers().then(setUsers).catch(() => setUsers([]));
   }, []);
 
-  const createComplaint = async (customerId: CrmId, data: CrmComplaintCreateInput) => {
+  const createComplaint = async (customerId: CrmId | null, data: CrmComplaintCreateInput) => {
     setCreating(true);
     try {
-      await crmApi.createComplaint(customerId, data);
+      if (customerId === null) {
+        await crmApi.createGeneralComplaint(data as CrmGeneralComplaintCreateInput);
+      } else {
+        await crmApi.createComplaint(customerId, data);
+      }
       toast.success("تمت إضافة الشكوى");
       setCreateOpen(false);
       await load();
@@ -177,8 +202,8 @@ export function ComplaintsPage() {
   return (
     <div className="crmx-root space-y-6 p-4 sm:p-6">
       <CrmPageHeader
-        title="الشكاوى"
-        description="كل شكاوى العملاء عبر القنوات في مكان واحد — للمتابعة وقياس تركّز الشكاوى حسب القسم."
+        title={PAGE_TITLES[mode].title}
+        description={PAGE_TITLES[mode].description}
         actions={
           <>
           {canCreate && (
@@ -239,8 +264,8 @@ export function ComplaintsPage() {
           <label className={fieldLabelCls}>
             الحالة
             <select className={selectCls} value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}>
-              <option value="">كل الحالات</option>
-              {(Object.keys(COMPLAINT_STATUS_TONE) as CrmComplaintStatus[]).map((s) => (
+              <option value="">{mode === "open" ? "كل الحالات المفتوحة" : "كل الحالات"}</option>
+              {(mode === "open" ? OPEN_STATUSES : (Object.keys(COMPLAINT_STATUS_TONE) as CrmComplaintStatus[])).map((s) => (
                 <option key={s} value={s}>{COMPLAINT_STATUS_TONE[s].label}</option>
               ))}
             </select>
@@ -390,7 +415,7 @@ export function ComplaintsPage() {
       ) : rows.length === 0 ? (
         <CrmState
           kind="empty"
-          title={activeCount > 0 ? "لا توجد شكاوى مطابقة للفلاتر" : "لا توجد شكاوى مسجلة"}
+          title={activeCount > 0 ? "لا توجد شكاوى مطابقة للفلاتر" : PAGE_TITLES[mode].empty}
         />
       ) : (
         <div className={cardCls}>
@@ -426,7 +451,11 @@ export function ComplaintsPage() {
                           <Link to={`/admin/crm/customers/${c.customer.id}/overview`} className="font-semibold text-[var(--crmx-primary)] hover:underline">
                             {c.customer.name}
                           </Link>
-                        ) : "—"}
+                        ) : (
+                          <span className={`${COMPLAINT_PILL} gap-1 bg-[var(--crmx-navy-soft)] text-[var(--crmx-navy)]`}>
+                            <Megaphone className="h-3 w-3" /> شكوى عامة
+                          </span>
+                        )}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-[13px]">
                         {c.assigned_user && typeof c.assigned_user === "object" ? (

@@ -1,6 +1,6 @@
 import {
   ArrowRightLeft, BadgeCheck, CheckCircle2, ChevronLeft, ClipboardList, Hand,
-  History, Info, Loader2, Lock, MessageSquarePlus, Send,
+  History, Info, Loader2, Lock, Megaphone, MessageSquarePlus, Send,
   ShieldAlert, ShieldOff, User2, UserCog, X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -415,7 +415,11 @@ export function ComplaintDetailPage() {
                       >
                         {complaint.customer.name} <ChevronLeft className="h-3.5 w-3.5" />
                       </Link>
-                    ) : "—"}
+                    ) : (
+                      <span className={`${COMPLAINT_PILL} gap-1 bg-[var(--crmx-navy-soft)] text-[var(--crmx-navy)]`}>
+                        <Megaphone className="h-3 w-3" /> شكوى عامة
+                      </span>
+                    )}
                   </InfoRow>
                   {complaint.customer?.phone && (
                     <InfoRow label="جوال العميل"><span dir="ltr">{complaint.customer.phone}</span></InfoRow>

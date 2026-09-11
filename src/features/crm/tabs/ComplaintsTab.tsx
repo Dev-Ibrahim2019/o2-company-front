@@ -53,10 +53,13 @@ export default function ComplaintsTab() {
   const [saving, setSaving] = useState(false);
   const [pendingId, setPendingId] = useState<CrmId | null>(null);
 
-  const create = async (targetCustomerId: CrmId, data: CrmComplaintCreateInput) => {
+  const create = async (targetCustomerId: CrmId | null, data: CrmComplaintCreateInput) => {
     setSaving(true);
     try {
-      await crmApi.createComplaint(targetCustomerId, data);
+      // The drawer only offers "شكوى عامة" (a null id) when it opens without
+      // a known customer — inside a profile it always has one, so this stays
+      // a defensive fallback rather than a real path.
+      await crmApi.createComplaint(targetCustomerId ?? customerId, data);
       toast.success("تمت إضافة الشكوى");
       setDrawerOpen(false);
       await state.load();
