@@ -22,6 +22,9 @@ const ACTION_ACCENT: Record<string, string> = {
   followup_added: "bg-[var(--crmx-accent-soft)] text-[var(--crmx-accent-text)]",
   resolved: "bg-[var(--crmx-success-soft)] text-[var(--crmx-success-text)]",
   cancelled: "bg-[var(--crmx-danger-soft)] text-[var(--crmx-danger-text)]",
+  // Solid, not soft — this one badge needs to read as more urgent than
+  // every other row at a glance.
+  urgent: "bg-[var(--crmx-danger)] text-white",
 };
 
 const POLL_MS = 60_000;
@@ -135,11 +138,13 @@ export function CrmNotificationBell() {
                     <button
                       onClick={() => void openItem(n)}
                       className={`flex w-full items-start gap-2.5 px-4 py-3 text-right transition hover:bg-[var(--crmx-neutral-soft)] ${
-                        n.read_at ? "" : "bg-[var(--crmx-primary-soft)]/30"
+                        n.data?.action === "urgent"
+                          ? "bg-[var(--crmx-danger-soft)]/40"
+                          : n.read_at ? "" : "bg-[var(--crmx-primary-soft)]/30"
                       }`}
                     >
                       <span className={`mt-0.5 shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-black ${ACTION_ACCENT[n.data?.action ?? ""] ?? "bg-[var(--crmx-neutral-soft)] text-[var(--crmx-text-secondary)]"}`}>
-                        {!n.read_at ? "جديد" : "•"}
+                        {n.data?.action === "urgent" ? "عاجل" : !n.read_at ? "جديد" : "•"}
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block text-[12.5px] font-semibold leading-5 text-[var(--crmx-text)]">

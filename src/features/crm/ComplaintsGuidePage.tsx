@@ -190,6 +190,10 @@ export function ComplaintsGuidePage() {
             pill={<span className={`${COMPLAINT_PILL} bg-[var(--crmx-info-soft)] text-[var(--crmx-info-text)]`}>إشعار</span>}
             description="يصل إشعار لمدير CRM عند تسجيل شكوى جديدة، أو عند مسك موظف لها أو حلّها أو إلغائها. وإشعار للموظف عند إسناد شكوى إليه أو رفعها عنه، أو عند إضافة متابعة على شكوى مُسندة إليه. لا يصلك إشعار عن فعل قمت به أنت بنفسك."
           />
+          <GuideRow
+            pill={<span className={`${COMPLAINT_PILL} bg-[var(--crmx-danger-soft)] text-[var(--crmx-danger-text)]`}>إشعار عاجل</span>}
+            description="شكوى بأولوية مرتفعة أو حرجة، أو خطورة حرجة — عند تسجيلها أو تصعيدها إليها لاحقاً — تُبَث فوراً لكل من يملك صلاحية معالجة الشكاوى (لا مدير CRM فقط)، ليمسكها أول موظف متاح بأسرع وقت."
+          />
         </GuideCard>
       </div>
     </div>
