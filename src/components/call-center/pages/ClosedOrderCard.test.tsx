@@ -48,10 +48,10 @@ describe("ClosedOrderCard — طلب مغلق للقراءة فقط دائمًا
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
-  it("يعرض المرجع القصير (#0001) بدل رقم الطلب الكامل، مع الاحتفاظ بالرقم الكامل بـ title", () => {
+  it("يعرض المرجع القصير (#0903-0001) بدل رقم الطلب الكامل، مع الاحتفاظ بالرقم الكامل بـ title", () => {
     render(<ClosedOrderCard order={closedOrder()} onOpen={vi.fn()} onViewInvoice={vi.fn()} />);
     const ref = screen.getByTitle("ORD-20260903-0001");
-    expect(ref.textContent).toBe("#0001");
+    expect(ref.textContent).toBe("#0903-0001");
   });
 
   it("حالة الدفع (مدفوع) تظهر كـ badge نصي منفصل عن حالة الطلب (تم التقديم)", () => {

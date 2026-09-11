@@ -1,17 +1,20 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowRight, Loader2, Save, Plus, Minus, Trash2, Edit3, X,
   Phone, Clock, CreditCard,
-  AlertCircle, Search, CheckCircle2, XCircle, ChefHat, Truck, Ban, Receipt,
+  AlertCircle, Search, CheckCircle2, XCircle, ChefHat, Truck, Ban, Receipt, Keyboard, Bike,
 } from "lucide-react";
 import { colors, typography, radius, shadows, transitions } from "../design/tokens";
 import { orderService, type OrderFromApi, type OrderItemFromApi } from "../../../services/orderService";
+import { employeeService, type EmployeeFromApi } from "../../../services/employeeService";
 import api from "../../../api/axios";
 import { toast } from "../../shared/Toast";
 import { determineOrderLifecycle, getOrderReference, formatShekel, PAYMENT_STATUS_LABELS, PAYMENT_METHOD_LABELS } from "../activeOrdersView";
 import { InvoicePreviewDrawer } from "../components/InvoicePreviewDrawer";
 import { RecordPaymentModal } from "../components/RecordPaymentModal";
+import { printOrderInvoice } from "../printInvoice";
+import { ConfirmModal } from "../../shared/ConfirmModal";
 
 // ============================================================================
 // TYPES
@@ -55,6 +58,13 @@ const labelStyle: React.CSSProperties = {
   textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 8, display: "block",
 };
 
+const kbdStyle: React.CSSProperties = {
+  display: "inline-block", padding: "1px 6px", borderRadius: radius.sm, margin: "0 3px",
+  background: colors.neutral[100], border: `1px solid ${colors.border.default}`,
+  fontFamily: typography.fontFamily.mono, fontSize: "10px", fontWeight: typography.weight.bold,
+  color: colors.neutral[700],
+};
+
 // ============================================================================
 // ORDER DETAIL PAGE
 // ============================================================================
@@ -87,9 +97,18 @@ export const OrderDetailPage: React.FC = () => {
   // مخصص للكمية بالباك اند): نحذف السطر القديم ونعيد إضافته بنفس item_id/سعر وكمية جديدة.
   const [itemBusyId, setItemBusyId] = useState<number | null>(null);
 
+  // تعيين موظف توصيل — قائمة سائقي delivery_driver المتاحين الآن فقط (شفت مفتوح)
+  const [showAssignDriver, setShowAssignDriver] = useState(false);
+  const [drivers, setDrivers] = useState<EmployeeFromApi[]>([]);
+  const [driversLoading, setDriversLoading] = useState(false);
+  const [assigningDriverId, setAssigningDriverId] = useState<number | null>(null);
+
   // معاينة الفاتورة وتسجيل الدفع
   const [showInvoice, setShowInvoice] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+
+  // تأكيد إغلاق الفاتورة (اختصار F7) — ConfirmModal بدل window.confirm() (إجراء لا رجعة فيه)
+  const [confirmServe, setConfirmServe] = useState<{ open: boolean; loading: boolean }>({ open: false, loading: false });
 
   // مصدر الحقيقة الوحيد لـ Active/Closed: الدفع وحده لا يغلق الطلب أبدًا — فقط لما تكتمل حالة
   // الطلب (تم التقديم/التوصيل) وتكون الفاتورة مدفوعة بالكامل معًا، أو يكون الطلب ملغي.
@@ -158,6 +177,42 @@ export const OrderDetailPage: React.FC = () => {
   }, [order?.branch_id]);
 
   useEffect(() => { if (showAddItem) fetchMenu(); }, [showAddItem, fetchMenu]);
+
+  // ── جلب سائقي التوصيل المتاحين الآن (لقائمة "تعيين موظف توصيل") ──
+  const fetchDrivers = useCallback(async () => {
+    if (!order) return;
+    setDriversLoading(true);
+    try {
+      const list = await employeeService.getAll({
+        branch_id: order.branch_id,
+        operational_role: "delivery_driver",
+        available_only: true,
+      });
+      setDrivers(list);
+    } catch {
+      setDrivers([]);
+    } finally {
+      setDriversLoading(false);
+    }
+  }, [order?.branch_id]);
+
+  useEffect(() => { if (showAssignDriver) fetchDrivers(); }, [showAssignDriver, fetchDrivers]);
+
+  // ── تعيين سائق على طلب توصيل جاهز ──
+  const assignDriver = async (driverId: number) => {
+    if (!order) return;
+    setAssigningDriverId(driverId);
+    try {
+      await orderService.assignDelivery(order.id, driverId);
+      toast.success("تم تعيين موظف التوصيل");
+      setShowAssignDriver(false);
+      fetchOrder();
+    } catch (err: any) {
+      toast.error("فشل تعيين موظف التوصيل", err?.response?.data?.message);
+    } finally {
+      setAssigningDriverId(null);
+    }
+  };
 
   // ── Save order updates (ملاحظات + بيانات العميل + الخصم) ──
   const saveOrder = async () => {
@@ -253,6 +308,82 @@ export const OrderDetailPage: React.FC = () => {
     setShowPaymentModal(false);
     fetchOrder();
   };
+
+  // ── إغلاق الفاتورة (F7) — تسليم الطلب. بما إن الباك اند يمنع confirm() (إرسال للمطبخ) أصلاً
+  // إلا لو الطلب مدفوع بالكامل مسبقًا لطلبات الكول سنتر، فبمجرد وصوله served يكون مغلقًا تلقائيًا
+  // (نفس منطق determineOrderLifecycle) بدون أي "إغلاق قسري" إضافي مطلوب هون. ──
+  const serveOrder = async () => {
+    if (!order) return;
+    setConfirmServe(s => ({ ...s, loading: true }));
+    try {
+      // طلب توصيل مُسنَد لسائق (OUT_FOR_DELIVERY) يُسلَّم عبر markDelivered — غير ذلك serve() العادية.
+      if (order.status === "OUT_FOR_DELIVERY") {
+        await orderService.markDelivered(order.id);
+      } else {
+        await orderService.serve(order.id);
+      }
+      toast.success("تم إغلاق الفاتورة", "تم تسليم الطلب بنجاح");
+      setConfirmServe({ open: false, loading: false });
+      fetchOrder();
+    } catch (err: any) {
+      toast.error("فشل إغلاق الفاتورة", err?.response?.data?.message);
+      setConfirmServe(s => ({ ...s, loading: false }));
+    }
+  };
+
+  // ── تنفيذ الطلب بالأقسام (اختصار "-") — نفس orderService.confirm المستخدم أصلاً بزر "تأكيد"
+  // لو وُجد، حتى ما يصير عندنا منطقان مختلفان لنفس العملية. ──
+  const confirmOrderToKitchen = async () => {
+    if (!order) return;
+    try {
+      await orderService.confirm(order.id);
+      toast.success("تم تنفيذ الطلب بالأقسام");
+      fetchOrder();
+    } catch (err: any) {
+      toast.error("فشل تنفيذ الطلب", err?.response?.data?.message);
+    }
+  };
+
+  // ── اختصارات لوحة المفاتيح (F2 حفظ / "-" تنفيذ بالأقسام / F7 إغلاق الفاتورة / F9+F12 طباعة) ──
+  // معطّلة أثناء الكتابة بأي حقل إدخال (نفس حارس CallCenterPageWithAside.tsx). الـ listener نفسه
+  // يُربط مرة واحدة فقط (مصفوفة deps فاضية) لكنه يقرأ كل شي من ref يتحدّث كل render — لازم يشمل
+  // الدوال نفسها (saveOrder/confirmOrderToKitchen) مو بس order/editing/canEditOrder، لأنها closures
+  // جديدة كل render بتحمل قيم editNote/editDiscountValue... إلخ الحالية؛ لو استدعيناها مباشرة من
+  // جوا الـ listener (بدون المرور بالـ ref) كانت رح تضل عالقة على نسخة أول render (order=null وقتها).
+  const shortcutStateRef = useRef({ order, editing, canEditOrder, saveOrder, confirmOrderToKitchen });
+  useEffect(() => {
+    shortcutStateRef.current = { order, editing, canEditOrder, saveOrder, confirmOrderToKitchen };
+  });
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
+
+      const { order: currentOrder, editing: currentEditing, canEditOrder: currentCanEdit, saveOrder: currentSave, confirmOrderToKitchen: currentConfirm } = shortcutStateRef.current;
+      if (!currentOrder) return;
+
+      if (e.key === "F2") {
+        if (!currentEditing) return;
+        e.preventDefault();
+        currentSave();
+      } else if (e.key === "-") {
+        if (!currentCanEdit) return;
+        e.preventDefault();
+        currentConfirm();
+      } else if (e.key === "F7") {
+        if (!currentCanEdit) return;
+        e.preventDefault();
+        setConfirmServe({ open: true, loading: false });
+      } else if (e.key === "F9" || e.key === "F12") {
+        e.preventDefault();
+        printOrderInvoice(currentOrder);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   // Filtered menu
   const filteredMenu = useMemo(() => {
@@ -386,6 +517,28 @@ export const OrderDetailPage: React.FC = () => {
                   </button>
                 </>
               )}
+              {order.order_type === "delivery" && order.status === "ready" && (
+                <button onClick={() => setShowAssignDriver(true)} style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "8px 14px", borderRadius: radius.lg,
+                  background: `color-mix(in srgb, #F97316 6%, transparent)`, border: `1px solid color-mix(in srgb, #F97316 25%, transparent)`,
+                  color: "#F97316", fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
+                  cursor: "pointer",
+                }}>
+                  <Bike size={14} /> تعيين موظف توصيل
+                </button>
+              )}
+              {order.status === "OUT_FOR_DELIVERY" && (
+                <button onClick={() => setConfirmServe({ open: true, loading: false })} style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "8px 14px", borderRadius: radius.lg,
+                  background: colors.semantic.success, color: "#fff", border: "none",
+                  fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
+                  cursor: "pointer",
+                }}>
+                  <CheckCircle2 size={14} /> تم التسليم
+                </button>
+              )}
               {order.status !== "cancelled" && (
                 <button onClick={cancelOrder} style={{
                   display: "flex", alignItems: "center", gap: 6,
@@ -401,6 +554,24 @@ export const OrderDetailPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* شريط تلميح اختصارات لوحة المفاتيح — يعمل فقط لما التركيز خارج أي حقل إدخال */}
+      {canEditOrder && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap",
+          padding: "8px 14px", marginBottom: 16, borderRadius: radius.lg,
+          background: colors.neutral[50], border: `1px solid ${colors.border.subtle}`,
+          fontSize: "11px", color: colors.neutral[500],
+        }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 4, fontWeight: typography.weight.semibold, color: colors.neutral[400] }}>
+            <Keyboard size={12} /> اختصارات:
+          </span>
+          <span><kbd style={kbdStyle}>F2</kbd> حفظ</span>
+          <span><kbd style={kbdStyle}>-</kbd> تنفيذ بالأقسام</span>
+          <span><kbd style={kbdStyle}>F7</kbd> إغلاق الفاتورة</span>
+          <span><kbd style={kbdStyle}>F9</kbd> طباعة الفاتورة</span>
+        </div>
+      )}
 
       {/* Read-only badge for closed orders */}
       {isClosed && (
@@ -516,6 +687,15 @@ export const OrderDetailPage: React.FC = () => {
             </p>
             <span style={{ ...labelStyle, marginTop: 12 }}>الفرع</span>
             <p style={{ fontSize: typography.size.base, color: colors.neutral[800] }}>{order.branch?.name || "—"}</p>
+            {order.driver && (
+              <>
+                <span style={{ ...labelStyle, marginTop: 12 }}>موظف التوصيل</span>
+                <p style={{ fontSize: typography.size.base, color: colors.neutral[800], display: "flex", alignItems: "center", gap: 6 }}>
+                  <Bike size={14} style={{ color: "#F97316" }} /> {order.driver.name}
+                  {order.driver.phone && <span style={{ fontSize: typography.size.xs, color: colors.neutral[400], fontFamily: typography.fontFamily.mono }}>({order.driver.phone})</span>}
+                </p>
+              </>
+            )}
           </div>
         </div>
 
@@ -811,6 +991,76 @@ export const OrderDetailPage: React.FC = () => {
           onClose={() => setShowPaymentModal(false)}
           onSuccess={handlePaymentSuccess}
         />
+      )}
+
+      <ConfirmModal
+        open={confirmServe.open}
+        title="إغلاق الفاتورة"
+        message={`سيتم تسليم الطلب ${orderRef} وإغلاق فاتورته — هذا الإجراء لا رجعة فيه. هل أنت متأكد؟`}
+        confirmLabel="إغلاق الفاتورة"
+        variant="warning"
+        loading={confirmServe.loading}
+        onConfirm={serveOrder}
+        onCancel={() => setConfirmServe({ open: false, loading: false })}
+      />
+
+      {/* Assign Driver Modal */}
+      {showAssignDriver && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 500,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)",
+        }} onClick={() => setShowAssignDriver(false)}>
+          <div
+            style={{
+              width: "100%", maxWidth: 420, maxHeight: "70vh",
+              background: colors.neutral[0], borderRadius: radius.xl,
+              boxShadow: shadows["2xl"], overflow: "hidden", display: "flex", flexDirection: "column",
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ padding: "16px 20px", borderBottom: `1px solid ${colors.border.subtle}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <h3 style={{ fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.neutral[900] }}>تعيين موظف توصيل</h3>
+              <button onClick={() => setShowAssignDriver(false)} style={{ background: "none", border: "none", cursor: "pointer", color: colors.neutral[400] }}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+              {driversLoading ? (
+                <div style={{ display: "flex", justifyContent: "center", padding: 30 }}>
+                  <Loader2 size={24} className="animate-spin" style={{ color: colors.brand[500] }} />
+                </div>
+              ) : drivers.length === 0 ? (
+                <p style={{ textAlign: "center", color: colors.neutral[400], padding: 30, fontSize: typography.size.sm }}>
+                  لا يوجد سائقو توصيل متاحون حاليًا (بشفت مفتوح)
+                </p>
+              ) : (
+                drivers.map(driver => (
+                  <button
+                    key={driver.id}
+                    onClick={() => assignDriver(driver.id)}
+                    disabled={assigningDriverId !== null}
+                    style={{
+                      width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "12px 14px", borderRadius: radius.lg, marginBottom: 6,
+                      background: colors.neutral[50], border: `1px solid ${colors.border.subtle}`, cursor: assigningDriverId !== null ? "not-allowed" : "pointer",
+                      textAlign: "right", opacity: assigningDriverId !== null && assigningDriverId !== driver.id ? 0.5 : 1,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <Bike size={16} style={{ color: "#F97316" }} />
+                      <div>
+                        <p style={{ fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.neutral[800] }}>{driver.name}</p>
+                        {driver.phone && <p style={{ fontSize: "11px", color: colors.neutral[400], fontFamily: typography.fontFamily.mono }}>{driver.phone}</p>}
+                      </div>
+                    </div>
+                    {assigningDriverId === driver.id && <Loader2 size={14} className="animate-spin" style={{ color: colors.brand[500] }} />}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Add Item Modal */}

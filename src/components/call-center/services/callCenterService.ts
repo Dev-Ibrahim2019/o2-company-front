@@ -126,6 +126,7 @@ export interface CustomerOrder {
   note: string | null;
   branch: { id: number; name: string } | null;
   cashier: { id: number; name: string } | null;
+  driver?: { id: number; name: string; phone?: string | null } | null;
   created_at: string;
   customer_name: string | null;
   customer_phone: string | null;
@@ -203,6 +204,11 @@ export interface ActiveCallCenterOrder {
   scheduled_at?: string | null;
   payments?: Array<{ method: "cash" | "card" | "wallet"; amount: number }> | null;
   payment_status?: BackendPaymentStatus;
+  /** فشل التنفيذ التلقائي (orders:execute-scheduled بالباك اند) — غير فارغ يعني الطلب توقف عن إعادة المحاولة ويحتاج مراجعة يدوية */
+  execution_failed_reason?: string | null;
+  driver?: { id: number; name: string; phone?: string | null } | null;
+  delivery_assigned_at?: string | null;
+  delivered_at?: string | null;
   scopes: ActiveOrderScope[];
 }
 export type ActiveOrderGroups = Record<ActiveOrderScope, ActiveCallCenterOrder[]>;

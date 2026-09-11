@@ -154,6 +154,19 @@ export const CallCenterEmployees: React.FC = () => {
     } catch { setError("فشل حذف الموظف"); }
   };
 
+  // تبديل توفر سائق التوصيل (بدء/إنهاء شفت) — بدونه ما في طريقة يظهر فيها السائق بقائمة
+  // "تعيين موظف توصيل" بصفحة الطلب، لأنها تفلتر على available_only.
+  const handleToggleShift = async (employee: EmployeeFromApi) => {
+    try {
+      if (employee.available_now) {
+        await employeeService.endShift(employee.id);
+      } else {
+        await employeeService.startShift(employee.id);
+      }
+      setEmployees((current) => current.map((e) => e.id === employee.id ? { ...e, available_now: !employee.available_now } : e));
+    } catch { setError("فشل تحديث حالة توفر السائق"); }
+  };
+
   const filtered = useMemo(() => employees.filter((employee) => {
     const query = search.trim().toLowerCase();
     const matchesSearch = !query || employee.name.toLowerCase().includes(query)
@@ -242,7 +255,7 @@ export const CallCenterEmployees: React.FC = () => {
               <table className="w-full min-w-[940px] text-right">
                 <thead className="bg-slate-50 text-[10px] font-black text-slate-500"><tr><th className="px-4 py-3">الموظف</th><th className="px-4 py-3">المهمة التشغيلية</th><th className="px-4 py-3">مؤشر الأداء</th><th className="px-4 py-3">المهمة الحالية</th><th className="px-4 py-3">التوقيت</th><th className="px-4 py-3">التنبيهات</th><th className="px-4 py-3">إجراءات</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
-                  {!filtered.length ? <tr><td colSpan={7} className="py-16 text-center text-xs font-bold text-slate-400">لا توجد نتائج مطابقة</td></tr> : filtered.map((employee) => <EmployeeRow key={employee.id} employee={employee} onSelect={() => setSelected(employee)} onEdit={() => { setEditTarget(employee); setShowModal(true); }} onDelete={() => handleDelete(employee.id)} />)}
+                  {!filtered.length ? <tr><td colSpan={7} className="py-16 text-center text-xs font-bold text-slate-400">لا توجد نتائج مطابقة</td></tr> : filtered.map((employee) => <EmployeeRow key={employee.id} employee={employee} onSelect={() => setSelected(employee)} onEdit={() => { setEditTarget(employee); setShowModal(true); }} onDelete={() => handleDelete(employee.id)} onToggleShift={() => handleToggleShift(employee)} />)}
                 </tbody>
               </table>
             </div>
@@ -304,7 +317,7 @@ function AgentPerformanceSection({ report, loading, error }: { report: AgentPerf
   );
 }
 
-function EmployeeRow({ employee, onSelect, onEdit, onDelete }: { employee: EmployeeFromApi; onSelect: () => void; onEdit: () => void; onDelete: () => void }) {
+function EmployeeRow({ employee, onSelect, onEdit, onDelete, onToggleShift }: { employee: EmployeeFromApi; onSelect: () => void; onEdit: () => void; onDelete: () => void; onToggleShift: () => void }) {
   const role = roleOf(employee);
   const meta = roleMeta[role];
   const performance = parsePerformance(employee.performance);
@@ -329,7 +342,17 @@ function EmployeeRow({ employee, onSelect, onEdit, onDelete }: { employee: Emplo
       <td className="px-4 py-4 text-xs font-bold text-slate-500">{currentTask}</td>
       <td className={`px-4 py-4 text-xs font-black ${isLate ? "text-red-500" : "text-slate-500"}`}>{timing}</td>
       <td className="px-4 py-4">{isLate ? <span className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-black text-red-600"><AlertTriangle size={12} />تأخير يتجاوز 15 دقيقة</span> : performance.alert ? <span className="text-[10px] font-bold text-amber-600">{String(performance.alert)}</span> : <span className="text-[10px] font-bold text-slate-400">لا تنبيهات</span>}</td>
-      <td className="px-4 py-4"><div className="flex gap-1" onClick={(event) => event.stopPropagation()}><button onClick={onEdit} aria-label="تعديل" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil size={14} /></button><button onClick={onDelete} aria-label="حذف" className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 size={14} /></button></div></td>
+      <td className="px-4 py-4"><div className="flex gap-1" onClick={(event) => event.stopPropagation()}>
+        {role === "delivery_driver" && (
+          <button
+            onClick={onToggleShift}
+            aria-label={employee.available_now ? "إنهاء الشفت" : "بدء الشفت"}
+            className={`rounded-lg px-2 py-1 text-[10px] font-black ${employee.available_now ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}
+          >
+            {employee.available_now ? "متاح الآن" : "غير متاح"}
+          </button>
+        )}
+        <button onClick={onEdit} aria-label="تعديل" className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><Pencil size={14} /></button><button onClick={onDelete} aria-label="حذف" className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-500"><Trash2 size={14} /></button></div></td>
     </tr>
   );
 }

@@ -28,11 +28,23 @@ export function dedupeById<T extends { id: number }>(list: T[]): T[] {
 }
 
 // رقم الطلب الكامل (ORD-20260903-0001) طويل وصعب على موظف الكول سنتر يحفظه أو يمليه بالهاتف —
-// نعرض آخر مقطع رقمي بس (#0001) بالواجهة، مع الاحتفاظ بالرقم الكامل داخل تفاصيل الطلب/الفاتورة.
+// نعرض مقطع مختصر بالواجهة، مع الاحتفاظ بالرقم الكامل داخل تفاصيل الطلب/الفاتورة (tooltip/تفاصيل).
 // ما بيغيّر أي معرف بقاعدة البيانات، عرض فقط.
+//
+// مهم: التسلسل (XXXX) بالباك اند مُولَّد عالميًا لكل الفروع سوية *لكل يوم* (راجع
+// Order::generateOrderNumber بالباك اند — الاستعلام ما بيفلتر على branch_id، فالتفرّد مضمون
+// ضمن نفس اليوم عبر كل الفروع). كان الكود القديم هون ياخذ آخر مقطع رقمي بس (#0001) ويطرح
+// اليوم/الشهر — فطلبين من يومين مختلفين (نفس التسلسل اليومي) كانوا يظهروا بنفس الرقم المختصر
+// "#0001" رغم إنهم فعليًا مختلفين تمامًا بقاعدة البيانات. الإصلاح: نضيف الشهر/اليوم (MMDD) قبل
+// التسلسل، يبقى مختصر وقابل للإملاء هاتفيًا لكن بلا تصادم عملي.
 export function getOrderReference(orderNumber: string): string {
-  const lastSegment = orderNumber.split("-").pop() || orderNumber;
-  return `#${lastSegment}`;
+  const parts = orderNumber.split("-");
+  const sequence = parts.pop() || orderNumber;
+  const dateSegment = parts.pop(); // YYYYMMDD لو الصيغة ORD-YYYYMMDD-XXXX
+  if (dateSegment && /^\d{8}$/.test(dateSegment)) {
+    return `#${dateSegment.slice(4)}-${sequence}`; // MMDD-XXXX
+  }
+  return `#${sequence}`;
 }
 
 // عملة الكول سنتر: شيكل (₪) — مصدر واحد للتنسيق بدل ما كل صفحة (Active/Closed/Details) تعيد
@@ -65,6 +77,67 @@ export function getOrderStaleness(createdAt: string, now: number = Date.now()): 
   if (hours >= STALE_ORDER_CRITICAL_HOURS) return "critical";
   if (hours >= STALE_ORDER_WARNING_HOURS) return "warning";
   return "normal";
+}
+
+// مؤشر تأخر SLA (🔥) — حساسية بالدقائق، منفصل تمامًا عن getOrderStaleness أعلاه (بالساعات،
+// مُختبر أصلاً بقيم 1/4 ساعات لغرض مختلف: تلوين "عمر الطلب" العام). لا نغيّر getOrderStaleness
+// نفسها ولا عتباتها — نضيف ثوابت/دالة موازية بدل ما نكسر سلوك أو اختبارات موجودة.
+export const SLA_WARNING_MINUTES = 20;
+export const SLA_CRITICAL_MINUTES = 40;
+
+export type SlaLevel = "normal" | "warning" | "critical";
+
+export function getOrderSlaLevel(createdAt: string, now: number = Date.now()): SlaLevel {
+  const minutes = (now - new Date(createdAt).getTime()) / 60_000;
+  if (minutes >= SLA_CRITICAL_MINUTES) return "critical";
+  if (minutes >= SLA_WARNING_MINUTES) return "warning";
+  return "normal";
+}
+
+// حالة سير العمل (workflow stage) — طبقة بصرية إضافية فوق order.status الخام، بديل بصري واحد
+// موحّد لخمس مراحل حقيقية قابلة للتحقق فعليًا بالنظام (راجع سياق الخطة بالجلسة: القيم الأخرى
+// المحتملة بقيد CHECK مثل PREPARATION/ASSEMBLING/READY_FOR_DELIVERY غير قابلة للوصول عبر أي
+// كنترولر حاليًا، فما بنميّزها هون). تُعرض دائمًا بجانب (وليس بدل) شارتي نوع الطلب وحالة الدفع.
+// "new" و"preparing" كانوا مدموجين سابقًا بمرحلة وحدة ("preparing")، انفصلوا هون بطلب صريح:
+// new = لسا ما انبعت للمطبخ (pending/pending_confirmation/scheduled/pending_payment)،
+// preparing = انبعت فعليًا وجاري تحضيره (confirmed/in_progress).
+export type WorkflowStage = "new" | "preparing" | "ready" | "out_for_delivery" | "completed";
+
+export const WORKFLOW_STAGE_COLORS: Record<WorkflowStage, string> = {
+  new: "#EF4444",
+  preparing: "#F59E0B",
+  ready: "#3B82F6",
+  out_for_delivery: "#F97316",
+  completed: "#22C55E",
+};
+
+const WORKFLOW_STAGE_LABELS: Record<WorkflowStage, string> = {
+  new: "جديد",
+  preparing: "قيد التجهيز",
+  ready: "جاهز",
+  out_for_delivery: "مع موظف التوصيل",
+  completed: "تم التسليم",
+};
+
+export function deriveWorkflowStage(status: string, _orderType: string): WorkflowStage {
+  if (status === "OUT_FOR_DELIVERY") return "out_for_delivery";
+  if (status === "served" || status === "DELIVERED") return "completed";
+  if (status === "ready") return "ready";
+  if (status === "confirmed" || status === "in_progress") return "preparing";
+  return "new"; // pending/pending_confirmation/scheduled/pending_payment/paid (لسا ما انبعت للمطبخ)
+}
+
+// "تم التسليم" لطلبات التوصيل، "تم الاستلام" لغيرها (محلي/فوري) — نفس اللون والمرحلة، نص مختلف فقط.
+export function workflowStageLabel(stage: WorkflowStage, orderType: string): string {
+  if (stage === "completed") return orderType === "delivery" ? "تم التسليم" : "تم الاستلام";
+  return WORKFLOW_STAGE_LABELS[stage];
+}
+
+// عدد الدقائق اللي الطلب متأخر فيها عن حد التحذير (SLA_WARNING_MINUTES) — 0 لو غير متأخر بعد.
+// نفس مصدر getOrderSlaLevel أعلاه (created_at)، بدون منطق توقيت جديد أو مفبرك.
+export function getDelayMinutes(createdAt: string, now: number = Date.now()): number {
+  const minutes = (now - new Date(createdAt).getTime()) / 60_000;
+  return Math.max(0, Math.floor(minutes - SLA_WARNING_MINUTES));
 }
 
 // حالة الدفع مستقلة تمامًا عن حالة الطلب: تقدّم حالة الطلب (تأكيد/تحضير...) ما يعني تلقائيًا إن

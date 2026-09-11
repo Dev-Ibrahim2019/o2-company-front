@@ -14,7 +14,11 @@ export type OrderStatus =
   | "served"
   | "paid"
   | "cancelled"
-  | "pending_payment";
+  | "pending_payment"
+  | "scheduled"
+  // حالات دورة التوصيل — تُضبط فقط عبر assignDelivery/markDelivered (طلبات order_type=delivery)
+  | "OUT_FOR_DELIVERY"
+  | "DELIVERED";
 export type PaymentMethod = "cash" | "card" | "wallet" | "bank" | "account";
 export type DiscountType = "amount" | "percent";
 
@@ -416,6 +420,9 @@ export interface OrderFromApi {
   has_unsent_items?: boolean;
   cancellation_reason?: string | null;
   cancelled_at?: string | null;
+  driver?: { id: number; name: string; phone?: string | null } | null;
+  delivery_assigned_at?: string | null;
+  delivered_at?: string | null;
   // مستقلة عن status — مشتقة من Invoice.status الحقيقي (المصدر الوحيد الموثوق لحالة الدفع).
   // راجع CallCenterService::derivePaymentStatus بالباك اند.
   payment_status?: "paid" | "pending" | "unpaid";
@@ -480,6 +487,24 @@ export const orderService = {
   /** تأكيد الطلب → إنشاء تذاكر الأقسام */
   confirm: async (id: number): Promise<OrderFromApi> => {
     const { data } = await api.post(`/orders/${id}/confirm`);
+    return data.data as OrderFromApi;
+  },
+
+  /** تسليم الطلب (ready/in_progress → served) — إغلاق الفاتورة تشغيليًا */
+  serve: async (id: number): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${id}/serve`);
+    return data.data as OrderFromApi;
+  },
+
+  /** تعيين موظف توصيل لطلب جاهز (ready → OUT_FOR_DELIVERY) — طلبات delivery فقط */
+  assignDelivery: async (id: number, driverId: number): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${id}/assign-delivery`, { driver_id: driverId });
+    return data.data as OrderFromApi;
+  },
+
+  /** تسليم طلب مُسنَد لسائق (OUT_FOR_DELIVERY → DELIVERED) */
+  markDelivered: async (id: number): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${id}/deliver`);
     return data.data as OrderFromApi;
   },
 

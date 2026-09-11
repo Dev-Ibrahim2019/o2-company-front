@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { X, User, ShoppingCart, Star, MapPin, MessageSquare, AlertTriangle, CreditCard, Phone, Mail, Calendar, Clock, Store, Package, ChevronLeft, Loader2, FileText, Percent, Ban, Plus, Heart, Flag, Bell, ExternalLink, Trash2, Edit3, Check, Copy, RefreshCw, Award, TrendingUp, AlertCircle, Building2, Headphones, UtensilsCrossed, Users, Activity, ChevronDown, ChevronUp, Timer, Truck, History, PhoneCall } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { X, User, ShoppingCart, Star, MapPin, MessageSquare, AlertTriangle, CreditCard, Phone, Mail, Calendar, Clock, Store, Package, ChevronLeft, Loader2, FileText, Percent, Ban, Plus, Heart, Flag, Bell, ExternalLink, Trash2, Edit3, Check, Copy, RefreshCw, Award, TrendingUp, AlertCircle, Building2, Headphones, UtensilsCrossed, Users, Activity, ChevronDown, ChevronUp, Timer, Truck, History, PhoneCall, ArrowUpRight, Bike } from "lucide-react";
 import type { CustomerProfile, CustomerOrder, CustomerComplaint, FavoriteItem, OrderDetail, ComplaintFollowup, CustomerAddress, CustomerOccasion, CustomerNote, CustomerSearchResult, CustomerTimelineEntry } from "./services/callCenterService";
 import { callCenterService, CUSTOMER_CATEGORY_LABELS, type CustomerCategory } from "./services/callCenterService";
 import { feedbackDraftFrom, feedbackPayload, feedbackValidationMessage } from "./feedbackFlow";
 import { CALL_TYPE_LABELS, type CallType } from "../../services/callTicketService";
+import { deriveWorkflowStage, workflowStageLabel, WORKFLOW_STAGE_COLORS } from "./activeOrdersView";
 
 interface Props {
   isOpen?: boolean;
@@ -784,6 +786,7 @@ const RepeatOrderButton: React.FC<{ orderId: number; onRepeatOrder: (order: Orde
 
 /* â”€â”€â”€ Orders Tab â”€â”€â”€ */
 const OrdersTab: React.FC<{ orders: CustomerOrder[]; onSelectOrder: (id: number) => void; onRepeatOrder?: (order: OrderDetail) => void }> = ({ orders, onSelectOrder, onRepeatOrder }) => {
+  const navigate = useNavigate();
   const [orderDetails, setOrderDetails] = useState<Record<number, OrderDetail>>({});
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
@@ -799,6 +802,8 @@ const OrdersTab: React.FC<{ orders: CustomerOrder[]; onSelectOrder: (id: number)
     <div className="space-y-2">
       {orders.slice(0, 5).map((o) => {
         const detail = orderDetails[o.id];
+        const workflowStage = deriveWorkflowStage(o.status, o.order_type || "");
+        const stageColor = WORKFLOW_STAGE_COLORS[workflowStage];
         return (
           <div key={o.id} className="bg-gradient-to-br from-slate-800/50 to-slate-800/20 rounded-xl border border-slate-700/30 overflow-hidden transition-all hover:border-slate-700/50">
             {/* Order Header - Always Visible */}
@@ -820,6 +825,13 @@ const OrdersTab: React.FC<{ orders: CustomerOrder[]; onSelectOrder: (id: number)
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <span className="text-sm font-black text-white">{o.total.toFixed(2)}</span>
+                {/* الحالة الحية — نفس ألوان بطاقات "الطلبات النشطة"، بجانب OrderStatusBadge الأصلي وليس بدله */}
+                <span
+                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold"
+                  style={{ background: `color-mix(in srgb, ${stageColor} 16%, transparent)`, color: stageColor }}
+                >
+                  {workflowStageLabel(workflowStage, o.order_type || "")}
+                </span>
                 <OrderStatusBadge status={o.status} />
                 {expandedId === o.id ? <ChevronUp size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
               </div>
@@ -832,6 +844,7 @@ const OrdersTab: React.FC<{ orders: CustomerOrder[]; onSelectOrder: (id: number)
                   <span className="flex items-center gap-1"><Calendar size={10} /> {new Date(o.created_at).toLocaleDateString("ar-SA")}</span>
                   <span className="flex items-center gap-1">{orderTypeLabel(o.order_type)}</span>
                   {o.branch && <span className="flex items-center gap-1"><Building2 size={10} /> {o.branch.name}</span>}
+                  {o.driver && <span className="flex items-center gap-1 text-orange-400"><Bike size={10} /> {o.driver.name}</span>}
                 </div>
 
                 {detail?.items && detail.items.length > 0 && (
@@ -858,6 +871,13 @@ const OrdersTab: React.FC<{ orders: CustomerOrder[]; onSelectOrder: (id: number)
                 <div className="flex gap-2 pt-1">
                   <button onClick={() => onSelectOrder(o.id)} className="flex-1 rounded-lg bg-slate-700 hover:bg-slate-600 px-3 py-2 text-[11px] font-bold text-slate-200 transition-colors">
                     عرض التفاصيل كاملة
+                  </button>
+                  {/* تصعيد — تنقّل مباشر لصفحة تفاصيل الطلب الكاملة (بدون منطق تصعيد جديد بالباك اند) */}
+                  <button
+                    onClick={() => navigate(`/call-center/orders/${o.id}`)}
+                    className="rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-3 py-2 text-[11px] font-bold text-amber-400 transition-colors flex items-center gap-1"
+                  >
+                    <ArrowUpRight size={12} /> تصعيد
                   </button>
                   {onRepeatOrder && <RepeatOrderButton orderId={o.id} onRepeatOrder={onRepeatOrder} />}
                 </div>
