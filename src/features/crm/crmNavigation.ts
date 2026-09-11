@@ -77,6 +77,10 @@ export const CRM_NAVIGATION: CrmNavItem[] = [
     icon: ShieldAlert,
     to: "/admin/crm/identity-conflicts",
     permission: CRM_PERMISSIONS.MANAGE_IDENTITY_CONFLICTS,
+    children: [
+      { key: "identity-conflicts-list", label: "قائمة التعارضات", to: "/admin/crm/identity-conflicts", icon: ShieldAlert },
+      { key: "identity-conflicts-guide", label: "دليل التعامل", to: "/admin/crm/identity-conflicts/guide", icon: ListOrdered },
+    ],
   },
   {
     key: "complaints",

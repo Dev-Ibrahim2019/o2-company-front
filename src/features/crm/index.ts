@@ -6,6 +6,7 @@ export { CrmCustomerFormPage } from "./CrmCustomerFormPage";
 export { Customer360Page } from "./Customer360Page";
 export { CrmOrdersPage } from "./OrdersPage";
 export { IdentityConflictsPage as CrmIdentityConflictsPage } from "./IdentityConflictsPage";
+export { IdentityConflictsGuidePage as CrmIdentityConflictsGuidePage } from "./IdentityConflictsGuidePage";
 export { ComplaintsPage as CrmComplaintsPage } from "./ComplaintsPage";
 export { ComplaintDetailPage as CrmComplaintDetailPage } from "./ComplaintDetailPage";
 export { ComplaintsGuidePage as CrmComplaintsGuidePage } from "./ComplaintsGuidePage";

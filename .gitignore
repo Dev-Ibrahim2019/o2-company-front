@@ -14,6 +14,10 @@ dist
 dist-ssr
 *.local
 
+# Vite writes one of these next to the config on some runs and never cleans
+# it up — two had been committed by accident.
+vite.config.ts.timestamp-*.mjs
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

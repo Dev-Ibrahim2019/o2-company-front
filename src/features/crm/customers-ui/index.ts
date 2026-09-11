@@ -3,6 +3,7 @@ export { CrmAvatar } from "./CrmAvatar";
 export { CRM_ENGAGEMENT_OPTIONS } from "./engagementOptions";
 export { CRM_CREATE_CATEGORY_OPTIONS, CRM_CREATE_STATUS_OPTIONS } from "./customerCreateFields";
 export { CrmEmptyState } from "./CrmEmptyState";
+export { GuideCard, GuideRow } from "./GuideCard";
 export { CrmFilterBar } from "./CrmFilterBar";
 export { CrmFilterDrawer } from "./CrmFilterDrawer";
 export type { CrmFilterDrawerValues } from "./CrmFilterDrawer";

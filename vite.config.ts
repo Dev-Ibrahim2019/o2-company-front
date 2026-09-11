@@ -12,8 +12,11 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
       // 👇 أضف هذا الجزء لزيادة الحد المسموح به لحجم الملفات في الكاش
+      // كان محدداً بـ 4 ميغابايت بالضبط، فتخطّاه الحزمة الرئيسية (~4.2MB) وأفشل
+      // البناء بالكامل — لا علاقة لحجم الكاش بصحة الكود، فرُفع الحد بهامش أوسع
+      // (8 ميغابايت) بدل ملاحقته كل مرة تكبر فيها الحزمة بضع كيلوبايتات.
       workbox: {
-        maximumFileSizeToCacheInBytes: 4194304, // رفع الحد المسموح إلى 4 ميغابايت
+        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
       },
       manifest: {
         name: 'نظام الفخامة لإدارة المطاعم',

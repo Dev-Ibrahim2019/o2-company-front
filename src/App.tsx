@@ -80,6 +80,7 @@ import {
   Customer360Page,
   CrmOrdersPage,
   CrmIdentityConflictsPage,
+  CrmIdentityConflictsGuidePage,
   CrmComplaintsPage,
   CrmComplaintDetailPage,
   CrmComplaintsGuidePage,
@@ -337,6 +338,7 @@ function AppRoutes() {
           {/* Read-only order monitoring — CRM never creates/edits orders,
               see the Order Domain Audit. Same page, different `mode`. */}
           <Route path="identity-conflicts" element={<CrmIdentityConflictsPage />} />
+          <Route path="identity-conflicts/guide" element={<CrmIdentityConflictsGuidePage />} />
           <Route path="complaints" element={<CrmComplaintsPage mode="all" />} />
           {/* "open"/"guide" before ":complaintId" so the literal segments win. */}
           <Route path="complaints/open" element={<CrmComplaintsPage mode="open" />} />
