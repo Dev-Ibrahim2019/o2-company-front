@@ -1,5 +1,7 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useApp } from "../../store";
+import { useAuth } from "../auth";
 import {
   User,
   Lock,
@@ -11,16 +13,45 @@ import {
   Store,
   HeartHandshake,
   ChefHat,
+  Mail,
 } from "lucide-react";
+import { ThemeToggle } from "./shared/ThemeToggle";
+
+/**
+ * خريطة تحويل أدوار API (lowercase) → أدوار Store (UPPERCASE)
+ * ت确保 التوافق بين نظام الصلاحيات الجديد والـ UI الحالي
+ */
+const API_ROLE_TO_STORE_ROLE: Record<string, string> = {
+  "super-admin": "ADMIN",
+  "branch-manager": "BRANCH_MANAGER",
+  "accountant": "FINANCE",
+  "cashier": "CASHIER",
+  "hospitality": "HOSPITALITY",
+  "dept-staff": "DEPARTMENT_STAFF",
+  "call-center": "CALL_CENTER",
+};
 
 export const Login: React.FC = () => {
-  const { login, branches, departments } = useApp();
+  const navigate = useNavigate();
+  const { login: storeLogin, branches, departments } = useApp();
+  const { login: apiLogin, updateRoles, isLoggedIn } = useAuth();
+
+
+  // ── حالات تسجيل الدخول عبر API ──
+  const [apiMode, setApiMode] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [apiError, setApiError] = useState("");
+  const [apiLoading, setApiLoading] = useState(false);
+
+  // ── حالات تسجيل الدخول المحلي (القديمة) ──
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [selectedBranch, setSelectedBranch] = useState("b1");
   const [selectedDept, setSelectedDept] = useState("");
   const [mode, setMode] = useState<
     | "SELECT"
+    | "API_LOGIN"
     | "CASHIER"
     | "CUSTOMER"
     | "ADMIN"
@@ -30,31 +61,101 @@ export const Login: React.FC = () => {
     | "ORDER_AGGREGATOR"
   >("SELECT");
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (mode === "CASHIER") login(name, "CASHIER");
-    else if (mode === "ADMIN") login(name, "ADMIN");
-    else if (mode === "BRANCH_MANAGER")
-      login(name, "BRANCH_MANAGER", "", selectedBranch);
-    else if (mode === "HOSPITALITY") login(name, "HOSPITALITY");
-    else if (mode === "DEPARTMENT_STAFF")
-      login(name, "DEPARTMENT_STAFF", "", selectedBranch, selectedDept);
-    else if (mode === "ORDER_AGGREGATOR")
-      login(name, "ORDER_AGGREGATOR", "", selectedBranch);
-    else if (mode === ("EMPLOYEE" as any)) login(name, "EMPLOYEE");
-    else login(name, "CUSTOMER", phone);
+  // ── تحويل المستخدم حسب دوره ──
+  // ملاحظة: تفعيل الجهاز (pos/hospitality/call_center _device_uuid + _register_info)
+  // هو ربط عتادي لمرة واحدة يتحكم فيه الأدمن عبر "إلغاء التفعيل" (Revoke) فقط.
+  // تسجيل الدخول بأي دور على نفس الجهاز يجب ألا يمسح هذا الربط، وإلا اضطر
+  // الكاشير لإعادة إدخال كود التفعيل بعد كل تسجيل دخول.
+  const redirectByRole = (roles: string[]) => {
+    const primary = roles[0] || "";
+    if (primary === "call-center") {
+      navigate("/call-center", { replace: true });
+    } else if (primary === "hospitality") {
+      navigate("/Hospitality", { replace: true });
+    } else if (primary === "super-admin" || primary === "accountant" || primary === "branch-manager") {
+      navigate("/admin/dashboard", { replace: true });
+    } else {
+      navigate("/pos", { replace: true });
+    }
   };
 
+  // ── تسجيل الدخول عبر API ──
+  const handleApiLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setApiError("");
+    setApiLoading(true);
+
+    try {
+      await apiLogin(username, password);
+
+      // بعد نجاح API login، اقرأ الأدوار من localStorage
+      let storedRoles = JSON.parse(localStorage.getItem("roles") || "[]");
+      const primaryRole = storedRoles[0] || "cashier";
+      const storeRole = (API_ROLE_TO_STORE_ROLE[primaryRole] || "CASHIER") as any;
+
+      // 🛡️ إذا كانت الأدوار فارغة (لعدم وجود Spatie) ← استخدم الدور من جدول users
+      if (storedRoles.length === 0) {
+        const apiRoleMap: Record<string, string[]> = {
+          ADMIN: ["super-admin"],
+          FINANCE: ["accountant"],
+          BRANCH_MANAGER: ["branch-manager"],
+          CASHIER: ["cashier"],
+          HOSPITALITY: ["hospitality"],
+          DEPARTMENT_STAFF: ["dept-staff"],
+          CALL_CENTER: ["call-center"],
+        };
+        const mappedRoles = apiRoleMap[storeRole] || ["cashier"];
+        localStorage.setItem("roles", JSON.stringify(mappedRoles));
+        storedRoles = mappedRoles;
+      }
+
+      // 🛡️ حدّث AuthContext فوراً بالأدوار المصحّحة (حتى يرها RoleGuard فوراً)
+      updateRoles(storedRoles);
+
+      // سجّل الدخول في الـ store أيضاً للحفاظ على التوافق
+      storeLogin(username, storeRole);
+
+      // 🚀 تحويل تلقائي حسب الدور
+      redirectByRole(storedRoles);
+    } catch (err: any) {
+      setApiError(
+        err.response?.data?.message || "خطأ في تسجيل الدخول. تحقق من البيانات."
+      );
+    } finally {
+      setApiLoading(false);
+    }
+  };
+
+  // ── تسجيل الدخول المحلي (القديم) ──
+  const handleLocalSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (mode === "CASHIER") storeLogin(name, "CASHIER");
+    else if (mode === "ADMIN") storeLogin(name, "ADMIN");
+    else if (mode === "BRANCH_MANAGER")
+      storeLogin(name, "BRANCH_MANAGER", "", selectedBranch);
+    else if (mode === "HOSPITALITY") storeLogin(name, "HOSPITALITY");
+    else if (mode === "DEPARTMENT_STAFF")
+      storeLogin(name, "DEPARTMENT_STAFF", "", selectedBranch, selectedDept);
+    else if (mode === "ORDER_AGGREGATOR")
+      storeLogin(name, "ORDER_AGGREGATOR", "", selectedBranch);
+    else if (mode === ("EMPLOYEE" as any)) storeLogin(name, "EMPLOYEE");
+    else storeLogin(name, "CUSTOMER", phone);
+  };
+
+  // ── شاشة اختيار الطريقة ──
   if (mode === "SELECT") {
     return (
       <div
-        className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-slate-100"
+        className="min-h-screen bg-slate-950 flex items-center justify-center p-6 text-slate-100 relative"
         dir="rtl"
       >
+        <div className="fixed top-4 left-4 z-20 w-44">
+          <ThemeToggle />
+        </div>
         <div className="max-w-7xl w-full">
           <div className="text-center mb-16">
             <div className="w-24 h-24 bg-red-600 rounded-[2.5rem] flex items-center justify-center text-white text-5xl font-black mx-auto mb-8 shadow-2xl rotate-3 shadow-red-600/20">
-              <span >
+              <span>
                 0<span className="relative top-2 text-4xl">2</span>
               </span>
             </div>
@@ -70,6 +171,22 @@ export const Login: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* ── زر تسجيل الدخول عبر API (الجديد) ── */}
+            <button
+              onClick={() => setMode("API_LOGIN")}
+              className="group bg-red-600 p-8 rounded-[3.5rem] text-white shadow-2xl flex flex-col items-center gap-6 hover:bg-red-700 transition-all"
+            >
+              <div className="w-16 h-16 bg-white/20 text-white rounded-[1.5rem] flex items-center justify-center group-hover:scale-110 transition-transform">
+                <Lock size={32} />
+              </div>
+              <div className="text-center">
+                <h3 className="text-xl font-black">دخول آمن (API)</h3>
+                <p className="text-[10px] text-white/60 mt-2 font-black uppercase tracking-widest">
+                  تسجيل دخول حقيقي
+                </p>
+              </div>
+            </button>
+
             <button
               onClick={() => setMode("CASHIER")}
               className="group bg-slate-900 p-8 rounded-[3.5rem] border-2 border-white/5 hover:border-red-600 transition-all shadow-2xl flex flex-col items-center gap-6"
@@ -195,11 +312,112 @@ export const Login: React.FC = () => {
     );
   }
 
+  // ── نموذج تسجيل الدخول عبر API ──
+  if (mode === "API_LOGIN") {
+    return (
+      <div
+        className="min-h-screen bg-slate-950 flex items-center justify-center p-4 text-slate-100 relative"
+        dir="rtl"
+      >
+        <div className="fixed top-4 left-4 z-20 w-44">
+          <ThemeToggle />
+        </div>
+        <div className="max-w-md w-full p-10 space-y-10 bg-slate-900 rounded-[4rem] border border-white/5 shadow-2xl">
+          <button
+            onClick={() => setMode("SELECT")}
+            className="text-slate-500 flex items-center gap-2 font-black hover:text-red-500 transition-colors uppercase text-[10px] tracking-widest"
+          >
+            <ArrowRightCircle size={18} /> العودة للرئيسية
+          </button>
+
+          <div className="text-center">
+            <div className="inline-block p-5 bg-slate-800 rounded-[2rem] mb-6 shadow-inner">
+              <Lock size={48} className="text-red-500" />
+            </div>
+            <h1 className="text-4xl font-black text-white tracking-tight">
+              تسجيل الدخول الآمن
+            </h1>
+            <p className="text-slate-500 mt-2 text-sm font-bold">
+              أدخل بيانات حسابك للوصول إلى النظام
+            </p>
+          </div>
+
+          {apiError && (
+            <div className="bg-red-600/20 text-red-400 p-4 rounded-2xl text-sm font-bold text-center">
+              {apiError}
+            </div>
+          )}
+
+          <form onSubmit={handleApiLogin} className="space-y-6">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 mr-2 uppercase tracking-widest">
+                اسم المستخدم
+              </label>
+              <div className="relative">
+                <User
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500"
+                  size={18}
+                />
+                <input
+                  type="text"
+                  required
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="w-full pr-12 pl-4 py-4 bg-slate-800 border border-white/5 rounded-2xl outline-none font-black text-sm text-white focus:ring-2 focus:ring-red-600 transition-all"
+                  placeholder="admin"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black text-slate-500 mr-2 uppercase tracking-widest">
+                كلمة المرور
+              </label>
+              <div className="relative">
+                <Lock
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500"
+                  size={18}
+                />
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full pr-12 pl-4 py-4 bg-slate-800 border border-white/5 rounded-2xl outline-none font-black text-sm text-white focus:ring-2 focus:ring-red-600 transition-all"
+                  placeholder="••••••••"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={apiLoading}
+              className="w-full py-5 rounded-[2rem] font-black text-lg flex items-center justify-center gap-3 shadow-xl active:scale-95 bg-red-600 text-white hover:bg-red-700 transition-all shadow-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {apiLoading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  جاري الدخول...
+                </>
+              ) : (
+                "دخول النظام الآمن"
+              )}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // ── نماذج الدخول المحلي (الأصلي) ──
   return (
     <div
-      className="min-h-screen bg-slate-950 flex items-center justify-center p-4 text-slate-100"
+      className="min-h-screen bg-slate-950 flex items-center justify-center p-4 text-slate-100 relative"
       dir="rtl"
     >
+      <div className="fixed top-4 left-4 z-20 w-44">
+        <ThemeToggle />
+      </div>
       <div className="max-w-md w-full p-10 space-y-10 bg-slate-900 rounded-[4rem] border border-white/5 shadow-2xl">
         <button
           onClick={() => setMode("SELECT")}
@@ -227,7 +445,7 @@ export const Login: React.FC = () => {
           </h1>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form onSubmit={handleLocalSubmit} className="space-y-6">
           <div className="space-y-2">
             <label className="text-[10px] font-black text-slate-500 mr-2 uppercase tracking-widest">
               المعرف الشخصي
@@ -251,23 +469,23 @@ export const Login: React.FC = () => {
           {(mode === "BRANCH_MANAGER" ||
             mode === "DEPARTMENT_STAFF" ||
             mode === "ORDER_AGGREGATOR") && (
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-500 mr-2 uppercase tracking-widest">
-                اختر الفرع
-              </label>
-              <select
-                value={selectedBranch}
-                onChange={(e) => setSelectedBranch(e.target.value)}
-                className="w-full p-4 bg-slate-800 border border-white/5 rounded-2xl outline-none font-black text-sm text-white focus:ring-2 focus:ring-red-600 transition-all appearance-none"
-              >
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-500 mr-2 uppercase tracking-widest">
+                  اختر الفرع
+                </label>
+                <select
+                  value={selectedBranch}
+                  onChange={(e) => setSelectedBranch(e.target.value)}
+                  className="w-full p-4 bg-slate-800 border border-white/5 rounded-2xl outline-none font-black text-sm text-white focus:ring-2 focus:ring-red-600 transition-all appearance-none"
+                >
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
           {mode === "DEPARTMENT_STAFF" && (
             <div className="space-y-2">

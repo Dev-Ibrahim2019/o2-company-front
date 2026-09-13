@@ -26,9 +26,18 @@ export const useBranch = () => {
 
   // ✅ جلب الموظفين
   const fetchEmployees = useCallback(async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return; // ✅ لا تحاول إذا ما في توكن
+
     try {
       const { data } = await api.get("/employees");
-      setEmployees(data.data ?? []);
+      // ✅ الـ API يرجع paginated: { data: { data: [], pagination: {} } }
+      const payload = data.data;
+      if (Array.isArray(payload)) {
+        setEmployees(payload);
+      } else if (Array.isArray(payload?.data)) {
+        setEmployees(payload.data); // ✅ هاد هو الصحيح
+      }
     } catch {
       setEmployees([]);
     }

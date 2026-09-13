@@ -214,7 +214,7 @@ const DashboardPage = () =>   {
               مبيعات اليوم حسب الساعة
             </h3>
             <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height={280}>
                 <AreaChart data={hourlySalesData}>
                   <defs>
                     <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
@@ -240,8 +240,8 @@ const DashboardPage = () =>   {
               <Layers size={20} className="text-orange-500" />
               مبيعات الأقسام
             </h3>
-            <div className="h-[300px] flex items-center">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="h-[300px] flex items-center justify-center">
+              <ResponsiveContainer width="100%" height={280}>
                 <PieChart>
                   <Pie
                     data={deptSalesData}

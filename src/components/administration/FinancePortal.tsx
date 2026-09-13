@@ -3,24 +3,30 @@ import { useApp } from '../../../store';
 import DashboardPage from '../administration/DashboardPage';
 import DepartmentsPage from './Departments/DepartmentsPage';
 import OrdersPage from '../administration/OrdersPage';
-import CustomerManagement from '../administration/CustomerManagement';
+import CustomerPortal from './customers/CustomerPortal';
 import EmployeeManagement from "../administration/EmployeeManagement/EmployeeManagement";
 import ReportsPage from '../administration/ReportsPage';
 import AuditLogPage from '../administration/AuditLogPage';
-import AccountingPage from '../administration/AccountingPage';
 import ArchivePage from '../administration/ArchivePage';
 import SettingsPage from '../administration/SettingsPage';
 import MenuPage from '../administration/Items/MenuPage';
 import renderModal from '../administration/renderModal';
 import BranchesPage from '../administration/BranchesPage/BranchesPage';
+import SupplierPortal from './suppliers/SupplierPortal';
+// import { FinancialInvoicesPage } from '../financial/FinancialInvoicesPage';
+// import { FinancialInvoiceForm } from '../financial/FinancialInvoiceForm';
 
-import { Calendar } from 'lucide-react';
-import { CustomerType } from '../../../types';
+import { FinancialInvoicesPage } from '../financial/FinancialInvoicesPage';
+import { FinancialInvoiceForm } from '../financial/FinancialInvoiceForm';
+
 import { OrgStructure } from './OrgStructure/OrgStructure';
+import { AccountingPortal } from './GL/AccountingPortal';
+import { DiscountManagementPortal } from './discounts/DiscountManagementPortal';
+import { ShiftDayClosingPage } from './ShiftDayClosingPage';
 
 
 interface FinancePortalProps {
-  initialView?: 'DASHBOARD' | 'BRANCHES' | 'DEPARTMENTS' | 'ITEM_TREE' | 'ITEMS_INDEX' | 'MENU' | 'ORDERS' | 'CUSTOMERS' | 'SUPPLIERS' | 'EMPLOYEES' | 'ACCOUNTING' | 'REPORTS' | 'SETTINGS' | 'AUDIT_LOG' | 'ARCHIVE' | 'ORGSTRUCTURE';
+  initialView?: 'DASHBOARD' | 'BRANCHES' | 'DEPARTMENTS' | 'ITEM_TREE' | 'ITEMS_INDEX' | 'MENU' | 'ORDERS' | 'SALES' | 'CUSTOMERS' | 'SUPPLIERS' | 'EMPLOYEES' | 'ACCOUNTING' | 'REPORTS' | 'SETTINGS' | 'AUDIT_LOG' | 'ARCHIVE' | 'ORGSTRUCTURE' | 'FINANCIAL_INVOICES' | 'DISCOUNTS' | 'SHIFT_DAY_CLOSING';
 }
 
 export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DASHBOARD' }) => {
@@ -29,47 +35,69 @@ export const FinancePortal: React.FC<FinancePortalProps> = ({ initialView = 'DAS
   const canManageFinance = currentUser?.role === 'ADMIN' || currentUser?.role === 'FINANCE' || currentUser?.role === 'BRANCH_MANAGER';
   const canEditSettings = currentUser?.role === 'ADMIN';
 
-  const renderCustomers = () => <CustomerManagement initialType={CustomerType.REGULAR} />;
+  const [financialView, setFinancialView] = useState<'list' | 'form'>('list');
+  const [editingId, setEditingId] = useState<number | undefined>(undefined);
 
-  const renderSuppliers = () => <CustomerManagement initialType={CustomerType.SUPPLIER} />;
-  const [view] = useState(initialView);
-  console.log('currentUser', currentUser);
+  const renderCustomers = () => <CustomerPortal />;
+  const renderSuppliers = () => <SupplierPortal />;
+
+  const handleOpenForm = (id?: number) => {
+    setEditingId(id);
+    setFinancialView('form');
+  };
+
+  const handleFormBack = () => {
+    setFinancialView('list');
+    setEditingId(undefined);
+  };
+
+  const handleFormSaved = () => {
+    setFinancialView('list');
+    setEditingId(undefined);
+  };
+
+  // Financial invoices page — manages its own sub-views
+  if (initialView === 'FINANCIAL_INVOICES' || initialView === 'SALES') {
+    if (financialView === 'form') {
+      return (
+        <div className="h-full overflow-y-auto custom-scrollbar">
+          <FinancialInvoiceForm invoiceId={editingId} onBack={handleFormBack} onSaved={handleFormSaved} />
+        </div>
+      );
+    }
+    return (
+      <div className="h-full overflow-y-auto custom-scrollbar">
+        <FinancialInvoicesPage onOpenForm={handleOpenForm} />
+      </div>
+    );
+  }
+
+  const viewContent: Record<string, React.ReactNode> = {
+    DASHBOARD: <DashboardPage />,
+    BRANCHES: <BranchesPage />,
+    DEPARTMENTS: <DepartmentsPage />,
+    ITEM_TREE: <MenuPage initialMode="tree" />,
+    ITEMS_INDEX: <MenuPage initialMode="list" />,
+    MENU: <MenuPage initialMode="tree" />,
+    ORDERS: <OrdersPage />,
+    CUSTOMERS: renderCustomers(),
+    SUPPLIERS: renderSuppliers(),
+    EMPLOYEES: <EmployeeManagement />,
+    ACCOUNTING: <AccountingPortal />,
+    REPORTS: <ReportsPage />,
+    AUDIT_LOG: canAudit ? <AuditLogPage /> : <div className="p-20 text-center text-slate-500">ليس لديك صلاحية للوصول إلى سجل التدقيق</div>,
+    ARCHIVE: canManageFinance ? <ArchivePage /> : <div className="p-20 text-center text-slate-500">ليس لديك صلاحية للوصول إلى الأرشيف</div>,
+    SETTINGS: canEditSettings ? <SettingsPage /> : <div className="p-20 text-center text-slate-500">ليس لديك صلاحية للوصول إلى الإعدادات</div>,
+    ORGSTRUCTURE: <OrgStructure />,
+    DISCOUNTS: <DiscountManagementPortal />,
+    SHIFT_DAY_CLOSING: <ShiftDayClosingPage />,
+  };
+
   return (
-    <div className="h-full flex flex-col gap-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-black text-white tracking-tight">بوابة الإدارة المالية</h1>
-          <p className="text-slate-500 text-sm font-medium">إدارة العمليات، الموظفين، والتقارير المالية</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="bg-slate-900 border border-white/5 rounded-xl px-4 py-2 flex items-center gap-3">
-            <Calendar size={18} className="text-red-500" />
-            <span className="text-sm font-bold text-white">{new Date().toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
-          </div>
-        </div>
+    <div className="h-full flex flex-col min-h-0">
+      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 min-h-0">
+        {viewContent[initialView]}
       </div>
-
-      {/* Main Content */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-        {/* <DepartmentsPage /> */}
-        {view === 'DASHBOARD' && <DashboardPage />}
-        {view === 'BRANCHES' && <BranchesPage />}
-        {view === 'DEPARTMENTS' && <DepartmentsPage />}
-        {(view === 'MENU' || view === 'ITEM_TREE') && <MenuPage initialMode="tree" />}
-        {view === 'ITEMS_INDEX' && <MenuPage initialMode="list" />}
-        {view === 'ORDERS' && <OrdersPage />}
-        {view === 'CUSTOMERS' && renderCustomers()}
-        {view === 'SUPPLIERS' && renderSuppliers()}
-        {view === 'EMPLOYEES' && <EmployeeManagement />}
-        {view === 'ACCOUNTING' && <AccountingPage />}
-        {view === 'REPORTS' && <ReportsPage />}
-        {view === 'AUDIT_LOG' && (canAudit ? <AuditLogPage /> : <div className="p-20 text-center text-slate-500">ليس لديك صلاحية للوصول إلى سجل التدقيق</div>)}
-        {view === 'ARCHIVE' && (canManageFinance ? <ArchivePage /> : <div className="p-20 text-center text-slate-500">ليس لديك صلاحية للوصول إلى الأرشيف</div>)}
-        {view === 'SETTINGS' && (canEditSettings ? <SettingsPage /> : <div className="p-20 text-center text-slate-500">ليس لديك صلاحية للوصول إلى الإعدادات</div>)}
-        {view === 'ORGSTRUCTURE' && <OrgStructure />}
-      </div>
-
       {renderModal()}
     </div>
   );

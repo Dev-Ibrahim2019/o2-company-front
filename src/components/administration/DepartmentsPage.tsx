@@ -1,5 +1,12 @@
-import { useState } from 'react';
-import { useApp } from '../../../store';
+import { useState, useEffect } from 'react';
+import { useDepartments } from '../../hooks/useDepartments';
+import { useMenu } from '../../hooks/useMenu';
+import { useEmployees } from '../../hooks/useEmployees';
+import { useOrders } from '../../hooks/useOrders';
+import { useAuth } from '../../auth';
+import { branchService } from '../../services/branchService';
+import { departmentService } from '../../services/departmentService';
+import DepartmentModal from './Items/DepartmentModal';
 import { 
   TrendingUp, 
   Package, 
@@ -19,27 +26,57 @@ import {
   EyeOff,
   Activity,
   ChefHat,
+  Building2,
 } from 'lucide-react';
 import { OrderStatus } from '../../../types';
 
 const DepartmentsPage = () => {
   const { 
-    activeOrders, 
-    menuItems, 
-    employees, 
     departments, 
+    loading, 
     deleteDepartment,
-  } = useApp();
+    refetch,
+  } = useDepartments();
+  const { categories } = useMenu();
+  const { employees } = useEmployees();
+  const { orders } = useOrders();
+  const { user } = useAuth();
+
+  const menuItems = categories.flatMap(c => c.items);
+  const activeOrders = orders.filter(o => 
+    o.status !== 'paid' && o.status !== 'cancelled'
+  );
 
   const [deptSubView, setDeptSubView] = useState('LIST');
-  const [modalType, setModalType] = useState<'DEPARTMENT' | 'MENU_ITEM' | 'EMPLOYEE' | 'CUSTOMER' | null>(null);
-  const [editingItem, setEditingItem] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingDepartment, setEditingDepartment] = useState<any>(null);
+  const [branches, setBranches] = useState<{ id: number; name: string }[]>([]);
   
-  const openModal = (type: 'DEPARTMENT' | 'MENU_ITEM' | 'EMPLOYEE' | 'CUSTOMER', item: any = null) => {
-    setModalType(type);
-    setEditingItem(item);
+  useEffect(() => {
+    // Always load all branches for the modal (admin needs to assign departments to any branch)
+    branchService.getAll().then(setBranches).catch(() => setBranches([]));
+  }, []);
+  
+  const openAddModal = () => {
+    setEditingDepartment(null);
     setIsModalOpen(true);
+  };
+
+  const openEditModal = async (dept: any) => {
+    // جلب بيانات القسم مع الفروع المرتبطة
+    try {
+      const fullDept = await departmentService.getOne(dept.id);
+      setEditingDepartment(fullDept);
+    } catch {
+      setEditingDepartment(dept);
+    }
+    setIsModalOpen(true);
+  };
+
+  const handleSaved = () => {
+    refetch();
+    setIsModalOpen(false);
+    setEditingDepartment(null);
   };
 
   return (
@@ -71,7 +108,7 @@ const DepartmentsPage = () => {
             />
           </div>
           <button 
-            onClick={() => openModal('DEPARTMENT')}
+            onClick={openAddModal}
             className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 font-bold text-sm transition-all shadow-lg shadow-red-900/20 whitespace-nowrap"
           >
             <Plus size={18} />
@@ -83,9 +120,9 @@ const DepartmentsPage = () => {
       <div>
         {deptSubView === 'LIST' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {departments.map(dept => {
-            const deptItems = menuItems.filter(item => item.departmentId === dept.id);
-            const activeDeptOrders = activeOrders.filter(o => o.items.some(i => i.departmentId === dept.id) && o.status !== OrderStatus.COMPLETED);
+          {departments.map((dept) => {
+            const deptItems = menuItems.filter(item => item.department_id === dept.id);
+            const activeDeptOrders = activeOrders.filter(o => o.items.some(i => i.department_id === dept.id));
             
             return (
               <div key={dept.id} className="bg-slate-900/50 border border-white/5 rounded-2xl p-6 hover:border-red-500/30 transition-all group relative overflow-hidden">
@@ -103,7 +140,7 @@ const DepartmentsPage = () => {
                     <div>
                       <h3 className="text-xl font-bold text-white">{dept.nameAr || dept.name}</h3>
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{dept.shortName || dept.id.slice(0, 3).toUpperCase()}</span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{dept.shortName || String(dept.id).slice(0, 3).toUpperCase()}</span>
                         <span className="w-1 h-1 rounded-full bg-slate-700"></span>
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{dept.type}</span>
                       </div>
@@ -111,13 +148,17 @@ const DepartmentsPage = () => {
                   </div>
                   <div className="flex items-center gap-1">
                     <button 
-                      onClick={() => openModal('DEPARTMENT', dept)}
+                      onClick={() => openEditModal(dept)}
                       className="p-2 hover:bg-white/5 rounded-lg text-slate-400 hover:text-white transition-colors"
                     >
                       <Edit2 size={16} />
                     </button>
                     <button 
-                      onClick={() => deleteDepartment(dept.id)}
+                      onClick={() => {
+                        if (window.confirm('هل أنت متأكد من حذف هذا القسم؟')) {
+                          deleteDepartment(dept.id);
+                        }
+                      }}
                       className="p-2 hover:bg-red-500/10 rounded-lg text-slate-400 hover:text-red-500 transition-colors"
                     >
                       <Trash2 size={16} />
@@ -162,7 +203,7 @@ const DepartmentsPage = () => {
                       <Users2 size={12} />
                       الموظفين
                     </span>
-                    <span className="text-white font-bold">{employees.filter(e => e.departmentId === dept.id).length} موظف</span>
+                    <span className="text-white font-bold">{employees.filter(e => e.department_id === dept.id).length} موظف</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-500 flex items-center gap-1">
@@ -279,9 +320,9 @@ const DepartmentsPage = () => {
               </div>
 
               {/* Stations */}
-              {[1, 2, 3, 4, 5, 6, 7, 8].map(stationNum => {
-                const dept = departments.find(d => d.stationNumber === stationNum.toString());
-                const activeDeptOrders = dept ? activeOrders.filter(o => o.items.some(i => i.departmentId === dept.id) && o.status !== OrderStatus.COMPLETED) : [];
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((stationNum) => {
+                const dept = departments.find((d) => d.stationNumber === String(stationNum));
+                const activeDeptOrders = dept ? activeOrders.filter(o => o.items.some(i => i.department_id === dept.id)) : [];
                 
                 return (
                   <div 
@@ -293,7 +334,7 @@ const DepartmentsPage = () => {
                            'bg-slate-900/80 border-white/5 opacity-50')
                         : 'bg-slate-900/40 border-dashed border-white/5 hover:bg-slate-800/40'
                     }`}
-                    onClick={() => dept && openModal('DEPARTMENT', dept)}
+                    onClick={() => dept && openEditModal(dept)}
                   >
                     <div className="absolute top-3 left-3 text-[10px] font-bold text-slate-600 tracking-widest">STATION {stationNum}</div>
                     
@@ -354,6 +395,19 @@ const DepartmentsPage = () => {
             </div>
           </div>
         </div>
+      )}
+      
+      {/* Department Modal */}
+      {isModalOpen && (
+        <DepartmentModal
+          department={editingDepartment}
+          branches={branches}
+          onClose={() => {
+            setIsModalOpen(false);
+            setEditingDepartment(null);
+          }}
+          onSaved={handleSaved}
+        />
       )}
     </div>
   </div>

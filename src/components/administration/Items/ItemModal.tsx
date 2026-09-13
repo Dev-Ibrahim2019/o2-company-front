@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { X, RefreshCw, Hash, AlertCircle, Building2, Image as ImageIcon } from 'lucide-react';
 import { generateNextItemCode, getItemImageUrl, type Item, type ItemFormData } from '../../../services/itemService';
 import type { Branch } from '../../../services/branchService';
+import { toast } from '../../shared/Toast';
 
 interface Department {
     id: number;
@@ -79,19 +80,18 @@ const getInitialBranchPrices = (item?: Item | null): BranchPriceDraft[] => {
         return pivotRows.map((entry) => ({
             branch_id: Number(entry.branch_id),
             price: entry.price === null || entry.price === undefined ? '' : String(entry.price),
-            is_availble: entry.is_availble === undefined ? true : Boolean(entry.is_availble),
+            is_availble: entry.is_active === undefined ? true : Boolean(entry.is_active),
         }));
     }
 
     if (item.branches?.length) {
         return item.branches.map((branch) => {
-            const price = branch.pivot?.price ?? branch.price ?? '';
+            const price = (branch as any).price ?? '';
+            const isAvailble = (branch as any).is_availble ?? (branch as any).is_active ?? true;
             return {
                 branch_id: Number(branch.id),
                 price: price === null || price === undefined ? '' : String(price),
-                is_availble: branch.pivot?.is_availble === undefined
-                    ? branch.is_availble === undefined ? true : Boolean(branch.is_availble)
-                    : Boolean(branch.pivot.is_availble),
+                is_availble: Boolean(isAvailble),
             };
         });
     }
@@ -246,11 +246,11 @@ const ItemModal = ({ item, departments, allItems, branches = [], defaultDeptId, 
 
     // ── Submit ────────────────────────────────────────────────────────────────
     const handleSubmit = async () => {
-        if (!form.name.trim())    return alert('الاسم بالإنجليزي مطلوب');
-        if (!form.name_ar.trim()) return alert('الاسم بالعربي مطلوب');
-        if (!form.code?.trim())   return alert('الكود مطلوب — اختر قسماً يملك كوداً');
-        if (!form.department_id)  return alert('يجب اختيار القسم');
-        if (branches.length && branchPrices.length === 0) return alert('يجب اختيار فرع واحد على الأقل للصنف');
+        if (!form.name.trim())    { toast.error('الاسم بالإنجليزي مطلوب'); return; }
+        if (!form.name_ar.trim()) { toast.error('الاسم بالعربي مطلوب'); return; }
+        if (!form.code?.trim())   { toast.error('الكود مطلوب — اختر قسماً يملك كوداً'); return; }
+        if (!form.department_id)  { toast.error('يجب اختيار القسم'); return; }
+        if (branches.length && branchPrices.length === 0) { toast.error('يجب اختيار فرع واحد على الأقل للصنف'); return; }
 
         const normalizedBranchPrices = branchPrices.map((entry) => ({
             branch_id: entry.branch_id,
@@ -276,7 +276,7 @@ const ItemModal = ({ item, departments, allItems, branches = [], defaultDeptId, 
             });
             onClose();
         } catch (e: any) {
-            alert(e.response?.data?.message ?? 'فشل الحفظ');
+            toast.error('فشل الحفظ', e.response?.data?.message);
         } finally {
             setSaving(false);
         }

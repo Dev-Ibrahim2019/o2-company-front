@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Hash, RefreshCw, X } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Department } from "../../../services/departmentService";
+import { toast } from "../../shared/Toast";
 
 interface Props {
   departments: Department[];
@@ -103,10 +104,10 @@ const SubGroupModal = ({ departments, initialDepartment, onSave, onClose }: Prop
   };
 
   const handleSubmit = async () => {
-    if (!form.parent_id) return alert("اختر المجموعة الرئيسية");
-    if (!form.name.trim()) return alert("اسم المجموعة بالإنجليزي مطلوب");
-    if (!form.nameAr.trim()) return alert("اسم المجموعة بالعربي مطلوب");
-    if (!form.code.trim()) return alert("الكود مطلوب");
+    if (!form.parent_id) { toast.error("اختر المجموعة الرئيسية"); return; }
+    if (!form.name.trim()) { toast.error("اسم المجموعة بالإنجليزي مطلوب"); return; }
+    if (!form.nameAr.trim()) { toast.error("اسم المجموعة بالعربي مطلوب"); return; }
+    if (!form.code.trim()) { toast.error("الكود مطلوب"); return; }
 
     setSaving(true);
     try {
@@ -122,7 +123,7 @@ const SubGroupModal = ({ departments, initialDepartment, onSave, onClose }: Prop
       }, initialDepartment?.id);
       onClose();
     } catch (error: any) {
-      alert(error.response?.data?.message ?? "فشل حفظ المجموعة الفرعية");
+      toast.error("فشل حفظ المجموعة الفرعية", error.response?.data?.message);
     } finally {
       setSaving(false);
     }

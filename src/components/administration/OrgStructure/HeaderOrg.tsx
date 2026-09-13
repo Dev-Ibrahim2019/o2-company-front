@@ -1,10 +1,10 @@
 
 import React, { useState } from 'react';
-import { 
-  Building2, 
-  Network, 
-  Briefcase, 
-  Users2, 
+import {
+  Building2,
+  Network,
+  Briefcase,
+  Users2,
   Layers,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -14,21 +14,13 @@ import RenderEmployees from './RenderEmployees';
 import RenderHierarchy from './RenderHierarchy';
 import RenderJobs from './RenderJobs';
 
-type Props = {
-  onAdd: (type: any) => void;
-  onEdit: (type: any, id: string, data: any) => void;
-};
-
-const HeaderOrg: React.FC<Props> = ({
-  onAdd,
-  onEdit,
-}) => {
+const HeaderOrg: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'branches' | 'departments' | 'jobs' | 'employees' | 'hierarchy'>('branches');
-    
+
     return(
         <div>
         <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, x: 50 }}
           animate={{ opacity: 1, x: 0 }}
           className="relative"
@@ -44,8 +36,8 @@ const HeaderOrg: React.FC<Props> = ({
             </div>
           </div>
         </motion.div>
-        
-        <motion.div 
+
+        <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           className="flex bg-slate-900/40 backdrop-blur-2xl p-1 rounded-xl shadow-[0_15px_30px_rgba(0,0,0,0.4)] border border-white/5 overflow-x-auto scrollbar-hide w-full lg:w-auto"
@@ -57,13 +49,13 @@ const HeaderOrg: React.FC<Props> = ({
              { id: 'employees', label: 'الموظفين', icon: Users2 },
              { id: 'hierarchy', label: 'الهيكل', icon: Network }
            ].map(t => (
-            <button 
+            <button
               key={t.id}
               onClick={() => setActiveTab(t.id as any)}
               className={`px-4 py-2 rounded-xl font-black text-xs transition-all flex items-center gap-2 whitespace-nowrap relative ${activeTab === t.id ? 'text-white' : 'text-slate-500 hover:text-slate-200'}`}
              >
                {activeTab === t.id && (
-                 <motion.div 
+                 <motion.div
                   layoutId="activeTab"
                   className="absolute inset-0 bg-red-600 rounded-lg shadow-[0_8px_16px_rgba(220,38,38,0.3)]"
                   transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
@@ -77,7 +69,7 @@ const HeaderOrg: React.FC<Props> = ({
         </motion.div>
       </header>
       <AnimatePresence mode="wait">
-        <motion.div 
+        <motion.div
           key={activeTab}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -85,21 +77,13 @@ const HeaderOrg: React.FC<Props> = ({
           transition={{ duration: 0.4 }}
           className="relative"
         >
-          {activeTab === "branches" && (
-        <RenderBranches onAdd={onAdd} onEdit={onEdit} />
-      )}
+          {activeTab === "branches" && <RenderBranches />}
 
-      {activeTab === "departments" && (
-        <RenderDepartments onAdd={onAdd} onEdit={onEdit} />
-      )}
+      {activeTab === "departments" && <RenderDepartments />}
 
-      {activeTab === "jobs" && (
-        <RenderJobs onAdd={onAdd} onEdit={onEdit} />
-      )}
+      {activeTab === "jobs" && <RenderJobs />}
 
-      {activeTab === "employees" && (
-        <RenderEmployees onAdd={onAdd} onEdit={onEdit} />
-      )}
+      {activeTab === "employees" && <RenderEmployees />}
 
       {activeTab === "hierarchy" && (
         <RenderHierarchy />

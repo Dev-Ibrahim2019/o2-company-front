@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { useApp } from "../../../../store";
-import type { Department } from "../../../../types";
+import type { Department } from "../../../services/departmentService";
 import { motion } from "framer-motion";
 import {
   Network,
@@ -9,39 +8,40 @@ import {
   ChevronDown,
   Edit3,
   Trash2,
-  Clock,
   Zap,
+  Loader2,
 } from "lucide-react";
 
 interface Props {
   dept: Department;
+  departments: Department[];
+  employeeCounts: Record<number, number>;
   level?: number;
-  onEdit: (type: "DEPT", id: string, data: any) => void;
+  deletingId?: number | null;
+  onEdit: (dept: Department) => void;
+  onDelete: (dept: Department) => void;
 }
 
-const RenderDeptItem: React.FC<Props> = ({ dept, level = 0 , onEdit}) => {
-  const { departments, employees, deleteDepartment, addNotification } =
-    useApp();
-  const buildDeptTree = (parentId?: string) =>
-    departments.filter((d) => d.parentId === parentId);
-  const children = buildDeptTree(dept.id);
-  const [expandedDepts, setExpandedDepts] = useState<string[]>([]);
+const parentOf = (d: Department): number | null =>
+  (d.parentId ?? d.parent_id ?? null) as number | null;
+
+const RenderDeptItem: React.FC<Props> = ({
+  dept,
+  departments,
+  employeeCounts,
+  level = 0,
+  deletingId,
+  onEdit,
+  onDelete,
+}) => {
+  const children = departments.filter((d) => parentOf(d) === dept.id);
+  const [expandedDepts, setExpandedDepts] = useState<number[]>([]);
   const isExpanded = expandedDepts.includes(dept.id);
-  const deptEmployees = employees.filter((e) => e.departmentId === dept.id);
-  const toggleDept = (id: string) => {
+  const deptEmployeeCount = employeeCounts[dept.id] || 0;
+  const toggleDept = (id: number) => {
     setExpandedDepts((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
-  };
-  const [modalType, setModalType] = useState<
-    "BRANCH" | "DEPT" | "JOB_TITLE" | "JOB_TYPE" | "EMP" | null
-  >(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState<any>({});
-  const handleEdit = (type: typeof modalType, id: string, data: any) => {
-    setEditingId(id);
-    setModalType(type);
-    setFormData(data);
   };
 
   return (
@@ -127,20 +127,7 @@ const RenderDeptItem: React.FC<Props> = ({ dept, level = 0 , onEdit}) => {
                   <div className="w-1 h-1 rounded-full bg-blue-500 shadow-[0_0_4px_rgba(59,130,246,0.5)]"></div>
                   <p className="text-xs font-black uppercase tracking-widest flex items-center gap-1">
                     <Users2 size={12} className="text-slate-600" />{" "}
-                    {deptEmployees.length} موظف
-                  </p>
-                </div>
-                <div className="flex items-center gap-1 text-slate-500 group-hover:text-slate-400 transition-colors">
-                  <div className="w-1 h-1 rounded-full bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.5)]"></div>
-                  <p className="text-xs font-black uppercase tracking-widest flex items-center gap-1">
-                    <Clock size={12} className="text-slate-600" />{" "}
-                    {dept.defaultPrepTime || 15} دقيقة
-                  </p>
-                </div>
-                <div className="flex items-center gap-1 text-slate-500 group-hover:text-slate-400 transition-colors">
-                  <div className="w-1 h-1 rounded-full bg-orange-500 shadow-[0_0_4px_rgba(249,115,22,0.5)]"></div>
-                  <p className="text-xs font-black uppercase tracking-widest flex items-center gap-1">
-                    <Zap size={12} className="text-slate-600" /> 92% كفاءة
+                    {deptEmployeeCount} موظف
                   </p>
                 </div>
               </div>
@@ -149,33 +136,37 @@ const RenderDeptItem: React.FC<Props> = ({ dept, level = 0 , onEdit}) => {
 
           <div className="flex gap-2 opacity-0 group-hover:opacity-100 translate-x-3 group-hover:translate-x-0 transition-all duration-500 relative z-10">
             <button
-              onClick={() =>
-                onEdit("DEPT", dept.id, dept)
-              }
+              onClick={() => onEdit(dept)}
               className="p-2 bg-slate-800 text-slate-400 hover:text-blue-400 rounded-xl transition-all shadow-xl border border-white/5 hover:border-blue-400/30"
             >
               <Edit3 size={12} />
             </button>
             <button
-              onClick={() => {
-                if (deptEmployees.length > 0 || children.length > 0) {
-                  addNotification(
-                    "لا يمكن حذف قسم يحتوي على موارد بشرية أو تبعيات هيكلية!",
-                  );
-                  return;
-                }
-                deleteDepartment(dept.id);
-              }}
-              className="p-2 bg-slate-800 text-slate-400 hover:text-red-500 rounded-xl transition-all shadow-xl border border-white/5 hover:border-red-500/30"
+              onClick={() => onDelete(dept)}
+              disabled={deletingId === dept.id}
+              className="p-2 bg-slate-800 text-slate-400 hover:text-red-500 rounded-xl transition-all shadow-xl border border-white/5 hover:border-red-500/30 disabled:opacity-50"
             >
-              <Trash2 size={12} />
+              {deletingId === dept.id ? (
+                <Loader2 size={12} className="animate-spin" />
+              ) : (
+                <Trash2 size={12} />
+              )}
             </button>
           </div>
         </motion.div>
         {isExpanded && children.length > 0 && (
           <div className="space-y-2 pt-1">
             {children.map((child) => (
-              <RenderDeptItem key={child.id} dept={child} level={level + 1} onEdit={onEdit}/>
+              <RenderDeptItem
+                key={child.id}
+                dept={child}
+                departments={departments}
+                employeeCounts={employeeCounts}
+                level={level + 1}
+                deletingId={deletingId}
+                onEdit={onEdit}
+                onDelete={onDelete}
+              />
             ))}
           </div>
         )}

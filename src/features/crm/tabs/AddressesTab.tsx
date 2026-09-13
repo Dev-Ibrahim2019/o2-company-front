@@ -1,0 +1,2 @@
+import { DomainTable, SectionFrame, text, unwrapRows, useCrmSection } from "./shared";
+export default function AddressesTab(){const state=useCrmSection("addresses");return <SectionFrame state={state}>{d=><DomainTable empty="لا توجد عناوين محفوظة" rows={unwrapRows(d,["addresses"])} columns={[{key:"label",label:"نوع العنوان",render:(v,r)=>text(v??r.type)},{key:"address",label:"العنوان"},{key:"city",label:"المدينة"},{key:"area",label:"المنطقة"},{key:"is_default",label:"الافتراضي",render:v=>v?"نعم":"لا"}]}/>}</SectionFrame>}

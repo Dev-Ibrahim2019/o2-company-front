@@ -185,22 +185,6 @@ export const TABLES: Table[] = Array.from({ length: 100 }, (_, i) => {
   let reservationTime: string | undefined = undefined;
   let currentOrderId: string | undefined = undefined;
 
-  if (i === 0 || i === 5 || i === 12) {
-    status = TableStatus.OCCUPIED;
-    seatedAt = new Date(Date.now() - (Math.random() * 60 * 60000)); // Seated 0-60 mins ago
-    if (i === 0) currentOrderId = 'o-1';
-  } else if (i === 1 || i === 8) {
-    status = TableStatus.PAYMENT_PENDING;
-    seatedAt = new Date(Date.now() - 45 * 60000);
-    if (i === 1) currentOrderId = 'o-2';
-  } else if (i === 2 || i === 15) {
-    status = TableStatus.RESERVED;
-    reservationName = i === 2 ? 'عائلة أحمد' : 'حجز VIP';
-    reservationTime = i === 2 ? '08:30 PM' : '09:00 PM';
-  } else if (i === 3 || i === 19) {
-    status = TableStatus.CLEANING;
-  }
-
   return {
     id: `t-${tableNumber}`,
     number: tableNumber,

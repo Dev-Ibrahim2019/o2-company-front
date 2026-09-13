@@ -1,37 +1,45 @@
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import {
-  OrderType, OrderStatus, PaymentMethod,
-  TableStatus, FinancialTransactionType,
-  CustomerType,
-  EmployeeStatus
-} from './types';
 import { create } from 'zustand';
-
+import { persist } from 'zustand/middleware';
 import type {
-  Order, MenuItem, OrderItem, User,
-  Transaction, SavedCard, Table, Shift, Branch, Department, JobTitle, JobType, Employee,
+  Order, MenuItem, User,
+  Table, Shift, Branch, Department, JobTitle, JobType, Employee,
   FinancialTransaction,
-  CustomerFeedback, StaffTask, TableAssignment, Customer, CustomerAddress,
-  Attendance, WorkSchedule, ActivityLog
+  Customer,
+  ActivityLog, Hall,
+  Supplier, BankAccount,
+  BlindDropSubmission, ReconciliationEntry, DayCloseState, BusinessDayState
 } from './types';
+import {
+  OrderStatus, TableStatus, FinancialTransactionType
+} from './types';
+import { TABLES } from './constants';
+import api from './src/api/axios';
+import { shiftService } from './src/services/shiftService';
 
-import { TABLES, MENU_ITEMS } from './constants';
 
-interface AppContextType {
-  activeOrders: Order[];
+interface AppState {
+  // Auth
   currentUser: User | null;
-  currentCart: OrderItem[];
-  cartOrderType: OrderType;
-  userRole: 'CASHIER' | 'CUSTOMER' | 'WAITER' | 'ADMIN' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | 'HEAD_CHEF' | 'COOK' | 'EMPLOYEE' | null;
+  isLoggedIn: boolean;
+  login: (user: User) => void;
+  logout: () => void;
 
+  // User Role
+  userRole: string | null;
+
+  // Branches & Departments
   branches: Branch[];
   departments: Department[];
-  jobTitles: JobTitle[];
-  jobTypes: JobType[];
-  employees: Employee[];
+  setBranches: (branches: Branch[]) => void;
+  setDepartments: (departments: Department[]) => void;
+
+  // Menu Items
   menuItems: MenuItem[];
-  customers: Customer[];
+  diningZones: Hall[];
+  tablesLoading: boolean;
+  fetchDiningZones: (branchId?: number) => Promise<void>;
+  fetchTables: (branchId?: number) => Promise<void>;
 
   addBranch: (branch: Omit<Branch, 'id'>) => void;
   updateBranch: (id: string, branch: Partial<Branch>) => void;
@@ -45,1352 +53,858 @@ interface AppContextType {
   addJobType: (jt: Omit<JobType, 'id'>) => void;
   updateJobType: (id: string, jt: Partial<JobType>) => void;
   deleteJobType: (id: string) => void;
-  addEmployee: (emp: Omit<Employee, 'id'>) => void;
-  updateEmployee: (id: string, emp: Partial<Employee>) => void;
-  deleteEmployee: (id: string) => void;
   addMenuItem: (item: Omit<MenuItem, 'id'>) => void;
   updateMenuItem: (id: string, item: Partial<MenuItem>) => void;
   deleteMenuItem: (id: string) => void;
-  addCustomer: (customer: Omit<Customer, 'id' | 'createdAt' | 'points' | 'totalSpent' | 'ordersCount' | 'balance' | 'isBlocked' | 'addresses' | 'rating'>) => void;
-  updateCustomer: (id: string, customer: Partial<Customer>) => void;
-  deleteCustomer: (id: string) => void;
-  addCustomerAddress: (customerId: string, address: Omit<CustomerAddress, 'id'>) => void;
-  removeCustomerAddress: (customerId: string, addressId: string) => void;
-  toggleBlockCustomer: (id: string) => void;
-  adjustCustomerPoints: (id: string, points: number) => void;
-  adjustCustomerBalance: (id: string, amount: number) => void;
 
-  login: (name: string, role: 'CASHIER' | 'CUSTOMER' | 'WAITER' | 'ADMIN' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | 'HEAD_CHEF' | 'COOK' | 'EMPLOYEE', phone?: string, branchId?: string, departmentId?: string) => void;
-  logout: () => void;
-  onLogout: () => void;
-  addToCart: (item: MenuItem, customization?: any) => void;
-  removeFromCart: (uniqueId: string) => void;
-  updateCartQuantity: (uniqueId: string, delta: number) => void;
-  updateCartItem: (uniqueId: string, updates: Partial<OrderItem>) => void;
-  updateOrderItemStatus: (orderId: string, itemUniqueId: string, status: OrderStatus) => void;
-  cancelOrder: (orderId: string, reason: string) => void;
-  transferOrder: (orderId: string, targetTableId: string) => void;
-  mergeOrders: (sourceOrderId: string, targetOrderId: string) => void;
-  splitOrder: (orderId: string, itemsToSplit: { uniqueId: string, quantity: number }[]) => void;
-  refundOrder: (orderId: string, amount: number, items: { uniqueId: string, quantity: number }[]) => void;
-  submitOrder: (status: OrderStatus, paymentMethod?: PaymentMethod, discount?: number, customerDetails?: { name: string, phone: string, note?: string }) => void;
-  depositToWallet: (amount: number, bonus?: number) => void;
-  refundToWallet: (orderId: string) => void;
-  saveNewCard: (card: Omit<SavedCard, 'id'>) => void;
-  toggleFavorite: (itemId: string) => void;
-  setOrderType: (type: OrderType) => void;
-  reorder: (orderId: string) => void;
+  // Orders
+  orders: Order[];
+  activeOrders: Order[];
+  setOrders: (orders: Order[]) => void;
+  setActiveOrders: (orders: Order[]) => void;
+  addOrder: (order: Order) => void;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
 
+  // Tables
   tables: Table[];
+  setTables: (tables: Table[]) => void;
   selectedTable: Table | null;
   setSelectedTable: (table: Table | null) => void;
-  updateTableStatus: (tableId: string, status: TableStatus, extra?: Partial<Table>) => void;
+  updateTableStatus: (tableId: string, status: TableStatus, options?: { currentOrderId?: string; seatedAt?: Date; guestCount?: number }) => Promise<boolean>;
   transferTable: (fromId: string, toId: string) => void;
   mergeTables: (tableIds: string[]) => void;
-  editingOrderId: string | null;
-  clearCart: () => void;
-  voidOrder: (orderId: string) => void;
-  completeOrder: (orderId: string, payment: { method: string | PaymentMethod }) => void;
-  loadOrderToPOS: (order: Order) => void;
-  confirmOrder: (orderId: string) => void;
-  deliverOrder: (orderId: string) => void;
-  assignShelfToOrder: (orderId: string, shelf: string) => void;
-  collectOrderItemByAggregator: (orderId: string, itemUniqueId: string) => void;
+  seatTable: (tableId: string, guests: number) => Promise<boolean>;
+  loadOrderToPOS: (orderId: string) => void;
+  orderType: string;
+  setOrderType: (type: string) => void;
 
+  // Shifts
   currentShift: Shift | null;
-  shifts: Shift[];
-  openShift: (openingBalance: number, type: 'MORNING' | 'EVENING' | 'NIGHT') => void;
-  closeShift: (closingBalance: number) => void;
+  setCurrentShift: (shift: Shift | null) => void;
+  openShift: (openingBalance: number, type?: 'MORNING' | 'EVENING' | 'NIGHT') => Promise<boolean>;
+  closeShift: (closingBalance: number) => Promise<import('./src/services/shiftService').ShiftReconciliation | null>;
+  rollover: (closingBalance?: number) => Promise<{ closedShift: any; newShift: Shift }>;
+  fetchCurrentShift: () => Promise<void>;
+
+  // Employees
+  employees: Employee[];
+  setEmployees: (employees: Employee[]) => void;
+  addEmployee: (employee: Employee) => void;
+  updateEmployee: (id: string, employee: Partial<Employee>) => void;
+  deleteEmployee: (id: string) => void;
+
+  // Job Titles
+  jobTitles: JobTitle[];
+  setJobTitles: (jobTitles: JobTitle[]) => void;
+
+  // Customers
+  customers: Customer[];
+  setCustomers: (customers: Customer[]) => void;
+  addCustomer: (customer: Customer) => void;
+  updateCustomer: (customer: Customer) => void;
+  deleteCustomer: (id: string) => void;
+  adjustCustomerPoints: (customerId: string, points: number) => void;
+  adjustCustomerBalance: (customerId: string, amount: number) => void;
+
+  // Suppliers
+  suppliers: Supplier[];
+  setSuppliers: (suppliers: Supplier[]) => void;
+  addSupplier: (supplier: Supplier) => void;
+  updateSupplier: (supplier: Supplier) => void;
+  deleteSupplier: (id: string) => void;
+
+  // Bank Accounts
+  bankAccounts: BankAccount[];
+  setBankAccounts: (accounts: BankAccount[]) => void;
+  addBankAccount: (account: BankAccount) => void;
+  updateBankAccount: (account: BankAccount) => void;
+  deleteBankAccount: (id: string) => void;
+
+  // Financial Transactions
   financialTransactions: FinancialTransaction[];
-  addFinancialTransaction: (tx: Omit<FinancialTransaction, 'id' | 'timestamp' | 'status'>) => void;
+  setFinancialTransactions: (transactions: FinancialTransaction[]) => void;
+  addFinancialTransaction: (transaction: FinancialTransaction) => void;
 
-  feedbacks: CustomerFeedback[];
-  addFeedback: (fb: Omit<CustomerFeedback, 'id' | 'timestamp' | 'status'>) => void;
-  updateFeedback: (id: string, fb: Partial<CustomerFeedback>) => void;
-
-  staffTasks: StaffTask[];
-  addTask: (task: Omit<StaffTask, 'id' | 'status'>) => void;
-  updateTask: (id: string, task: Partial<StaffTask>) => void;
-
-  tableAssignments: TableAssignment[];
-  assignTable: (tableId: string, staffId: string) => void;
-  seatTable: (tableId: string, guestCount: number) => void;
-
-  notifications: { id: string; message: string; time: Date; read: boolean }[];
-  addNotification: (message: string) => void;
-  markNotificationRead: (id: string) => void;
-
-  attendances: Attendance[];
-  workSchedules: WorkSchedule[];
+  // Activity Logs
   activityLogs: ActivityLog[];
+  setActivityLogs: (logs: ActivityLog[]) => void;
+  addActivityLog: (log: ActivityLog) => void;
 
-  checkIn: (employeeId: string, note?: string) => void;
-  checkOut: (employeeId: string) => void;
-  recordAttendance: (attendance: Omit<Attendance, 'id'>) => void;
-  deleteAttendance: (id: string) => void;
-  addActivityLog: (employeeId: string, action: string, details?: any) => void;
-  updateWorkSchedule: (schedule: WorkSchedule) => void;
+  // Notifications
+  notifications: { id: string; message: string; type: 'success' | 'error' | 'info' }[];
+  addNotification: (message: string, type?: 'success' | 'error' | 'info') => void;
+  removeNotification: (id: string) => void;
+
+  // Blind Drop Submissions
+  blindDropSubmissions: BlindDropSubmission[];
+  submitBlindDrop: (submission: Omit<BlindDropSubmission, 'id' | 'submittedAt' | 'status'>) => void;
+
+  // Reconciliation Entries
+  reconciliationEntries: ReconciliationEntry[];
+  getReconciliationData: (date?: string) => ReconciliationEntry[];
+
+  // Day Close State
+  dayCloseState: DayCloseState | null;
+  businessDayState: BusinessDayState | null;
+  openBusinessDay: (userId: string, note?: string) => void;
+  closeBusinessDay: (userId: string, note?: string) => void;
+  executeDayClose: (managerId: string) => void;
+  canExecuteDayClose: () => boolean;
+
+  // Sync bridge
+  syncFromContext: (data: { orders?: Order[]; shifts?: Shift[]; financialTransactions?: FinancialTransaction[] }) => void;
 }
 
-const AppContext = createContext<AppContextType | undefined>(undefined);
 
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [activeOrders, setActiveOrders] = useState<Order[]>([
-    {
-      id: 'o-1',
-      orderNumber: 'ORD-1001',
-      type: OrderType.DINE_IN,
-      status: OrderStatus.IN_PROGRESS,
-      items: [
-        { itemId: '1', uniqueId: 'ui-1', name: 'برجر كلاسيك', quantity: 2, price: 25, basePrice: 25 },
-        { itemId: '3', uniqueId: 'ui-2', name: 'عصير برتقال', quantity: 2, price: 12, basePrice: 12 }
-      ],
-      tableId: 't-1',
-      createdAt: new Date(Date.now() - 30 * 60000),
-      subtotal: 74,
-      tax: 0,
-      discount: 0,
-      total: 74,
-      timeline: [{ status: OrderStatus.IN_PROGRESS, time: new Date() }]
-    },
-    {
-      id: 'o-2',
-      orderNumber: 'ORD-1002',
-      type: OrderType.DINE_IN,
-      status: OrderStatus.READY,
-      items: [
-        { itemId: '7', uniqueId: 'ui-3', name: 'مشاوي مشكلة', quantity: 1, price: 85, basePrice: 85 }
-      ],
-      tableId: 't-2',
-      createdAt: new Date(Date.now() - 45 * 60000),
-      subtotal: 85,
-      tax: 0,
-      discount: 0,
-      total: 85,
-      timeline: [{ status: OrderStatus.READY, time: new Date() }]
-    }
-  ]);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [userRole, setUserRole] = useState<'CASHIER' | 'CUSTOMER' | 'WAITER' | 'ADMIN' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | null>(null);
-  const [currentCart, setCurrentCart] = useState<OrderItem[]>([]);
-  const [cartOrderType, setCartOrderType] = useState<OrderType>(OrderType.TAKEAWAY);
-  const [currentShift, setCurrentShift] = useState<Shift | null>(null);
-  const [shifts, setShifts] = useState<Shift[]>([]);
-  const [selectedTable, setSelectedTable] = useState<Table | null>(null);
-  const [tables, setTables] = useState<Table[]>(TABLES);
-  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
-  const [financialTransactions, setFinancialTransactions] = useState<FinancialTransaction[]>([]);
+export const useApp = create<AppState>()(
+  persist(
+    (set, get) => ({
+      // Auth
+      currentUser: null,
+      isLoggedIn: false,
+      userRole: null,
+      login: (user: User) => set({ currentUser: user, isLoggedIn: true, userRole: user.role }),
+      logout: () => set({ currentUser: null, isLoggedIn: false, userRole: null, currentShift: null }),
 
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(MENU_ITEMS);
-  const [customers, setCustomers] = useState<Customer[]>([
-    {
-      id: 'c1',
-      name: 'محمد أحمد',
-      phone: '0599111222',
-      email: 'mohammad@example.com',
-      type: CustomerType.LOYAL,
-      points: 420,
-      totalSpent: 1200,
-      ordersCount: 12,
-      balance: 0,
-      allowCredit: true,
-      isBlocked: false,
-      addresses: [
-        { id: 'ca1', label: 'المنزل', city: 'نابلس', district: 'رفيديا', street: 'شارع الجامعة' }
-      ],
-      rating: 5,
-      notes: 'لا يحب البصل، يطلب دائماً شاورما',
-      lastVisit: new Date(Date.now() - 86400000),
-      createdAt: new Date(Date.now() - 30 * 86400000)
-    },
-    {
-      id: 'c2',
-      name: 'سارة علي',
-      phone: '0568111333',
-      email: 'sara@example.com',
-      type: CustomerType.REGULAR,
-      points: 150,
-      totalSpent: 450,
-      ordersCount: 5,
-      balance: 0,
-      allowCredit: false,
-      isBlocked: false,
-      addresses: [],
-      rating: 4,
-      lastVisit: new Date(),
-      createdAt: new Date(Date.now() - 15 * 86400000)
-    }
-  ]);
-  const [feedbacks, setFeedbacks] = useState<CustomerFeedback[]>([
-    {
-      id: 'fb_1',
-      customerName: 'أحمد محمد',
-      type: 'COMPLAINT',
-      category: 'SERVICE',
-      rating: 2,
-      comment: 'تأخر الطلب لأكثر من 30 دقيقة رغم أن الصالة كانت شبه فارغة.',
-      status: 'NEW',
-      timestamp: new Date(Date.now() - 3600000)
-    },
-    {
-      id: 'fb_2',
-      customerName: 'سارة علي',
-      type: 'COMPLIMENT',
-      category: 'FOOD',
-      rating: 5,
-      comment: 'الأكل رائع جداً والخدمة متميزة من قبل الكابتن خالد.',
-      status: 'REVIEWED',
-      timestamp: new Date(Date.now() - 7200000)
-    }
-  ]);
-  const [notifications, setNotifications] = useState<{ id: string; message: string; time: Date; read: boolean }[]>([]);
+      // Branches & Departments
+      branches: [],
+      departments: [],
+      setBranches: (branches) => set({ branches }),
+      setDepartments: (departments) => set({ departments }),
 
-  const addNotification = (message: string) => {
-    setNotifications(prev => [{ id: Math.random().toString(36).substr(2, 9), message, time: new Date(), read: false }, ...prev]);
-  };
+      // Menu Items
+      menuItems: [],
+      diningZones: [],
+      tablesLoading: false,
+      setMenuItems: (menuItems) => set({ menuItems }),
+      addMenuItem: (item) => set((state) => ({ menuItems: [...state.menuItems, item] })),
+      updateMenuItem: (item) =>
+        set((state) => ({
+          menuItems: state.menuItems.map((i) => (i.id === item.id ? item : i)),
+        })),
+      deleteMenuItem: (id) =>
+        set((state) => ({
+          menuItems: state.menuItems.filter((i) => i.id !== id),
+        })),
+      fetchDiningZones: async (branchId?: number) => {
+        try {
+          set({ tablesLoading: true });
+          const params: Record<string, any> = {};
+          if (branchId) params.branch_id = branchId;
+          const response = await api.get('/tables', { params });
+          const zones = response.data?.data ?? response.data;
+          
+          if (Array.isArray(zones)) {
+            const halls: Hall[] = [];
+            const allTables: Table[] = [];
+            
+            zones.forEach((zone: any) => {
+              halls.push({
+                id: String(zone.id),
+                name: zone.name,
+                code: zone.code,
+                branch_id: zone.branch_id,
+                status: zone.status,
+              });
+              
+              if (Array.isArray(zone.tables)) {
+                zone.tables.forEach((table: any) => {
+                  const order = table.current_order;
+                  allTables.push({
+                    id: String(table.id),
+                    number: table.number || parseInt(String(table.id)),
+                    table_number: table.table_number || `${zone.code}${table.number || ''}`,
+                    label: table.table_number || `${zone.code}${table.number || ''}`,
+                    status: table.status || 'AVAILABLE',
+                    capacity: table.capacity || 4,
+                    hallId: String(zone.id),
+                    qr_code: table.qr_code,
+                    qr_url: table.qr_url,
+                    seatedAt: table.seated_at,
+                    guestCount: table.customer_count,
+                    currentOrderId: table.current_order_id,
+                    mergedWithId: table.merged_with_id ? String(table.merged_with_id) : undefined,
+                    mergedWithTableNumber: table.merged_with_table_number || undefined,
+                    mergeInfo: table.merge_info || null,
+                    waiterCalledAt: table.waiter_called_at || null,
+                    orders: table.orders || [],
+                    position: { x: (parseInt(table.id) % 10) * 120 + 50, y: Math.floor(parseInt(table.id) / 10) * 120 + 50 },
+                  });
+                });
+              }
+            });
+            
+            set({ diningZones: halls, tables: allTables as any, tablesLoading: false });
+          } else {
+            set({ tablesLoading: false });
+          }
+        } catch (error) {
+          console.error('Failed to fetch dining zones:', error);
+          set({ tablesLoading: false });
+        }
+      },
 
-  const markNotificationRead = (id: string) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-  };
-  const [staffTasks, setStaffTasks] = useState<StaffTask[]>([
-    {
-      id: 'task_1',
-      title: 'تجهيز طاولات الـ VIP',
-      description: 'تجهيز الطاولات لمناسبة خاصة الساعة 8 مساءً',
-      assignedTo: 'e2', // Assuming e2 is a waiter
-      priority: 'HIGH',
-      status: 'PENDING',
-      dueDate: new Date()
-    },
-    {
-      id: 'task_2',
-      title: 'فحص نظافة التراس',
-      description: 'التأكد من نظافة جميع الطاولات في منطقة التراس',
-      assignedTo: 'e3',
-      priority: 'MEDIUM',
-      status: 'COMPLETED',
-      dueDate: new Date()
-    }
-  ]);
-  const [tableAssignments, setTableAssignments] = useState<TableAssignment[]>([]);
-  
-  const [branches, setBranches] = useState<Branch[]>([
-    { id: 'b1', name: 'فرع غزة الرئيسي', address: 'شارع الثلاثيني', phone: '0599001122', status: 'ACTIVE', code: 'GZ-MAIN', isMainBranch: true, city: 'غزة', closingTime: '12:00 AM', openingTime: '10:00 AM'},
-    { id: 'b2', name: 'فرع الرمال', address: 'دوار حيدر', phone: '0599112233', status: 'ACTIVE', code: 'GZ-RMAL', isMainBranch: false, city: 'نابلس', closingTime: '12:00 AM', openingTime: '10:00 AM' }
-  ]);
+      // تحديث الطاولات فقط - يدمج البيانات الجديدة مع الموجودة (تحديث خفيف)
+      fetchTables: async (branchId?: number) => {
+        try {
+          const params: Record<string, any> = {};
+          if (branchId) params.branch_id = branchId;
+          const response = await api.get('/tables', { params });
+          const zones = response.data?.data ?? response.data;
+          
+          if (Array.isArray(zones)) {
+            const updates: Record<string, Partial<Table>> = {};
+            
+            zones.forEach((zone: any) => {
+              if (Array.isArray(zone.tables)) {
+                zone.tables.forEach((table: any) => {
+                  const order = table.current_order;
+                  updates[String(table.id)] = {
+                    status: table.status || 'AVAILABLE',
+                    seatedAt: table.seated_at ? new Date(table.seated_at) : undefined,
+                    guestCount: table.customer_count || undefined,
+                    currentOrderId: table.current_order_id || undefined,
+                    mergedWithId: table.merged_with_id ? String(table.merged_with_id) : undefined,
+                    mergedWithTableNumber: table.merged_with_table_number || undefined,
+                    mergeInfo: table.merge_info || null,
+                    waiterCalledAt: table.waiter_called_at || null,
+                    orders: table.orders || [],
+                  };
+                });
+              }
+            });
+            
+            // دمج التحديثات مع الطاولات الموجودة (تحديث الحقول المتغيرة فقط)
+            set((state) => ({
+              tables: state.tables.map((t) => {
+                const update = updates[t.id];
+                if (update) {
+                  return { ...t, ...update };
+                }
+                return t;
+              }),
+            }));
+          }
+        } catch (error) {
+          console.error('Failed to fetch tables:', error);
+        }
+      },
 
-  const [departments, setDepartments] = useState<Department[]>([
-    {
-      id: 'd-italian',
-      name: 'القسم الإيطالي',
-      nameAr: 'المطبخ الإيطالي',
-      shortName: 'ITA',
-      branchId: 'b1',
-      description: 'تحضير المأكولات الإيطالية والبيتزا والباستا',
-      icon: '🍕',
-      color: '#ef4444',
-      stationNumber: '1',
-      location: 'Station 1',
-      hasKds: true,
-      kdsScreenId: 'KDS-ITA-01',
-      kdsDeviceName: 'Italian Kitchen Screen',
-      defaultPrepTime: 10,
-      type: 'MAIN_KITCHEN',
-      displayOrder: 1,
-      status: 'ACTIVE',
-      maxConcurrentOrders: 10,
-      priority: 1,
-      autoPrintTicket: true,
-      notifications: { sound: true, flash: true, push: true },
-      orderTypeVisibility: [OrderType.DINE_IN, OrderType.TAKEAWAY, OrderType.DELIVERY],
-      requiresAssembly: true
-    },
-    {
-      id: 'd-shawarma',
-      name: 'قسم الشاورما',
-      nameAr: 'قسم الشاورما',
-      shortName: 'SHA',
-      branchId: 'b1',
-      description: 'تحضير الشاورما والوجبات السريعة',
-      icon: '🌯',
-      color: '#f59e0b',
-      stationNumber: '2',
-      location: 'Station 2',
-      hasKds: true,
-      kdsScreenId: 'KDS-SHA-01',
-      kdsDeviceName: 'Shawarma Kitchen Screen',
-      defaultPrepTime: 8,
-      type: 'MAIN_KITCHEN',
-      displayOrder: 2,
-      status: 'ACTIVE',
-      maxConcurrentOrders: 15,
-      priority: 1,
-      autoPrintTicket: true,
-      notifications: { sound: true, flash: true, push: true },
-      orderTypeVisibility: [OrderType.DINE_IN, OrderType.TAKEAWAY, OrderType.DELIVERY],
-      requiresAssembly: true
-    },
-    {
-      id: 'd-bar',
-      name: 'البار (المشروبات)',
-      nameAr: 'بار المشروبات',
-      shortName: 'BAR',
-      branchId: 'b1',
-      description: 'تحضير المشروبات والكوكتيلات والقهوة',
-      icon: '🥤',
-      color: '#3b82f6',
-      stationNumber: '3',
-      location: 'Station 3',
-      hasKds: true,
-      kdsScreenId: 'KDS-BAR-01',
-      kdsDeviceName: 'Drink Bar Screen',
-      defaultPrepTime: 2,
-      type: 'BAR',
-      displayOrder: 3,
-      status: 'ACTIVE',
-      maxConcurrentOrders: 20,
-      priority: 3,
-      autoPrintTicket: false,
-      notifications: { sound: true, flash: false, push: true },
-      orderTypeVisibility: [OrderType.DINE_IN, OrderType.TAKEAWAY, OrderType.DELIVERY],
-      requiresAssembly: false
-    },
-    {
-      id: 'd-grills',
-      name: 'قسم المشاوي',
-      nameAr: 'قسم المشاوي واللحوم',
-      shortName: 'GRL',
-      branchId: 'b1',
-      description: 'تحضير المشاوي واللحوم على الفحم',
-      icon: '🍖',
-      color: '#f59e0b',
-      stationNumber: '2',
-      location: 'Station 2',
-      hasKds: true,
-      kdsScreenId: 'KDS-GRL-01',
-      kdsDeviceName: 'Grills Station Screen',
-      defaultPrepTime: 15,
-      type: 'MAIN_KITCHEN',
-      displayOrder: 2,
-      status: 'ACTIVE',
-      maxConcurrentOrders: 8,
-      priority: 2,
-      autoPrintTicket: true,
-      notifications: { sound: true, flash: true, push: true },
-      orderTypeVisibility: [OrderType.DINE_IN, OrderType.TAKEAWAY, OrderType.DELIVERY],
-      requiresAssembly: true
-    },
-    {
-      id: 'd-fastfood',
-      name: 'الوجبات السريعة',
-      nameAr: 'قسم الوجبات السريعة',
-      shortName: 'FF',
-      branchId: 'b1',
-      description: 'تحضير البرجر والبطاطس والوجبات السريعة',
-      icon: '🍔',
-      color: '#10b981',
-      stationNumber: '4',
-      location: 'Station 4',
-      hasKds: true,
-      kdsScreenId: 'KDS-FF-01',
-      kdsDeviceName: 'Fast Food Screen',
-      defaultPrepTime: 5,
-      type: 'FAST_FOOD',
-      displayOrder: 4,
-      status: 'ACTIVE',
-      maxConcurrentOrders: 15,
-      priority: 4,
-      autoPrintTicket: true,
-      notifications: { sound: true, flash: false, push: true },
-      orderTypeVisibility: [OrderType.DINE_IN, OrderType.TAKEAWAY, OrderType.DELIVERY],
-      requiresAssembly: true
-    },
-    {
-      id: 'd-desserts',
-      name: 'قسم الحلويات',
-      nameAr: 'قسم الحلويات والشرقيات',
-      shortName: 'DES',
-      branchId: 'b1',
-      description: 'تحضير الحلويات والشرقيات والكيك',
-      icon: '🍰',
-      color: '#ec4899',
-      stationNumber: '5',
-      location: 'Station 5',
-      hasKds: false,
-      defaultPrepTime: 3,
-      type: 'DESSERT',
-      displayOrder: 5,
-      status: 'ACTIVE',
-      maxConcurrentOrders: 10,
-      priority: 5,
-      autoPrintTicket: true,
-      notifications: { sound: false, flash: false, push: true },
-      orderTypeVisibility: [OrderType.DINE_IN, OrderType.TAKEAWAY],
-      requiresAssembly: false
-    }
-  ]);
-  const [jobTitles, setJobTitles] = useState<JobTitle[]>([
-    { id: 'jt1', name: 'مدير عام', departmentIds: ['d1'], description: 'المسؤول التنفيذي' },
-    { id: 'jt2', name: 'شيف تنفيذي', departmentIds: ['d2'], description: 'إدارة المطبخ' },
-    { id: 'jt3', name: 'كاشير', departmentIds: ['d3'], description: 'إدارة الصندوق' }
-  ]);
-  const [jobTypes, setJobTypes] = useState<JobType[]>([
-    { id: 'ty1', name: 'دوام كامل (Permanent)', description: 'تثبيت كامل' },
-    { id: 'ty2', name: 'دوام جزئي (Part-time)', description: 'نظام الساعات' }
-  ]);
-  const [employees, setEmployees] = useState<Employee[]>([
-    {
-      id: 'e1', employeeId: 'EMP-101', name: 'ياسين أحمد', phone: '0599111222', email: 'admin@resto.com',
-      address: 'غزة - الرمال', nationalId: '401122334', dob: new Date(1985, 2, 15),
-      jobTitleId: 'jt1', departmentId: 'd1', branchId: 'b1', typeId: 'ty1',
-      hireDate: new Date(2020, 0, 1), salary: 5000, status: EmployeeStatus.ACTIVE, role: 'ADMIN',
-      permissions: ['ALL'], pin: '0000'
-    },
-    {
-      id: 'e2', employeeId: 'EMP-102', name: 'محمد علي', phone: '0599111333', email: 'b_manager@resto.com',
-      address: 'غزة - الرمال', nationalId: '401122335', dob: new Date(1988, 5, 20),
-      jobTitleId: 'jt1', departmentId: 'd1', branchId: 'b2', typeId: 'ty1',
-      hireDate: new Date(2021, 0, 1), salary: 3500, status: EmployeeStatus.ACTIVE, role: 'BRANCH_MANAGER',
-      permissions: ['MANAGE_BRANCH'], pin: '1111'
-    },
-    {
-      id: 'e3',
-      employeeId: 'EMP-103',
-      name: 'أحمد بشير',
-      phone: '0599123456',
-      email: 'ahmad@example.com',
-      address: 'غزة، الرمال',
-      nationalId: '123456789',
-      dob: new Date('1990-01-01'),
-      hireDate: new Date('2023-01-01'),
-      salary: 2500,
-      status: EmployeeStatus.ACTIVE,
-      role: 'CASHIER',
-      jobTitleId: 'jt3',
-      departmentId: 'd3',
-      branchId: 'b1',
-      typeId: 'ty1',
-      permissions: ['CREATE_ORDER', 'CLOSE_ORDER', 'RECEIVE_PAYMENT'],
-      pin: '1234'
-    },
-    {
-      id: 'e4',
-      employeeId: 'EMP-104',
-      name: 'أحمد محمد',
-      phone: '0599123456',
-      email: 'ahmad@email.com',
-      address: 'غزة، الرمال',
-      nationalId: '123456780',
-      dob: new Date('1995-05-15'),
-      hireDate: new Date('2024-01-01'),
-      salary: 3000,
-      status: EmployeeStatus.ACTIVE,
-      role: 'EMPLOYEE',
-      jobTitleId: 'jt2',
-      departmentId: 'd-shawarma',
-      branchId: 'b1',
-      typeId: 'ty1',
-      permissions: ['VIEW_DASHBOARD'],
-      pin: '1234'
-    }
-  ]);
-  const [attendances, setAttendances] = useState<Attendance[]>([
-    { id: 'att1', employeeId: 'e4', date: new Date(2026, 2, 19), checkIn: new Date(2026, 2, 19, 8, 5), checkOut: new Date(2026, 2, 19, 16, 10), status: 'PRESENT' },
-    { id: 'att2', employeeId: 'e4', date: new Date(2026, 2, 18), checkIn: new Date(2026, 2, 18, 7, 55), checkOut: new Date(2026, 2, 18, 16, 5), status: 'PRESENT' },
-    { id: 'att3', employeeId: 'e4', date: new Date(2026, 2, 17), checkIn: new Date(2026, 2, 17, 8, 15), checkOut: new Date(2026, 2, 17, 16, 0), status: 'LATE' },
-    { id: 'att4', employeeId: 'e1', date: new Date(2026, 2, 24), checkIn: new Date(2026, 2, 24, 8, 0), checkOut: new Date(2026, 2, 24, 17, 0), status: 'PRESENT' },
-    { id: 'att5', employeeId: 'e1', date: new Date(2026, 2, 25), checkIn: new Date(2026, 2, 25, 7, 50), checkOut: new Date(2026, 2, 25, 17, 15), status: 'PRESENT' },
-    { id: 'att6', employeeId: 'e1', date: new Date(2026, 2, 26), checkIn: new Date(2026, 2, 26, 8, 5), status: 'PRESENT' },
-    { id: 'att7', employeeId: 'e2', date: new Date(2026, 2, 24), checkIn: new Date(2026, 2, 24, 8, 30), checkOut: new Date(2026, 2, 24, 16, 30), status: 'LATE' },
-    { id: 'att8', employeeId: 'e2', date: new Date(2026, 2, 25), checkIn: new Date(2026, 2, 25, 8, 10), checkOut: new Date(2026, 2, 25, 16, 45), status: 'PRESENT' },
-    { id: 'att9', employeeId: 'e2', date: new Date(2026, 2, 26), checkIn: new Date(2026, 2, 26, 0, 0), status: 'ABSENT', note: 'إجازة مرضية' },
-    { id: 'att10', employeeId: 'e3', date: new Date(2026, 2, 25), checkIn: new Date(2026, 2, 25, 9, 0), checkOut: new Date(2026, 2, 25, 17, 0), status: 'LATE', note: 'تأخر بسبب المواصلات' },
-    { id: 'att11', employeeId: 'e3', date: new Date(2026, 2, 26), checkIn: new Date(2026, 2, 26, 7, 55), status: 'PRESENT' },
-    { id: 'att12', employeeId: 'e4', date: new Date(2026, 2, 24), checkIn: new Date(2026, 2, 24, 8, 0), checkOut: new Date(2026, 2, 24, 16, 0), status: 'PRESENT' },
-    { id: 'att13', employeeId: 'e4', date: new Date(2026, 2, 25), checkIn: new Date(2026, 2, 25, 8, 0), checkOut: new Date(2026, 2, 25, 16, 0), status: 'PRESENT' },
-    { id: 'att14', employeeId: 'e4', date: new Date(2026, 2, 26), checkIn: new Date(2026, 2, 26, 8, 20), status: 'LATE' },
-  ]);
-  const [workSchedules, setWorkSchedules] = useState<WorkSchedule[]>([
-    {
-      id: 'ws1',
-      employeeId: 'e4',
-      branchId: 'b1',
-      departmentId: 'd-shawarma',
-      shiftId: 'sh1',
-      dayOfWeek: 6, // Saturday
-      startTime: '08:00',
-      endTime: '16:00'
-    },
-    { id: 'ws2', employeeId: 'e4', branchId: 'b1', departmentId: 'd-shawarma', shiftId: 'sh1', dayOfWeek: 0, startTime: '08:00', endTime: '16:00' },
-    { id: 'ws3', employeeId: 'e4', branchId: 'b1', departmentId: 'd-shawarma', shiftId: 'sh1', dayOfWeek: 1, startTime: '08:00', endTime: '16:00' },
-    { id: 'ws4', employeeId: 'e4', branchId: 'b1', departmentId: 'd-shawarma', shiftId: 'sh1', dayOfWeek: 2, startTime: '08:00', endTime: '16:00' },
-    { id: 'ws5', employeeId: 'e4', branchId: 'b1', departmentId: 'd-shawarma', shiftId: 'sh1', dayOfWeek: 3, startTime: '08:00', endTime: '16:00' },
-    { id: 'ws6', employeeId: 'e4', branchId: 'b1', departmentId: 'd-shawarma', shiftId: 'sh1', dayOfWeek: 4, startTime: '08:00', endTime: '16:00' },
-  ]);
-  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([
-    { id: 'log_1', employeeId: 'emp-1', action: 'فتح شفت جديد', timestamp: new Date(Date.now() - 3600000), details: { openingBalance: 500 } },
-    { id: 'log_2', employeeId: 'emp-1', action: 'إضافة مصروف: كهرباء', timestamp: new Date(Date.now() - 2400000), details: { amount: 150 } },
-    { id: 'log_3', employeeId: 'emp-2', action: 'تعديل سعر صنف: برجر كلاسيك', timestamp: new Date(Date.now() - 1200000), details: { oldPrice: 25, newPrice: 30 } },
-    { id: 'log_4', employeeId: 'emp-1', action: 'إلغاء طلب #ORD-1005', timestamp: new Date(Date.now() - 600000), details: { reason: 'خطأ في الطلب' } },
-  ]);
+      // Orders
+      orders: [],
+      activeOrders: [],
+      setOrders: (orders) => set({ orders }),
+      setActiveOrders: (activeOrders) => set({ activeOrders }),
+      addOrder: (order) =>
+        set((state) => ({
+          orders: [...state.orders, order],
+          activeOrders: order.status === 'PENDING' || order.status === 'PREPARING' || order.status === 'IN_PROGRESS'
+            ? [...state.activeOrders, order]
+            : state.activeOrders,
+        })),
+      updateOrderStatus: (orderId, status) =>
+        set((state) => ({
+          orders: state.orders.map((o) => (o.id === orderId ? { ...o, status } : o)),
+          activeOrders:
+            status === 'COMPLETED' || status === 'CANCELED' || status === 'REFUNDED'
+              ? state.activeOrders.filter((o) => o.id !== orderId)
+              : state.activeOrders.map((o) => (o.id === orderId ? { ...o, status } : o)),
+        })),
 
-  const updateOrderStatus = (id: string, status: OrderStatus) => {
-    setActiveOrders(prev => prev.map(o => {
-      if (o.id === id) {
-        const newTimeline = [...o.timeline, { status, time: new Date() }];
-        // If order becomes READY, mark all items as READY too if they aren't
-        const newItems = status === OrderStatus.READY
-          ? o.items.map(item => ({ ...item, status: OrderStatus.READY, preparedAt: item.preparedAt || new Date() }))
-          : o.items;
+      // Tables
+      tables: TABLES,
+      setTables: (tables) => set({ tables }),
+      selectedTable: null,
+      setSelectedTable: (table) => set({ selectedTable: table }),
+      updateTableStatus: async (tableId, status, options) => {
+        try {
+          await api.put(`/tables/${tableId}/status`, { status });
+          set((state) => ({
+            tables: state.tables.map((t) =>
+              t.id === tableId
+                ? {
+                    ...t,
+                    status,
+                    currentOrderId: options && 'currentOrderId' in options ? options.currentOrderId : t.currentOrderId,
+                    seatedAt: options && 'seatedAt' in options ? options.seatedAt : t.seatedAt,
+                    guestCount: options && 'guestCount' in options ? options.guestCount : t.guestCount,
+                  }
+                : t
+            ),
+          }));
+          return true;
+        } catch (error) {
+          // كان الخطأ يتبلع هون بصمت — الطاولة تضل بحالتها القديمة بالباك اند
+          // بس الواجهة ما بتعرف إنه في مشكلة (مثلاً لو فيها طلب نشط لسا وما
+          // انحررت). لازم المتصل يتحقق من القيمة الراجعة ويعرض خطأ للمستخدم.
+          console.error('Failed to update table status:', error);
+          return false;
+        }
+      },
+      transferTable: (fromId, toId) =>
+        set((state) => {
+          const fromTable = state.tables.find((t) => t.id === fromId);
+          const toTable = state.tables.find((t) => t.id === toId);
+          if (!fromTable || !toTable) return state;
+          return {
+            tables: state.tables.map((t) => {
+              if (t.id === fromId) return { ...t, status: TableStatus.AVAILABLE, currentOrderId: undefined, seatedAt: undefined };
+              if (t.id === toId) return { ...t, status: fromTable.status, currentOrderId: fromTable.currentOrderId, seatedAt: fromTable.seatedAt };
+              return t;
+            }),
+          };
+        }),
+      mergeTables: (tableIds) => {
+        // Merge logic - mark tables as merged
+        set((state) => ({
+          tables: state.tables.map((t) =>
+            tableIds.includes(t.id) && t.id !== tableIds[0]
+              ? { ...t, mergedWithId: tableIds[0] }
+              : t
+          ),
+        }));
+      },
+      seatTable: async (tableId, guests) => {
+        try {
+          const count = Math.max(1, guests);
+          await api.post(`/tables/${tableId}/seat`, { customer_count: count });
+          set((state) => ({
+            tables: state.tables.map((t) =>
+              t.id === tableId
+                ? { ...t, status: TableStatus.OCCUPIED, seatedAt: new Date() }
+                : t
+            ),
+          }));
+          return true;
+        } catch (error) {
+          console.error('Failed to seat table:', error);
+          return false;
+        }
+      },
+      loadOrderToPOS: (orderId) => {
+        // Load order to POS - this is mainly a navigation hint
+        console.debug("loadOrderToPOS", orderId);
+      },
+      orderType: "dine_in",
+      setOrderType: (type) => set({ orderType: type }),
 
-        return { ...o, status, timeline: newTimeline, items: newItems };
-      }
-      return o;
-    }));
-
-    const order = activeOrders.find(o => o.id === id);
-    if (status === OrderStatus.READY && order) {
-      addNotification(`الطلب #${order.orderNumber} جاهز الآن!`);
-    }
-  };
-
-  const addBranch = (b: Omit<Branch, 'id'>) => setBranches(p => [...p, { ...b, id: 'b_' + Math.random().toString(36).substr(2, 5) }]);
-  const updateBranch = (id: string, b: Partial<Branch>) => setBranches(p => p.map(x => x.id === id ? { ...x, ...b } : x));
-  const deleteBranch = (id: string) => setBranches(p => p.filter(x => x.id !== id));
-  const addDepartment = (d: Omit<Department, 'id'>) => setDepartments(p => [...p, { ...d, id: 'd_' + Math.random().toString(36).substr(2, 5) }]);
-  const updateDepartment = (id: string, d: Partial<Department>) => setDepartments(p => p.map(x => x.id === id ? { ...x, ...d } : x));
-  const deleteDepartment = (id: string) => setDepartments(p => p.filter(x => x.id !== id));
-  const addJobTitle = (jt: Omit<JobTitle, 'id'>) => setJobTitles(p => [...p, { ...jt, id: 'jt_' + Math.random().toString(36).substr(2, 5) }]);
-  const updateJobTitle = (id: string, jt: Partial<JobTitle>) => setJobTitles(p => p.map(x => x.id === id ? { ...x, ...jt } : x));
-  const deleteJobTitle = (id: string) => setJobTitles(p => p.filter(x => x.id !== id));
-  const addJobType = (jt: Omit<JobType, 'id'>) => setJobTypes(p => [...p, { ...jt, id: 'ty_' + Math.random().toString(36).substr(2, 5) }]);
-  const updateJobType = (id: string, jt: Partial<JobType>) => setJobTypes(p => p.map(x => x.id === id ? { ...x, ...jt } : x));
-  const deleteJobType = (id: string) => setJobTypes(p => p.filter(x => x.id !== id));
-  const addEmployee = (e: Omit<Employee, 'id'>) => setEmployees(p => [...p, { ...e, id: 'e_' + Math.random().toString(36).substr(2, 5) }]);
-  const updateEmployee = (id: string, e: Partial<Employee>) => setEmployees(p => p.map(x => x.id === id ? { ...x, ...e } : x));
-  const deleteEmployee = (id: string) => setEmployees(p => p.filter(x => x.id !== id));
-
-  const addMenuItem = (item: Omit<MenuItem, 'id'>) => {
-    const newItem = { ...item, id: Math.random().toString(36).substr(2, 9) };
-    setMenuItems(prev => [...prev, newItem]);
-  };
-  const updateMenuItem = (id: string, item: Partial<MenuItem>) => {
-    setMenuItems(prev => prev.map(i => i.id === id ? { ...i, ...item } : i));
-  };
-  const deleteMenuItem = (id: string) => {
-    setMenuItems(prev => prev.filter(i => i.id !== id));
-  };
-
-  const addCustomer = (customer: Omit<Customer, 'id' | 'createdAt' | 'points' | 'totalSpent' | 'ordersCount' | 'balance' | 'isBlocked' | 'addresses' | 'rating'>) => {
-    const newCustomer: Customer = {
-      ...customer,
-      id: Math.random().toString(36).substr(2, 9),
-      createdAt: new Date(),
-      points: 0,
-      totalSpent: 0,
-      ordersCount: 0,
-      balance: 0,
-      isBlocked: false,
-      addresses: [],
-      rating: 5
-    };
-    setCustomers(prev => [...prev, newCustomer]);
-  };
-  const updateCustomer = (id: string, customer: Partial<Customer>) => {
-    setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...customer } : c));
-  };
-  const deleteCustomer = (id: string) => {
-    setCustomers(prev => prev.filter(c => c.id !== id));
-  };
-  const addCustomerAddress = (customerId: string, address: Omit<CustomerAddress, 'id'>) => {
-    setCustomers(prev => prev.map(c => c.id === customerId ? {
-      ...c,
-      addresses: [...c.addresses, { ...address, id: Math.random().toString(36).substr(2, 5) }]
-    } : c));
-  };
-  const removeCustomerAddress = (customerId: string, addressId: string) => {
-    setCustomers(prev => prev.map(c => c.id === customerId ? {
-      ...c,
-      addresses: c.addresses.filter(a => a.id !== addressId)
-    } : c));
-  };
-  const toggleBlockCustomer = (id: string) => {
-    setCustomers(prev => prev.map(c => c.id === id ? { ...c, isBlocked: !c.isBlocked } : c));
-  };
-  const adjustCustomerPoints = (id: string, points: number) => {
-    setCustomers(prev => prev.map(c => c.id === id ? { ...c, points: c.points + points } : c));
-  };
-  const adjustCustomerBalance = (id: string, amount: number) => {
-    setCustomers(prev => prev.map(c => c.id === id ? { ...c, balance: c.balance + amount } : c));
-  };
-
-  const login = (name: string, role: 'CASHIER' | 'CUSTOMER' | 'WAITER' | 'ADMIN' | 'BRANCH_MANAGER' | 'HOSPITALITY' | 'DEPARTMENT_STAFF' | 'ORDER_AGGREGATOR' | 'FINANCE' | 'HEAD_CHEF' | 'COOK' | 'EMPLOYEE', phone: string = '', branchId: string = 'b1', departmentId?: string) => {
-    setUserRole(role);
-
-    // Try to find matching employee for richer profile
-    const existingEmp = employees.find(e => e.name === name || e.employeeId === name);
-
-    setCurrentUser({
-      id: existingEmp?.id || 'u_' + Math.random().toString(36).substr(2, 5),
-      name: existingEmp?.name || name,
-      phone: existingEmp?.phone || phone,
-      role: existingEmp?.role || (role === 'ADMIN' ? 'ADMIN' : role === 'BRANCH_MANAGER' ? 'BRANCH_MANAGER' : role),
-      branchId: existingEmp?.branchId || ((role === 'BRANCH_MANAGER' || role === 'DEPARTMENT_STAFF' || role === 'ORDER_AGGREGATOR' || role === 'FINANCE') ? branchId : undefined),
-      departmentId: existingEmp?.departmentId || (role === 'DEPARTMENT_STAFF' ? departmentId : undefined),
-      points: 120, balance: 350.0, tier: 'GOLD', vouchers: [], favorites: ['1', '3'], addresses: [], savedCards: [], transactions: []
-    });
-  };
-
-  const logout = () => { setCurrentUser(null); setUserRole(null); };
-  const openShift = (openingBalance: number, type: 'MORNING' | 'EVENING' | 'NIGHT') => {
-    if (!currentUser) return;
-    setCurrentShift({
-      id: 'sh_' + Math.random().toString(36).substr(2, 5),
-      cashierId: currentUser.id,
-      startTime: new Date(),
-      openingBalance,
-      status: 'OPEN',
-      type
-    });
-    addActivityLog(currentUser.id, 'Opened Shift', { openingBalance, type });
-  };
-  const closeShift = (closingBalance: number) => {
-    if (!currentShift || !currentUser) return;
-
-    // Calculate expected balance
-    const shiftTransactions = financialTransactions.filter(tx => tx.shiftId === currentShift.id);
-    const totalSales = shiftTransactions.filter(tx => tx.type === FinancialTransactionType.SALE).reduce((sum, tx) => sum + tx.amount, 0);
-    const totalExpenses = shiftTransactions.filter(tx => tx.type === FinancialTransactionType.EXPENSE).reduce((sum, tx) => sum + tx.amount, 0);
-    const totalWithdrawals = shiftTransactions.filter(tx => tx.type === FinancialTransactionType.WITHDRAWAL).reduce((sum, tx) => sum + tx.amount, 0);
-    const totalDeposits = shiftTransactions.filter(tx => tx.type === FinancialTransactionType.DEPOSIT).reduce((sum, tx) => sum + tx.amount, 0);
-    const totalRefunds = shiftTransactions.filter(tx => tx.type === FinancialTransactionType.REFUND).reduce((sum, tx) => sum + tx.amount, 0);
-
-    const expectedBalance = currentShift.openingBalance + totalSales + totalDeposits - totalExpenses - totalWithdrawals - totalRefunds;
-
-    const closedShift: Shift = {
-      ...currentShift,
-      status: 'CLOSED',
-      endTime: new Date(),
-      closingBalance,
-      expectedBalance,
-      totalSales,
-      totalExpenses,
-      totalWithdrawals
-    };
-
-    setShifts(prev => [closedShift, ...prev]);
-    setCurrentShift(null);
-    addActivityLog(currentUser.id, 'Closed Shift', { expectedBalance, closingBalance, difference: closingBalance - expectedBalance });
-  };
-
-  const checkIn = (employeeId: string, note?: string) => {
-    const newAttendance: Attendance = {
-      id: 'att_' + Math.random().toString(36).substr(2, 9),
-      employeeId,
-      date: new Date(),
-      checkIn: new Date(),
-      status: 'PRESENT',
-      note
-    };
-    setAttendances(prev => [newAttendance, ...prev]);
-  };
-
-  const recordAttendance = (attendance: Omit<Attendance, 'id'>) => {
-    const newAttendance: Attendance = {
-      ...attendance,
-      id: 'att_' + Math.random().toString(36).substr(2, 9),
-    };
-    setAttendances(prev => [newAttendance, ...prev]);
-  };
-
-  const deleteAttendance = (id: string) => {
-    setAttendances(prev => prev.filter(a => a.id !== id));
-  };
-
-  const checkOut = (employeeId: string) => {
-    setAttendances(prev => prev.map(att =>
-      att.employeeId === employeeId && !att.checkOut
-        ? { ...att, checkOut: new Date() }
-        : att
-    ));
-  };
-
-  const addActivityLog = (employeeId: string, action: string, details?: any) => {
-    const newLog: ActivityLog = {
-      id: 'log_' + Math.random().toString(36).substr(2, 9),
-      employeeId,
-      action,
-      timestamp: new Date(),
-      details
-    };
-    setActivityLogs(prev => [newLog, ...prev]);
-  };
-
-  const updateWorkSchedule = (schedule: WorkSchedule) => {
-    setWorkSchedules(prev => {
-      const exists = prev.find(s => s.employeeId === schedule.employeeId && s.dayOfWeek === schedule.dayOfWeek);
-      if (exists) {
-        return prev.map(s => s.id === exists.id ? schedule : s);
-      }
-      return [...prev, { ...schedule, id: 'sch_' + Math.random().toString(36).substr(2, 9) }];
-    });
-  };
-
-  const addFinancialTransaction = (tx: Omit<FinancialTransaction, 'id' | 'timestamp' | 'status'>) => {
-    const newTx: FinancialTransaction = {
-      ...tx,
-      id: 'ftx_' + Math.random().toString(36).substr(2, 9),
-      timestamp: new Date(),
-      status: 'PENDING'
-    };
-    setFinancialTransactions(prev => [newTx, ...prev]);
-    addActivityLog(tx.cashierId, `Financial Transaction: ${tx.type}`, { amount: tx.amount, reason: tx.reason });
-  };
-
-  const addFeedback = (fb: Omit<CustomerFeedback, 'id' | 'timestamp' | 'status'>) => {
-    setFeedbacks(prev => [{
-      ...fb,
-      id: 'fb_' + Math.random().toString(36).substr(2, 9),
-      timestamp: new Date(),
-      status: 'NEW'
-    }, ...prev]);
-  };
-
-  const updateFeedback = (id: string, fb: Partial<CustomerFeedback>) => {
-    setFeedbacks(prev => prev.map(f => f.id === id ? { ...f, ...fb } : f));
-  };
-
-  const addTask = (task: Omit<StaffTask, 'id' | 'status'>) => {
-    setStaffTasks(prev => [{
-      ...task,
-      id: 'task_' + Math.random().toString(36).substr(2, 9),
-      status: 'PENDING'
-    }, ...prev]);
-  };
-
-  const updateTask = (id: string, task: Partial<StaffTask>) => {
-    setStaffTasks(prev => prev.map(t => t.id === id ? { ...t, ...task } : t));
-  };
-
-  const assignTable = (tableId: string, staffId: string) => {
-    if (!currentShift) return;
-    setTableAssignments(prev => {
-      const filtered = prev.filter(a => a.tableId !== tableId);
-      return [...filtered, { tableId, staffId, shiftId: currentShift.id }];
-    });
-  };
-
-  const seatTable = (tableId: string, guestCount: number) => {
-    setTables(prev => prev.map(t => t.id === tableId ? {
-      ...t,
-      status: TableStatus.OCCUPIED,
-      seatedAt: new Date(),
-      guestCount
-    } : t));
-  };
-
-  const depositToWallet = (amount: number, bonus: number = 0) => {
-    if (!currentUser) return;
-    const totalDeposit = amount + bonus;
-    const newTransaction: Transaction = { id: 'tr_' + Math.random().toString(36).substr(2, 9), date: new Date(), amount, type: 'DEPOSIT', status: 'SUCCESS', description: `شحن محفظة` };
-    setCurrentUser({ ...currentUser, balance: currentUser.balance + totalDeposit, transactions: [newTransaction, ...currentUser.transactions] });
-  };
-
-  const refundToWallet = (orderId: string) => {
-    const order = activeOrders.find(o => o.id === orderId);
-    if (!order || !currentUser) return;
-    const refundTransaction: Transaction = { id: 'ref_' + Math.random().toString(36).substr(2, 9), date: new Date(), amount: order.total, type: 'REFUND', status: 'SUCCESS', description: `استرداد طلب #${order.orderNumber}` };
-    setCurrentUser({ ...currentUser, balance: currentUser.balance + order.total, transactions: [refundTransaction, ...currentUser.transactions] });
-    setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: OrderStatus.REFUNDED } : o));
-  };
-
-  const updateTableStatus = (tableId: string, status: TableStatus, extra?: Partial<Table>) => {
-    setTables(prev => {
-      const tableToUpdate = prev.find(t => t.id === tableId);
-      if (!tableToUpdate) return prev;
-
-      // If clearing a table (setting to AVAILABLE or CLEANING), clear all merged tables too
-      if (status === TableStatus.AVAILABLE || status === TableStatus.CLEANING || status === TableStatus.PAID || status === TableStatus.PAYMENT_PENDING) {
-        const masterId = tableToUpdate.mergedWithId || tableToUpdate.id;
-        return prev.map(t => {
-          if (t.id === masterId || t.mergedWithId === masterId) {
-            const isClearing = status === TableStatus.AVAILABLE || status === TableStatus.CLEANING;
-            return {
-              ...t,
-              status,
-              currentOrderId: isClearing ? undefined : (t.currentOrderId || extra?.currentOrderId),
-              seatedAt: isClearing ? undefined : (t.seatedAt || extra?.seatedAt),
-              guestCount: isClearing ? undefined : (t.guestCount || extra?.guestCount),
-              mergedWithId: isClearing ? undefined : t.mergedWithId,
-              reservationName: isClearing ? undefined : t.reservationName,
-              reservationTime: isClearing ? undefined : t.reservationTime,
-              ...extra
+      // Shifts
+      currentShift: null,
+      shifts: [],
+      setCurrentShift: (currentShift) => set({ currentShift }),
+      // كانت openShift/closeShift بس بتغيّروا حالة محلية بالمتصفح (openShift كانت
+      // تخترع رقم يومية عشوائي، closeShift بس بتصفّر الحالة) بدون أي اتصال
+      // بالباك اند إطلاقاً — يعني اليومية الحقيقية بالسيرفر ما إلها علاقة بشو
+      // الكاشير شايفه على شاشته. صارت توصل فعلياً بـ /shifts/open و/shifts/close.
+      openShift: async (openingBalance: number, type: 'MORNING' | 'EVENING' | 'NIGHT' = 'MORNING') => {
+        try {
+          const result = await shiftService.open(openingBalance);
+          set({
+            currentShift: {
+              id: String(result.id),
+              cashierId: String(result.opened_by),
+              startTime: new Date(result.opened_at),
+              openingBalance: result.opening_balance,
+              status: 'OPEN',
+              type,
+            } as Shift,
+          });
+          return true;
+        } catch (error) {
+          console.error('Failed to open shift:', error);
+          return false;
+        }
+      },
+      closeShift: async (closingBalance: number) => {
+        try {
+          const result = await shiftService.close(closingBalance);
+          const closedShift: Shift = {
+            id: String(result.shift.id),
+            cashierId: String(result.shift.opened_by),
+            startTime: new Date(result.shift.opened_at),
+            endTime: result.shift.closed_at ? new Date(result.shift.closed_at) : new Date(),
+            openingBalance: result.shift.opening_balance,
+            closingBalance: result.shift.closing_balance ?? closingBalance,
+            totalSales: result.shift.total_sales,
+            status: 'CLOSED',
+            type: 'MORNING',
+          };
+          set((state) => ({
+            currentShift: null,
+            shifts: [closedShift, ...state.shifts],
+          }));
+          return result.reconciliation;
+        } catch (error) {
+          console.error('Failed to close shift:', error);
+          throw error;
+        }
+      },
+      rollover: async (closingBalance?: number) => {
+        try {
+          const result = await shiftService.rollover(closingBalance);
+          const newShift: Shift = {
+            id: String(result.new_shift.id),
+            cashierId: String(result.new_shift.opened_by),
+            startTime: new Date(result.new_shift.opened_at),
+            openingBalance: result.new_shift.opening_balance,
+            status: 'OPEN',
+            type: 'MORNING',
+          };
+          set({ currentShift: newShift });
+          return { closedShift: result.closed_shift, newShift };
+        } catch (error) {
+          console.error('Rollover failed:', error);
+          throw error;
+        }
+      },
+      fetchCurrentShift: async () => {
+        try {
+          const result = await shiftService.getCurrent();
+          if (result.shift) {
+            const shift: Shift = {
+              id: String(result.shift.id),
+              cashierId: String(result.shift.opened_by),
+              startTime: new Date(result.shift.opened_at),
+              openingBalance: result.shift.opening_balance,
+              status: 'OPEN',
+              type: 'MORNING',
             };
+            set({ currentShift: shift });
+          } else {
+            set({ currentShift: null });
           }
-          return t;
+        } catch (error) {
+          console.error('Failed to fetch current shift:', error);
+        }
+      },
+
+      // Employees
+      employees: [],
+      setEmployees: (employees) => set({ employees }),
+      addEmployee: (employee) =>
+        set((state) => ({ employees: [...state.employees, employee] })),
+      updateEmployee: (id, employee) =>
+        set((state) => ({
+          employees: state.employees.map((e) => (e.id === id ? { ...e, ...employee } : e)),
+        })),
+      deleteEmployee: (id) =>
+        set((state) => ({
+          employees: state.employees.filter((e) => e.id !== id),
+        })),
+
+      // Job Titles
+      jobTitles: [],
+      setJobTitles: (jobTitles) => set({ jobTitles }),
+
+      // Customers
+      customers: [],
+      setCustomers: (customers) => set({ customers }),
+      addCustomer: (customer) =>
+        set((state) => ({ customers: [...state.customers, customer] })),
+      updateCustomer: (customer) =>
+        set((state) => ({
+          customers: state.customers.map((c) => (c.id === customer.id ? customer : c)),
+        })),
+      deleteCustomer: (id) =>
+        set((state) => ({
+          customers: state.customers.filter((c) => c.id !== id),
+        })),
+      adjustCustomerPoints: (customerId, points) =>
+        set((state) => ({
+          customers: state.customers.map((c) =>
+            c.id === customerId ? { ...c, points: c.points + points } : c
+          ),
+        })),
+      adjustCustomerBalance: (customerId, amount) =>
+        set((state) => ({
+          customers: state.customers.map((c) =>
+            c.id === customerId ? { ...c, balance: c.balance + amount } : c
+          ),
+        })),
+
+      // Suppliers
+      suppliers: [],
+      setSuppliers: (suppliers) => set({ suppliers }),
+      addSupplier: (supplier) =>
+        set((state) => ({ suppliers: [...state.suppliers, supplier] })),
+      updateSupplier: (supplier) =>
+        set((state) => ({
+          suppliers: state.suppliers.map((s) => (s.id === supplier.id ? supplier : s)),
+        })),
+      deleteSupplier: (id) =>
+        set((state) => ({
+          suppliers: state.suppliers.filter((s) => s.id !== id),
+        })),
+
+      // Bank Accounts
+      bankAccounts: [],
+      setBankAccounts: (bankAccounts) => set({ bankAccounts }),
+      addBankAccount: (account) =>
+        set((state) => ({ bankAccounts: [...state.bankAccounts, account] })),
+      updateBankAccount: (account) =>
+        set((state) => ({
+          bankAccounts: state.bankAccounts.map((a) => (a.id === account.id ? account : a)),
+        })),
+      deleteBankAccount: (id) =>
+        set((state) => ({
+          bankAccounts: state.bankAccounts.filter((a) => a.id !== id),
+        })),
+
+      // Financial Transactions
+      financialTransactions: [],
+      setFinancialTransactions: (financialTransactions) => set({ financialTransactions }),
+      addFinancialTransaction: (transaction) =>
+        set((state) => ({
+          financialTransactions: [...state.financialTransactions, transaction],
+        })),
+
+      // Activity Logs
+      activityLogs: [],
+      setActivityLogs: (activityLogs) => set({ activityLogs }),
+      addActivityLog: (log) =>
+        set((state) => ({
+          activityLogs: [...state.activityLogs, log],
+        })),
+
+      // Notifications
+      notifications: [],
+      addNotification: (message, type = 'info') => {
+        const id = Date.now().toString();
+        set((state) => ({
+          notifications: [...state.notifications, { id, message, type }],
+        }));
+        setTimeout(() => {
+          get().removeNotification(id);
+        }, 5000);
+      },
+      removeNotification: (id) =>
+        set((state) => ({
+          notifications: state.notifications.filter((n) => n.id !== id),
+        })),
+
+      // Blind Drop Submissions
+      blindDropSubmissions: [],
+      submitBlindDrop: (submission) => {
+        const id = `bd-${Date.now()}`;
+        const newSubmission: BlindDropSubmission = {
+          ...submission,
+          id,
+          submittedAt: new Date(),
+          status: 'PENDING',
+        };
+        set((state) => ({
+          blindDropSubmissions: [...state.blindDropSubmissions, newSubmission],
+        }));
+
+        // Auto-generate variance journal entry
+        const { reconciliationEntries, shifts, financialTransactions } = get();
+        const shift = shifts.find(s => s.id === submission.shiftId);
+        if (shift) {
+          // Calculate expected amounts from financial transactions
+          const shiftStart = new Date(shift.startTime);
+          const shiftEnd = new Date();
+
+          const shiftSales = financialTransactions.filter(tx => {
+            const txDate = new Date(tx.timestamp);
+            return tx.shiftId === shift.id
+              && tx.type === FinancialTransactionType.SALE
+              && txDate >= shiftStart && txDate <= shiftEnd;
+          });
+          const totalSales = shiftSales.reduce((sum, tx) => sum + tx.amount, 0);
+
+          // Expected = opening balance + sales (cash portion assumed 80% for blind drop)
+          const expectedCash = shift.openingBalance + totalSales * 0.8;
+          const expectedCards = totalSales * 0.15;
+          const expectedWallets = totalSales * 0.05;
+
+          const cashVariance = submission.cashTotal - expectedCash;
+          const cardsVariance = submission.cardTotal - expectedCards;
+          const walletsVariance = submission.walletTotal - expectedWallets;
+          const totalVariance = cashVariance + cardsVariance + walletsVariance;
+
+          const reconEntry: ReconciliationEntry = {
+            id: `recon-${Date.now()}`,
+            shiftId: submission.shiftId,
+            cashierId: submission.cashierId,
+            cashierName: submission.cashierName,
+            shiftType: shift.type,
+            startTime: shift.startTime,
+            endTime: shiftEnd,
+            actualCash: submission.cashTotal,
+            actualCards: submission.cardTotal,
+            actualWallets: submission.walletTotal,
+            expectedCash,
+            expectedCards,
+            expectedWallets,
+            cashVariance,
+            cardsVariance,
+            walletsVariance,
+            totalVariance,
+            status: Math.abs(totalVariance) < 0.01 ? 'BALANCED' : totalVariance < 0 ? 'SHORTAGE' : 'OVERAGE',
+            journalEntryDate: new Date(),
+          };
+
+          set((state) => ({
+            reconciliationEntries: [...state.reconciliationEntries, reconEntry],
+          }));
+
+          // Add activity log
+          get().addActivityLog({
+            id: `log-${Date.now()}`,
+            employeeId: submission.cashierId,
+            action: 'Blind Drop Submitted',
+            timestamp: new Date(),
+            details: {
+              shiftId: submission.shiftId,
+              cashTotal: submission.cashTotal,
+              cardTotal: submission.cardTotal,
+              walletTotal: submission.walletTotal,
+              variance: totalVariance,
+              status: reconEntry.status,
+            },
+          });
+        }
+      },
+
+      // Reconciliation Entries
+      reconciliationEntries: [],
+      getReconciliationData: (date?: string) => {
+        const { reconciliationEntries } = get();
+        if (!date) return reconciliationEntries;
+        return reconciliationEntries.filter(entry => {
+          const entryDate = new Date(entry.startTime).toISOString().split('T')[0];
+          return entryDate === date;
         });
-      }
+      },
 
-      // Otherwise just update the single table
-      return prev.map(t => t.id === tableId ? { ...t, status, ...extra } : t);
-    });
-  };
+      // Day Close State
+      dayCloseState: null,
+      businessDayState: null,
 
-  const transferTable = (fromId: string, toId: string) => {
-    const fromTable = tables.find(t => t.id === fromId);
-    const toTable = tables.find(t => t.id === toId);
-    if (!fromTable || !toTable || fromTable.status !== TableStatus.OCCUPIED) return;
+      // Sync bridge: Context pushes data here so Zustand functions can access it
+      syncFromContext: (data: { orders?: Order[]; shifts?: Shift[]; financialTransactions?: FinancialTransaction[] }) => {
+        set((state) => ({
+          orders: data.orders ?? state.orders,
+          shifts: data.shifts ?? state.shifts,
+          financialTransactions: data.financialTransactions ?? state.financialTransactions,
+        }));
+      },
 
-    const orderId = fromTable.currentOrderId;
+      openBusinessDay: (userId: string, note?: string) => {
+        const today = new Date().toISOString().split('T')[0];
+        const existing = get().businessDayState;
+        if (existing?.date === today && existing.status === 'OPEN') return;
 
-    // Move order to new table if exists
-    if (orderId) {
-      setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, tableId: toId } : o));
-    }
-
-    // Update tables
-    setTables(prev => prev.map(t => {
-      if (t.id === fromId) return { ...t, status: TableStatus.CLEANING, currentOrderId: undefined, seatedAt: undefined, guestCount: undefined };
-      if (t.id === toId) return { ...t, status: TableStatus.OCCUPIED, currentOrderId: orderId, seatedAt: fromTable.seatedAt, guestCount: fromTable.guestCount };
-      return t;
-    }));
-  };
-
-  const mergeTables = (tableIds: string[]) => {
-    if (tableIds.length < 2) return;
-    const targetTableId = tableIds[0];
-    const otherTableIds = tableIds.slice(1);
-
-    const targetTable = tables.find(t => t.id === targetTableId);
-    if (!targetTable) return;
-
-    let mergedItems: OrderItem[] = [];
-    let totalGuestCount = targetTable.guestCount || 0;
-    let masterOrderId = targetTable.currentOrderId;
-    let earliestSeatedAt = targetTable.seatedAt;
-
-    // If target has an order, start with its items
-    if (masterOrderId) {
-      const targetOrder = activeOrders.find(o => o.id === masterOrderId);
-      if (targetOrder) {
-        mergedItems = [...targetOrder.items];
-      }
-    }
-
-    otherTableIds.forEach(id => {
-      const table = tables.find(t => t.id === id);
-      if (table) {
-        totalGuestCount += (table.guestCount || 0);
-        if (table.seatedAt && (!earliestSeatedAt || table.seatedAt < earliestSeatedAt)) {
-          earliestSeatedAt = table.seatedAt;
-        }
-        if (table.currentOrderId) {
-          const order = activeOrders.find(o => o.id === table.currentOrderId);
-          if (order) {
-            mergedItems = [...mergedItems, ...order.items];
-            // If we didn't have a master order yet, take this one
-            if (!masterOrderId) {
-              masterOrderId = order.id;
-            } else {
-              // Otherwise cancel the other order
-              setActiveOrders(prev => prev.filter(o => o.id !== order.id));
-            }
-          }
-        }
-      }
-    });
-
-    // If no order existed at all, we might need to create one or just update table guest counts
-    // But usually merge is done when there's at least one order or guests seated.
-
-    if (masterOrderId) {
-      const subtotal = mergedItems.reduce((s, i) => s + (i.price * i.quantity), 0);
-      setActiveOrders(prev => prev.map(o => o.id === masterOrderId ? {
-        ...o,
-        items: mergedItems,
-        subtotal,
-        total: subtotal - o.discount,
-        tableId: targetTableId // Ensure it's linked to the master table
-      } : o));
-    }
-
-    // Update all tables to be OCCUPIED and linked to the master order
-    setTables(prev => prev.map(t => {
-      if (tableIds.includes(t.id)) {
-        return {
-          ...t,
-          status: TableStatus.OCCUPIED,
-          currentOrderId: masterOrderId,
-          guestCount: t.id === targetTableId ? totalGuestCount : 0, // Master table holds total count
-          seatedAt: earliestSeatedAt || new Date(),
-          mergedWithId: t.id === targetTableId ? undefined : targetTableId
+        const openState: BusinessDayState = {
+          id: `bd-${Date.now()}`,
+          date: today,
+          status: 'OPEN',
+          openedAt: new Date(),
+          openedBy: userId,
+          openingNote: note,
+          totalSales: 0,
+          totalRevenue: 0,
+          invoiceCount: 0,
+          returnCount: 0,
+          discountTotal: 0,
+          taxTotal: 0,
         };
-      }
-      return t;
-    }));
-  };
 
-  const confirmOrder = (orderId: string) => {
-    setActiveOrders(prev => prev.map(order =>
-      order.id === orderId ? {
-        ...order,
-        status: OrderStatus.CONFIRMED,
-        timeline: [...order.timeline, { status: OrderStatus.CONFIRMED, time: new Date() }]
-      } : order
-    ));
-  };
+        set({ businessDayState: openState });
+        get().addActivityLog({
+          id: `log-${Date.now()}`,
+          employeeId: userId,
+          action: 'Business Day Opened',
+          timestamp: new Date(),
+          details: { date: today, note },
+        });
+      },
+      closeBusinessDay: (userId: string, note?: string) => {
+        const today = new Date().toISOString().split('T')[0];
+        const existing = get().businessDayState;
+        if (existing?.date === today && existing.status === 'CLOSED') return;
 
-  const cancelOrder = (orderId: string, reason: string) => {
-    setActiveOrders(prev => prev.map(order =>
-      order.id === orderId ? {
-        ...order,
-        status: OrderStatus.CANCELED,
-        cancelReason: reason,
-        timeline: [...order.timeline, { status: OrderStatus.CANCELED, time: new Date(), note: reason }]
-      } : order
-    ));
+        const { financialTransactions, reconciliationEntries } = get();
 
-    // Free up table if it was a dine-in order
-    const order = activeOrders.find(o => o.id === orderId);
-    if (order && order.tableId) {
-      setTables(prev => prev.map(t => t.id === order.tableId ? { ...t, status: TableStatus.AVAILABLE, currentOrderId: undefined } : t));
-    }
-  };
-
-  const updateOrderItemStatus = (orderId: string, uniqueId: string, status: OrderStatus) => {
-    setActiveOrders(prev => prev.map(order => {
-      if (order.id !== orderId) return order;
-      const updatedItems = order.items.map(item =>
-        item.uniqueId === uniqueId ? { ...item, status } : item
-      );
-
-      // Check if all items are ready to update order status
-      const allReady = updatedItems.every(i => i.status === OrderStatus.READY);
-      const allDelivered = updatedItems.every(i => i.status === OrderStatus.DELIVERED);
-
-      let newOrderStatus = order.status;
-      if (allDelivered) newOrderStatus = OrderStatus.DELIVERED;
-      else if (allReady) newOrderStatus = OrderStatus.READY;
-      else if (updatedItems.some(i => i.status === OrderStatus.PREPARING)) newOrderStatus = OrderStatus.PREPARING;
-
-      return {
-        ...order,
-        items: updatedItems,
-        status: newOrderStatus,
-        timeline: newOrderStatus !== order.status ? [...order.timeline, { status: newOrderStatus, time: new Date() }] : order.timeline
-      };
-    }));
-  };
-
-  const transferOrder = (orderId: string, targetTableId: string) => {
-    const order = activeOrders.find(o => o.id === orderId);
-    if (!order || !order.tableId) return;
-
-    const oldTableId = order.tableId;
-
-    setTables(prev => prev.map(t => {
-      if (t.id === oldTableId) return { ...t, status: TableStatus.AVAILABLE, currentOrderId: undefined };
-      if (t.id === targetTableId) return { ...t, status: TableStatus.OCCUPIED, currentOrderId: orderId };
-      return t;
-    }));
-
-    setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, tableId: targetTableId } : o));
-  };
-
-  const mergeOrders = (sourceOrderId: string, targetOrderId: string) => {
-    const sourceOrder = activeOrders.find(o => o.id === sourceOrderId);
-    const targetOrder = activeOrders.find(o => o.id === targetOrderId);
-    if (!sourceOrder || !targetOrder) return;
-
-    const mergedItems = [...targetOrder.items, ...sourceOrder.items];
-    const mergedSubtotal = mergedItems.reduce((s, i) => s + (i.price * i.quantity), 0);
-    const mergedTotal = mergedSubtotal - targetOrder.discount;
-
-    setActiveOrders(prev => {
-      const filtered = prev.filter(o => o.id !== sourceOrderId);
-      return filtered.map(o => o.id === targetOrderId ? {
-        ...o,
-        items: mergedItems,
-        subtotal: mergedSubtotal,
-        total: mergedTotal,
-        timeline: [...o.timeline, { status: o.status, time: new Date(), note: `Merged with ${sourceOrder.orderNumber}` }]
-      } : o);
-    });
-
-    if (sourceOrder.tableId) {
-      setTables(prev => prev.map(t => t.id === sourceOrder.tableId ? { ...t, status: TableStatus.AVAILABLE, currentOrderId: undefined } : t));
-    }
-  };
-
-  const splitOrder = (orderId: string, itemsToSplit: { uniqueId: string, quantity: number }[]) => {
-    const originalOrder = activeOrders.find(o => o.id === orderId);
-    if (!originalOrder) return;
-
-    const newOrderId = Math.random().toString(36).substr(2, 9);
-    const newItems: OrderItem[] = [];
-    const remainingItems: OrderItem[] = [];
-
-    originalOrder.items.forEach(item => {
-      const splitInfo = itemsToSplit.find(s => s.uniqueId === item.uniqueId);
-      if (splitInfo) {
-        if (splitInfo.quantity < item.quantity) {
-          remainingItems.push({ ...item, quantity: item.quantity - splitInfo.quantity });
-          newItems.push({ ...item, uniqueId: Math.random().toString(36).substr(2, 9), quantity: splitInfo.quantity });
-        } else {
-          newItems.push(item);
-        }
-      } else {
-        remainingItems.push(item);
-      }
-    });
-
-    if (newItems.length === 0) return;
-
-    const newSubtotal = newItems.reduce((s, i) => s + (i.price * i.quantity), 0);
-    const remainingSubtotal = remainingItems.reduce((s, i) => s + (i.price * i.quantity), 0);
-
-    const newOrder: Order = {
-      ...originalOrder,
-      id: newOrderId,
-      orderNumber: `${originalOrder.orderNumber}-S`,
-      items: newItems,
-      subtotal: newSubtotal,
-      total: newSubtotal,
-      timeline: [{ status: originalOrder.status, time: new Date(), note: 'Split from original order' }]
-    };
-
-    setActiveOrders(prev => [
-      newOrder,
-      ...prev.map(o => o.id === orderId ? {
-        ...o,
-        items: remainingItems,
-        subtotal: remainingSubtotal,
-        total: remainingSubtotal,
-        timeline: [...o.timeline, { status: o.status, time: new Date(), note: 'Items split to new order' }]
-      } : o)
-    ]);
-  };
-
-  const refundOrder = (orderId: string, amount: number, items: { uniqueId: string, quantity: number }[]) => {
-    setActiveOrders(prev => prev.map(o => {
-      if (o.id !== orderId) return o;
-      return {
-        ...o,
-        total: o.total - amount,
-        refundedAmount: (o.refundedAmount || 0) + amount,
-        timeline: [...o.timeline, { status: o.status, time: new Date(), note: `Refunded ${amount}` }]
-      };
-    }));
-
-    addFinancialTransaction({
-      shiftId: currentShift?.id || 's1',
-      cashierId: currentUser?.id || 'c1',
-      type: FinancialTransactionType.REFUND,
-      amount,
-      reason: `Refund for order ${orderId}`,
-    });
-  };
-
-  const submitOrder = (status: OrderStatus, paymentMethod?: PaymentMethod, discount: number = 0, customerDetails?: { name: string, phone: string, note?: string }) => {
-    if (!currentUser || currentCart.length === 0) return;
-    const subtotal = currentCart.reduce((s, i) => s + (i.price * i.quantity), 0);
-    const total = subtotal - discount;
-
-    if (paymentMethod === PaymentMethod.WALLET && currentUser.balance < total) {
-      addNotification('الرصيد غير كافٍ في المحفظة لإتمام العملية');
-      return;
-    }
-
-    // Check if we should merge with an existing table order
-    if (selectedTable && selectedTable.status === TableStatus.OCCUPIED && selectedTable.currentOrderId && !editingOrderId) {
-      const existingOrder = activeOrders.find(o => o.id === selectedTable.currentOrderId);
-      if (existingOrder) {
-        const updatedItems = [...existingOrder.items, ...currentCart];
-        const updatedSubtotal = updatedItems.reduce((s, i) => s + (i.price * i.quantity), 0);
-        const updatedTotal = updatedSubtotal - existingOrder.discount;
-
-        setActiveOrders(p => p.map(o => o.id === existingOrder.id ? {
-          ...o,
-          items: updatedItems,
-          subtotal: updatedSubtotal,
-          total: updatedTotal,
-          timeline: [...o.timeline, { status: o.status, time: new Date() }]
-        } : o));
-
-        setCurrentCart([]); setEditingOrderId(null); setSelectedTable(null);
-        return;
-      }
-    }
-
-    const existingOrder = editingOrderId ? activeOrders.find(o => o.id === editingOrderId) : null;
-    const orderId = editingOrderId || Math.random().toString(36).substr(2, 9);
-
-    // Determine status: 
-    // 1. If customer, always PENDING_CONFIRMATION
-    // 2. If explicitly closing or canceling, use that status
-    // 3. If staff editing, keep existing status unless it was PENDING_CONFIRMATION
-    // 4. If new staff order, use status passed from POS (usually PENDING or DELIVERED)
-    let finalStatus = status;
-    if (userRole === 'CUSTOMER') {
-      finalStatus = OrderStatus.PENDING_CONFIRMATION;
-    } else if (existingOrder) {
-      if (status === OrderStatus.DELIVERED || status === OrderStatus.CANCELED) {
-        finalStatus = status;
-      } else {
-        finalStatus = existingOrder.status === OrderStatus.PENDING_CONFIRMATION ? OrderStatus.CONFIRMED : existingOrder.status;
-      }
-    }
-
-    const newOrder: Order = {
-      id: orderId,
-      orderNumber: existingOrder?.orderNumber || `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
-      type: cartOrderType,
-      status: finalStatus,
-      items: [...currentCart],
-      customerId: currentUser.id,
-      tableId: selectedTable?.id,
-      branchId: currentUser.branchId || 'b1',
-      createdAt: existingOrder?.createdAt || new Date(),
-      subtotal,
-      tax: 0,
-      discount,
-      total,
-      paymentMethod,
-      customerName: customerDetails?.name || existingOrder?.customerName,
-      customerPhone: customerDetails?.phone || existingOrder?.customerPhone,
-      note: customerDetails?.note || existingOrder?.note,
-      timeline: existingOrder ? [...existingOrder.timeline, { status: finalStatus, time: new Date() }] : [{ status: finalStatus, time: new Date() }]
-    };
-
-    if (finalStatus === OrderStatus.COMPLETED || finalStatus === OrderStatus.DELIVERED) {
-      addFinancialTransaction({
-        shiftId: currentShift?.id || 's1',
-        cashierId: currentUser.id,
-        type: FinancialTransactionType.SALE,
-        amount: total,
-        reason: `Order #${newOrder.orderNumber}`,
-      });
-    }
-
-    if (paymentMethod === PaymentMethod.WALLET) {
-      setCurrentUser({ ...currentUser, balance: currentUser.balance - total });
-    }
-
-    if (editingOrderId) {
-      setActiveOrders(p => p.map(o => o.id === editingOrderId ? newOrder : o));
-    } else {
-      setActiveOrders(p => [newOrder, ...p]);
-    }
-
-    // Update table status if it's a dine-in order
-    if (selectedTable) {
-      const tableStatus = finalStatus === OrderStatus.DELIVERED ? TableStatus.PAID : TableStatus.OCCUPIED;
-      updateTableStatus(selectedTable.id, tableStatus, {
-        currentOrderId: orderId,
-        seatedAt: selectedTable.status === TableStatus.PAID ? new Date() : (selectedTable.seatedAt || new Date())
-      });
-    }
-
-    setCurrentCart([]); setEditingOrderId(null); setSelectedTable(null);
-  };
-
-  const completeOrder = (orderId: string, payment: { method: string | PaymentMethod }) => {
-    setActiveOrders(prev => prev.map(o => {
-      if (o.id === orderId) {
-        // If it was a dine-in order, set table to PAID
-        if (o.tableId) {
-          updateTableStatus(o.tableId, TableStatus.PAID);
-        }
-        return { ...o, status: OrderStatus.DELIVERED, paymentMethod: payment.method as PaymentMethod };
-      }
-      return o;
-    }));
-  };
-
-  const saveNewCard = (card: Omit<SavedCard, 'id'>) => {
-    if (!currentUser) return;
-    const newCard: SavedCard = { ...card, id: 'card_' + Math.random().toString(36).substr(2, 5) };
-    setCurrentUser({ ...currentUser, savedCards: [...currentUser.savedCards, newCard] });
-  };
-
-  const clearCart = () => {
-    setCurrentCart([]);
-    setEditingOrderId(null);
-    setSelectedTable(null);
-  };
-
-  const voidOrder = (orderId: string) => {
-    setActiveOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: OrderStatus.CANCELED } : o));
-    const order = activeOrders.find(o => o.id === orderId);
-    if (order?.tableId) {
-      updateTableStatus(order.tableId, TableStatus.AVAILABLE, { currentOrderId: undefined, seatedAt: undefined });
-    }
-  };
-
-  const loadOrderToPOS = (order: Order) => {
-    setCurrentCart(order.items);
-    setEditingOrderId(order.id);
-    setCartOrderType(order.type);
-    if (order.tableId) {
-      const table = tables.find(t => t.id === order.tableId);
-      if (table) setSelectedTable(table);
-    }
-  };
-
-  const reorder = (orderId: string) => {
-    const order = activeOrders.find(o => o.id === orderId);
-    if (order) {
-      setCurrentCart(order.items);
-      setEditingOrderId(null);
-      setCartOrderType(order.type);
-    }
-  };
-
-  const addToCart = (item: MenuItem, customization?: any) => {
-    setCurrentCart(prev => {
-      const existingItemIndex = prev.findIndex(i => i.itemId === item.id && !customization);
-      if (existingItemIndex > -1) {
-        const newCart = [...prev];
-        newCart[existingItemIndex] = {
-          ...newCart[existingItemIndex],
-          quantity: newCart[existingItemIndex].quantity + 1
-        };
-        return newCart;
-      }
-
-      let price = item.price;
-      if (cartOrderType === OrderType.DINE_IN && item.dineInPrice) price = item.dineInPrice;
-      else if (cartOrderType === OrderType.TAKEAWAY && item.takeawayPrice) price = item.takeawayPrice;
-      else if (cartOrderType === OrderType.DELIVERY && item.deliveryPrice) price = item.deliveryPrice;
-
-      // Check for active offer
-      if (item.offerPrice && item.offerStartDate && item.offerEndDate) {
-        const now = new Date();
-        const start = new Date(item.offerStartDate);
-        const end = new Date(item.offerEndDate);
-        if (now >= start && now <= end) {
-          price = item.offerPrice;
-        }
-      }
-
-      const newOrderItem: OrderItem = {
-        itemId: item.id,
-        uniqueId: Math.random().toString(36).substr(2, 9),
-        name: item.nameAr,
-        quantity: 1,
-        basePrice: price,
-        price: price,
-        departmentId: item.departmentId,
-        status: OrderStatus.PREPARING,
-        ...customization
-      };
-      return [...prev, newOrderItem];
-    });
-  };
-  const removeFromCart = (uniqueId: string) => setCurrentCart(prev => prev.filter(i => i.uniqueId !== uniqueId));
-  const updateCartQuantity = (uniqueId: string, delta: number) => setCurrentCart(prev => prev.map(i => i.uniqueId === uniqueId ? { ...i, quantity: Math.max(1, i.quantity + delta) } : i));
-  const updateCartItem = (uniqueId: string, updates: Partial<OrderItem>) => setCurrentCart(prev => prev.map(i => i.uniqueId === uniqueId ? { ...i, ...updates } : i));
-
-
-  const deliverOrder = (orderId: string) => {
-    setActiveOrders(prev => prev.map(o => {
-      if (o.id === orderId) {
-        // If it was a dine-in order, set table to cleaning
-        if (o.tableId) {
-          updateTableStatus(o.tableId, TableStatus.CLEANING, { currentOrderId: undefined, seatedAt: undefined });
-        }
-        return {
-          ...o,
-          status: OrderStatus.DELIVERED,
-          shelfLocation: undefined,
-          timeline: [...o.timeline, { status: OrderStatus.DELIVERED, time: new Date() }]
-        };
-      }
-      return o;
-    }));
-  };
-
-  const assignShelfToOrder = (orderId: string, shelf: string) => {
-    setActiveOrders(prev => prev.map(o => {
-      if (o.id === orderId) {
-        addNotification(`تم تخصيص الرف ${shelf} للطلب #${o.orderNumber.split('-').pop()}`);
-        return { ...o, shelfLocation: shelf };
-      }
-      return o;
-    }));
-  };
-
-  const collectOrderItemByAggregator = (orderId: string, itemUniqueId: string) => {
-    setActiveOrders(prev => prev.map(o => {
-      if (o.id === orderId) {
-        const updatedItems = o.items.map(item => {
-          if (item.uniqueId === itemUniqueId) {
-            return { ...item, status: OrderStatus.COLLECTED };
-          }
-          return item;
+        // Calculate from financial transactions (the real source of truth)
+        const todayTx = financialTransactions.filter((tx: any) => {
+          const txDate = new Date(tx.timestamp).toISOString().split('T')[0];
+          return txDate === today;
         });
 
-        // Check if all items are now READY or COLLECTED
-        const allReady = updatedItems.every(i => i.status === OrderStatus.READY || i.status === OrderStatus.COLLECTED || i.status === OrderStatus.DELIVERED);
+        const todayRecons = reconciliationEntries.filter((entry: any) => {
+          const entryDate = new Date(entry.startTime).toISOString().split('T')[0];
+          return entryDate === today;
+        });
 
-        let newStatus = o.status;
-        if (allReady && o.status !== OrderStatus.READY) {
-          newStatus = OrderStatus.READY;
-        }
+        const totalSales = todayRecons.reduce((sum, entry) => sum + entry.actualCash + entry.actualCards + entry.actualWallets, 0);
+        const totalExpenses = todayTx.filter(tx => tx.type === FinancialTransactionType.EXPENSE).reduce((sum, tx) => sum + tx.amount, 0);
+        const totalRefunds = todayTx.filter(tx => tx.type === FinancialTransactionType.REFUND).reduce((sum, tx) => sum + tx.amount, 0);
+        const invoiceCount = todayRecons.length;
+        const returnCount = todayTx.filter(tx => tx.type === FinancialTransactionType.REFUND).length;
 
-        return { ...o, items: updatedItems, status: newStatus };
-      }
-      return o;
-    }));
-  };
+        const closedState: BusinessDayState = {
+          ...(existing ?? {
+            id: `bd-${Date.now()}`,
+            date: today,
+            status: 'OPEN',
+            totalSales: 0,
+            totalRevenue: 0,
+            invoiceCount: 0,
+            returnCount: 0,
+            discountTotal: 0,
+            taxTotal: 0,
+          }),
+          date: today,
+          status: 'CLOSED',
+          closedAt: new Date(),
+          closedBy: userId,
+          closingNote: note,
+          totalSales,
+          totalRevenue: totalSales - totalExpenses,
+          invoiceCount,
+          returnCount,
+          discountTotal: 0,
+          taxTotal: 0,
+        };
 
-  const toggleFavorite = (itemId: string) => {
-    if (!currentUser) return;
-    const isFav = currentUser.favorites.includes(itemId);
-    setCurrentUser({ ...currentUser, favorites: isFav ? currentUser.favorites.filter(id => id !== itemId) : [...currentUser.favorites, itemId] });
-  };
-  const setOrderType = (type: OrderType) => setCartOrderType(type);
+        set({ businessDayState: closedState });
+        get().addActivityLog({
+          id: `log-${Date.now()}`,
+          employeeId: userId,
+          action: 'Business Day Closed',
+          timestamp: new Date(),
+          details: { date: today, note, totalSales, totalRevenue },
+        });
+      },
+      executeDayClose: (managerId: string) => {
+        const { reconciliationEntries, blindDropSubmissions, shifts, financialTransactions } = get();
+        const today = new Date().toISOString().split('T')[0];
 
-  return (
-    <AppContext.Provider value={{
-      activeOrders, currentUser, currentCart, cartOrderType, userRole,
-      branches, departments, jobTitles, jobTypes, employees,
-      menuItems, customers,
-      addBranch, updateBranch, deleteBranch,
-      addDepartment, updateDepartment, deleteDepartment,
-      addJobTitle, updateJobTitle, deleteJobTitle,
-      addJobType, updateJobType, deleteJobType,
-      addEmployee, updateEmployee, deleteEmployee,
-      addMenuItem, updateMenuItem, deleteMenuItem,
-      addCustomer, updateCustomer, deleteCustomer, addCustomerAddress, removeCustomerAddress, toggleBlockCustomer, adjustCustomerPoints, adjustCustomerBalance,
-      login, logout, addToCart, removeFromCart, updateCartQuantity, updateCartItem, updateOrderItemStatus, updateOrderStatus, cancelOrder, transferOrder, mergeOrders, splitOrder, refundOrder, submitOrder, depositToWallet, refundToWallet, saveNewCard, toggleFavorite, setOrderType,
-      reorder,
-      tables, selectedTable, setSelectedTable, updateTableStatus, transferTable, mergeTables, editingOrderId, clearCart, voidOrder, completeOrder, loadOrderToPOS, confirmOrder, deliverOrder, assignShelfToOrder, collectOrderItemByAggregator, currentShift, shifts, openShift, closeShift,
-      financialTransactions, addFinancialTransaction,
-      feedbacks, addFeedback, updateFeedback,
-      notifications, addNotification, markNotificationRead,
-      staffTasks, addTask, updateTask,
-      tableAssignments, assignTable,
-      seatTable,
-      attendances, workSchedules, activityLogs,
-      checkIn,
-      checkOut,
-      recordAttendance,
-      deleteAttendance,
-      addActivityLog,
-      updateWorkSchedule
-    }}>
-      {children}
-    </AppContext.Provider>
-  );
-};
+        // Check if all shifts for today are closed
+        const todayShifts = shifts.filter(s => {
+          const shiftDate = new Date(s.startTime).toISOString().split('T')[0];
+          return shiftDate === today;
+        });
 
-export const useApp = () => {
-  const ctx = useContext(AppContext);
-  if (!ctx) throw new Error('useApp must be used within AppProvider');
-  return ctx;
-};
+        const allClosed = todayShifts.every(s => s.status === 'CLOSED');
+        if (!allClosed) return;
 
+        // Calculate totals
+        const todayReconciliations = reconciliationEntries.filter(entry => {
+          const entryDate = new Date(entry.startTime).toISOString().split('T')[0];
+          return entryDate === today;
+        });
 
+        const totalSales = todayReconciliations.reduce((sum, entry) => sum + entry.actualCash + entry.actualCards + entry.actualWallets, 0);
+        const totalExpenses = financialTransactions
+          .filter(tx => {
+            const txDate = new Date(tx.timestamp).toISOString().split('T')[0];
+            return txDate === today && tx.type === FinancialTransactionType.EXPENSE;
+          })
+          .reduce((sum, tx) => sum + tx.amount, 0);
 
+        const dayClose: DayCloseState = {
+          id: `dc-${Date.now()}`,
+          date: today,
+          status: 'CLOSED',
+          totalShifts: todayShifts.length,
+          closedShifts: todayShifts.filter(s => s.status === 'CLOSED').length,
+          allShiftsClosed: true,
+          executedBy: managerId,
+          executedAt: new Date(),
+          totalSales,
+          totalExpenses,
+          netRevenue: totalSales - totalExpenses,
+        };
+
+        set({ dayCloseState: dayClose, businessDayState: {
+          ...(get().businessDayState ?? {
+            id: `bd-${Date.now()}`,
+            date: today,
+            status: 'CLOSED',
+            totalSales: 0,
+            totalRevenue: 0,
+            invoiceCount: 0,
+            returnCount: 0,
+            discountTotal: 0,
+            taxTotal: 0,
+          }),
+          date: today,
+          status: 'CLOSED',
+          closedAt: new Date(),
+          closedBy: managerId,
+          closingNote: 'إغلاق يوم محاسبي من نظام الإغلاق',
+          totalSales: dayClose.totalSales,
+          totalRevenue: dayClose.netRevenue,
+          invoiceCount: dayClose.totalShifts,
+          returnCount: 0,
+          discountTotal: 0,
+          taxTotal: 0,
+        } });
+
+        // Add activity log
+        get().addActivityLog({
+          id: `log-${Date.now()}`,
+          employeeId: managerId,
+          action: 'Day Close Executed',
+          timestamp: new Date(),
+          details: {
+            date: today,
+            totalShifts: dayClose.totalShifts,
+            totalSales: dayClose.totalSales,
+            totalExpenses: dayClose.totalExpenses,
+            netRevenue: dayClose.netRevenue,
+          },
+        });
+      },
+
+      canExecuteDayClose: () => {
+        const { shifts, blindDropSubmissions } = get();
+        const today = new Date().toISOString().split('T')[0];
+
+        // Get today's shifts
+        const todayShifts = shifts.filter(s => {
+          const shiftDate = new Date(s.startTime).toISOString().split('T')[0];
+          return shiftDate === today;
+        });
+
+        // Check if all shifts are closed
+        const allClosed = todayShifts.every(s => s.status === 'CLOSED');
+
+        // Check if all cashiers have submitted blind drops
+        const todayCashiers = todayShifts.map(s => s.cashierId);
+        const submittedCashiers = blindDropSubmissions
+          .filter(sub => {
+            const subDate = new Date(sub.submittedAt).toISOString().split('T')[0];
+            return subDate === today;
+          })
+          .map(sub => sub.cashierId);
+
+        const allSubmitted = todayCashiers.every(cashierId => submittedCashiers.includes(cashierId));
+
+        return allClosed && allSubmitted && todayShifts.length > 0;
+      },
+    }),
+    {
+      name: 'o2-company-storage',
+      partialize: (state) => ({
+        currentUser: state.currentUser,
+        isLoggedIn: state.isLoggedIn,
+        userRole: state.userRole,
+        currentShift: state.currentShift,
+        shifts: state.shifts,
+        orders: state.orders,
+        financialTransactions: state.financialTransactions,
+        activityLogs: state.activityLogs,
+        branches: state.branches,
+        departments: state.departments,
+        employees: state.employees,
+        blindDropSubmissions: state.blindDropSubmissions,
+        reconciliationEntries: state.reconciliationEntries,
+        dayCloseState: state.dayCloseState,
+        businessDayState: state.businessDayState,
+      }),
+    }
+  )
+);

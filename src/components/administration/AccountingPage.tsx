@@ -16,6 +16,12 @@ import {
   Cell,
 } from 'recharts';
 import { OrderStatus, PaymentMethod, FinancialTransactionType } from '../../../types';
+import { toast } from '../shared/Toast';
+
+const sumBy = <T,>(items: T[], predicate: (item: T) => boolean, selector: (item: T) => number) =>
+  items.filter(predicate).reduce((sum, item) => sum + selector(item), 0);
+
+const money = (value: number) => `₪${value.toLocaleString()}`;
 
 
 const AccountingPage = () => {
@@ -32,70 +38,45 @@ const AccountingPage = () => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        const todayOrders = activeOrders.filter(o => new Date(o.createdAt) >= today);
-        const totalSales = todayOrders.reduce((sum, o) => sum + o.total, 0);
+        const todayOrders = activeOrders.filter((order) => new Date(order.createdAt) >= today);
+        const todayTransactions = financialTransactions.filter((transaction) => new Date(transaction.timestamp) >= today);
+
+        const totalSales = sumBy(todayOrders, () => true, (order) => order.total);
         const invoiceCount = todayOrders.length;
-        const avgInvoice = invoiceCount > 0 ? totalSales / invoiceCount : 0;
-        
-        const todayTransactions = financialTransactions.filter(tx => new Date(tx.timestamp) >= today);
-        
-        const expenses = todayTransactions
-        .filter(tx => tx.type === 'EXPENSE')
-        .reduce((sum, tx) => sum + tx.amount, 0);
-        
-        const withdrawals = todayTransactions
-        .filter(tx => tx.type === 'WITHDRAWAL')
-        .reduce((sum, tx) => sum + tx.amount, 0);
-        
-        const deposits = todayTransactions
-        .filter(tx => tx.type === 'DEPOSIT')
-        .reduce((sum, tx) => sum + tx.amount, 0);
-        
-        const refunds = todayTransactions
-        .filter(tx => tx.type === 'REFUND')
-        .reduce((sum, tx) => sum + tx.amount, 0);
-
-        const cashSales = todayOrders
-        .filter(o => o.paymentMethod === PaymentMethod.CASH)
-        .reduce((sum, o) => sum + o.total, 0);
-        
-        const cardSales = todayOrders
-        .filter(o => o.paymentMethod === PaymentMethod.CREDIT_CARD)
-        .reduce((sum, o) => sum + o.total, 0);
-        
-        const walletSales = todayOrders
-        .filter(o => o.paymentMethod === PaymentMethod.WALLET)
-        .reduce((sum, o) => sum + o.total, 0);
-
+        const cashSales = sumBy(todayOrders, (order) => order.paymentMethod === PaymentMethod.CASH, (order) => order.total);
+        const cardSales = sumBy(todayOrders, (order) => order.paymentMethod === PaymentMethod.CREDIT_CARD, (order) => order.total);
+        const walletSales = sumBy(todayOrders, (order) => order.paymentMethod === PaymentMethod.WALLET, (order) => order.total);
+        const expenses = sumBy(todayTransactions, (transaction) => transaction.type === 'EXPENSE', (transaction) => transaction.amount);
+        const withdrawals = sumBy(todayTransactions, (transaction) => transaction.type === 'WITHDRAWAL', (transaction) => transaction.amount);
+        const deposits = sumBy(todayTransactions, (transaction) => transaction.type === 'DEPOSIT', (transaction) => transaction.amount);
+        const refunds = sumBy(todayTransactions, (transaction) => transaction.type === 'REFUND', (transaction) => transaction.amount);
         const openingCash = currentShift?.openingBalance || 0;
-        const netCash = openingCash + cashSales + deposits - expenses - withdrawals - refunds;
 
         return {
         totalSales,
         invoiceCount,
-        avgInvoice,
+        avgInvoice: invoiceCount > 0 ? totalSales / invoiceCount : 0,
         expenses,
         withdrawals,
-        netCash,
+        netCash: openingCash + cashSales + deposits - expenses - withdrawals - refunds,
         cashSales,
         cardSales,
         walletSales,
-        activeCount: activeOrders.filter(o => o.status !== OrderStatus.COMPLETED && o.status !== OrderStatus.CANCELED).length,
-        cancelledCount: activeOrders.filter(o => o.status === OrderStatus.CANCELED).length
+        activeCount: activeOrders.filter((order) => order.status !== OrderStatus.COMPLETED && order.status !== OrderStatus.CANCELED).length,
+        cancelledCount: activeOrders.filter((order) => order.status === OrderStatus.CANCELED).length
         };
     }, [activeOrders, financialTransactions, currentShift]);
-    const shiftTransactions = financialTransactions.filter(tx => tx.shiftId === currentShift?.id);
-    const totalSales = shiftTransactions.filter(tx => tx.type === FinancialTransactionType.SALE).reduce((sum, tx) => sum + tx.amount, 0);
-    const totalExpenses = shiftTransactions.filter(tx => tx.type === FinancialTransactionType.EXPENSE).reduce((sum, tx) => sum + tx.amount, 0);
-    const totalWithdrawals = shiftTransactions.filter(tx => tx.type === FinancialTransactionType.WITHDRAWAL).reduce((sum, tx) => sum + tx.amount, 0);
-    const totalDeposits = shiftTransactions.filter(tx => tx.type === FinancialTransactionType.DEPOSIT).reduce((sum, tx) => sum + tx.amount, 0);
-    const totalRefunds = shiftTransactions.filter(tx => tx.type === FinancialTransactionType.REFUND).reduce((sum, tx) => sum + tx.amount, 0);
+    const shiftTransactions = financialTransactions.filter((transaction) => transaction.shiftId === currentShift?.id);
+    const totalSales = sumBy(shiftTransactions, (transaction) => transaction.type === FinancialTransactionType.SALE, (transaction) => transaction.amount);
+    const totalExpenses = sumBy(shiftTransactions, (transaction) => transaction.type === FinancialTransactionType.EXPENSE, (transaction) => transaction.amount);
+    const totalWithdrawals = sumBy(shiftTransactions, (transaction) => transaction.type === FinancialTransactionType.WITHDRAWAL, (transaction) => transaction.amount);
+    const totalDeposits = sumBy(shiftTransactions, (transaction) => transaction.type === FinancialTransactionType.DEPOSIT, (transaction) => transaction.amount);
+    const totalRefunds = sumBy(shiftTransactions, (transaction) => transaction.type === FinancialTransactionType.REFUND, (transaction) => transaction.amount);
     
     const currentBalance = (currentShift?.openingBalance || 0) + totalSales + totalDeposits - totalExpenses - totalWithdrawals - totalRefunds;
     const [showShiftModal, setShowShiftModal] = useState(false);
     const [showTransactionModal, setShowTransactionModal] = useState(false);
     const [transactionType, setTransactionType] = useState<FinancialTransactionType>(FinancialTransactionType.EXPENSE);
-    const [closingCash, setClosingCash] = useState<number>(0);
     const COLORS = ['#ef4444', '#f97316', '#f59e0b', '#10b981', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef'];
 
     return (
@@ -115,37 +96,37 @@ const AccountingPage = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-slate-800/30 border border-white/5 p-4 rounded-2xl">
               <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">إجمالي المبيعات (Sales Today)</p>
-              <p className="text-2xl font-black text-white">₪{stats.totalSales.toLocaleString()}</p>
+              <p className="text-2xl font-black text-white">{money(stats.totalSales)}</p>
               <div className="mt-2 flex items-center gap-2">
                 <span className="text-[10px] text-slate-400">عدد الفواتير: <span className="text-white font-bold">{stats.invoiceCount}</span></span>
               </div>
             </div>
             <div className="bg-slate-800/30 border border-white/5 p-4 rounded-2xl">
               <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">المصروفات (Expenses)</p>
-              <p className="text-2xl font-black text-red-500">₪{stats.expenses.toLocaleString()}</p>
+              <p className="text-2xl font-black text-red-500">{money(stats.expenses)}</p>
             </div>
             <div className="bg-slate-800/30 border border-white/5 p-4 rounded-2xl">
               <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">السحوبات (Withdrawals)</p>
-              <p className="text-2xl font-black text-orange-500">₪{stats.withdrawals.toLocaleString()}</p>
+              <p className="text-2xl font-black text-orange-500">{money(stats.withdrawals)}</p>
             </div>
             <div className="bg-slate-800/30 border border-white/5 p-4 rounded-2xl">
               <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">صافي الصندوق (Net Cash)</p>
-              <p className="text-2xl font-black text-emerald-500">₪{stats.netCash.toLocaleString()}</p>
+              <p className="text-2xl font-black text-emerald-500">{money(stats.netCash)}</p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
             <div className="flex items-center justify-between p-3 rounded-xl bg-slate-800/20 border border-white/5">
               <span className="text-xs text-slate-400">نقدي (Cash)</span>
-              <span className="text-sm font-bold text-white">₪{stats.cashSales.toLocaleString()}</span>
+              <span className="text-sm font-bold text-white">{money(stats.cashSales)}</span>
             </div>
             <div className="flex items-center justify-between p-3 rounded-xl bg-slate-800/20 border border-white/5">
               <span className="text-xs text-slate-400">بطاقة (Card)</span>
-              <span className="text-sm font-bold text-white">₪{stats.cardSales.toLocaleString()}</span>
+              <span className="text-sm font-bold text-white">{money(stats.cardSales)}</span>
             </div>
             <div className="flex items-center justify-between p-3 rounded-xl bg-slate-800/20 border border-white/5">
               <span className="text-xs text-slate-400">تطبيقات (Apps)</span>
-              <span className="text-sm font-bold text-white">₪{stats.walletSales.toLocaleString()}</span>
+              <span className="text-sm font-bold text-white">{money(stats.walletSales)}</span>
             </div>
           </div>
         </div>
@@ -239,25 +220,25 @@ const AccountingPage = () => {
                         <span className="text-[10px] font-bold">متوازن</span>
                       </div>
                     </div>
-                    <p className="text-3xl font-black text-white">₪{currentBalance.toLocaleString()}</p>
+                    <p className="text-3xl font-black text-white">{money(currentBalance)}</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <div className="p-3 rounded-xl bg-slate-800/30 border border-white/5">
                       <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">رصيد البداية</p>
-                      <p className="text-sm font-bold text-white">₪{currentShift.openingBalance.toLocaleString()}</p>
+                      <p className="text-sm font-bold text-white">{money(currentShift.openingBalance)}</p>
                     </div>
                     <div className="p-3 rounded-xl bg-slate-800/30 border border-white/5">
                       <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">إجمالي المبيعات</p>
-                      <p className="text-sm font-bold text-emerald-500">₪{totalSales.toLocaleString()}</p>
+                      <p className="text-sm font-bold text-emerald-500">{money(totalSales)}</p>
                     </div>
                     <div className="p-3 rounded-xl bg-slate-800/30 border border-white/5">
                       <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">المصروفات</p>
-                      <p className="text-sm font-bold text-red-500">₪{totalExpenses.toLocaleString()}</p>
+                      <p className="text-sm font-bold text-red-500">{money(totalExpenses)}</p>
                     </div>
                     <div className="p-3 rounded-xl bg-slate-800/30 border border-white/5">
                       <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">السحوبات</p>
-                      <p className="text-sm font-bold text-orange-500">₪{totalWithdrawals.toLocaleString()}</p>
+                      <p className="text-sm font-bold text-orange-500">{money(totalWithdrawals)}</p>
                     </div>
                   </div>
 
@@ -277,7 +258,7 @@ const AccountingPage = () => {
                   </div>
 
                   <button 
-                    onClick={() => { setClosingCash(currentBalance); setShowShiftModal(true); }}
+                    onClick={() => setShowShiftModal(true)}
                     className="w-full bg-slate-800 hover:bg-slate-700 text-white py-3 rounded-xl font-bold transition-all border border-white/5"
                   >
                     إغلاق الشفت (Close Shift)
@@ -289,7 +270,7 @@ const AccountingPage = () => {
             <div className="bg-slate-900/50 border border-white/5 rounded-2xl p-6">
               <h3 className="text-lg font-bold text-white mb-4">توزيع طرق الدفع</h3>
               <div className="h-[200px]">
-                <ResponsiveContainer width="100%" height="100%">
+                <ResponsiveContainer width="100%" height={180}>
                   <PieChart>
                     <Pie
                       data={[
@@ -340,25 +321,33 @@ const AccountingPage = () => {
                   {currentShift ? 'إغلاق الشفت' : 'فتح شفت جديد'}
                 </h3>
                 
-                <form onSubmit={(e) => {
+                <form onSubmit={async (e) => {
                   e.preventDefault();
                   const formData = new FormData(e.currentTarget);
-                  if (currentShift) {
-                    closeShift(parseFloat(formData.get('closingBalance') as string));
-                  } else {
-                    openShift(
-                      parseFloat(formData.get('openingBalance') as string),
-                      formData.get('type') as any
-                    );
+                  try {
+                    if (currentShift) {
+                      await closeShift(parseFloat(formData.get('closingBalance') as string));
+                    } else {
+                      const ok = await openShift(
+                        parseFloat(formData.get('openingBalance') as string),
+                        formData.get('type') as any
+                      );
+                      if (!ok) {
+                        toast.error('فشل فتح اليومية');
+                        return;
+                      }
+                    }
+                    setShowShiftModal(false);
+                  } catch (err: any) {
+                    toast.error(err?.response?.data?.message || 'فشلت العملية');
                   }
-                  setShowShiftModal(false);
                 }} className="space-y-6">
                   {currentShift ? (
                     <>
                       <div className="p-4 rounded-2xl bg-slate-800/50 border border-white/5 space-y-2">
                         <div className="flex justify-between text-sm">
                           <span className="text-slate-500">الرصيد المتوقع:</span>
-                          <span className="text-white font-bold">₪{currentBalance.toLocaleString()}</span>
+                          <span className="text-white font-bold">{money(currentBalance)}</span>
                         </div>
                       </div>
                       <div className="space-y-2">

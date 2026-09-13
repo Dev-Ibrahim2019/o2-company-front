@@ -149,6 +149,20 @@ const AddEditBranchModal: React.FC<Props> = ({
             </div>
             <div className="space-y-2">
               <label className="text-[10px] font-bold text-slate-500 uppercase">
+                شبكة الفرع (Static IP)
+              </label>
+              <input
+                name="static_ip"
+                defaultValue={editingItem?.static_ip}
+                placeholder="مثال: 192.168.2.1"
+                className="w-full bg-slate-800 border border-white/5 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-red-500/50"
+              />
+              <p className="text-[9px] text-slate-500">
+                عنوان IP لأي جهاز على شبكة الفرع الفعلية — تُستخدم أول 3 خانات منه للتحقق من أن أجهزة الكاشير والضيافة تُفعَّل من داخل شبكة الفرع فقط. اتركه فارغاً لتعطيل هذا القيد.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-500 uppercase">
                 الحالة
               </label>
               <select

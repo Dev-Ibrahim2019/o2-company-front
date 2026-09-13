@@ -1,0 +1,3 @@
+import { SectionFrame, date, money, text, useCrmSection, type Row } from "./shared";
+const fields = [["last_order_at","آخر طلب",date],["orders_count","عدد الطلبات",text],["total_spent","إجمالي المشتريات",money],["average_order_value","متوسط الطلب",money],["legacy_points","النقاط القديمة",text],["created_at","تاريخ التسجيل",date]] as const;
+export default function OverviewTab() { const state = useCrmSection("overview"); return <SectionFrame state={state}>{data => { const row = data as Row; return <dl className="crm-details">{fields.filter(([k]) => row[k] != null).map(([k,l,f]) => <div key={k}><dt>{l}</dt><dd>{f(row[k])}</dd></div>)}</dl>; }}</SectionFrame>; }
