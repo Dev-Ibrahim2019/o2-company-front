@@ -11,12 +11,14 @@ import { employeeService, type EmployeeFromApi } from "../../../services/employe
 import { orderService } from "../../../services/orderService";
 import { toast } from "../../shared/Toast";
 import {
-  dedupeActiveOrders, deriveWorkflowStage, getOrderSlaLevel, type WorkflowStage,
+  dedupeActiveOrders, deriveWorkflowStage, getOrderSlaLevel, getOrderDelayReferenceTime, type WorkflowStage,
 } from "../activeOrdersView";
 import { OrderSummaryBar } from "../components/OrderSummaryBar";
 import { OrderFiltersBar, type OrderFilterValue } from "../components/OrderFiltersBar";
 import { DriverSection, deriveDriverStatus } from "../components/DriverSection";
 import { OrderCard, type CardDensity } from "../components/OrderCard";
+import { useAuth } from "../../../auth/AuthContext";
+import { agentCan } from "../../../auth/callCenterAccess";
 
 // مدة التحضير الافتراضية (بالدقائق) قبل موعد الطلب المجدول — تنبيه بصري فقط لمن يشاهد الشاشة
 // حاليًا؛ التنفيذ الفعلي (إرسال للأقسام + طباعة) من الباك اند عبر orders:execute-scheduled.
@@ -40,6 +42,9 @@ const emptyStageCounts = (): Record<WorkflowStage, number> => ({
 
 export const ActiveOrdersPage: React.FC = () => {
   const navigate = useNavigate();
+  const { hasRole, hasPermission } = useAuth();
+  const canAssignDriver = agentCan("call-center.assign-driver", hasRole, hasPermission);
+  const canChangeStatus = agentCan("call-center.change-order-status", hasRole, hasPermission);
   const [orders, setOrders] = useState<Record<ActiveOrderScope, ActiveCallCenterOrder[]>>(emptyGroups());
   const [drivers, setDrivers] = useState<EmployeeFromApi[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,7 +119,7 @@ export const ActiveOrdersPage: React.FC = () => {
   }, [allOrders]);
 
   const delayedCount = useMemo(
-    () => allOrders.filter(o => getOrderSlaLevel(o.created_at) !== "normal").length,
+    () => allOrders.filter(o => getOrderSlaLevel(getOrderDelayReferenceTime(o)) !== "normal").length,
     [allOrders],
   );
 
@@ -144,7 +149,7 @@ export const ActiveOrdersPage: React.FC = () => {
           || (o.customer_phone || "").includes(q);
         if (!match) return false;
       }
-      if (filter === "delayed") return getOrderSlaLevel(o.created_at) !== "normal";
+      if (filter === "delayed") return getOrderSlaLevel(getOrderDelayReferenceTime(o)) !== "normal";
       if (filter !== "all") return deriveWorkflowStage(o.status, o.order_type) === filter;
       return true;
     });
@@ -159,7 +164,7 @@ export const ActiveOrdersPage: React.FC = () => {
       if (bScheduled) return 1;
 
       const rank = (o: ActiveCallCenterOrder) => {
-        if (getOrderSlaLevel(o.created_at) === "critical") return 0;
+        if (getOrderSlaLevel(getOrderDelayReferenceTime(o)) === "critical") return 0;
         const stage = deriveWorkflowStage(o.status, o.order_type);
         if (stage === "new" || stage === "preparing") return 1;
         if (stage === "ready" || stage === "out_for_delivery") return 2;
@@ -190,6 +195,26 @@ export const ActiveOrdersPage: React.FC = () => {
       fetchOrders();
     } catch (err: any) {
       toast.error("فشل تسليم الطلب", err?.response?.data?.message);
+    }
+  }, [fetchOrders]);
+
+  const handleStartPreparing = useCallback(async (orderId: number) => {
+    try {
+      await orderService.confirm(orderId);
+      toast.success("تم تنفيذ الطلب بالأقسام");
+      fetchOrders();
+    } catch (err: any) {
+      toast.error("فشل تنفيذ الطلب", err?.response?.data?.message);
+    }
+  }, [fetchOrders]);
+
+  const handleMarkReady = useCallback(async (orderId: number) => {
+    try {
+      await orderService.markReady(orderId);
+      toast.success("الطلب جاهز");
+      fetchOrders();
+    } catch (err: any) {
+      toast.error("فشل تحديث حالة الطلب", err?.response?.data?.message);
     }
   }, [fetchOrders]);
 
@@ -326,9 +351,13 @@ export const ActiveOrdersPage: React.FC = () => {
                     order={order}
                     density={density}
                     availableDrivers={availableDrivers}
+                    canAssignDriver={canAssignDriver}
+                    canChangeStatus={canChangeStatus}
                     onOpen={() => navigate(`/call-center/orders/${order.id}`)}
                     onAssignDriver={handleAssignDriver}
                     onMarkDelivered={handleMarkDelivered}
+                    onStartPreparing={handleStartPreparing}
+                    onMarkReady={handleMarkReady}
                   />
                 </motion.div>
               ))}

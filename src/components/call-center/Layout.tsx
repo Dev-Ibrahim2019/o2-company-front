@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useApp } from "../../../store";
 import { useAuth } from "../../auth";
+import { ROLES } from "../../auth/permissions";
 import { AnimatePresence, motion } from "framer-motion";
 import { CallPhoneWidget } from "./components/CallPhoneWidget";
 import { CallCenterThemeToggle } from "./components/CallCenterThemeToggle";
@@ -12,7 +13,6 @@ import {
   Search,
   MessageSquareWarning,
   Gift,
-  Users,
   Star,
   ShoppingCart,
   Power,
@@ -22,6 +22,7 @@ import {
   Phone,
   ClipboardList,
   CheckCircle,
+  Bike,
 } from "lucide-react";
 import { colors, typography, radius, shadows, transitions } from "./design/tokens";
 
@@ -29,7 +30,11 @@ const FULL_BLEED_PATHS = new Set(["/call-center/pos"]);
 
 export const CallCenterLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const { currentUser } = useApp();
-  const { logout: authLogout } = useAuth();
+  const { logout: authLogout, hasRole } = useAuth();
+  const canManageCallCenterStaff = hasRole(ROLES.CALL_CENTER_MANAGER) || hasRole(ROLES.SUPER_ADMIN) || hasRole(ROLES.BRANCH_MANAGER);
+  // إدارة الديليفري وإعدادات SIP غير متاحتين لموظف الكول سنتر العادي إطلاقاً — نفس مجموعة
+  // الأدوار المسموحة بمسارَي App.tsx (DELIVERY_SIP_ROLES) بالضبط.
+  const canAccessDeliveryOrSip = canManageCallCenterStaff || hasRole(ROLES.ACCOUNTANT);
   const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);
 
@@ -149,8 +154,15 @@ export const CallCenterLayout: React.FC<{ children?: React.ReactNode }> = ({ chi
           {/* <SidebarLink to="/call-center/complaints" icon={MessageSquareWarning} label="الشكاوى والمتابعة" /> */}
           {/* <SidebarLink to="/call-center/occasions" icon={Gift} label="المناسبات" /> */}
           {/* <SidebarLink to="/call-center/top-customers" icon={Star} label="الولاء والعملاء المميزون" /> */}
-          <SidebarLink to="/call-center/employees" icon={Users} label="الموظفون" />
-          <SidebarLink to="/call-center/sip-settings" icon={Phone} label="إعدادات SIP" />
+          {canAccessDeliveryOrSip && (
+            <SidebarLink to="/call-center/delivery" icon={Bike} label="إدارة الديليفري" />
+          )}
+          {canManageCallCenterStaff && (
+            <SidebarLink to="/call-center/team" icon={Headphones} label="الفريق" />
+          )}
+          {canAccessDeliveryOrSip && (
+            <SidebarLink to="/call-center/sip-settings" icon={Phone} label="إعدادات SIP" />
+          )}
         </nav>
 
         <div style={{ marginTop: "auto", borderTop: `1px solid ${colors.border.subtle}`, paddingTop: 12 }}>

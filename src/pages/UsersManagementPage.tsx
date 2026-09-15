@@ -39,6 +39,8 @@ const ROLE_LABELS: Record<string, string> = {
   "cashier": "كاشير",
   "hospitality": "ضيافة",
   "dept-staff": "موظف قسم",
+  "call-center": "موظف كول سنتر",
+  "call-center-manager": "مدير الكول سنتر",
 };
 
 const UsersManagementPage: React.FC = () => {
@@ -204,6 +206,10 @@ const UsersManagementPage: React.FC = () => {
               <tbody>
                 {users.map((user, idx) => {
                   const isSuperAdmin = user.role === "super-admin";
+                  // رئيس الكول سنتر دور مركزي يخدم كل الفروع — الفرع مقفل على "كل الفروع" دائمًا
+                  // بالباك اند (UserController::updateRole)، فلا يجوز ترك القائمة قابلة للتعديل
+                  // هنا وكأن القيمة اختيارية.
+                  const isCallCenterManager = user.role === "call-center-manager";
                   return (
                     <tr key={user.id} className="border-b border-white/5 hover:bg-slate-800/30 transition-colors">
                       <td className="px-3 py-3 text-slate-500">{idx + 1}</td>
@@ -232,12 +238,13 @@ const UsersManagementPage: React.FC = () => {
                       <td className="px-3 py-3 text-center">
                         <Can permission={PERMISSIONS.MANAGE_USERS}>
                           <select
-                            value={user.branch_id ?? ""}
+                            value={isCallCenterManager ? "" : user.branch_id ?? ""}
                             onChange={(e) => {
                               const val = e.target.value === "" ? null : Number(e.target.value);
                               handleUserUpdate(user.id, "branch_id", val);
                             }}
-                            disabled={updatingUser === user.id || isSuperAdmin}
+                            disabled={updatingUser === user.id || isSuperAdmin || isCallCenterManager}
+                            title={isCallCenterManager ? "رئيس الكول سنتر يخدم كل الفروع دائمًا — غير قابل للتعديل" : undefined}
                             className="px-2 py-1.5 bg-slate-800 border border-white/10 rounded-lg text-white text-xs font-bold outline-none focus:ring-2 focus:ring-red-600 disabled:opacity-50 cursor-pointer"
                           >
                             <option value="">— عام / كل الفروع —</option>

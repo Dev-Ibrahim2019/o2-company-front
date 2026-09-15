@@ -85,7 +85,9 @@ import { CustomerPhoneSearch } from "./components/call-center/CustomerPhoneSearc
 import { ComplaintsManagement } from "./components/call-center/ComplaintsManagement";
 import { OccasionsPage } from "./components/call-center/OccasionsPage";
 import { TopCustomersTable } from "./components/call-center/TopCustomersTable";
-import { CallCenterEmployees } from "./components/call-center/CallCenterEmployees";
+import { DeliveryManagementPage } from "./components/call-center/pages/DeliveryManagementPage";
+import { DriverDetailPage } from "./components/call-center/pages/DriverDetailPage";
+import { CallCenterTeamPage } from "./components/call-center/pages/CallCenterTeamPage";
 import { CallCenterPOS } from "./components/call-center/CallCenterPOS";
 import { CallCenterDashboard } from "./components/call-center/pages/CallCenterDashboard";
 import { OperationsDashboard } from "./components/call-center/pages/OperationsDashboard";
@@ -120,9 +122,26 @@ const HOSPITALITY_ROLES = [
   ROLES.BRANCH_MANAGER,
 ];
 
-/** الأدوار المسموح بها في مسارات /call-center/* */
+/** الأدوار المسموح بها في مسارات /call-center/* — رئيس الكول سنتر يملك كل صلاحيات الموظف العادي */
 const CALL_CENTER_ROLES = [
   ROLES.CALL_CENTER,
+  ROLES.CALL_CENTER_MANAGER,
+  ROLES.SUPER_ADMIN,
+  ROLES.ACCOUNTANT,
+  ROLES.BRANCH_MANAGER,
+];
+
+/** الأدوار المسموح لها بإدارة موظفي الكول سنتر تحديدًا — موظف الكول سنتر العادي مستثنى عمدًا */
+const CALL_CENTER_MANAGER_ROLES = [
+  ROLES.CALL_CENTER_MANAGER,
+  ROLES.SUPER_ADMIN,
+  ROLES.BRANCH_MANAGER,
+];
+
+/** إدارة الديليفري وإعدادات SIP — غير متاحتين لموظف الكول سنتر العادي إطلاقاً (كل من عدا
+ * ROLES.CALL_CENTER من مجموعة CALL_CENTER_ROLES، للحفاظ على وصول accountant الموجود مسبقًا) */
+const DELIVERY_SIP_ROLES = [
+  ROLES.CALL_CENTER_MANAGER,
   ROLES.SUPER_ADMIN,
   ROLES.ACCOUNTANT,
   ROLES.BRANCH_MANAGER,
@@ -439,8 +458,16 @@ function AppRoutes() {
                 <Route path="complaints" element={<ComplaintsManagement />} />
                 <Route path="occasions" element={<OccasionsPage />} />
                 <Route path="top-customers" element={<TopCustomersTable />} />
-                <Route path="employees" element={<CallCenterEmployees />} />
-                <Route path="sip-settings" element={<SipConfigV2 />} />
+                {/* إدارة الديليفري وإعدادات SIP — غير متاحتين لموظف الكول سنتر العادي إطلاقاً */}
+                <Route element={<RoleGuard allowedRoles={DELIVERY_SIP_ROLES} />}>
+                  <Route path="delivery" element={<DeliveryManagementPage />} />
+                  <Route path="delivery/:driverId" element={<DriverDetailPage />} />
+                  <Route path="sip-settings" element={<SipConfigV2 />} />
+                </Route>
+                {/* محصورة برئيس الكول سنتر فقط — موظف الكول سنتر العادي يُعاد توجيهه لـ /unauthorized */}
+                <Route element={<RoleGuard allowedRoles={CALL_CENTER_MANAGER_ROLES} />}>
+                  <Route path="team" element={<CallCenterTeamPage />} />
+                </Route>
               </Route>
             </Route>
           </Route>

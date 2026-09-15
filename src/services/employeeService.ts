@@ -58,6 +58,19 @@ export interface EmployeeFromApi {
   /** بشفت مفتوح حاليًا بغض النظر عن التوفر — يميّز "استراحة" (شفت مفتوح، available_now=false)
    * عن "غير متصل" (لا شفت مفتوح أصلاً). موجود فقط لسائقي التوصيل. */
   on_shift_now?: boolean;
+  /** كود سائق فريد (DR-###) — يُولَّد تلقائيًا بالباك اند لسائقي التوصيل */
+  employee_code?: string;
+  /** نموذج التوفر ثنائي البعد: status (نشط/غير نشط) مستقل تمامًا عن availability (محسوبة دائمًا،
+   * on_delivery لا تُضبط يدويًا أبدًا — موجودة فقط لسائقي التوصيل) */
+  availability?: "available" | "on_delivery" | "offline";
+  current_orders_count?: number;
+  /** الحد الأقصى الفعلي للتوصيلات المتزامنة لهذا السائق (تجاوز فردي أو القيمة العامة) */
+  max_active_deliveries?: number;
+  /** مؤهّل لتعيين جديد الآن؟ محسوبة بالكامل بالباك اند (شفت مفتوح + دون الحد الأقصى) — لا تُستخدم
+   * للتحقق النهائي (الباك اند يعيد التحقق دومًا وقت التعيين الفعلي)، فقط لعرض/فلترة القائمة. */
+  is_eligible_for_assignment?: boolean;
+  completed_deliveries?: number;
+  last_delivery_at?: string | null;
   status: string;
   username?: string;
   permissions: string[];
@@ -91,6 +104,8 @@ export interface EmployeePayload {
   role?: string;
   operational_role?: OperationalRole;
   vehicle_type?: VehicleType;
+  /** يُولَّد تلقائيًا بالباك اند لسائقي التوصيل (DR-###) لو لم يُرسَل — اختياري هون فقط للاكتمال */
+  employee_code?: string;
   status?: string;
   username?: string;
   password?: string;

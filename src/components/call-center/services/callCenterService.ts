@@ -202,6 +202,9 @@ export interface ActiveCallCenterOrder {
   branch: { id: number; name: string } | null;
   created_at: string;
   scheduled_at?: string | null;
+  /** وقت التنفيذ الفعلي (orders:execute-scheduled بالباك اند) — موجود فقط للطلبات المجدولة اللي
+   * نُفِّذت فعليًا؛ يُستخدم كمرجع لحساب التأخر بدل scheduled_at/created_at بعد التنفيذ. */
+  executed_at?: string | null;
   payments?: Array<{ method: "cash" | "card" | "wallet"; amount: number }> | null;
   payment_status?: BackendPaymentStatus;
   /** فشل التنفيذ التلقائي (orders:execute-scheduled بالباك اند) — غير فارغ يعني الطلب توقف عن إعادة المحاولة ويحتاج مراجعة يدوية */

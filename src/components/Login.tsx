@@ -29,6 +29,7 @@ const API_ROLE_TO_STORE_ROLE: Record<string, string> = {
   "hospitality": "HOSPITALITY",
   "dept-staff": "DEPARTMENT_STAFF",
   "call-center": "CALL_CENTER",
+  "call-center-manager": "CALL_CENTER",
 };
 
 export const Login: React.FC = () => {
@@ -64,7 +65,7 @@ export const Login: React.FC = () => {
   // ── تحويل المستخدم حسب دوره ──
   const redirectByRole = (roles: string[]) => {
     const primary = roles[0] || "";
-    if (primary === "call-center") {
+    if (primary === "call-center" || primary === "call-center-manager") {
       localStorage.removeItem("pos_device_uuid");
       localStorage.removeItem("pos_register_info");
       localStorage.removeItem("hospitality_device_uuid");

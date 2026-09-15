@@ -18,9 +18,21 @@ export type OrderStatus =
   | "scheduled"
   // حالات دورة التوصيل — تُضبط فقط عبر assignDelivery/markDelivered (طلبات order_type=delivery)
   | "OUT_FOR_DELIVERY"
-  | "DELIVERED";
+  | "DELIVERED"
+  // إغلاق صريح — يُضبط فقط عبر OrderStatusService::maybeAutoClose بالباك اند (اكتمل التسليم والدفع)
+  | "closed";
 export type PaymentMethod = "cash" | "card" | "wallet" | "bank" | "account";
 export type DiscountType = "amount" | "percent";
+
+export type OrderActivityLogEntry = {
+  id: number;
+  action_type: string;
+  from_status: string | null;
+  to_status: string | null;
+  note: string | null;
+  actor: string | null;
+  created_at: string | null;
+};
 
 const normalizeMoney = (value: number) =>
   Math.round((Number(value) || 0) * 100) / 100;
@@ -28,7 +40,7 @@ const normalizeMoney = (value: number) =>
 const normalizeTableNumber = (value: string | number | null | undefined) =>
   String(value ?? "").trim();
 
-const CLOSED_ORDER_STATUSES = new Set<OrderStatus>(["paid", "cancelled"]);
+const CLOSED_ORDER_STATUSES = new Set<OrderStatus>(["paid", "cancelled", "closed"]);
 
 type ApiErrorLike = {
   response?: {
@@ -132,6 +144,8 @@ export interface OrderQueryFilters {
   status?: OrderStatus;
   date?: string;
   table_number?: string;
+  /** طلبات مُسنَدة لسائق توصيل معيَّن (orders.driver_id) — لصفحة تفاصيل السائق بإدارة الديليفري */
+  driver_id?: number;
 }
 
 const unwrapOrderList = (payload: unknown): OrderFromApi[] => {
@@ -496,9 +510,21 @@ export const orderService = {
     return data.data as OrderFromApi;
   },
 
+  /** "الطلب جاهز" — مرحلة PREPARING → READY (confirmed/in_progress/paid → ready) */
+  markReady: async (id: number): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${id}/mark-ready`);
+    return data.data as OrderFromApi;
+  },
+
   /** تعيين موظف توصيل لطلب جاهز (ready → OUT_FOR_DELIVERY) — طلبات delivery فقط */
   assignDelivery: async (id: number, driverId: number): Promise<OrderFromApi> => {
     const { data } = await api.post(`/orders/${id}/assign-delivery`, { driver_id: driverId });
+    return data.data as OrderFromApi;
+  },
+
+  /** تغيير السائق المُسنَد لطلب OUT_FOR_DELIVERY — يحافظ على تاريخ التعيين القديم (delivery_assignments) */
+  changeDriver: async (id: number, driverId: number): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${id}/change-driver`, { driver_id: driverId });
     return data.data as OrderFromApi;
   },
 
@@ -506,6 +532,31 @@ export const orderService = {
   markDelivered: async (id: number): Promise<OrderFromApi> => {
     const { data } = await api.post(`/orders/${id}/deliver`);
     return data.data as OrderFromApi;
+  },
+
+  /** إلغاء تعيين السائق عن طلب توصيل (OUT_FOR_DELIVERY → ready) — يحتاج صلاحية محاسب/مدير فرع */
+  unassignDelivery: async (id: number): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${id}/unassign-delivery`);
+    return data.data as OrderFromApi;
+  },
+
+  /** إعادة فتح طلب مغلق — إجراء إداري صريح، يتطلب سبب إلزامي (صلاحية محاسب/مدير فرع) */
+  reopen: async (id: number, reason: string): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${id}/reopen`, { reason });
+    return data.data as OrderFromApi;
+  },
+
+  /** إتمام قسري (Force Complete) — استثناء إداري لحالات حدّية، يتطلب سبب إلزامي، لا يتخطى شرط
+   * الدفع الكامل أبدًا (صلاحية محاسب/مدير فرع) */
+  forceComplete: async (id: number, reason: string): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${id}/force-complete`, { reason });
+    return data.data as OrderFromApi;
+  },
+
+  /** سجل نشاط الطلب (Timeline) — كل تغييرات الحالة/الدفع/تعيين السائق مرتبة زمنيًا (الأحدث أولاً) */
+  getActivityLog: async (id: number): Promise<OrderActivityLogEntry[]> => {
+    const { data } = await api.get(`/orders/${id}/activity-log`);
+    return data.data as OrderActivityLogEntry[];
   },
 
   /** مزامنة سياق التسعير وإعادة حساب المجاميع (خصم المحرك + يدوي) */

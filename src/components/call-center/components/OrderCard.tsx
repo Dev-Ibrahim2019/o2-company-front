@@ -1,11 +1,11 @@
 import React, { useState } from "react";
-import { ArrowLeft, User, Phone, Bike, CalendarClock, Loader2, ChevronDown, AlertCircle } from "lucide-react";
+import { ArrowLeft, User, Phone, Bike, CalendarClock, Loader2, ChevronDown, AlertCircle, ChefHat, CheckCircle2 } from "lucide-react";
 import { colors, typography, radius, shadows, transitions } from "../design/tokens";
 import type { ActiveCallCenterOrder } from "../services/callCenterService";
 import type { EmployeeFromApi } from "../../../services/employeeService";
 import {
   getOrderReference, formatShekel, derivePaymentStatus, PAYMENT_STATUS_LABELS,
-  deriveWorkflowStage, getOrderSlaLevel, getDelayMinutes, WORKFLOW_STAGE_COLORS,
+  deriveWorkflowStage, getOrderSlaLevel, getDelayMinutes, getOrderDelayReferenceTime, WORKFLOW_STAGE_COLORS,
 } from "../activeOrdersView";
 import { OrderStatusBadge, DelayIndicator } from "./OrderStatusBadge";
 
@@ -42,10 +42,17 @@ export const OrderCard: React.FC<{
   order: ActiveCallCenterOrder;
   density: CardDensity;
   availableDrivers: EmployeeFromApi[];
+  /** صلاحية call-center.assign-driver (أو دور بوصول كامل) — نفس منطق OrderDetailPage، محسوبة
+   * مرة وحدة بالصفحة الأم وتُمرَّر هون بدل تكرار useAuth() بكل كارد. */
+  canAssignDriver: boolean;
+  /** صلاحية call-center.change-order-status — لزرَّي "بدء التجهيز"/"الطلب جاهز". */
+  canChangeStatus: boolean;
   onOpen: () => void;
   onAssignDriver: (orderId: number, driverId: number) => Promise<void>;
   onMarkDelivered: (orderId: number) => Promise<void>;
-}> = ({ order, density, availableDrivers, onOpen, onAssignDriver, onMarkDelivered }) => {
+  onStartPreparing: (orderId: number) => Promise<void>;
+  onMarkReady: (orderId: number) => Promise<void>;
+}> = ({ order, density, availableDrivers, canAssignDriver: canAssignDriverPermission, canChangeStatus, onOpen, onAssignDriver, onMarkDelivered, onStartPreparing, onMarkReady }) => {
   const [showDriverPicker, setShowDriverPicker] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
 
@@ -55,12 +62,27 @@ export const OrderCard: React.FC<{
   const paymentColor = paymentStatus === "paid" ? colors.semantic.success
     : paymentStatus === "awaiting_payment" ? colors.semantic.warning
     : colors.neutral[500];
-  const slaLevel = getOrderSlaLevel(order.created_at);
-  const delayMinutes = getDelayMinutes(order.created_at);
+  const delayReferenceTime = getOrderDelayReferenceTime(order);
+  const slaLevel = getOrderSlaLevel(delayReferenceTime);
+  const delayMinutes = getDelayMinutes(delayReferenceTime);
   const isDelayed = slaLevel !== "normal";
 
-  const canAssignDriver = order.order_type === "delivery" && order.status === "ready";
-  const canMarkDelivered = order.status === "OUT_FOR_DELIVERY";
+  const canAssignDriver = canAssignDriverPermission && order.order_type === "delivery" && order.status === "ready";
+  const canMarkDelivered = canAssignDriverPermission && order.status === "OUT_FOR_DELIVERY";
+  // "paid" غامضة (قد تكون قبل أو بعد إرسالها للمطبخ) — الكارد ما عنده بيانات التذاكر لتمييزها
+  // (بعكس OrderDetailPage)، فنكتفي هون بالحالات الواضحة ونترك حالة "paid" لصفحة التفاصيل.
+  const canStartPreparing = canChangeStatus && ["pending", "pending_confirmation", "scheduled"].includes(order.status);
+  const canMarkReady = canChangeStatus && ["confirmed", "in_progress"].includes(order.status);
+  const [statusActionBusy, setStatusActionBusy] = useState(false);
+
+  const handleStartPreparing = async () => {
+    setStatusActionBusy(true);
+    try { await onStartPreparing(order.id); } finally { setStatusActionBusy(false); }
+  };
+  const handleMarkReady = async () => {
+    setStatusActionBusy(true);
+    try { await onMarkReady(order.id); } finally { setStatusActionBusy(false); }
+  };
 
   const handleAssign = async (driverId: number) => {
     setActionBusy(true);
@@ -173,6 +195,28 @@ export const OrderCard: React.FC<{
 
       {/* إجراءات */}
       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 2 }}>
+        {canStartPreparing && (
+          <button onClick={handleStartPreparing} disabled={statusActionBusy} style={{
+            width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            padding: "8px 12px", borderRadius: radius.lg,
+            background: colors.brand[500], color: "#fff", border: "none",
+            fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
+            cursor: statusActionBusy ? "not-allowed" : "pointer", opacity: statusActionBusy ? 0.7 : 1,
+          }}>
+            {statusActionBusy ? <Loader2 size={14} className="animate-spin" /> : <ChefHat size={14} />} بدء التجهيز
+          </button>
+        )}
+        {canMarkReady && (
+          <button onClick={handleMarkReady} disabled={statusActionBusy} style={{
+            width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            padding: "8px 12px", borderRadius: radius.lg,
+            background: colors.semantic.success, color: "#fff", border: "none",
+            fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
+            cursor: statusActionBusy ? "not-allowed" : "pointer", opacity: statusActionBusy ? 0.7 : 1,
+          }}>
+            {statusActionBusy ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} الطلب جاهز
+          </button>
+        )}
         {canAssignDriver && (
           <div style={{ position: "relative" }}>
             <button

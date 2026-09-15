@@ -4,9 +4,10 @@ import {
   ArrowRight, Loader2, Save, Plus, Minus, Trash2, Edit3, X,
   Phone, Clock, CreditCard,
   AlertCircle, Search, CheckCircle2, XCircle, ChefHat, Truck, Ban, Receipt, Keyboard, Bike,
+  History, DollarSign, PackageX, Lock, Unlock,
 } from "lucide-react";
 import { colors, typography, radius, shadows, transitions } from "../design/tokens";
-import { orderService, type OrderFromApi, type OrderItemFromApi } from "../../../services/orderService";
+import { orderService, type OrderFromApi, type OrderItemFromApi, type OrderActivityLogEntry } from "../../../services/orderService";
 import { employeeService, type EmployeeFromApi } from "../../../services/employeeService";
 import api from "../../../api/axios";
 import { toast } from "../../shared/Toast";
@@ -15,6 +16,9 @@ import { InvoicePreviewDrawer } from "../components/InvoicePreviewDrawer";
 import { RecordPaymentModal } from "../components/RecordPaymentModal";
 import { printOrderInvoice } from "../printInvoice";
 import { ConfirmModal } from "../../shared/ConfirmModal";
+import { useAuth } from "../../../auth/AuthContext";
+import { ROLES } from "../../../auth/permissions";
+import { agentCan } from "../../../auth/callCenterAccess";
 
 // ============================================================================
 // TYPES
@@ -50,6 +54,49 @@ const STATUS_MAP: Record<string, { label: string; color: string; icon: React.Rea
 
 const ORDER_TYPE_MAP: Record<string, string> = { dine_in: "محلي", takeaway: "فوري", delivery: "توصيل" };
 
+const VEHICLE_TYPE_LABELS: Record<string, string> = {
+  bicycle: "دراجة هوائية", electric_bike: "دراجة كهربائية", motorcycle: "دراجة نارية", external: "توصيل خارجي",
+};
+
+// ── سجل النشاط (Timeline) — أيقونة/لون/نص لكل action_type من order_activity_log بالباك اند ──
+const activityIcon = (actionType: string): React.ReactNode => {
+  switch (actionType) {
+    case "payment": return <DollarSign size={13} />;
+    case "driver_assigned": return <Bike size={13} />;
+    case "driver_unassigned": return <PackageX size={13} />;
+    case "closed": return <Lock size={13} />;
+    case "reopened": return <Unlock size={13} />;
+    default: return <History size={13} />;
+  }
+};
+
+const activityColor = (actionType: string): string => {
+  switch (actionType) {
+    case "payment": return colors.semantic.success;
+    case "driver_assigned": return "#F97316";
+    case "driver_unassigned": return colors.neutral[500];
+    case "closed": return colors.semantic.warning;
+    case "reopened": return colors.brand[500];
+    default: return colors.neutral[400];
+  }
+};
+
+const activityLabel = (entry: { action_type: string; from_status: string | null; to_status: string | null }): string => {
+  const fromLabel = entry.from_status ? (STATUS_MAP[entry.from_status]?.label || entry.from_status) : null;
+  const toLabel = entry.to_status ? (STATUS_MAP[entry.to_status]?.label || entry.to_status) : null;
+  switch (entry.action_type) {
+    case "payment": return "دفعة جديدة";
+    case "driver_assigned": return "تعيين سائق توصيل";
+    case "driver_unassigned": return "إلغاء تعيين السائق";
+    case "closed": return "إغلاق الطلب";
+    case "reopened": return toLabel ? `إعادة فتح الطلب — الحالة: ${toLabel}` : "إعادة فتح الطلب";
+    default:
+      if (fromLabel && toLabel) return `تغيير الحالة: ${fromLabel} ← ${toLabel}`;
+      if (toLabel) return `الحالة: ${toLabel}`;
+      return "تحديث الطلب";
+  }
+};
+
 const formatDate = (d: string) => new Date(d).toLocaleDateString("ar-EG", { year: "numeric", month: "short", day: "numeric" });
 const formatTime = (d: string) => new Date(d).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" });
 
@@ -73,10 +120,45 @@ export const OrderDetailPage: React.FC = () => {
   const { orderId } = useParams<{ orderId: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { hasRole, hasPermission } = useAuth();
 
   const [order, setOrder] = useState<OrderFromApi | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // سجل نشاط الطلب (Timeline) — تغييرات الحالة/الدفع/تعيين السائق، مرتبة زمنيًا (الأحدث أولاً)
+  const [activityLog, setActivityLog] = useState<OrderActivityLogEntry[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+
+  // إعادة الفتح/الإتمام القسري — إجراءان إداريان صريحان يتطلبان سببًا إلزاميًا، متاحان فقط
+  // لمحاسب/مدير فرع/مدير نظام (نفس صلاحية canEditClosedOrder بالباك اند لكلا الإجراءين).
+  const canOverrideOrder = hasRole(ROLES.SUPER_ADMIN) || hasRole(ROLES.BRANCH_MANAGER) || hasRole(ROLES.ACCOUNTANT);
+
+  // تعيين/تغيير/تسليم سائق التوصيل — صلاحية واحدة تغطي دورة حياة التوصيل كاملة (نفس تجميع
+  // الباك اند بـ OrderController: assignDelivery/changeDriver/markDelivered كلها call-center.assign-driver).
+  const canAssignDriver = agentCan("call-center.assign-driver", hasRole, hasPermission);
+  // "بدء التجهيز" (NEW→PREPARING) و"الطلب جاهز" (PREPARING→READY) — نفس صلاحية تغيير حالة
+  // الطلب المستخدمة أصلاً لـ serve/cancel بالباك اند (call-center.change-order-status).
+  // حالة "paid" غامضة وحدها — confirmOrder() يُبقي طلبًا مدفوعًا مسبقًا عليها حتى بعد إرساله
+  // للمطبخ (لا ينقله لـ confirmed)، فنميّز بوجود تذاكر إنتاج فعلية بدل الاعتماد على status وحدها.
+  const canChangeStatus = agentCan("call-center.change-order-status", hasRole, hasPermission);
+  const hasProductionTickets = !!order && order.tickets.length > 0;
+  const canStartPreparing = !!order && canChangeStatus
+    && (["pending", "pending_confirmation", "scheduled"].includes(order.status) || (order.status === "paid" && !hasProductionTickets));
+  const canMarkReady = !!order && canChangeStatus
+    && (["confirmed", "in_progress"].includes(order.status) || (order.status === "paid" && hasProductionTickets));
+  // إتمام الطلب — مستويان: الأساسي بس بعد ما يوصل السائق (DELIVERED)، واليدوي/القسري يتخطى
+  // الشرط لحالات استثنائية (نفس منطق OrderController::forceComplete ثنائي المستوى بالباك اند).
+  const canCompleteBasic = hasPermission("call-center.complete-order") && order?.status === "DELIVERED";
+  const canManualComplete = agentCan("call-center.manual-complete-order", hasRole, hasPermission);
+  const [showReopenModal, setShowReopenModal] = useState(false);
+  const [reopenReason, setReopenReason] = useState("");
+  const [reopening, setReopening] = useState(false);
+
+  // إتمام قسري (Force Complete) — استثناء إداري لحالات حدّية (القسم 7)، لا يتخطى شرط الدفع أبدًا
+  const [showForceCompleteModal, setShowForceCompleteModal] = useState(false);
+  const [forceCompleteReason, setForceCompleteReason] = useState("");
+  const [forceCompleting, setForceCompleting] = useState(false);
 
   // Edit state
   const [editing, setEditing] = useState(false);
@@ -97,8 +179,10 @@ export const OrderDetailPage: React.FC = () => {
   // مخصص للكمية بالباك اند): نحذف السطر القديم ونعيد إضافته بنفس item_id/سعر وكمية جديدة.
   const [itemBusyId, setItemBusyId] = useState<number | null>(null);
 
-  // تعيين موظف توصيل — قائمة سائقي delivery_driver المتاحين الآن فقط (شفت مفتوح)
-  const [showAssignDriver, setShowAssignDriver] = useState(false);
+  // تعيين/تغيير موظف توصيل — قائمة سائقي delivery_driver المتاحين الآن فقط (شفت مفتوح + دون
+  // الحد الأقصى). نفس القائمة تُستخدم لكلا الوضعين (assign لطلب ready بلا سائق، change لطلب
+  // OUT_FOR_DELIVERY له سائق فعلاً) — الفرق فقط بالـ endpoint المُستدعى وعنوان النافذة.
+  const [driverModalMode, setDriverModalMode] = useState<"assign" | "change" | null>(null);
   const [drivers, setDrivers] = useState<EmployeeFromApi[]>([]);
   const [driversLoading, setDriversLoading] = useState(false);
   const [assigningDriverId, setAssigningDriverId] = useState<number | null>(null);
@@ -142,6 +226,22 @@ export const OrderDetailPage: React.FC = () => {
   }, [orderId]);
 
   useEffect(() => { fetchOrder(); }, [fetchOrder]);
+
+  // ── سجل نشاط الطلب — يُعاد جلبه كلما تغيّر الطلب (بعد أي إجراء يُسجَّل بالـ audit log) ──
+  const fetchActivityLog = useCallback(async () => {
+    if (!orderId) return;
+    setActivityLoading(true);
+    try {
+      const log = await orderService.getActivityLog(Number(orderId));
+      setActivityLog(log);
+    } catch {
+      setActivityLog([]);
+    } finally {
+      setActivityLoading(false);
+    }
+  }, [orderId]);
+
+  useEffect(() => { fetchActivityLog(); }, [fetchActivityLog, order?.status]);
 
   useEffect(() => {
     if (shouldStartEditing && canEditOrder) setEditing(true);
@@ -196,19 +296,24 @@ export const OrderDetailPage: React.FC = () => {
     }
   }, [order?.branch_id]);
 
-  useEffect(() => { if (showAssignDriver) fetchDrivers(); }, [showAssignDriver, fetchDrivers]);
+  useEffect(() => { if (driverModalMode) fetchDrivers(); }, [driverModalMode, fetchDrivers]);
 
-  // ── تعيين سائق على طلب توصيل جاهز ──
+  // ── تعيين/تغيير سائق — نفس الدالة لكلا الوضعين، فقط الـ endpoint المُستدعى يختلف ──
   const assignDriver = async (driverId: number) => {
     if (!order) return;
     setAssigningDriverId(driverId);
     try {
-      await orderService.assignDelivery(order.id, driverId);
-      toast.success("تم تعيين موظف التوصيل");
-      setShowAssignDriver(false);
+      if (driverModalMode === "change") {
+        await orderService.changeDriver(order.id, driverId);
+        toast.success("تم تغيير السائق");
+      } else {
+        await orderService.assignDelivery(order.id, driverId);
+        toast.success("تم تعيين موظف التوصيل");
+      }
+      setDriverModalMode(null);
       fetchOrder();
     } catch (err: any) {
-      toast.error("فشل تعيين موظف التوصيل", err?.response?.data?.message);
+      toast.error(driverModalMode === "change" ? "فشل تغيير السائق" : "فشل تعيين موظف التوصيل", err?.response?.data?.message);
     } finally {
       setAssigningDriverId(null);
     }
@@ -303,6 +408,41 @@ export const OrderDetailPage: React.FC = () => {
     }
   };
 
+  // ── إعادة فتح طلب مغلق — إجراء إداري صريح، يتطلب سبب إلزامي (3 أحرف على الأقل، مطابق للباك اند) ──
+  const reopenOrder = async () => {
+    if (!order || reopenReason.trim().length < 3) return;
+    setReopening(true);
+    try {
+      await orderService.reopen(order.id, reopenReason.trim());
+      toast.success("تم إعادة فتح الطلب");
+      setShowReopenModal(false);
+      setReopenReason("");
+      fetchOrder();
+    } catch (err: any) {
+      toast.error("فشل إعادة فتح الطلب", err?.response?.data?.message);
+    } finally {
+      setReopening(false);
+    }
+  };
+
+  // ── إتمام قسري (Force Complete) — استثناء إداري، يتطلب سبب إلزامي، يرفضه الباك اند لو الدفع
+  // لا يزال معلّقًا (لا يتخطى شرط الدفع أبدًا مهما كانت الصلاحية). ──
+  const forceCompleteOrder = async () => {
+    if (!order || forceCompleteReason.trim().length < 3) return;
+    setForceCompleting(true);
+    try {
+      await orderService.forceComplete(order.id, forceCompleteReason.trim());
+      toast.success("تم إتمام الطلب");
+      setShowForceCompleteModal(false);
+      setForceCompleteReason("");
+      fetchOrder();
+    } catch (err: any) {
+      toast.error("فشل إتمام الطلب", err?.response?.data?.message);
+    } finally {
+      setForceCompleting(false);
+    }
+  };
+
   // ── نجاح تسجيل الدفعة — يحدّث الحالة فورًا من غير إعادة تحميل الصفحة ──
   const handlePaymentSuccess = () => {
     setShowPaymentModal(false);
@@ -332,7 +472,7 @@ export const OrderDetailPage: React.FC = () => {
   };
 
   // ── تنفيذ الطلب بالأقسام (اختصار "-") — نفس orderService.confirm المستخدم أصلاً بزر "تأكيد"
-  // لو وُجد، حتى ما يصير عندنا منطقان مختلفان لنفس العملية. ──
+  // لو وُجد، حتى ما يصير عندنا منطقان مختلفان لنفس العملية. زر "بدء التجهيز" يستدعيها أيضًا. ──
   const confirmOrderToKitchen = async () => {
     if (!order) return;
     try {
@@ -341,6 +481,22 @@ export const OrderDetailPage: React.FC = () => {
       fetchOrder();
     } catch (err: any) {
       toast.error("فشل تنفيذ الطلب", err?.response?.data?.message);
+    }
+  };
+
+  // ── "الطلب جاهز" (PREPARING → READY) ──
+  const [markingReady, setMarkingReady] = useState(false);
+  const markOrderReady = async () => {
+    if (!order) return;
+    setMarkingReady(true);
+    try {
+      await orderService.markReady(order.id);
+      toast.success("الطلب جاهز");
+      fetchOrder();
+    } catch (err: any) {
+      toast.error("فشل تحديث حالة الطلب", err?.response?.data?.message);
+    } finally {
+      setMarkingReady(false);
     }
   };
 
@@ -517,18 +673,69 @@ export const OrderDetailPage: React.FC = () => {
                   </button>
                 </>
               )}
-              {order.order_type === "delivery" && order.status === "ready" && (
-                <button onClick={() => setShowAssignDriver(true)} style={{
+              {canStartPreparing && (
+                <button onClick={confirmOrderToKitchen} style={{
                   display: "flex", alignItems: "center", gap: 6,
                   padding: "8px 14px", borderRadius: radius.lg,
-                  background: `color-mix(in srgb, #F97316 6%, transparent)`, border: `1px solid color-mix(in srgb, #F97316 25%, transparent)`,
-                  color: "#F97316", fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
+                  background: colors.brand[500], color: "#fff", border: "none",
+                  fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
                   cursor: "pointer",
                 }}>
+                  <ChefHat size={14} /> بدء التجهيز
+                </button>
+              )}
+              {canMarkReady && (
+                <button onClick={markOrderReady} disabled={markingReady} style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "8px 14px", borderRadius: radius.lg,
+                  background: colors.semantic.success, color: "#fff", border: "none",
+                  fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
+                  cursor: markingReady ? "not-allowed" : "pointer", opacity: markingReady ? 0.7 : 1,
+                }}>
+                  {markingReady ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} الطلب جاهز
+                </button>
+              )}
+              {order.order_type === "delivery" && canAssignDriver
+                && !["OUT_FOR_DELIVERY", "DELIVERED", "served", "closed", "cancelled"].includes(order.status) && (
+                <button
+                  onClick={() => setDriverModalMode("assign")}
+                  disabled={order.status !== "ready"}
+                  title={order.status !== "ready" ? "لازم الطلب يكون جاهزًا أولًا قبل تعيين سائق" : undefined}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6,
+                    padding: "8px 14px", borderRadius: radius.lg,
+                    background: order.status !== "ready" ? colors.neutral[100] : `color-mix(in srgb, #F97316 6%, transparent)`,
+                    border: `1px solid ${order.status !== "ready" ? colors.border.subtle : "color-mix(in srgb, #F97316 25%, transparent)"}`,
+                    color: order.status !== "ready" ? colors.neutral[400] : "#F97316",
+                    fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
+                    cursor: order.status !== "ready" ? "not-allowed" : "pointer",
+                  }}>
                   <Bike size={14} /> تعيين موظف توصيل
                 </button>
               )}
-              {order.status === "OUT_FOR_DELIVERY" && (
+              {order.order_type !== "delivery" && canChangeStatus && ["ready", "in_progress"].includes(order.status) && (
+                <button onClick={() => setConfirmServe({ open: true, loading: false })} style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "8px 14px", borderRadius: radius.lg,
+                  background: colors.semantic.success, color: "#fff", border: "none",
+                  fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
+                  cursor: "pointer",
+                }}>
+                  <CheckCircle2 size={14} /> تم الاستلام
+                </button>
+              )}
+              {order.status === "OUT_FOR_DELIVERY" && order.driver && canAssignDriver && (
+                <button onClick={() => setDriverModalMode("change")} style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "8px 14px", borderRadius: radius.lg,
+                  background: colors.neutral[100], border: `1px solid ${colors.border.subtle}`,
+                  color: colors.neutral[700], fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
+                  cursor: "pointer",
+                }}>
+                  <Bike size={14} /> تغيير السائق
+                </button>
+              )}
+              {order.status === "OUT_FOR_DELIVERY" && canAssignDriver && (
                 <button onClick={() => setConfirmServe({ open: true, loading: false })} style={{
                   display: "flex", alignItems: "center", gap: 6,
                   padding: "8px 14px", borderRadius: radius.lg,
@@ -537,6 +744,17 @@ export const OrderDetailPage: React.FC = () => {
                   cursor: "pointer",
                 }}>
                   <CheckCircle2 size={14} /> تم التسليم
+                </button>
+              )}
+              {(canManualComplete || canCompleteBasic) && order.status !== "cancelled" && (
+                <button onClick={() => setShowForceCompleteModal(true)} style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "8px 14px", borderRadius: radius.lg,
+                  background: colors.neutral[100], border: `1px solid ${colors.border.subtle}`,
+                  color: colors.neutral[700], fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
+                  cursor: "pointer",
+                }}>
+                  <CheckCircle2 size={14} /> {canManualComplete ? "إتمام قسري" : "إتمام الطلب"}
                 </button>
               )}
               {order.status !== "cancelled" && (
@@ -576,12 +794,25 @@ export const OrderDetailPage: React.FC = () => {
       {/* Read-only badge for closed orders */}
       {isClosed && (
         <div style={{
-          display: "flex", alignItems: "center", gap: 8, padding: "10px 16px", marginBottom: 16,
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap",
+          padding: "10px 16px", marginBottom: 16,
           background: colors.semantic.warningBg, borderRadius: radius.lg, border: `1px solid ${colors.semantic.warningBorder}`,
           fontSize: typography.size.sm, color: colors.semantic.warning, fontWeight: typography.weight.semibold,
         }}>
-          <AlertCircle size={16} />
-          هذا الطلب مغلق (مكتمل ومدفوع بالكامل) — للقراءة فقط. عرض التفاصيل والفاتورة متاح، بدون تعديل أو إضافة صنف أو إلغاء.
+          <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Lock size={16} />
+            هذا الطلب مغلق (مكتمل ومدفوع بالكامل) — للقراءة فقط. عرض التفاصيل والفاتورة متاح، بدون تعديل أو إضافة صنف أو إلغاء.
+          </span>
+          {order.status === "closed" && canOverrideOrder && (
+            <button onClick={() => setShowReopenModal(true)} style={{
+              display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
+              padding: "6px 12px", borderRadius: radius.lg,
+              background: colors.neutral[0], border: `1px solid ${colors.semantic.warningBorder}`,
+              color: colors.semantic.warning, fontSize: "12px", fontWeight: typography.weight.bold, cursor: "pointer",
+            }}>
+              <Unlock size={13} /> إعادة فتح الطلب
+            </button>
+          )}
         </div>
       )}
 
@@ -971,6 +1202,51 @@ export const OrderDetailPage: React.FC = () => {
           </div>
         )}
 
+        {/* سجل نشاط الطلب (Timeline) — كل تغييرات الحالة/الدفع/تعيين السائق مرتبة زمنيًا */}
+        <div style={{ padding: "20px 28px", borderTop: `1px solid ${colors.border.subtle}` }}>
+          <span style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 6 }}>
+            <History size={13} /> سجل النشاط
+          </span>
+          {activityLoading ? (
+            <div style={{ display: "flex", justifyContent: "center", padding: 16 }}>
+              <Loader2 size={18} className="animate-spin" style={{ color: colors.brand[500] }} />
+            </div>
+          ) : activityLog.length === 0 ? (
+            <p style={{ fontSize: typography.size.sm, color: colors.neutral[400] }}>لا يوجد نشاط مسجَّل بعد</p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+              {activityLog.map((entry, idx) => (
+                <div key={entry.id} style={{ display: "flex", gap: 10, position: "relative" }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+                    <div style={{
+                      width: 26, height: 26, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                      background: `color-mix(in srgb, ${activityColor(entry.action_type)} 12%, transparent)`,
+                      color: activityColor(entry.action_type),
+                    }}>
+                      {activityIcon(entry.action_type)}
+                    </div>
+                    {idx < activityLog.length - 1 && (
+                      <div style={{ width: 2, flex: 1, background: colors.border.subtle, minHeight: 18 }} />
+                    )}
+                  </div>
+                  <div style={{ paddingBottom: 16, flex: 1 }}>
+                    <p style={{ fontSize: typography.size.sm, color: colors.neutral[800], fontWeight: typography.weight.semibold }}>
+                      {activityLabel(entry)}
+                    </p>
+                    {entry.note && (
+                      <p style={{ fontSize: "12px", color: colors.neutral[500], marginTop: 2 }}>{entry.note}</p>
+                    )}
+                    <p style={{ fontSize: "11px", color: colors.neutral[400], marginTop: 2 }}>
+                      {entry.actor ? `${entry.actor} — ` : ""}
+                      {entry.created_at ? `${formatDate(entry.created_at)} ${formatTime(entry.created_at)}` : ""}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* فوتر الفاتورة */}
         <div style={{ padding: "14px 28px", borderTop: `1px dashed ${colors.border.default}`, background: colors.neutral[50], textAlign: "center" }}>
           <p style={{ fontSize: "11px", color: colors.neutral[400] }}>شكرًا لتعاملكم معنا</p>
@@ -1004,24 +1280,158 @@ export const OrderDetailPage: React.FC = () => {
         onCancel={() => setConfirmServe({ open: false, loading: false })}
       />
 
-      {/* Assign Driver Modal */}
-      {showAssignDriver && (
+      {/* Reopen Modal — إجراء إداري صريح، سبب إلزامي (3 أحرف على الأقل، مطابق للتحقق بالباك اند) */}
+      {showReopenModal && (
         <div style={{
           position: "fixed", inset: 0, zIndex: 500,
           display: "flex", alignItems: "center", justifyContent: "center",
           background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)",
-        }} onClick={() => setShowAssignDriver(false)}>
+        }} onClick={() => { if (!reopening) { setShowReopenModal(false); setReopenReason(""); } }}>
           <div
             style={{
-              width: "100%", maxWidth: 420, maxHeight: "70vh",
+              width: "100%", maxWidth: 420,
               background: colors.neutral[0], borderRadius: radius.xl,
               boxShadow: shadows["2xl"], overflow: "hidden", display: "flex", flexDirection: "column",
             }}
             onClick={e => e.stopPropagation()}
           >
             <div style={{ padding: "16px 20px", borderBottom: `1px solid ${colors.border.subtle}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <h3 style={{ fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.neutral[900] }}>تعيين موظف توصيل</h3>
-              <button onClick={() => setShowAssignDriver(false)} style={{ background: "none", border: "none", cursor: "pointer", color: colors.neutral[400] }}>
+              <h3 style={{ fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.neutral[900], display: "flex", alignItems: "center", gap: 8 }}>
+                <Unlock size={16} style={{ color: colors.semantic.warning }} /> إعادة فتح الطلب
+              </h3>
+              <button onClick={() => { setShowReopenModal(false); setReopenReason(""); }} disabled={reopening} style={{ background: "none", border: "none", cursor: "pointer", color: colors.neutral[400] }}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ padding: 20 }}>
+              <p style={{ fontSize: typography.size.sm, color: colors.neutral[600], marginBottom: 12 }}>
+                هذا الإجراء إداري صريح ويُسجَّل بسجل النشاط. يرجى ذكر سبب إعادة الفتح (3 أحرف على الأقل).
+              </p>
+              <textarea
+                value={reopenReason}
+                onChange={e => setReopenReason(e.target.value)}
+                placeholder="سبب إعادة الفتح..."
+                rows={3}
+                autoFocus
+                style={{
+                  width: "100%", padding: "10px 12px", borderRadius: radius.lg,
+                  border: `1px solid ${colors.border.default}`, fontSize: typography.size.sm,
+                  outline: "none", resize: "vertical", fontFamily: typography.fontFamily.sans,
+                }}
+              />
+              <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "flex-end" }}>
+                <button onClick={() => { setShowReopenModal(false); setReopenReason(""); }} disabled={reopening} style={{
+                  padding: "8px 16px", borderRadius: radius.lg,
+                  background: colors.neutral[100], border: `1px solid ${colors.border.subtle}`,
+                  color: colors.neutral[600], fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
+                  cursor: reopening ? "not-allowed" : "pointer",
+                }}>
+                  إلغاء
+                </button>
+                <button onClick={reopenOrder} disabled={reopening || reopenReason.trim().length < 3} style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "8px 16px", borderRadius: radius.lg,
+                  background: colors.semantic.warning, color: "#fff", border: "none",
+                  fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
+                  cursor: (reopening || reopenReason.trim().length < 3) ? "not-allowed" : "pointer",
+                  opacity: (reopening || reopenReason.trim().length < 3) ? 0.6 : 1,
+                }}>
+                  {reopening ? <Loader2 size={14} className="animate-spin" /> : <Unlock size={14} />}
+                  إعادة الفتح
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Force Complete Modal — استثناء إداري لحالات حدّية (القسم 7)، لا يتخطى شرط الدفع أبدًا */}
+      {showForceCompleteModal && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 500,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)",
+        }} onClick={() => { if (!forceCompleting) { setShowForceCompleteModal(false); setForceCompleteReason(""); } }}>
+          <div
+            style={{
+              width: "100%", maxWidth: 420,
+              background: colors.neutral[0], borderRadius: radius.xl,
+              boxShadow: shadows["2xl"], overflow: "hidden", display: "flex", flexDirection: "column",
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ padding: "16px 20px", borderBottom: `1px solid ${colors.border.subtle}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <h3 style={{ fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.neutral[900], display: "flex", alignItems: "center", gap: 8 }}>
+                <CheckCircle2 size={16} style={{ color: colors.semantic.success }} /> {canManualComplete ? "إتمام الطلب قسريًا" : "إتمام الطلب"}
+              </h3>
+              <button onClick={() => { setShowForceCompleteModal(false); setForceCompleteReason(""); }} disabled={forceCompleting} style={{ background: "none", border: "none", cursor: "pointer", color: colors.neutral[400] }}>
+                <X size={18} />
+              </button>
+            </div>
+            <div style={{ padding: 20 }}>
+              <p style={{ fontSize: typography.size.sm, color: colors.neutral[600], marginBottom: 12 }}>
+                {canManualComplete
+                  ? "استثناء إداري لحالات حدّية (مثل تسوية نقدية تمت خارج المسار المعتاد) — يُسجَّل بسجل النشاط ولا يعمل إن كانت الفاتورة غير مدفوعة بالكامل. يرجى ذكر السبب (3 أحرف على الأقل)."
+                  : "الطلب وصل للعميل فعليًا (تأكيد السائق) — إتمامه الآن يقفله نهائيًا. يُسجَّل بسجل النشاط ولا يعمل إن كانت الفاتورة غير مدفوعة بالكامل. يرجى ذكر السبب (3 أحرف على الأقل)."}
+              </p>
+              <textarea
+                value={forceCompleteReason}
+                onChange={e => setForceCompleteReason(e.target.value)}
+                placeholder="سبب الإتمام القسري..."
+                rows={3}
+                autoFocus
+                style={{
+                  width: "100%", padding: "10px 12px", borderRadius: radius.lg,
+                  border: `1px solid ${colors.border.default}`, fontSize: typography.size.sm,
+                  outline: "none", resize: "vertical", fontFamily: typography.fontFamily.sans,
+                }}
+              />
+              <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "flex-end" }}>
+                <button onClick={() => { setShowForceCompleteModal(false); setForceCompleteReason(""); }} disabled={forceCompleting} style={{
+                  padding: "8px 16px", borderRadius: radius.lg,
+                  background: colors.neutral[100], border: `1px solid ${colors.border.subtle}`,
+                  color: colors.neutral[600], fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
+                  cursor: forceCompleting ? "not-allowed" : "pointer",
+                }}>
+                  إلغاء
+                </button>
+                <button onClick={forceCompleteOrder} disabled={forceCompleting || forceCompleteReason.trim().length < 3} style={{
+                  display: "flex", alignItems: "center", gap: 6,
+                  padding: "8px 16px", borderRadius: radius.lg,
+                  background: colors.semantic.success, color: "#fff", border: "none",
+                  fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
+                  cursor: (forceCompleting || forceCompleteReason.trim().length < 3) ? "not-allowed" : "pointer",
+                  opacity: (forceCompleting || forceCompleteReason.trim().length < 3) ? 0.6 : 1,
+                }}>
+                  {forceCompleting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                  إتمام الطلب
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign/Change Driver Modal — نفس النافذة لكلا الوضعين (القسم 9) */}
+      {driverModalMode && (
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 500,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: "rgba(0,0,0,0.4)", backdropFilter: "blur(4px)",
+        }} onClick={() => setDriverModalMode(null)}>
+          <div
+            style={{
+              width: "100%", maxWidth: 440, maxHeight: "70vh",
+              background: colors.neutral[0], borderRadius: radius.xl,
+              boxShadow: shadows["2xl"], overflow: "hidden", display: "flex", flexDirection: "column",
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ padding: "16px 20px", borderBottom: `1px solid ${colors.border.subtle}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <h3 style={{ fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.neutral[900] }}>
+                {driverModalMode === "change" ? "تغيير السائق" : "تعيين موظف توصيل"}
+              </h3>
+              <button onClick={() => setDriverModalMode(null)} style={{ background: "none", border: "none", cursor: "pointer", color: colors.neutral[400] }}>
                 <X size={18} />
               </button>
             </div>
@@ -1032,7 +1442,7 @@ export const OrderDetailPage: React.FC = () => {
                 </div>
               ) : drivers.length === 0 ? (
                 <p style={{ textAlign: "center", color: colors.neutral[400], padding: 30, fontSize: typography.size.sm }}>
-                  لا يوجد سائقو توصيل متاحون حاليًا (بشفت مفتوح)
+                  لا يوجد سائقو توصيل متاحون حاليًا (بشفت مفتوح ودون الحد الأقصى للتوصيلات المتزامنة)
                 </p>
               ) : (
                 drivers.map(driver => (
@@ -1041,20 +1451,38 @@ export const OrderDetailPage: React.FC = () => {
                     onClick={() => assignDriver(driver.id)}
                     disabled={assigningDriverId !== null}
                     style={{
-                      width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                      width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
                       padding: "12px 14px", borderRadius: radius.lg, marginBottom: 6,
                       background: colors.neutral[50], border: `1px solid ${colors.border.subtle}`, cursor: assigningDriverId !== null ? "not-allowed" : "pointer",
                       textAlign: "right", opacity: assigningDriverId !== null && assigningDriverId !== driver.id ? 0.5 : 1,
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <Bike size={16} style={{ color: "#F97316" }} />
-                      <div>
-                        <p style={{ fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.neutral[800] }}>{driver.name}</p>
-                        {driver.phone && <p style={{ fontSize: "11px", color: colors.neutral[400], fontFamily: typography.fontFamily.mono }}>{driver.phone}</p>}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                      <Bike size={16} style={{ color: "#F97316", flexShrink: 0 }} />
+                      <div style={{ minWidth: 0 }}>
+                        <p style={{ fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.neutral[800] }}>
+                          {driver.name}
+                          {driver.employee_code && (
+                            <span style={{ fontSize: "10px", color: colors.neutral[400], fontFamily: typography.fontFamily.mono, marginRight: 6 }}>
+                              {driver.employee_code}
+                            </span>
+                          )}
+                        </p>
+                        <p style={{ fontSize: "11px", color: colors.neutral[400], display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                          {driver.phone && <span style={{ fontFamily: typography.fontFamily.mono }}>{driver.phone}</span>}
+                          {driver.vehicle_type && <span>· {VEHICLE_TYPE_LABELS[driver.vehicle_type] || driver.vehicle_type}</span>}
+                        </p>
                       </div>
                     </div>
-                    {assigningDriverId === driver.id && <Loader2 size={14} className="animate-spin" style={{ color: colors.brand[500] }} />}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                      <span style={{
+                        fontSize: "10px", color: colors.neutral[500], fontWeight: typography.weight.semibold,
+                        padding: "2px 6px", borderRadius: radius.sm, background: colors.neutral[100],
+                      }}>
+                        {driver.current_orders_count ?? 0}/{driver.max_active_deliveries ?? 1} توصيل نشط
+                      </span>
+                      {assigningDriverId === driver.id && <Loader2 size={14} className="animate-spin" style={{ color: colors.brand[500] }} />}
+                    </div>
                   </button>
                 ))
               )}

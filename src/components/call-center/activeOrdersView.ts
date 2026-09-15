@@ -59,7 +59,9 @@ export function formatShekel(amount: number): string {
 export type OrderLifecycle = "active" | "closed";
 
 export function determineOrderLifecycle(status: string, invoiceStatus?: string | null): OrderLifecycle {
-  if (status === "cancelled" || status === "canceled" || status === "CANCELLED") return "closed";
+  // status="closed" هي القيمة الصريحة الجديدة (OrderStatusService::maybeAutoClose بالباك اند) —
+  // تُحسم مباشرة. الشرط تحتها يبقى شبكة أمان لبيانات قديمة لم تُحدَّث بعد لهذه القيمة الصريحة.
+  if (status === "closed" || status === "cancelled" || status === "canceled" || status === "CANCELLED") return "closed";
   const isCompleted = status === "served" || status === "DELIVERED";
   const isFullyPaid = invoiceStatus === "paid";
   return isCompleted && isFullyPaid ? "closed" : "active";
@@ -138,6 +140,19 @@ export function workflowStageLabel(stage: WorkflowStage, orderType: string): str
 export function getDelayMinutes(createdAt: string, now: number = Date.now()): number {
   const minutes = (now - new Date(createdAt).getTime()) / 60_000;
   return Math.max(0, Math.floor(minutes - SLA_WARNING_MINUTES));
+}
+
+// وقت مرجعي لحساب التأخر (يُمرَّر لـ getOrderSlaLevel/getDelayMinutes بدل created_at مباشرة):
+// وقت التنفيذ الفعلي لو الطلب كان مجدولاً ونُفِّذ فعلاً (orders:execute-scheduled بالباك اند) —
+// عشان ما نحسب "تأخره" من وقت الجدولة القديم بعد ما بدأ تحضيره فعليًا؛ وإلا وقت الجدولة لو لسا
+// بانتظار تنفيذه (قبل الموعد بيرجع فرق سالب فتتصفّر بـ Math.max أعلاه — يعني "غير متأخر" بصورة
+// صحيحة تلقائيًا)؛ وإلا وقت الإنشاء العادي لطلب فوري بلا جدولة إطلاقاً (السلوك الأصلي بدون تغيير).
+export function getOrderDelayReferenceTime(order: {
+  created_at: string;
+  scheduled_at?: string | null;
+  executed_at?: string | null;
+}): string {
+  return order.executed_at || order.scheduled_at || order.created_at;
 }
 
 // حالة الدفع مستقلة تمامًا عن حالة الطلب: تقدّم حالة الطلب (تأكيد/تحضير...) ما يعني تلقائيًا إن
