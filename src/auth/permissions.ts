@@ -38,6 +38,9 @@ export const ROLES = {
 
   /** موظف الكول سنتر — إدارة العملاء والشكاوى والمناسبات */
   CALL_CENTER: "call-center",
+
+  /** رئيس الكول سنتر — كل صلاحيات موظف الكول سنتر + إدارة موظفي الكول سنتر حصرًا */
+  CALL_CENTER_MANAGER: "call-center-manager",
 } as const;
 
 /** نوع يمثل جميع قيم الأدوار الممكنة */
@@ -110,6 +113,8 @@ export const PERMISSIONS = {
   MANAGE_CALL_CENTER: "manage-call-center",
   ACCESS_CALL_CENTER_INTERFACE: "access-call-center-interface",
   MANAGE_CALL_CENTER_DEVICES: "manage-call-center-devices",
+  /** حصرية لدور call-center-manager — إدارة موظفي الكول سنتر (CRUD) */
+  MANAGE_CALL_CENTER_EMPLOYEES: "manage-call-center-employees",
 } as const;
 
 /** صلاحيات CRM الجديدة، مستقلة عن شاشة حسابات العملاء القديمة. */
@@ -252,6 +257,15 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     PERMISSIONS.MANAGE_CUSTOMERS,
     PERMISSIONS.VIEW_ORDERS,
     PERMISSIONS.MANAGE_CALL_CENTER,
+  ],
+
+  [ROLES.CALL_CENTER_MANAGER]: [
+    // كل صلاحيات call-center العادي + إدارة موظفي الكول سنتر حصرًا
+    PERMISSIONS.ACCESS_CALL_CENTER_INTERFACE,
+    PERMISSIONS.MANAGE_CUSTOMERS,
+    PERMISSIONS.VIEW_ORDERS,
+    PERMISSIONS.MANAGE_CALL_CENTER,
+    PERMISSIONS.MANAGE_CALL_CENTER_EMPLOYEES,
   ],
 };
 

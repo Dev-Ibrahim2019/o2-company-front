@@ -7,6 +7,15 @@ export type CallTicketStatus =
   | "completed"
   | "missed";
 
+export type CallType = "order" | "complaint" | "inquiry" | "order_modification";
+
+export const CALL_TYPE_LABELS: Record<CallType, string> = {
+  order: "طلب",
+  complaint: "شكوى",
+  inquiry: "استفسار",
+  order_modification: "تعديل طلب",
+};
+
 export interface CallTicket {
   id: number;
   external_call_id?: string | null;
@@ -18,6 +27,9 @@ export interface CallTicket {
   normalized_phone: string;
   status: CallTicketStatus;
   disposition?: string | null;
+  call_type?: CallType | null;
+  satisfaction_rating?: number | null;
+  satisfaction_feedback?: string | null;
   notes?: string | null;
 }
 
@@ -64,11 +76,34 @@ export const callTicketService = {
     ticketId: number,
     disposition: string,
     notes?: string,
+    callType?: CallType,
   ): Promise<CallTicket> {
     return unwrap(
       await api.post(`/call-center/tickets/${ticketId}/complete`, {
         disposition,
         notes,
+        call_type: callType,
+      }),
+    );
+  },
+
+  async classify(ticketId: number, callType: CallType): Promise<CallTicket> {
+    return unwrap(
+      await api.patch(`/call-center/tickets/${ticketId}/classify`, {
+        call_type: callType,
+      }),
+    );
+  },
+
+  async rate(
+    ticketId: number,
+    rating: number,
+    feedback?: string,
+  ): Promise<CallTicket> {
+    return unwrap(
+      await api.post(`/call-center/tickets/${ticketId}/rate`, {
+        rating,
+        feedback,
       }),
     );
   },

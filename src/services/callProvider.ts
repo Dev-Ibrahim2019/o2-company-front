@@ -2,7 +2,7 @@
 //
 // طبقة مجردة لإدارة المكالمات (Call Provider Abstraction)
 // تفصل منطق الاتصالات عن واجهة المستخدم
-// تدعم حالياً Mock Data، وجاهزة للربط مع FreePBX/AMI/WebSocket لاحقاً
+// تدعم Mock Data وSipCallProvider للربط مع FreePBX
 
 export type CallState = "idle" | "ringing" | "connected" | "ended" | "missed";
 
@@ -33,6 +33,9 @@ export interface CallProvider {
   /** محاكاة مكالمة واردة (للتطوير) */
   simulateIncomingCall: (phoneNumber: string) => void;
 }
+
+// ── Provider Type ─────────────────────────────────────────────────────────────
+export type ProviderType = "mock" | "sip";
 
 // ── قائمة الملحقات الداخلية (Internal Extensions) ────────────────────────────
 export interface CallCenterExtension {
@@ -138,7 +141,12 @@ class MockCallProvider implements CallProvider {
 // ── Singleton ────────────────────────────────────────────────────────────────
 
 let instance: CallProvider | null = null;
+let currentProviderType: ProviderType = "mock";
 
+/**
+ * Get the current call provider instance.
+ * Returns MockCallProvider by default, or SipCallProvider if initialized.
+ */
 export const getCallProvider = (): CallProvider => {
   if (!instance) {
     instance = new MockCallProvider();
@@ -146,10 +154,58 @@ export const getCallProvider = (): CallProvider => {
   return instance;
 };
 
-/** لإعادة تعيين المزود (للاستخدام في المستقبل مع FreePBX) */
+/**
+ * Set the call provider instance.
+ * Used to swap between MockCallProvider and SipCallProvider.
+ */
 export const setCallProvider = (provider: CallProvider): void => {
   if (instance) {
     instance.stopListening();
   }
   instance = provider;
+};
+
+/**
+ * Get the current provider type
+ */
+export const getProviderType = (): ProviderType => currentProviderType;
+
+/**
+ * Set the provider type (for switching between mock and SIP)
+ */
+export const setProviderType = (type: ProviderType): void => {
+  currentProviderType = type;
+};
+
+/**
+ * Initialize SIP provider with configuration
+ */
+export const initializeSipProvider = async (config: {
+  username: string;
+  password: string;
+  sipServer: string;
+  domain?: string;
+  transport?: "udp" | "tcp" | "tls";
+  registerRefresh?: number;
+  keepAlive?: number;
+}): Promise<void> => {
+  const { SipCallProvider } = await import("./sipCallProvider");
+  const sipProvider = new SipCallProvider();
+  await sipProvider.initialize(config, {
+    onRegistrationChange: (registered) => {
+      console.log(`[CallProvider] SIP registration changed: ${registered}`);
+    },
+  });
+  await sipProvider.register();
+  setCallProvider(sipProvider);
+  currentProviderType = "sip";
+};
+
+/**
+ * Switch back to mock provider
+ */
+export const useMockProvider = (): void => {
+  const mockProvider = new MockCallProvider();
+  setCallProvider(mockProvider);
+  currentProviderType = "mock";
 };

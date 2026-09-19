@@ -86,7 +86,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const permissions = Array.isArray(serverPermissions) ? serverPermissions : getPermissions();
 
       // Keep localStorage in step so the guards that read it directly, and the
-      // next load before this request resolves, see the same answer.
+      // next load before this request resolves, see the same answer. This
+      // also covers the branch_id sync the call-center screens rely on
+      // (getBranchId() for order creation / the branch warning): saveAuthData
+      // writes the same storage key setBranchId() does, so a branch linked
+      // to the employee after login is picked up on the next load.
       saveAuthData({ token: currentToken, roles, permissions, branch_id: userData.branch_id ?? null });
 
       setUser({

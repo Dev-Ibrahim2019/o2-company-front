@@ -126,6 +126,7 @@ export interface CustomerOrder {
   note: string | null;
   branch: { id: number; name: string } | null;
   cashier: { id: number; name: string } | null;
+  driver?: { id: number; name: string; phone?: string | null } | null;
   created_at: string;
   customer_name: string | null;
   customer_phone: string | null;
@@ -185,19 +186,52 @@ export interface OrderFeedbackPayload {
   notes?: string;
 }
 
-export type ActiveOrderScope = "awaiting_payment" | "kitchen_active" | "delivery_active" | "fulfilled_recent";
+export type ActiveOrderScope = "operational_active" | "awaiting_payment" | "kitchen_active" | "delivery_active" | "no_branch";
+// مشتقة من Invoice.status الحقيقي (المصدر الوحيد الموثوق لحالة الدفع بالمشروع) — راجع
+// CallCenterService::derivePaymentStatus بالباك اند. مستقلة تمامًا عن order.status.
+export type BackendPaymentStatus = "paid" | "pending" | "unpaid";
 export interface ActiveCallCenterOrder {
   id: number;
   order_number: string;
   status: string;
   order_type: string;
+  customer_id: number | null;
   customer_name: string | null;
+  customer_phone: string | null;
   total: number;
   branch: { id: number; name: string } | null;
   created_at: string;
+  scheduled_at?: string | null;
+  /** وقت التنفيذ الفعلي (orders:execute-scheduled بالباك اند) — موجود فقط للطلبات المجدولة اللي
+   * نُفِّذت فعليًا؛ يُستخدم كمرجع لحساب التأخر بدل scheduled_at/created_at بعد التنفيذ. */
+  executed_at?: string | null;
+  payments?: Array<{ method: "cash" | "card" | "wallet"; amount: number }> | null;
+  payment_status?: BackendPaymentStatus;
+  /** فشل التنفيذ التلقائي (orders:execute-scheduled بالباك اند) — غير فارغ يعني الطلب توقف عن إعادة المحاولة ويحتاج مراجعة يدوية */
+  execution_failed_reason?: string | null;
+  driver?: { id: number; name: string; phone?: string | null } | null;
+  delivery_assigned_at?: string | null;
+  delivered_at?: string | null;
   scopes: ActiveOrderScope[];
 }
 export type ActiveOrderGroups = Record<ActiveOrderScope, ActiveCallCenterOrder[]>;
+
+export interface ClosedCallCenterOrder {
+  id: number;
+  order_number: string;
+  status: string;
+  order_type: string;
+  customer_id: number | null;
+  customer_name: string | null;
+  customer_phone: string | null;
+  total: number;
+  branch: { id: number; name: string } | null;
+  created_at: string;
+  updated_at: string;
+  payment_status: BackendPaymentStatus;
+}
+export interface ClosedOrdersPageMeta { current_page: number; last_page: number; per_page: number; total: number }
+export interface ClosedOrdersResponse { data: ClosedCallCenterOrder[]; meta: ClosedOrdersPageMeta }
 
 export interface OrderDetailItem {
   id: number;
@@ -290,6 +324,56 @@ export interface CustomerAlert {
   created_at: string;
 }
 
+export type TimelineEntryType = "call" | "complaint" | "order";
+export interface CustomerTimelineEntry {
+  type: TimelineEntryType;
+  id: number;
+  occurred_at: string;
+  status: string;
+  // call
+  call_type?: string | null;
+  disposition?: string | null;
+  duration_seconds?: number | null;
+  satisfaction_rating?: number | null;
+  agent?: { id: number; name: string } | null;
+  linked_order_id?: number | null;
+  // complaint
+  title?: string;
+  priority?: string;
+  // order
+  order_number?: string;
+  order_type?: string | null;
+  total?: number;
+}
+
+export interface AgentPerformanceRow {
+  agent_id: number;
+  agent_name: string;
+  total_calls: number;
+  completed_calls: number;
+  average_handle_time_minutes: number | null;
+  complaint_calls: number;
+  complaint_rate: number;
+  avg_satisfaction: number | null;
+}
+export interface AgentPerformanceReport {
+  period: { from: string; to: string };
+  missed_calls_total: number;
+  agents: AgentPerformanceRow[];
+}
+
+export interface CannedResponse {
+  id: number;
+  title: string;
+  category: string | null;
+  body: string;
+  branch_id: number | null;
+  is_active: boolean;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface DashboardAnalytics {
   total_customers: number;
   active_customers: number;
@@ -360,21 +444,22 @@ export interface CallCenterOrderTransaction {
   call_ticket: { id: number; customer_id: number; linked_order_id: number } | null;
 }
 export interface CustomerDirectoryPage { data: Array<Omit<CustomerSearchResult,'address'> & {orders_count:number;open_complaints_count:number;orders_max_created_at?:string|null;address?:CustomerAddress|null}>; current_page:number;last_page:number;per_page:number;total:number; }
-export interface EmployeeBreakDto { id:number;type:string;type_label:string;status:"active"|"ended";started_at:string;ended_at?:string|null;duration_seconds:number;duration_label:string;reason?:string|null; }
-export interface AgentBreaksToday { breaks_count:number;total_duration_seconds:number;total_duration_label:string;breaks:EmployeeBreakDto[]; }
 
 export const callCenterService = {
-  getAgentBreaksToday: async (): Promise<ApiResponse<AgentBreaksToday>> => {
-    const res = await api.get("/call-center/agent/breaks/today"); return res.data;
-  },
-  startAgentBreak: async (breakType="regular"): Promise<ApiResponse<EmployeeBreakDto>> => {
-    const res = await api.post("/call-center/agent/breaks", {break_type:breakType}); return res.data;
-  },
-  endAgentBreak: async (breakId:number): Promise<ApiResponse<EmployeeBreakDto>> => {
-    const res = await api.post(`/call-center/agent/breaks/${breakId}/end`); return res.data;
-  },
   getActiveOrders: async (branchId?: number): Promise<ApiResponse<ActiveOrderGroups>> => {
     const res = await api.get("/call-center/active-orders", { params: branchId ? { branch_id: branchId } : undefined });
+    return res.data;
+  },
+  getClosedOrders: async (params: {
+    branchId?: number; search?: string; status?: string; page?: number; perPage?: number;
+  } = {}): Promise<ApiResponse<ClosedOrdersResponse>> => {
+    const res = await api.get("/call-center/closed-orders", {
+      params: {
+        branch_id: params.branchId, search: params.search || undefined,
+        status: params.status && params.status !== "all" ? params.status : undefined,
+        page: params.page, per_page: params.perPage,
+      },
+    });
     return res.data;
   },
   resolveCustomerByPhone: async (phone: string, signal?: AbortSignal): Promise<ApiResponse<CustomerResolution>> => {
@@ -400,11 +485,6 @@ export const callCenterService = {
 
   updateCustomerClassification: async (customerId: number, category: CustomerCategory): Promise<ApiResponse<{ id: number; category: CustomerCategory }>> => {
     const res = await api.patch(`/call-center/customers/${customerId}/classification`, { category });
-    return res.data;
-  },
-
-  updateCustomerTitle: async (customerId: number, title: string | null): Promise<ApiResponse<{ id: number; title: string | null }>> => {
-    const res = await api.patch(`/call-center/customers/${customerId}/title`, { title });
     return res.data;
   },
 
@@ -468,6 +548,36 @@ export const callCenterService = {
 
   getCustomerAlerts: async (customerId: number): Promise<ApiResponse<CustomerAlert[]>> => {
     const res = await api.get(`/call-center/customers/${customerId}/alerts`);
+    return res.data;
+  },
+
+  getCustomerTimeline: async (customerId: number, limit = 30): Promise<ApiResponse<CustomerTimelineEntry[]>> => {
+    const res = await api.get(`/call-center/customers/${customerId}/timeline`, { params: { limit } });
+    return res.data;
+  },
+
+  getAgentPerformance: async (params?: { branch_id?: number; from?: string; to?: string }): Promise<ApiResponse<AgentPerformanceReport>> => {
+    const res = await api.get("/call-center/reports/performance", { params });
+    return res.data;
+  },
+
+  getCannedResponses: async (params?: { search?: string; category?: string }): Promise<ApiResponse<CannedResponse[]>> => {
+    const res = await api.get("/call-center/canned-responses", { params });
+    return res.data;
+  },
+
+  createCannedResponse: async (data: { title: string; category?: string; body: string; branch_id?: number }): Promise<ApiResponse<CannedResponse>> => {
+    const res = await api.post("/call-center/canned-responses", data);
+    return res.data;
+  },
+
+  updateCannedResponse: async (id: number, data: Partial<{ title: string; category: string; body: string; is_active: boolean }>): Promise<ApiResponse<CannedResponse>> => {
+    const res = await api.patch(`/call-center/canned-responses/${id}`, data);
+    return res.data;
+  },
+
+  deleteCannedResponse: async (id: number): Promise<ApiResponse<void>> => {
+    const res = await api.delete(`/call-center/canned-responses/${id}`);
     return res.data;
   },
 
@@ -738,4 +848,38 @@ export const callCenterService = {
     const res = await api.post(`/call-center/customer-addresses/${addressId}/use`);
     return res.data;
   },
+
+  getOperationsSnapshot: async (branchId?: number): Promise<ApiResponse<OperationsSnapshot>> => {
+    const res = await api.get("/call-center/reports/operations-snapshot", {
+      params: branchId ? { branch_id: branchId } : undefined,
+    });
+    return res.data;
+  },
 };
+
+export interface OperationsSnapshot {
+  today: {
+    orders_count: number;
+    sales_total: number;
+    avg_order_value: number;
+    calls_total: number;
+    calls_completed: number;
+    calls_missed: number;
+    conversion_rate: number;
+  };
+  yesterday: { orders_count: number; sales_total: number };
+  order_status_breakdown: { completed: number; preparing: number; cancelled: number; pending_branch: number };
+  hourly: Array<{ hour: number; orders: number; calls: number }>;
+  top_items: Array<{ name: string; quantity: number }>;
+  branch_distribution: Array<{ branch_id: number; branch_name: string; orders_count: number }>;
+  last_call: {
+    id: number;
+    customer_name: string | null;
+    phone: string | null;
+    started_at: string | null;
+    duration_seconds: number | null;
+    status: string;
+    linked_order_id: number | null;
+  } | null;
+  my_performance: { orders: number; sales: number; calls_total: number; calls_completed: number } | null;
+}

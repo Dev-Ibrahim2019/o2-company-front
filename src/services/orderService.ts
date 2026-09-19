@@ -14,9 +14,25 @@ export type OrderStatus =
   | "served"
   | "paid"
   | "cancelled"
-  | "pending_payment";
+  | "pending_payment"
+  | "scheduled"
+  // حالات دورة التوصيل — تُضبط فقط عبر assignDelivery/markDelivered (طلبات order_type=delivery)
+  | "OUT_FOR_DELIVERY"
+  | "DELIVERED"
+  // إغلاق صريح — يُضبط فقط عبر OrderStatusService::maybeAutoClose بالباك اند (اكتمل التسليم والدفع)
+  | "closed";
 export type PaymentMethod = "cash" | "card" | "wallet" | "bank" | "account";
 export type DiscountType = "amount" | "percent";
+
+export type OrderActivityLogEntry = {
+  id: number;
+  action_type: string;
+  from_status: string | null;
+  to_status: string | null;
+  note: string | null;
+  actor: string | null;
+  created_at: string | null;
+};
 
 const normalizeMoney = (value: number) =>
   Math.round((Number(value) || 0) * 100) / 100;
@@ -24,7 +40,7 @@ const normalizeMoney = (value: number) =>
 const normalizeTableNumber = (value: string | number | null | undefined) =>
   String(value ?? "").trim();
 
-const CLOSED_ORDER_STATUSES = new Set<OrderStatus>(["paid", "cancelled"]);
+const CLOSED_ORDER_STATUSES = new Set<OrderStatus>(["paid", "cancelled", "closed"]);
 
 // Tracks an in-flight orderService.create() call — see the "double-click"
 // comment on create() below.
@@ -132,6 +148,8 @@ export interface OrderQueryFilters {
   status?: OrderStatus;
   date?: string;
   table_number?: string;
+  /** طلبات مُسنَدة لسائق توصيل معيَّن (orders.driver_id) — لصفحة تفاصيل السائق بإدارة الديليفري */
+  driver_id?: number;
 }
 
 const unwrapOrderList = (payload: unknown): OrderFromApi[] => {
@@ -246,6 +264,26 @@ export interface InvoiceFromApi {
   paid_amount?: number;
   remaining_amount?: number;
   paid_at?: string | null;
+  entity_name?: string | null;
+  branch_name?: string | null;
+  payment_method_display?: string | null;
+  tax_total?: number;
+  // تفاصيل عرض الفاتورة كما ترجع فعليًا من InvoiceResource::toArray بالباك اند —
+  // invoice_date نفسه مقسوم هون لتاريخ/وقت جاهزين للعرض.
+  details?: {
+    number: string;
+    date: string | null;
+    time: string | null;
+    currency?: string;
+    account_number?: string | null;
+  };
+  // تُملأ فقط لما تُقفل الفاتورة (تُدفع بالكامل) — راجع InvoiceController::addPayment.
+  closing?: {
+    user?: { id: number; name: string } | null;
+    pos_name?: string | null;
+    date: string | null;
+    time: string | null;
+  } | null;
   created_at: string;
   updated_at?: string;
   payments?: InvoicePaymentResponse[];
@@ -274,6 +312,7 @@ export interface InvoicePaymentPayload {
   payment_method?: PaymentMethod | string;
   method?: PaymentMethod | string;
   amount: number;
+  notes?: string;
   reference_number?: string;
   entity_type?: "customer" | "employee" | "supplier";
   entity_id?: number;
@@ -289,14 +328,17 @@ export interface InvoicePaymentResponse {
   id: number;
   invoice_id: number;
   amount: number;
-  payment_method: string;
+  payment_method?: string;
   method?: string;
+  number?: string;
+  paid_at?: string | null;
+  notes?: string | null;
   reference_number?: string;
   entity_type?: "customer" | "employee" | "supplier" | null;
   entity_id?: number | null;
   subledger_type?: "customer" | "employee" | "supplier" | null;
   subledger_id?: number | null;
-  created_at: string;
+  created_at?: string;
 }
 
 // ── نتيجة التحقق من الرقم المرجعي ───────────────────────────────────────────
@@ -396,7 +438,22 @@ export interface OrderFromApi {
   opener?: { id: number; name: string };
   closer?: { id: number; name: string };
   printer?: { id: number; name: string };
+  branch?: { id: number; name: string; phone?: string | null; address?: string | null } | null;
+  delivery_fee?: number;
+  delivery_address_snapshot?: { address?: string } | null;
+  tax_rate?: number;
+  tax_amount?: number;
+  scheduled_at?: string | null;
   has_unsent_items?: boolean;
+  cancellation_reason?: string | null;
+  cancelled_at?: string | null;
+  driver?: { id: number; name: string; phone?: string | null } | null;
+  delivery_assigned_at?: string | null;
+  delivered_at?: string | null;
+  // مستقلة عن status — مشتقة من Invoice.status الحقيقي (المصدر الوحيد الموثوق لحالة الدفع).
+  // راجع CallCenterService::derivePaymentStatus بالباك اند.
+  payment_status?: "paid" | "pending" | "unpaid";
+  invoice?: InvoiceFromApi | null;
   created_at: string;
   updated_at: string;
 }
@@ -503,6 +560,61 @@ export const orderService = {
   confirm: async (id: number): Promise<OrderFromApi> => {
     const { data } = await api.post(`/orders/${id}/confirm`);
     return data.data as OrderFromApi;
+  },
+
+  /** تسليم الطلب (ready/in_progress → served) — إغلاق الفاتورة تشغيليًا */
+  serve: async (id: number): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${id}/serve`);
+    return data.data as OrderFromApi;
+  },
+
+  /** "الطلب جاهز" — مرحلة PREPARING → READY (confirmed/in_progress/paid → ready) */
+  markReady: async (id: number): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${id}/mark-ready`);
+    return data.data as OrderFromApi;
+  },
+
+  /** تعيين موظف توصيل لطلب جاهز (ready → OUT_FOR_DELIVERY) — طلبات delivery فقط */
+  assignDelivery: async (id: number, driverId: number): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${id}/assign-delivery`, { driver_id: driverId });
+    return data.data as OrderFromApi;
+  },
+
+  /** تغيير السائق المُسنَد لطلب OUT_FOR_DELIVERY — يحافظ على تاريخ التعيين القديم (delivery_assignments) */
+  changeDriver: async (id: number, driverId: number): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${id}/change-driver`, { driver_id: driverId });
+    return data.data as OrderFromApi;
+  },
+
+  /** تسليم طلب مُسنَد لسائق (OUT_FOR_DELIVERY → DELIVERED) */
+  markDelivered: async (id: number): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${id}/deliver`);
+    return data.data as OrderFromApi;
+  },
+
+  /** إلغاء تعيين السائق عن طلب توصيل (OUT_FOR_DELIVERY → ready) — يحتاج صلاحية محاسب/مدير فرع */
+  unassignDelivery: async (id: number): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${id}/unassign-delivery`);
+    return data.data as OrderFromApi;
+  },
+
+  /** إعادة فتح طلب مغلق — إجراء إداري صريح، يتطلب سبب إلزامي (صلاحية محاسب/مدير فرع) */
+  reopen: async (id: number, reason: string): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${id}/reopen`, { reason });
+    return data.data as OrderFromApi;
+  },
+
+  /** إتمام قسري (Force Complete) — استثناء إداري لحالات حدّية، يتطلب سبب إلزامي، لا يتخطى شرط
+   * الدفع الكامل أبدًا (صلاحية محاسب/مدير فرع) */
+  forceComplete: async (id: number, reason: string): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${id}/force-complete`, { reason });
+    return data.data as OrderFromApi;
+  },
+
+  /** سجل نشاط الطلب (Timeline) — كل تغييرات الحالة/الدفع/تعيين السائق مرتبة زمنيًا (الأحدث أولاً) */
+  getActivityLog: async (id: number): Promise<OrderActivityLogEntry[]> => {
+    const { data } = await api.get(`/orders/${id}/activity-log`);
+    return data.data as OrderActivityLogEntry[];
   },
 
   /** مزامنة سياق التسعير وإعادة حساب المجاميع (خصم المحرك + يدوي) */
@@ -920,8 +1032,8 @@ export const orderService = {
     return data.data?.transaction || data.data;
   },
 
-  cancel: async (id: number): Promise<OrderFromApi> => {
-    const { data } = await api.post(`/orders/${id}/cancel`);
+  cancel: async (id: number, reason?: string): Promise<OrderFromApi> => {
+    const { data } = await api.post(`/orders/${id}/cancel`, reason ? { reason } : undefined);
     return data.data as OrderFromApi;
   },
 

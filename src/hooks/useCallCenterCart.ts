@@ -25,11 +25,17 @@ export const useCallCenterCart = () => {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const addToCart = useCallback(
-    (item: MenuItem, options?: { quantity?: number; price?: number }) => {
+    (item: MenuItem, options?: { quantity?: number; price?: number; notes?: string }) => {
       const quantity = options?.quantity ?? 1;
       const price = options?.price ?? item.price;
+      const notes = options?.notes;
       setCart((current) => {
-        const index = current.findIndex((row) => row.id === item.id);
+        // Merge by id + price + notes so distinct customizations of the same
+        // base item (e.g. different sizes/extras) stay on separate lines,
+        // while repeated plain quick-adds still collapse into one line.
+        const index = current.findIndex(
+          (row) => row.id === item.id && row.price === price && (row.notes || "") === (notes || ""),
+        );
         if (index >= 0) {
           return current.map((row, rowIndex) =>
             rowIndex === index
@@ -48,6 +54,7 @@ export const useCallCenterCart = () => {
             price,
             quantity,
             department_id: item.department_id,
+            notes,
           },
           ...current,
         ];

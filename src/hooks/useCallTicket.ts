@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import {
   callTicketService,
   type CallTicket,
+  type CallType,
 } from "../services/callTicketService";
 
 export const useCallTicket = () => {
@@ -66,10 +67,34 @@ export const useCallTicket = () => {
   );
 
   const complete = useCallback(
-    async (disposition: string, notes?: string) => {
+    async (disposition: string, notes?: string, callType?: CallType) => {
       if (!ticket) throw new Error("لا توجد تذكرة مكالمة نشطة");
       const value = await run(() =>
-        callTicketService.complete(ticket.id, disposition, notes),
+        callTicketService.complete(ticket.id, disposition, notes, callType),
+      );
+      setTicket(value);
+      return value;
+    },
+    [run, ticket],
+  );
+
+  const classify = useCallback(
+    async (callType: CallType) => {
+      if (!ticket) throw new Error("لا توجد تذكرة مكالمة نشطة");
+      const value = await run(() =>
+        callTicketService.classify(ticket.id, callType),
+      );
+      setTicket(value);
+      return value;
+    },
+    [run, ticket],
+  );
+
+  const rate = useCallback(
+    async (rating: number, feedback?: string) => {
+      if (!ticket) throw new Error("لا توجد تذكرة مكالمة نشطة");
+      const value = await run(() =>
+        callTicketService.rate(ticket.id, rating, feedback),
       );
       setTicket(value);
       return value;
@@ -91,6 +116,8 @@ export const useCallTicket = () => {
     linkCustomer,
     linkOrder,
     complete,
+    classify,
+    rate,
     reset,
   };
 };

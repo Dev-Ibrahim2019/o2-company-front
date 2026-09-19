@@ -47,6 +47,10 @@ const UserModal = ({ user, roles, branches, onClose, onSaved }: Props) => {
 
     const set = (key: string, val: any) => setForm(f => ({ ...f, [key]: val }));
 
+    // رئيس الكول سنتر دور مركزي يخدم كل الفروع — الفرع مقفل على null دائمًا بالباك اند
+    // (UserController::store/update)، فلا تُعرض القائمة وكأن القيمة اختيارية قابلة للتغيير.
+    const isCallCenterManager = form.role === 'call-center-manager';
+
     const handleSubmit = async () => {
         if (!form.name.trim() || !form.username.trim() || !form.email.trim()) {
             return alert('الاسم واسم المستخدم والبريد الإلكتروني مطلوبة');
@@ -153,7 +157,10 @@ const UserModal = ({ user, roles, branches, onClose, onSaved }: Props) => {
                     <Field label="الدور">
                         <select
                             value={form.role}
-                            onChange={e => set('role', e.target.value)}
+                            onChange={e => {
+                                const role = e.target.value;
+                                setForm(f => ({ ...f, role, branch_id: role === 'call-center-manager' ? null : f.branch_id }));
+                            }}
                             className={inputCls}
                         >
                             {roles.map((r) => (
@@ -163,16 +170,22 @@ const UserModal = ({ user, roles, branches, onClose, onSaved }: Props) => {
                     </Field>
 
                     <Field label="الفرع">
-                        <select
-                            value={form.branch_id ?? ""}
-                            onChange={e => set('branch_id', e.target.value === "" ? null : Number(e.target.value))}
-                            className={inputCls}
-                        >
-                            <option value="">— عام / كل الفروع —</option>
-                            {branches.map((b) => (
-                                <option key={b.id} value={b.id}>{b.name}</option>
-                            ))}
-                        </select>
+                        {isCallCenterManager ? (
+                            <div className={inputCls + " text-slate-400 cursor-not-allowed"}>
+                                كل الفروع (دور مركزي — غير قابل للتعديل)
+                            </div>
+                        ) : (
+                            <select
+                                value={form.branch_id ?? ""}
+                                onChange={e => set('branch_id', e.target.value === "" ? null : Number(e.target.value))}
+                                className={inputCls}
+                            >
+                                <option value="">— عام / كل الفروع —</option>
+                                {branches.map((b) => (
+                                    <option key={b.id} value={b.id}>{b.name}</option>
+                                ))}
+                            </select>
+                        )}
                     </Field>
                 </div>
 

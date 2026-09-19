@@ -3,6 +3,30 @@
 
 import api from "../api/axios";
 
+// القيم الحقيقية المُتحقق منها من EmployeeRequest.php بالباك اند (كانت مُستخدمة بمكونات أخرى
+// مثل CallCenterEmployees.tsx بدون ما تكون مُصدَّرة فعليًا من هذا الملف — وهم كتابي كان يمر بصمت).
+export type OperationalRole = "call_center_agent" | "assembler" | "delivery_driver" | "manager" | "cashier" | "other";
+export type VehicleType = "bicycle" | "electric_bike" | "motorcycle" | "external";
+
+// employees.performance — عمود JSON حر بالباك اند (بدون schema ثابت)، هاي الحقول هي فقط الحقول
+// الفعلية المقروءة من الفرونت اند حالياً (CallCenterEmployees.tsx) — index signature للباقي.
+export interface EmployeePerformance {
+  answered_calls?: number;
+  missed_calls?: number;
+  calls_today?: number;
+  average_handle_time_minutes?: number;
+  completed_orders?: number;
+  orders_today?: number;
+  average_assembly_minutes?: number;
+  active_order_number?: string | number;
+  on_time_percentage?: number;
+  active_trip_number?: string | number;
+  expected_delivery_at?: string;
+  alert?: string | null;
+  status?: string;
+  [key: string]: unknown;
+}
+
 export interface EmployeeFromApi {
   id: number;
   name: string;
@@ -27,17 +51,67 @@ export interface EmployeeFromApi {
   working_days?: number;
   calculated_salary?: number;
   role: string;
+  operational_role?: OperationalRole;
+  vehicle_type?: VehicleType;
+  /** متاح الآن فعليًا (شفت مفتوح + is_available=true) — موجود فقط لسائقي التوصيل */
+  available_now?: boolean;
+  /** بشفت مفتوح حاليًا بغض النظر عن التوفر — يميّز "استراحة" (شفت مفتوح، available_now=false)
+   * عن "غير متصل" (لا شفت مفتوح أصلاً). موجود فقط لسائقي التوصيل. */
+  on_shift_now?: boolean;
+  /** كود سائق فريد (DR-###) — يُولَّد تلقائيًا بالباك اند لسائقي التوصيل */
+  employee_code?: string;
+  /** نموذج التوفر ثنائي البعد: status (نشط/غير نشط) مستقل تمامًا عن availability (محسوبة دائمًا،
+   * on_delivery لا تُضبط يدويًا أبدًا — موجودة فقط لسائقي التوصيل) */
+  availability?: "available" | "on_delivery" | "offline";
+  current_orders_count?: number;
+  /** الحد الأقصى الفعلي للتوصيلات المتزامنة لهذا السائق (تجاوز فردي أو القيمة العامة) */
+  max_active_deliveries?: number;
+  /** مؤهّل لتعيين جديد الآن؟ محسوبة بالكامل بالباك اند (شفت مفتوح + دون الحد الأقصى) — لا تُستخدم
+   * للتحقق النهائي (الباك اند يعيد التحقق دومًا وقت التعيين الفعلي)، فقط لعرض/فلترة القائمة. */
+  is_eligible_for_assignment?: boolean;
+  completed_deliveries?: number;
+  last_delivery_at?: string | null;
   status: string;
   username?: string;
   permissions: string[];
   notes?: string;
   rating: number;
+  performance?: EmployeePerformance | string | null;
   branch?: { id: number; name: string };
   department?: { id: number; name: string };
   outstanding_advance?: number;
   accrued_salary?: number;
   net_payable?: number;
   job_title?: { id: number; name: string };
+}
+
+export interface EmployeePayload {
+  employeeId?: string;
+  name: string;
+  phone: string;
+  email?: string;
+  address?: string;
+  nationalId?: string;
+  dob?: string;
+  image?: string;
+  branch_id?: number;
+  department_id?: number;
+  jobTitleId?: string;
+  typeId?: string;
+  managerId?: string;
+  hireDate?: string;
+  salary?: number;
+  role?: string;
+  operational_role?: OperationalRole;
+  vehicle_type?: VehicleType;
+  /** يُولَّد تلقائيًا بالباك اند لسائقي التوصيل (DR-###) لو لم يُرسَل — اختياري هون فقط للاكتمال */
+  employee_code?: string;
+  status?: string;
+  username?: string;
+  password?: string;
+  pin?: string;
+  permissions?: string[];
+  notes?: string;
 }
 
 export interface EmployeeFilters {
@@ -48,6 +122,9 @@ export interface EmployeeFilters {
   salary_type?: string;
   month?: number;
   year?: number;
+  operational_role?: OperationalRole;
+  /** فلترة على سائقي التوصيل المتاحين الآن فقط (شفت مفتوح) */
+  available_only?: boolean;
 }
 
 export interface EmployeeStatementLine {
@@ -419,6 +496,17 @@ export const employeeService = {
 
   getLoans: async (employeeId: number): Promise<ApiResponse<any>> => {
     const { data } = await api.get(`/employees/${employeeId}/loans`);
+    return data;
+  },
+
+  // ── شفتات/توفر سائقي التوصيل ────────────────────────────────
+  startShift: async (employeeId: number): Promise<ApiResponse<any>> => {
+    const { data } = await api.post(`/employees/${employeeId}/shifts/start`);
+    return data;
+  },
+
+  endShift: async (employeeId: number): Promise<ApiResponse<any>> => {
+    const { data } = await api.post(`/employees/${employeeId}/shifts/end`);
     return data;
   },
 };

@@ -99,15 +99,21 @@ import {
 // ── مكونات الكول سنتر ──
 import { CallCenterLayout } from "./components/call-center/Layout";
 import CallCenterGuard from "./components/call-center/CallCenterGuard";
-import { CustomerManagementDashboard } from "./components/call-center/CustomerManagementDashboard";
 import { CrmDirectoryPage } from "./components/call-center/CrmDirectoryPage";
 import { CustomerPhoneSearch } from "./components/call-center/CustomerPhoneSearch";
 import { ComplaintsManagement } from "./components/call-center/ComplaintsManagement";
 import { OccasionsPage } from "./components/call-center/OccasionsPage";
 import { TopCustomersTable } from "./components/call-center/TopCustomersTable";
-import { CallCenterEmployees } from "./components/call-center/CallCenterEmployees";
+import { DeliveryManagementPage } from "./components/call-center/pages/DeliveryManagementPage";
+import { DriverDetailPage } from "./components/call-center/pages/DriverDetailPage";
+import { CallCenterTeamPage } from "./components/call-center/pages/CallCenterTeamPage";
 import { CallCenterPOS } from "./components/call-center/CallCenterPOS";
-import { ActiveOrdersPage } from "./components/call-center/ActiveOrdersPage";
+import { OperationsDashboard } from "./components/call-center/pages/OperationsDashboard";
+import { SipConfigurationPage as SipConfigV2 } from "./components/call-center/pages/SipConfigPage";
+import { CallCenterPageWithAside } from "./components/call-center/pages/CallCenterPageWithAside";
+import { ActiveOrdersPage } from "./components/call-center/pages/ActiveOrdersPage";
+import { ClosedOrdersPage } from "./components/call-center/pages/ClosedOrdersPage";
+import { OrderDetailPage } from "./components/call-center/pages/OrderDetailPage";
 
 /* ══════════════════════════════════════════════════════════════
  *  حماية الأدوار — تمنع الوصول لمن لا يملك الدور المطلوب
@@ -134,9 +140,26 @@ const HOSPITALITY_ROLES = [
   ROLES.BRANCH_MANAGER,
 ];
 
-/** الأدوار المسموح بها في مسارات /call-center/* */
+/** الأدوار المسموح بها في مسارات /call-center/* — رئيس الكول سنتر يملك كل صلاحيات الموظف العادي */
 const CALL_CENTER_ROLES = [
   ROLES.CALL_CENTER,
+  ROLES.CALL_CENTER_MANAGER,
+  ROLES.SUPER_ADMIN,
+  ROLES.ACCOUNTANT,
+  ROLES.BRANCH_MANAGER,
+];
+
+/** الأدوار المسموح لها بإدارة موظفي الكول سنتر تحديدًا — موظف الكول سنتر العادي مستثنى عمدًا */
+const CALL_CENTER_MANAGER_ROLES = [
+  ROLES.CALL_CENTER_MANAGER,
+  ROLES.SUPER_ADMIN,
+  ROLES.BRANCH_MANAGER,
+];
+
+/** إدارة الديليفري وإعدادات SIP — غير متاحتين لموظف الكول سنتر العادي إطلاقاً (كل من عدا
+ * ROLES.CALL_CENTER من مجموعة CALL_CENTER_ROLES، للحفاظ على وصول accountant الموجود مسبقًا) */
+const DELIVERY_SIP_ROLES = [
+  ROLES.CALL_CENTER_MANAGER,
   ROLES.SUPER_ADMIN,
   ROLES.ACCOUNTANT,
   ROLES.BRANCH_MANAGER,
@@ -162,6 +185,37 @@ function RoleGuard({ allowedRoles }: { allowedRoles: string[] }) {
   }
 
   const hasAccess = user.roles.some((r) => allowedRoles.includes(r));
+
+  if (!hasAccess) {
+    return <Navigate to="/unauthorized" replace />;
+  }
+
+  return <Outlet />;
+}
+
+/**
+ * DeliveryAccessGuard — مسارات /call-center/delivery* تحتاج "دور إداري (manager/admin)" أو
+ * "صلاحية assign-driver/change-order-status" (موظف T.W) — الاثنان أدوار Spatie واحدة (call-center)
+ * بفارق الصلاحيات الفردية المُفعَّلة، فمنطق role-only العادي (RoleGuard) ما يكفي هون.
+ */
+function DeliveryAccessGuard() {
+  const { user, loading, hasRole, hasPermission } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const hasAccess = DELIVERY_SIP_ROLES.some((r) => hasRole(r))
+    || hasPermission("call-center.assign-driver")
+    || hasPermission("call-center.change-order-status");
 
   if (!hasAccess) {
     return <Navigate to="/unauthorized" replace />;
@@ -473,15 +527,36 @@ function AppRoutes() {
           <Route element={<CallCenterGuard />}>
             <Route element={<CallCenterLayout />}>
               <Route path="/call-center">
-                <Route index element={<CustomerManagementDashboard />} />
-                <Route path="pos" element={<CallCenterPOS />} />
-                <Route path="orders" element={<ActiveOrdersPage />} />
+                {/* لوحة العمليات/صفحة الطلب/الطلبات المغلقة/POS — حصرًا لموظف "الكول سنتر" (يملك
+                    call-center.create-order)، وليس موظف T.W (يملك change-order-status/assign-driver
+                    فقط) رغم إنهما نفس دور Spatie "call-center" — الفرق بصلاحياتهم الفردية فقط. */}
+                <Route index element={<ProtectedRoute permission="call-center.view-dashboard"><OperationsDashboard /></ProtectedRoute>} />
+                <Route path="pos" element={<ProtectedRoute permission="call-center.create-order"><CallCenterPOS /></ProtectedRoute>} />
+                <Route path="order" element={<ProtectedRoute permission="call-center.create-order"><CallCenterPageWithAside /></ProtectedRoute>} />
+                <Route path="active-orders" element={<ActiveOrdersPage />} />
+                <Route path="closed-orders" element={<ProtectedRoute permission="call-center.view-closed-orders"><ClosedOrdersPage /></ProtectedRoute>} />
+                {/* صفحة تفاصيل الطلب مشتركة بين الكول سنتر وT.W — كل زر جواها مضبوط بصلاحيته
+                    الخاصة (تسجيل الدفعة/الإلغاء مقابل بدء التجهيز/تعيين سائق)، راجع OrderDetailPage. */}
+                <Route path="orders/:orderId" element={<OrderDetailPage />} />
                 <Route path="crm" element={<CrmDirectoryPage />} />
                 <Route path="search" element={<CustomerPhoneSearch />} />
                 <Route path="complaints" element={<ComplaintsManagement />} />
                 <Route path="occasions" element={<OccasionsPage />} />
                 <Route path="top-customers" element={<TopCustomersTable />} />
-                <Route path="employees" element={<CallCenterEmployees />} />
+                {/* الديليفري: رؤساء الكول سنتر/الأدمن (بالدور) أو موظف T.W (بصلاحية assign-driver/
+                    change-order-status) — DeliveryAccessGuard يفحص الاثنين. إعدادات SIP تبقى محصورة
+                    بالدور الإداري فقط، T.W ما إله علاقة فيها. */}
+                <Route element={<DeliveryAccessGuard />}>
+                  <Route path="delivery" element={<DeliveryManagementPage />} />
+                  <Route path="delivery/:driverId" element={<DriverDetailPage />} />
+                </Route>
+                <Route element={<RoleGuard allowedRoles={DELIVERY_SIP_ROLES} />}>
+                  <Route path="sip-settings" element={<SipConfigV2 />} />
+                </Route>
+                {/* محصورة برئيس الكول سنتر فقط — موظف الكول سنتر العادي يُعاد توجيهه لـ /unauthorized */}
+                <Route element={<RoleGuard allowedRoles={CALL_CENTER_MANAGER_ROLES} />}>
+                  <Route path="team" element={<CallCenterTeamPage />} />
+                </Route>
               </Route>
             </Route>
           </Route>

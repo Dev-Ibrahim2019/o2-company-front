@@ -71,6 +71,21 @@ export function hasPermission(permission: string): boolean {
   return getPermissions().includes(permission);
 }
 
+/**
+ * ── تحديث branch_id بعد تسجيل الدخول (بدون لمس التوكن/الأدوار) ──
+ * يُستخدم عند إعادة جلب بيانات المستخدم من /auth/me (مثلاً عند تحميل الصفحة)،
+ * بحيث لو رَبَط مشرف فرعاً لموظف بعد أن سجّل دخوله مسبقاً، ينعكس ذلك بمجرد
+ * تحديث الصفحة بدل أن يبقى getBranchId() عالقاً على القيمة القديمة حتى تسجيل
+ * خروج/دخول جديد بالكامل.
+ */
+export function setBranchId(branchId: number | null): void {
+  if (branchId != null) {
+    localStorage.setItem(KEYS.BRANCH_ID, String(branchId));
+  } else {
+    localStorage.removeItem(KEYS.BRANCH_ID);
+  }
+}
+
 /** ── استرجاع branch_id ── */
 export function getBranchId(): number | null {
   const raw = localStorage.getItem(KEYS.BRANCH_ID);
