@@ -199,6 +199,12 @@ export interface CrmOrderRow {
   created_at?: string | null;
   elapsed_minutes: number;
   is_delayed?: boolean | null;
+  // Only present from GET /crm/customers/{customer}/orders — the mean of
+  // order_feedback's three scores and whether any complaint points at this
+  // order. CrmController::orders() layers these on top of the same shape
+  // ordersIndex()/ordersDelayed() return; /crm/orders itself never sets them.
+  rating?: number | null;
+  has_complaint?: boolean;
 }
 
 // GET /crm/customers/{id}/activity — CrmController::activity(). Two real,
@@ -278,11 +284,125 @@ export interface CrmCustomerGroup {
    */
   customers_count?: number;
   created_at?: string | null;
+  // Real sums over Order/Customer (CustomerGroupController::totalSpendSubquery()
+  // / show()) — every paid order placed by a member of this group. Not an
+  // invented/estimated figure; absent (not zero) only if the backend response
+  // predates these two columns.
+  total_spend?: number;
+  orders_count?: number;
+  // customer_groups.color — one of CrmGroupColor, purely visual. Null on a
+  // group created before this column existed.
+  color?: CrmGroupColor | null;
 }
+
+// The fixed swatch palette the redesign's colour picker offers — matches
+// CustomerGroup::COLORS (backend) exactly, so a value the API accepts is
+// always one this list can render.
+export const CRM_GROUP_COLORS = ["rose", "orange", "amber", "green", "teal", "blue", "indigo", "purple"] as const;
+export type CrmGroupColor = (typeof CRM_GROUP_COLORS)[number];
 
 export interface CrmCustomerGroupInput {
   name: string;
   group_type: CrmGroupType;
+  color?: CrmGroupColor | null;
+}
+
+// GET /crm/customer-groups/smart-suggestions — CustomerGroupController::
+// smartSuggestions(). Rule-based, computed from real Customer/Order data;
+// `confidence` is a second, stricter pass of the same rule, not an ML score.
+export interface CrmGroupSmartSuggestion {
+  key: "vip_spend" | "reactivation" | "frequent";
+  title: string;
+  description: string;
+  matched_count: number;
+  confidence: number;
+  sample_names: string[];
+  suggested_group_type: CrmGroupType;
+}
+
+// GET /crm/customer-groups/{group}/analytics and the cross-group
+// /crm/customer-groups/analytics — both the same shape, one real point per
+// of the last 6 calendar months from the same paid-order definition
+// total_spend already uses.
+export interface CrmGroupSpendPoint {
+  month: string; // "YYYY-MM"
+  total: number;
+}
+export interface CrmGroupAnalytics {
+  monthly_spend: CrmGroupSpendPoint[];
+}
+
+// GET /crm/customer-groups/{group}/activity — the group's own audit trail
+// only (created/updated/deleted); shorter than a customer's because there is
+// no per-group call/complaint concept to merge in.
+export interface CrmGroupActivityEvent {
+  id: string;
+  event: "created" | "updated" | "deleted" | string;
+  label: string;
+  user?: { id: CrmId; name: string } | null;
+  timestamp?: string | null;
+}
+
+// GET /crm/staff/permissions-catalog — every delegatable crm.* permission,
+// labeled and grouped server-side (CrmStaffPermissionController::CATALOG) so
+// the frontend never keeps its own translation map that could drift from
+// what actually exists. `sensitive` flags the financial/identity-conflict
+// permissions the UI gives extra visual weight and a confirm step.
+export interface CrmStaffPermissionCatalogItem {
+  name: string;
+  group: string;
+  label: string;
+  sensitive: boolean;
+}
+
+// GET /crm/staff — CRM staff (anyone holding crm.access), the population
+// crm.staff.manage-permissions delegation acts on.
+export interface CrmStaffMember {
+  id: CrmId;
+  name: string;
+  email: string;
+  roles: string[];
+  permissions_count: number;
+  denied_count: number;
+  has_financial_access: boolean;
+}
+
+// GET /crm/staff/{user}/permissions — role vs. direct vs. explicitly-denied,
+// and the effective set actually enforced (role ∪ direct) − denied.
+export interface CrmStaffPermissionDetail {
+  user: { id: CrmId; name: string; email: string; roles: string[] };
+  role_permissions: string[];
+  direct_permissions: string[];
+  denied_permissions: string[];
+  effective_permissions: string[];
+}
+
+// GET /crm/staff/{user}/activity — only this screen's own writes (direct
+// grants / explicit denials), not the customer-group style created/updated/
+// deleted trail.
+export interface CrmStaffPermissionActivityEvent {
+  id: string;
+  kind: "direct" | "deny";
+  label: string;
+  old: string[];
+  new: string[];
+  actor?: { id: CrmId; name: string } | null;
+  timestamp?: string | null;
+}
+
+// GET/PUT /crm/settings — CRM settings with real, enforced backend behavior
+// (CrmSettingController, EnsureCrmModuleEnabled middleware,
+// PosCustomerLinkService::createFromCounter()). Deliberately not a home for
+// cosmetic fields — everything else from the original design brief has no
+// backend yet and stays out of this shape rather than being faked. The two
+// targets are null until an admin sets them — CrmReportController reads
+// them for the revenue-vs-target KPI and the cancellation-rate alert, and
+// never invents a default.
+export interface CrmSettings {
+  enabled: boolean;
+  auto_register_pos_customers: boolean;
+  monthly_revenue_target: number | null;
+  max_cancellation_rate_pct: number | null;
 }
 
 // customer_occasions — the enums constrained at DB level in 2027_01_18_000001.
@@ -302,6 +422,13 @@ export interface CrmOccasion {
   /** Resolved next occurrence, present on the range endpoint only. */
   next_occurrence?: string | null;
   created_at?: string | null;
+  // The CRM user who follows up on this occasion — see
+  // CustomerOccasion::assignedUser() (backend). The column and the eager-
+  // loaded relation serialize under different keys (assigned_user_id vs
+  // assigned_user), so both are always present together, never one
+  // silently overwriting the other.
+  assigned_user_id?: CrmId | null;
+  assigned_user?: { id: CrmId; name: string } | null;
 }
 
 /** One line of the yearly diary — occasion_followups, newest first. */
@@ -346,6 +473,10 @@ export interface CrmOccasionListRow {
   owner_name?: string | null;
   /** null for a group — it has no single number to dial. */
   owner_phone?: string | null;
+  assigned_user_id?: CrmId | null;
+  /** Flat, unlike CrmOccasion.assigned_user — this row is OccasionController::row()'s
+   *  own hand-built shape, not a raw model serialization. */
+  assigned_user_name?: string | null;
 }
 
 export interface CrmOccasionListQuery {
@@ -354,6 +485,8 @@ export interface CrmOccasionListQuery {
   to?: string;
   owner_type?: "customer" | "group";
   occasion_type?: string;
+  /** Matches the owner's name — a customer or a group. */
+  search?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -483,6 +616,7 @@ export interface CrmOccasionInput {
   notes?: string | null;
   preferred_contact_method?: CrmContactMethod | null;
   is_active?: boolean;
+  assigned_user_id?: CrmId | null;
 }
 
 export type CrmComplaintSeverity = "info" | "warning" | "critical";
@@ -583,8 +717,10 @@ export interface CrmComplaintInput {
 }
 
 // GET /crm/notifications — the current user's feed for the CRM shell bell.
-// One row of Laravel's `notifications` table; `data` is the payload
-// ComplaintActivityNotification::toArray() wrote.
+// One row of Laravel's `notifications` table; `data` is the payload either
+// ComplaintActivityNotification::toArray() or OrderDelayedNotification::
+// toArray() wrote — both share the same generic action/message/url shape,
+// the rest of each field set is specific to its own notification type.
 export interface CrmNotification {
   id: string;
   type: string;
@@ -593,11 +729,24 @@ export interface CrmNotification {
   data: {
     complaint_id?: CrmId;
     complaint_title?: string;
+    // OrderDelayedNotification — see CrmOrderDelayAlertService.
+    order_id?: CrmId;
+    order_number?: string;
+    elapsed_minutes?: number;
+    threshold_minutes?: number;
     action?: string;
     actor_name?: string;
     message?: string;
     url?: string;
   };
+}
+
+// GET/PUT /crm/orders/delay-settings — the persisted, company-wide "after
+// how many minutes is an active order considered delayed" threshold behind
+// the crm:orders:check-delays scheduled job (CrmOrderDelayAlertService).
+// Read by anyone with ORDERS_VIEW; changing it requires ORDERS_MANAGE.
+export interface CrmOrderDelaySettings {
+  threshold_minutes: number;
 }
 
 // GET /crm/customers/{id}/financial-summary — Customer360QueryService::financial()
@@ -709,4 +858,61 @@ export interface CrmConflictEnvelope {
   candidate_orders?: CrmCandidateOrder[];
   reassigned?: number[];
   left?: number[];
+}
+
+// GET /crm/reports/overview and /crm/reports/revenue — CrmReportController.
+// Every field here is a real aggregate over orders/order_items/
+// order_item_feedback/customer_complaints; see the controller's own doc
+// comments for exactly how each is computed and which candidates from the
+// original design brief (revenue "by category", a statistical forecast)
+// were left out for having no honest data source.
+export type CrmReportPeriod = "today" | "week" | "month" | "quarter" | "year";
+
+export interface CrmReportKpiTrend {
+  value: number;
+  trend_pct: number | null;
+}
+export interface CrmReportOverview {
+  period: { key: CrmReportPeriod; label: string; from: string; to: string };
+  kpis: {
+    revenue: { value: number; trend_pct: number | null; target: number | null };
+    aov: CrmReportKpiTrend;
+    orders: { completed: number; total: number; completion_rate: number; trend_pct: number | null };
+    satisfaction: { pct: number | null; high_rated_pct: number | null; rated_count: number };
+    cancellation_rate: { pct: number; target: number | null; trend_pct: number | null };
+  };
+  order_type_distribution: { order_type: string; orders_count: number; revenue: number }[];
+  daily_revenue: { date: string; revenue: number; trailing_avg: number | null; deviation_pct: number | null; is_anomaly: boolean }[];
+  peak_hours: { hour: number; orders: number }[];
+  alerts: { level: "urgent" | "attention"; message: string }[];
+  decision_support: { priority: "urgent" | "attention" | "opportunity"; message: string }[];
+}
+
+export interface CrmReportWeekday {
+  dow: number;
+  label: string;
+  revenue: number;
+  orders_count: number;
+}
+export interface CrmReportWeek {
+  label: string;
+  from: string;
+  to: string;
+  revenue: number;
+  in_progress: boolean;
+  change_pct: number | null;
+}
+export interface CrmReportRevenue {
+  month: string;
+  from: string;
+  to: string;
+  total_revenue: number;
+  best_weekday: CrmReportWeekday | null;
+  worst_weekday: CrmReportWeekday | null;
+  weekday_average: number;
+  weeks: CrmReportWeek[];
+  top_days: { date: string; revenue: number }[];
+  department_revenue: { department: string; revenue: number }[];
+  heatmap: { dow: number; label: string; hours: number[] }[];
+  projection: { low: number; high: number };
 }

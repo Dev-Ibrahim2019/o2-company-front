@@ -156,6 +156,19 @@ export const CRM_PERMISSIONS = {
   OCCASIONS_DELETE: "crm.occasions.delete",
   LOYALTY_VIEW: "crm.loyalty.view",
   LOYALTY_MANAGE: "crm.loyalty.manage",
+  ORDERS_VIEW: "crm.customer-orders.view",
+  // Gates only the persisted order-delay alert threshold
+  // (Crm\OrderDelaySettingController) — narrower than ORDERS_VIEW, which
+  // every operational CRM role already holds. Mirrors the LOYALTY_VIEW/
+  // LOYALTY_MANAGE split above.
+  ORDERS_MANAGE: "crm.customer-orders.manage",
+  // Delegated control over CRM staff's own crm.* permissions — see
+  // CrmStaffPermissionController's own doc comment for the safety rules
+  // (scope limited to crm.*, no self-escalation, never delegates itself).
+  STAFF_MANAGE_PERMISSIONS: "crm.staff.manage-permissions",
+  // The module kill-switch + auto-register toggle — super-admin only
+  // (CrmSettingController, migration 2027_02_06_000002).
+  SETTINGS_MANAGE: "crm.settings.manage",
 } as const;
 
 /** نوع يمثل جميع قيم الصلاحيات الممكنة */

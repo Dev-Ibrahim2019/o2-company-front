@@ -1,9 +1,10 @@
-import { ArrowLeft, ChevronDown } from "lucide-react";
-import { Fragment, useState } from "react";
+import { ArrowLeft, ChevronLeft } from "lucide-react";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { CrmState } from "../components";
-import { CrmFavoriteProductsChart, CrmOrderExpandedPanel, CrmPurchaseHistoryChart, CrmStatusBadge } from "../customers-ui";
+import { CrmFavoriteProductsChart, CrmOrderDetailsModal, CrmPurchaseHistoryChart, CrmStatusBadge } from "../customers-ui";
 import { CRM_ORDER_SOURCE_LABELS } from "../customers-ui/sourceOptions";
+import type { CrmOrderRow } from "../types";
 import { date, money, SectionFrame, text, unwrapRows, useCrmSection } from "./shared";
 
 const TH = "px-4 py-3 text-[12px] font-bold text-[var(--crmx-text-secondary)] whitespace-nowrap";
@@ -22,8 +23,10 @@ const TH = "px-4 py-3 text-[12px] font-bold text-[var(--crmx-text-secondary)] wh
 function RecentOrders() {
   const { customerId = "" } = useParams();
   const state = useCrmSection("orders");
-  const [openOrderId, setOpenOrderId] = useState<string | number | null>(null);
-  const toggle = (id: string | number) => setOpenOrderId((cur) => (cur === id ? null : id));
+  // Same order-details pop-up the CRM-wide "الطلبات" screens use — see
+  // OrdersTab.tsx's own doc comment on why a row from this endpoint is a
+  // real CrmOrderRow now, not the loose shape this used to read.
+  const [modalOrder, setModalOrder] = useState<CrmOrderRow | null>(null);
 
   return (
     <div className="rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)]">
@@ -59,39 +62,32 @@ function RecentOrders() {
                   <tbody>
                     {rows.map((r, i) => {
                       const id = r.id as string | number | undefined;
-                      const isOpen = id != null && openOrderId === id;
                       const branchName = text(r.branch_name ?? (r.branch as { name?: unknown })?.name);
                       const source = r.source ? CRM_ORDER_SOURCE_LABELS[String(r.source)] || String(r.source) : null;
                       return (
-                        <Fragment key={String(r.id ?? i)}>
-                          <tr
-                            onClick={() => id != null && toggle(id)}
-                            className="crmx-table-row cursor-pointer border-b border-[var(--crmx-border)] last:border-0"
-                          >
-                            <td className="px-2 text-center">
-                              <ChevronDown className={`mx-auto h-4 w-4 text-[var(--crmx-text-muted)] transition-transform ${isOpen ? "rotate-180" : ""}`} />
-                            </td>
-                            <td className="px-4 py-3 text-[13px] font-semibold text-[var(--crmx-text)]" dir="ltr">{text(r.number ?? r.order_number ?? r.code)}</td>
-                            <td className="px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]">{date(r.created_at)}</td>
-                            <td className="px-4 py-3"><CrmStatusBadge value={String(r.status ?? "")} /></td>
-                            <td className="px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]">
-                              {branchName}
-                              {source && <span className="text-[var(--crmx-text-muted)]"> · {source}</span>}
-                            </td>
-                            <td className="px-4 py-3 text-[13px] font-bold text-[var(--crmx-text)]">{money(r.total)}</td>
-                          </tr>
-                          {isOpen && id != null && (
-                            // Neutral wrapper: the panel itself now owns the real, payment-
-                            // conditional colour (green only when order.is_paid, see
-                            // CrmOrderExpandedPanel.tsx) — hardcoding a colour here regardless
-                            // of that would just be a second, unsynced copy of the same rule.
-                            <tr className="border-b border-[var(--crmx-border)] bg-[var(--crmx-bg)] last:border-0">
-                              <td colSpan={6} className="p-0">
-                                <CrmOrderExpandedPanel orderId={id} />
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
+                        <tr
+                          key={String(r.id ?? i)}
+                          onClick={() => id != null && setModalOrder(r as unknown as CrmOrderRow)}
+                          tabIndex={id != null ? 0 : undefined}
+                          role={id != null ? "button" : undefined}
+                          aria-haspopup={id != null ? "dialog" : undefined}
+                          onKeyDown={(e) => {
+                            if ((e.key === "Enter" || e.key === " ") && id != null) { e.preventDefault(); setModalOrder(r as unknown as CrmOrderRow); }
+                          }}
+                          className="crmx-table-row cursor-pointer border-b border-[var(--crmx-border)] transition-colors focus:outline-none last:border-0"
+                        >
+                          <td className="px-2 text-center">
+                            <ChevronLeft className="mx-auto h-4 w-4 text-[var(--crmx-text-muted)]" aria-hidden />
+                          </td>
+                          <td className="px-4 py-3 text-[13px] font-semibold text-[var(--crmx-text)]" dir="ltr">{text(r.number ?? r.order_number ?? r.code)}</td>
+                          <td className="px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]">{date(r.created_at)}</td>
+                          <td className="px-4 py-3"><CrmStatusBadge value={String(r.status ?? "")} /></td>
+                          <td className="px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]">
+                            {branchName}
+                            {source && <span className="text-[var(--crmx-text-muted)]"> · {source}</span>}
+                          </td>
+                          <td className="px-4 py-3 text-[13px] font-bold text-[var(--crmx-text)]">{money(r.total)}</td>
+                        </tr>
                       );
                     })}
                   </tbody>
@@ -109,6 +105,8 @@ function RecentOrders() {
           );
         }}
       </SectionFrame>
+
+      <CrmOrderDetailsModal order={modalOrder} onClose={() => setModalOrder(null)} />
     </div>
   );
 }

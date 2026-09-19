@@ -156,6 +156,22 @@ export function SectionLabel({ children }: { children: React.ReactNode }) {
   return <h4 className="mb-2.5 text-[12px] font-bold uppercase tracking-wide text-[var(--crmx-text-secondary)]">{children}</h4>;
 }
 
+// Section heading for the centred-popup detail surfaces (order, occasion) —
+// a solid brand tick plus a dark label, so a section reads as one without a
+// box drawn around it. Distinct from SectionLabel above, which is the
+// smaller uppercase-caption style used inside the older tabbed panel.
+export function SecHead({ children, aside }: { children: React.ReactNode; aside?: React.ReactNode }) {
+  return (
+    <div className="mb-2 flex items-center justify-between gap-3">
+      <h4 className="flex items-center gap-2 text-[13px] font-extrabold text-[var(--crmx-text)]">
+        <span className="h-3.5 w-1 rounded-full bg-[var(--crmx-primary)]" aria-hidden />
+        {children}
+      </h4>
+      {aside}
+    </div>
+  );
+}
+
 // Label-over-value stack — 12px label / 14px value, a clear step apart so
 // the two roles never blur into one flat run of text.
 export function Field({ label, value, ltr }: { label: string; value: React.ReactNode; ltr?: boolean }) {

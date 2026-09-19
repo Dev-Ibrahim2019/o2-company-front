@@ -1,4 +1,7 @@
-import { ArrowRight, Building2, Pencil, Trash2, UserMinus, UserPlus, Users, X } from "lucide-react";
+import {
+  ArrowRight, BarChart3, Building2, CalendarHeart, Download, History,
+  Pencil, ShoppingBag, Trash2, UserMinus, UserPlus, Users, X,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth";
@@ -7,11 +10,12 @@ import { toast } from "../../components/shared/Toast";
 import { crmApi } from "./api";
 import { CrmState, getCrmError } from "./components";
 import { CustomerPicker } from "./CustomerPicker";
-import { CrmKpiCard } from "./customers-ui";
-import { GROUP_PILL, GROUP_TYPE_LABELS, GROUP_TYPE_TONE, GroupFormDrawer } from "./GroupsPage";
+import { CrmGroupSpendChart, CrmKpiCard } from "./customers-ui";
+import { date as fmtDate, money, relativeTime } from "./format";
+import { GROUP_PILL, GROUP_TYPE_LABELS, GROUP_TYPE_TONE, GroupFormDrawer, groupColorHex } from "./GroupsPage";
 import { LoyaltyPanel } from "./LoyaltyPanel";
 import { OccasionsPanel } from "./OccasionsPanel";
-import type { CrmCustomer, CrmCustomerGroup, CrmCustomerGroupInput } from "./types";
+import type { CrmCustomer, CrmCustomerGroup, CrmCustomerGroupInput, CrmGroupActivityEvent, CrmGroupSpendPoint, CrmOccasion } from "./types";
 
 type Tab = "overview" | "members" | "occasions" | "loyalty";
 
@@ -49,6 +53,13 @@ export function GroupProfilePage() {
   const [saving, setSaving] = useState(false);
   const [pendingId, setPendingId] = useState<string | number | null>(null);
 
+  // Overview-only, real data — see CustomerGroupController::analytics()/
+  // activity(). Loaded alongside the group/members so the tab a reader
+  // lands on by default (overview) never shows a second spinner.
+  const [monthlySpend, setMonthlySpend] = useState<CrmGroupSpendPoint[]>();
+  const [activity, setActivity] = useState<CrmGroupActivityEvent[]>();
+  const [upcomingOccasions, setUpcomingOccasions] = useState<CrmOccasion[]>();
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -64,9 +75,33 @@ export function GroupProfilePage() {
     } finally {
       setLoading(false);
     }
+
+    // Best-effort, non-blocking — a failure here must not hide the group
+    // itself, which is why these run outside the try/catch above and each
+    // fail silently into an empty state instead of a page-level error.
+    void crmApi.groupAnalytics(groupId).then((a) => setMonthlySpend(a.monthly_spend)).catch(() => setMonthlySpend([]));
+    void crmApi.groupActivity(groupId).then(setActivity).catch(() => setActivity([]));
+    void crmApi.occasions("groups", groupId)
+      .then((rows) => setUpcomingOccasions(
+        [...rows].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3),
+      ))
+      .catch(() => setUpcomingOccasions([]));
   }, [groupId]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const exportMembersCsv = () => {
+    const header = "الاسم,الرمز,الهاتف,الحالة\n";
+    const rows = members.map((m) => [m.name, m.code ?? "", m.phone ?? "", m.status ?? ""]
+      .map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","));
+    const blob = new Blob(["﻿" + header + rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${group?.name ?? "group"}-members.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const saveEdit = async (data: CrmCustomerGroupInput) => {
     setSaving(true);
@@ -138,7 +173,10 @@ export function GroupProfilePage() {
 
       <div className={`${cardCls} flex flex-wrap items-start justify-between gap-4 p-5`}>
         <div className="flex items-start gap-3">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[var(--crmx-radius-control)] bg-[var(--crmx-navy-soft)] text-[var(--crmx-navy)]">
+          <span
+            className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-white"
+            style={{ background: groupColorHex(group) }}
+          >
             <Building2 className="h-6 w-6" />
           </span>
           <div>
@@ -186,17 +224,127 @@ export function GroupProfilePage() {
       </div>
 
       {tab === "overview" && (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <CrmKpiCard
-            icon={<Users className="h-5 w-5" />}
-            label="الأعضاء"
-            // The list length, not group.customers_count: the backend count is
-            // deliberately unscoped across branches, and showing it above a
-            // branch-scoped list would read as a contradiction.
-            value={String(members.length)}
-            hint="ضمن نطاقك"
-            tone="navy"
-          />
+        <div className="space-y-5">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+            <CrmKpiCard
+              icon={<Users className="h-5 w-5" />}
+              label="الأعضاء"
+              // The list length, not group.customers_count: the backend count is
+              // deliberately unscoped across branches, and showing it above a
+              // branch-scoped list would read as a contradiction.
+              value={String(members.length)}
+              hint="ضمن نطاقك"
+              tone="navy"
+            />
+            <CrmKpiCard
+              icon={<BarChart3 className="h-5 w-5" />}
+              label="إجمالي الإنفاق"
+              value={group.total_spend != null ? money(group.total_spend) : "—"}
+              hint="طلبات مدفوعة"
+              tone="success"
+              loading={group.total_spend == null}
+            />
+            <CrmKpiCard
+              icon={<ShoppingBag className="h-5 w-5" />}
+              label="عدد الطلبات"
+              value={group.orders_count != null ? String(group.orders_count) : "—"}
+              hint="كل الأعضاء"
+              tone="accent"
+              loading={group.orders_count == null}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <div className={`${cardCls} p-5 lg:col-span-2`}>
+              <h3 className="mb-4 text-[15px] font-bold text-[var(--crmx-text)]">
+                اتجاه الإنفاق <span className="font-semibold text-[var(--crmx-text-muted)]">(آخر 6 أشهر)</span>
+              </h3>
+              <CrmGroupSpendChart data={monthlySpend} loading={monthlySpend === undefined} />
+            </div>
+
+            <div className="space-y-4">
+              <div className={`${cardCls} p-4`}>
+                <h3 className="mb-3 flex items-center gap-2 text-[13px] font-bold text-[var(--crmx-text)]">
+                  <CalendarHeart className="h-4 w-4 text-[var(--crmx-text-muted)]" /> المناسبات القادمة
+                </h3>
+                {upcomingOccasions === undefined ? (
+                  <div className="space-y-2">
+                    <div className="crmx-skeleton h-10 rounded-lg" />
+                    <div className="crmx-skeleton h-10 rounded-lg" />
+                  </div>
+                ) : upcomingOccasions.length === 0 ? (
+                  <p className="text-[12.5px] text-[var(--crmx-text-muted)]">لا توجد مناسبات مسجّلة لهذه المجموعة.</p>
+                ) : (
+                  <ul className="space-y-2.5">
+                    {upcomingOccasions.map((o) => (
+                      <li key={String(o.id)} className="flex items-center justify-between gap-2 text-[12.5px]">
+                        <span className="min-w-0 truncate font-semibold text-[var(--crmx-text)]">{o.title}</span>
+                        <span className="shrink-0 text-[var(--crmx-text-muted)]">{fmtDate(o.date)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className={`${cardCls} grid grid-cols-2 gap-2 p-4`}>
+                {canUpdate && (
+                  <button
+                    onClick={() => { setTab("members"); setAddOpen(true); }}
+                    className="flex flex-col items-center gap-1.5 rounded-xl border border-[var(--crmx-border)] px-2 py-3 text-[12px] font-bold text-[var(--crmx-text-secondary)] transition hover:bg-[var(--crmx-neutral-soft)]"
+                  >
+                    <UserPlus className="h-4 w-4" /> إضافة عضو
+                  </button>
+                )}
+                <button
+                  onClick={exportMembersCsv}
+                  disabled={members.length === 0}
+                  className="flex flex-col items-center gap-1.5 rounded-xl border border-[var(--crmx-border)] px-2 py-3 text-[12px] font-bold text-[var(--crmx-text-secondary)] transition hover:bg-[var(--crmx-neutral-soft)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Download className="h-4 w-4" /> تصدير الأعضاء
+                </button>
+                <button
+                  onClick={() => setTab("occasions")}
+                  className="flex flex-col items-center gap-1.5 rounded-xl border border-[var(--crmx-border)] px-2 py-3 text-[12px] font-bold text-[var(--crmx-text-secondary)] transition hover:bg-[var(--crmx-neutral-soft)]"
+                >
+                  <CalendarHeart className="h-4 w-4" /> إضافة مناسبة
+                </button>
+                {canDelete && (
+                  <button
+                    onClick={() => void removeGroup()}
+                    className="flex flex-col items-center gap-1.5 rounded-xl border border-[var(--crmx-danger-soft)] px-2 py-3 text-[12px] font-bold text-[var(--crmx-danger-text)] transition hover:bg-[var(--crmx-danger-soft)]"
+                  >
+                    <Trash2 className="h-4 w-4" /> حذف المجموعة
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className={`${cardCls} p-5`}>
+            <h3 className="mb-3 flex items-center gap-2 text-[15px] font-bold text-[var(--crmx-text)]">
+              <History className="h-4 w-4 text-[var(--crmx-text-muted)]" /> سجل النشاط
+            </h3>
+            {activity === undefined ? (
+              <div className="space-y-2">
+                <div className="crmx-skeleton h-8 rounded-lg" />
+                <div className="crmx-skeleton h-8 rounded-lg" />
+              </div>
+            ) : activity.length === 0 ? (
+              <p className="text-[12.5px] text-[var(--crmx-text-muted)]">لا يوجد نشاط مسجّل لهذه المجموعة بعد.</p>
+            ) : (
+              <ul className="space-y-3 border-s-2 border-[var(--crmx-border)] ps-4">
+                {activity.map((ev) => (
+                  <li key={ev.id} className="relative">
+                    <span className="absolute -start-[21px] top-0.5 h-2.5 w-2.5 rounded-full bg-[var(--crmx-primary)]" />
+                    <p className="text-[13px] font-semibold text-[var(--crmx-text)]">{ev.label}</p>
+                    <p className="text-[12px] text-[var(--crmx-text-muted)]">
+                      {ev.user?.name ?? "النظام"} · {ev.timestamp ? relativeTime(ev.timestamp) : "—"}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       )}
 
@@ -255,7 +403,7 @@ export function GroupProfilePage() {
 
       {editOpen && (
         <GroupFormDrawer
-          initial={{ name: group.name, group_type: group.group_type }}
+          initial={{ name: group.name, group_type: group.group_type, color: group.color }}
           saving={saving}
           onClose={() => setEditOpen(false)}
           onSubmit={saveEdit}

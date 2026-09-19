@@ -1,7 +1,9 @@
-import { AlertTriangle, ChevronLeft, Clock, Search, X } from "lucide-react";
+import { AlertTriangle, Bell, ChevronLeft, Clock, Loader2, Search, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../auth";
+import { CRM_PERMISSIONS } from "../../auth/permissions";
+import { toast } from "../../components/shared/Toast";
 import { branchService, type Branch } from "../../services/branchService";
 import { crmApi } from "./api";
 import { money as formatMoney, num } from "./format";
@@ -177,38 +179,107 @@ function SlaDot({ createdAt, nowMs }: { createdAt: string | null | undefined; no
 }
 
 /**
- * Re-renders active-orders rows once a minute so each SlaDot's colour keeps
- * up with the clock, without ever re-querying the server — the value it
- * feeds into is wall-clock time, computed fresh against the same
- * already-loaded `created_at` on every tick.
+ * Re-renders order rows once a minute so every wall-clock-derived value
+ * (the SlaDot colour, the "منذ" text, the delayed-mode severity tier) keeps
+ * up with the clock without ever re-querying the server — each is computed
+ * fresh against the already-loaded `created_at` on every tick.
+ *
+ * Pauses while the tab is hidden (no point re-rendering an unseen table)
+ * and snaps to the real time the moment it becomes visible again, so a
+ * tab left open overnight shows the right number on the first frame back,
+ * not a minute later.
+ *
+ * Row *membership* (an order finishing, a new one arriving) is still a
+ * reload away — that is the documented "no new real-time infrastructure"
+ * constraint; this hook only stops the numbers already on screen from lying.
  */
-function useMinuteTick(enabled: boolean) {
+function useMinuteTick() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
-    if (!enabled) return;
-    const id = setInterval(() => setNowMs(Date.now()), 60_000);
-    return () => clearInterval(id);
-  }, [enabled]);
+    const tick = () => { if (document.visibilityState === "visible") setNowMs(Date.now()); };
+    const id = setInterval(tick, 60_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+    };
+  }, []);
   return nowMs;
+}
+
+/**
+ * Elapsed minutes computed live from the order's own `created_at` (ISO 8601
+ * with offset — timezone-safe to parse) rather than the `elapsed_minutes`
+ * integer the server stamped at fetch time, which is correct for exactly
+ * one instant. Falls back to the server value when created_at is missing
+ * or unparsable, so nothing ever renders as NaN.
+ */
+function liveElapsedMinutes(order: CrmOrderRow, nowMs: number): number {
+  if (!order.created_at) return order.elapsed_minutes;
+  const createdMs = Date.parse(order.created_at);
+  if (Number.isNaN(createdMs)) return order.elapsed_minutes;
+  return Math.max(0, Math.floor((nowMs - createdMs) / 60_000));
 }
 
 const COLUMNS = ["", "رقم الطلب", "العميل", "المصدر", "النوع / الطاولة", "الفرع", "الحالة", "الدفع", "الإجمالي", "منذ"];
 
+// Options for the delay-alert threshold control below — the same handful of
+// round numbers the Delayed screen's own ?minutes= filter already offers,
+// so the two controls feel like one system even though they're separate
+// concerns (that one is a per-visit view filter; this one is the persisted
+// setting crm:orders:check-delays actually alerts against).
+const DELAY_THRESHOLD_OPTIONS = [5, 10, 15, 20, 30, 45, 60];
+
 export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
   const isGlobal = !user?.branch_id;
+  const canManageDelayAlerts = hasPermission(CRM_PERMISSIONS.ORDERS_MANAGE);
   const [params, setParams] = useSearchParams();
   const [result, setResult] = useState<CrmPage<CrmOrderRow>>();
   const [error, setError] = useState<{ status?: number; message: string }>();
   const [loading, setLoading] = useState(true);
   const [branches, setBranches] = useState<Branch[]>([]);
-  const slaNowMs = useMinuteTick(mode === "active");
+  const nowMs = useMinuteTick();
 
   // Clicking a row opens the order-details pop-up (CrmOrderDetailsModal) —
   // one dialog with the full breakdown, replacing the older row-click popover
   // plus inline row expansion.
   const [modalOrder, setModalOrder] = useState<CrmOrderRow | null>(null);
   const closeModal = useCallback(() => setModalOrder(null), []);
+
+  // The persisted, company-wide "alert CRM staff once an active order has
+  // been sitting this long" threshold — GET/PUT /crm/orders/delay-settings,
+  // backing the crm:orders:check-delays scheduled job
+  // (CrmOrderDelayAlertService). Surfaced on "الطلبات النشطة" specifically
+  // (not the Delayed screen's own ?minutes= view filter, a separate
+  // concern) because this is where a manager decides "how late is too
+  // late" before it happens, not after.
+  const [delayThreshold, setDelayThreshold] = useState<number>();
+  const [savingThreshold, setSavingThreshold] = useState(false);
+
+  useEffect(() => {
+    if (mode !== "active") return;
+    let cancelled = false;
+    crmApi.orderDelaySettings()
+      .then((s) => { if (!cancelled) setDelayThreshold(s.threshold_minutes); })
+      .catch(() => { /* the control just stays hidden if this fails */ });
+    return () => { cancelled = true; };
+  }, [mode]);
+
+  const updateDelayThreshold = async (nextMinutes: number) => {
+    const previous = delayThreshold;
+    setDelayThreshold(nextMinutes);
+    setSavingThreshold(true);
+    try {
+      await crmApi.setOrderDelaySettings(nextMinutes);
+      toast.success(`سيصل فريق CRM إشعاراً فور تجاوز أي طلب نشط ${nextMinutes} دقيقة`);
+    } catch (e) {
+      setDelayThreshold(previous);
+      toast.error(getCrmError(e).message);
+    } finally {
+      setSavingThreshold(false);
+    }
+  };
 
   useEffect(() => {
     if (!isGlobal) return;
@@ -271,6 +342,43 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
   return (
     <section className="crmx-root space-y-6 p-4 sm:p-6">
       <CrmPageHeader breadcrumb="CRM / الطلبات" title={titles[mode].title} description={titles[mode].description} />
+
+      {mode === "active" && delayThreshold != null && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] px-4 py-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--crmx-warning-soft)] text-[var(--crmx-warning-text)]">
+            <Bell className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-bold text-[var(--crmx-text)]">تنبيه التأخير</p>
+            <p className="text-[12.5px] text-[var(--crmx-text-secondary)]">
+              يصل فريق CRM إشعاراً فور تجاوز أي طلب نشط هذه المدة منذ إنشائه.
+            </p>
+          </div>
+          {canManageDelayAlerts ? (
+            <label className="flex items-center gap-2 text-[13px] font-semibold text-[var(--crmx-text-secondary)]">
+              بعد
+              <select
+                value={delayThreshold}
+                disabled={savingThreshold}
+                onChange={(e) => void updateDelayThreshold(Number(e.target.value))}
+                className="h-10 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] font-bold text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10 disabled:opacity-60"
+              >
+                {/* Covers a threshold set outside this list (directly in the
+                    DB, or before this control existed) without silently
+                    rendering the wrong selected value. */}
+                {(DELAY_THRESHOLD_OPTIONS.includes(delayThreshold) ? DELAY_THRESHOLD_OPTIONS : [...DELAY_THRESHOLD_OPTIONS, delayThreshold].sort((a, b) => a - b)).map((m) => (
+                  <option key={m} value={m}>{m} دقيقة</option>
+                ))}
+              </select>
+              {savingThreshold && <Loader2 className="h-4 w-4 animate-spin text-[var(--crmx-text-muted)]" aria-label="جارٍ الحفظ" />}
+            </label>
+          ) : (
+            <span className="rounded-xl bg-[var(--crmx-neutral-soft)] px-3 py-2 text-[13px] font-bold text-[var(--crmx-text)]">
+              {delayThreshold} دقيقة
+            </span>
+          )}
+        </div>
+      )}
 
       {loading && !result ? (
         <CrmToolbarSkeleton />
@@ -412,8 +520,13 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
               </thead>
               <tbody>
                 {result.items.map((order) => {
-                  const isFlagged = mode === "delayed" && order.is_delayed;
-                  const severity = isFlagged ? delaySeverity(order.elapsed_minutes, minutes) : null;
+                  const elapsed = liveElapsedMinutes(order, nowMs);
+                  // Live, not the server's `is_delayed` snapshot: an order that
+                  // crosses the threshold while the tab sits open flags itself
+                  // on the next tick instead of waiting for a reload. The server
+                  // flag is kept only as the fallback when there's no clock.
+                  const isFlagged = mode === "delayed" && (order.created_at ? elapsed >= minutes : Boolean(order.is_delayed));
+                  const severity = isFlagged ? delaySeverity(elapsed, minutes) : null;
                   const style = severity ? SEVERITY_STYLE[severity] : null;
                   const isSelected = modalOrder?.id === order.id;
                   return (
@@ -450,7 +563,7 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
                             SlaDot, whose colour is the one that's actually load-bearing. */}
                         <span className="flex items-center gap-2">
                           <ChannelDot order={order} />
-                          {mode === "active" && <SlaDot createdAt={order.created_at} nowMs={slaNowMs} />}
+                          {mode === "active" && <SlaDot createdAt={order.created_at} nowMs={nowMs} />}
                           {order.order_number}
                         </span>
                       </td>
@@ -471,7 +584,7 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
                       <td className={`px-4 py-4 text-[14px] font-semibold ${style?.time ?? "text-[var(--crmx-text-secondary)]"}`}>
                         <span className="flex items-center gap-1.5">
                           {style?.icon && <Clock className="h-3.5 w-3.5" />}
-                          {formatElapsed(order.elapsed_minutes)}
+                          {formatElapsed(elapsed)}
                         </span>
                       </td>
                     </tr>

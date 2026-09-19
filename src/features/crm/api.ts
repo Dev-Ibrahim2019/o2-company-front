@@ -1,15 +1,18 @@
 import api from "../../api/axios";
 import type {
   CrmActivityEvent, CrmCustomer, CrmDashboard, CrmFavoriteProduct, CrmId, CrmNote, CrmNoteInput,
-  CrmOrderDetails, CrmOrderFeedbackInput, CrmOrderItemFeedbackInput, CrmOrderRow, CrmOrderTimeline, CrmPage, CrmPurchaseHistory,
+  CrmOrderDelaySettings, CrmOrderDetails, CrmOrderFeedbackInput, CrmOrderItemFeedbackInput, CrmOrderRow, CrmOrderTimeline, CrmPage, CrmPurchaseHistory,
   CrmSection, CrmIdentityConflict, CrmConflictEnvelope, CrmComplaint, CrmComplaintInput, CrmComplaintCreateInput,
   CrmGeneralComplaintCreateInput, CrmComplaintRow, CrmComplaintSummary, CrmComplaintFollowup, CrmNotification,
-  CrmCustomerGroup, CrmCustomerGroupInput, CrmOccasion, CrmOccasionDetail,
+  CrmCustomerGroup, CrmCustomerGroupInput, CrmGroupActivityEvent, CrmGroupAnalytics, CrmGroupColor,
+  CrmGroupSmartSuggestion, CrmGroupType, CrmOccasion, CrmOccasionDetail,
   CrmOccasionFollowup, CrmOccasionInput, CrmOccasionListQuery,
   CrmOccasionListRow, CrmOccasionsSummary,
   CrmLoyaltyRule, CrmLoyaltyRuleInput, CrmLoyaltyRuleExclusion,
   CrmLoyaltyTransaction, CrmLoyaltyOwnerSummary, CrmLoyaltyGlobalSummary, CrmLoyaltyAdjustmentInput,
   CrmAddress, CrmAddressInput,
+  CrmStaffPermissionCatalogItem, CrmStaffMember, CrmStaffPermissionDetail, CrmStaffPermissionActivityEvent,
+  CrmSettings, CrmReportOverview, CrmReportRevenue, CrmReportPeriod,
 } from "./types";
 
 const payload = <T,>(raw: unknown): T => {
@@ -55,6 +58,34 @@ export const crmApi = {
     payload<CrmCustomer>((await api.post(`/crm/customer-groups/${id}/customers`, { customer_id: customerId })).data),
   removeGroupMember: async (id: CrmId, customerId: CrmId) =>
     payload<{ removed: boolean }>((await api.delete(`/crm/customer-groups/${id}/customers/${customerId}`)).data),
+  // Real spending trend — same paid-order definition CrmCustomerGroup.total_spend
+  // uses, one point per of the last 6 calendar months.
+  groupAnalytics: async (id: CrmId) => payload<CrmGroupAnalytics>((await api.get(`/crm/customer-groups/${id}/analytics`)).data),
+  // The cross-group "التحليلات والرؤى" screen's one real aggregate.
+  groupsAnalytics: async () => payload<CrmGroupAnalytics>((await api.get("/crm/customer-groups/analytics")).data),
+  groupActivity: async (id: CrmId) => payload<CrmGroupActivityEvent[]>((await api.get(`/crm/customer-groups/${id}/activity`)).data),
+  // Rule-based, real-data segment suggestions — see CustomerGroupController::
+  // smartSuggestions()'s own doc comment for why this is deliberately not
+  // framed as machine-learning.
+  groupSmartSuggestions: async () => payload<CrmGroupSmartSuggestion[]>((await api.get("/crm/customer-groups/smart-suggestions")).data),
+  applyGroupSmartSuggestion: async (data: { key: CrmGroupSmartSuggestion["key"]; name: string; group_type: CrmGroupType; color?: CrmGroupColor | null }) =>
+    payload<CrmCustomerGroup>((await api.post("/crm/customer-groups/smart-suggestions/apply", data)).data),
+  // ── Delegated CRM staff permissions ──
+  staffPermissionsCatalog: async () => payload<CrmStaffPermissionCatalogItem[]>((await api.get("/crm/staff/permissions-catalog")).data),
+  staffMembers: async () => payload<CrmStaffMember[]>((await api.get("/crm/staff")).data),
+  staffPermissions: async (userId: CrmId) => payload<CrmStaffPermissionDetail>((await api.get(`/crm/staff/${userId}/permissions`)).data),
+  syncStaffDirectPermissions: async (userId: CrmId, permissions: string[]) =>
+    payload<CrmStaffPermissionDetail>((await api.post(`/crm/staff/${userId}/permissions/direct`, { permissions })).data),
+  syncStaffDeniedPermissions: async (userId: CrmId, permissions: string[]) =>
+    payload<CrmStaffPermissionDetail>((await api.post(`/crm/staff/${userId}/permissions/deny`, { permissions })).data),
+  staffPermissionActivity: async (userId: CrmId) => payload<CrmStaffPermissionActivityEvent[]>((await api.get(`/crm/staff/${userId}/activity`)).data),
+  // ── CRM settings ──
+  crmSettings: async () => payload<CrmSettings>((await api.get("/crm/settings")).data),
+  updateCrmSettings: async (data: Partial<CrmSettings>) => payload<CrmSettings>((await api.put("/crm/settings", data)).data),
+  // ── Reports & analytics ──
+  reportsOverview: async (period?: CrmReportPeriod) =>
+    payload<CrmReportOverview>((await api.get("/crm/reports/overview", { params: period ? { period } : undefined })).data),
+  reportsRevenue: async () => payload<CrmReportRevenue>((await api.get("/crm/reports/revenue")).data),
 
   // ── Occasions ──
   // customer_occasions is polymorphic, so the owner is part of the path. One
@@ -84,6 +115,12 @@ export const crmApi = {
   },
   occasionsSummary: async () =>
     payload<CrmOccasionsSummary>((await api.get("/crm/occasions/summary")).data),
+  // The "الموظف المسؤول" picker — real login accounts holding
+  // crm.occasions.update. Same shape as complaints' assignableUsers().
+  occasionAssignableUsers: async () =>
+    payload<Array<{ id: CrmId; name: string; branch_id?: CrmId | null; branch?: { id: CrmId; name: string } | null }>>(
+      (await api.get("/crm/occasions/assignable-users")).data,
+    ),
 
   // ── Loyalty ──
   loyaltyRules: async (params: Record<string, string> = {}) =>
@@ -150,6 +187,12 @@ export const crmApi = {
   // Read-only order monitoring — CRM never creates/edits orders, see CrmController::ordersIndex()/ordersDelayed().
   orders: async (params: URLSearchParams) => list<CrmOrderRow>((await api.get("/crm/orders", { params })).data),
   delayedOrders: async (params: URLSearchParams) => list<CrmOrderRow>((await api.get("/crm/orders/delayed", { params })).data),
+  // The persisted, company-wide delay-alert threshold behind the
+  // crm:orders:check-delays scheduled job — see CrmOrderDelayAlertService
+  // (backend) and the "تنبيه التأخير بعد" control on the Active Orders page.
+  orderDelaySettings: async () => payload<CrmOrderDelaySettings>((await api.get("/crm/orders/delay-settings")).data),
+  setOrderDelaySettings: async (thresholdMinutes: number) =>
+    payload<CrmOrderDelaySettings>((await api.put("/crm/orders/delay-settings", { threshold_minutes: thresholdMinutes })).data),
   // Reuses OrderFeedbackController's existing GET/PUT — same contract the
   // Call Center already uses, just under the CRM route.
   saveOrderFeedback: async (customerId: CrmId, orderId: CrmId, data: CrmOrderFeedbackInput) =>

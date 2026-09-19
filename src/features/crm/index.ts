@@ -13,4 +13,10 @@ export { ComplaintsGuidePage as CrmComplaintsGuidePage } from "./ComplaintsGuide
 export { GroupsPage as CrmGroupsPage } from "./GroupsPage";
 export { OccasionsPage as CrmOccasionsPage } from "./OccasionsPage";
 export { GroupProfilePage as CrmGroupProfilePage } from "./GroupProfilePage";
+export { GroupsAnalyticsPage as CrmGroupsAnalyticsPage } from "./GroupsAnalyticsPage";
+export { GroupsSmartSegmentsPage as CrmGroupsSmartSegmentsPage } from "./GroupsSmartSegmentsPage";
+export { CrmStaffPermissionsPage } from "./CrmStaffPermissionsPage";
+export { CrmSettingsPage } from "./CrmSettingsPage";
+export { CrmReportsPage } from "./CrmReportsPage";
+export { CrmReportsRevenuePage } from "./CrmReportsRevenuePage";
 export { LoyaltyPage as CrmLoyaltyPage } from "./LoyaltyPage";

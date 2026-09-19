@@ -940,6 +940,12 @@ const handleActivationSuccess = (activatedInfo: any) => {
       } catch (err) {
         console.error("Failed to load table order:", err);
         setPosError("فشل تحميل طلب الطاولة");
+        // لا نكمل بعد فشل حقيقي في التحقق من الـ backend — المتابعة إلى
+        // activeOrders (تخزين محلي قديم بمعرّفات لا تطابق أرقام الطلبات
+        // الحقيقية، انظر التعليق أدناه) كانت تفتح سلة "بلا معرّف طلب حقيقي"
+        // فوق طاولة قد يكون لها بالفعل طلب فعلي، فيُنشئ أي إغلاق لاحق طلباً
+        // مكرراً بينما يبقى الطلب الأصلي معلّقاً بلا عميل في الـ CRM.
+        return;
       }
     }
 
@@ -1150,6 +1156,29 @@ const handlePrintInvoice = async (orderId: number | string) => {
       }
     }
 
+    // فحص أخير قبل الإغلاق: لا نثق فقط بـ editingApiOrderId المحفوظ في حالة
+    // React — إن كان قد فقد تزامنه مع الطاولة لأي سبب (تنقّل بين الشاشات،
+    // إعادة تحميل، أكثر من تبويب...) فإن الإغلاق كان سينشئ طلباً جديداً
+    // بمعلومات العميل ويُغلقه فوراً، بينما يبقى الطلب الأصلي—الذي أُرسل
+    // للمطبخ فعلاً على نفس الطاولة—نشطاً بلا عميل إلى الأبد. هنا نسأل
+    // الـ backend مباشرة عن الطلب النشط الحقيقي لهذه الطاولة ونعتمده، بدل
+    // القيمة المخزّنة محلياً، فقط عند الإغلاق (لا نغيّر أي سلوك آخر).
+    let existingOrderIdForSubmit = editingApiOrderId;
+    if (isClosingOrder && activeTable) {
+      try {
+        const tableNum = activeTable.table_number || activeTable.number.toString();
+        const realActiveOrders = await orderService.getAllActiveByTableNumber(tableNum, {
+          branch_id: branchId || 0,
+        });
+        if (realActiveOrders[0]) {
+          existingOrderIdForSubmit = realActiveOrders[0].id;
+        }
+      } catch {
+        // فشل هذا التحقق الوقائي لا يجوز أن يمنع الإغلاق — نكمل بما كان
+        // محفوظاً في editingApiOrderId كما كان يحدث قبل هذا التحقق.
+      }
+    }
+
     const result = await submitOrderApi(
       {
         branch_id: branchId,
@@ -1170,7 +1199,7 @@ const handlePrintInvoice = async (orderId: number | string) => {
       shouldConfirm,
       isClosingOrder ? (apiClosingPayments as any[]) : [],
       isClosingOrder,
-      editingApiOrderId,
+      existingOrderIdForSubmit,
       clearAfterSubmit,
       options?.directPrintFirst,
       options?.cashierDeviceId,
@@ -1207,7 +1236,14 @@ const handlePrintInvoice = async (orderId: number | string) => {
       setCustomerPhone("");
       setPayments([]);
       setPaymentMethod(PaymentMethod.CASH);
-      setEditingApiOrderId(null);
+      // عند إغلاق الطلب أو عدم وجود طاولة نشطة، نبدأ سلة جديدة تماماً.
+      // أما "تنفيذ" (تأكيد فقط) لطلب طاولة فالطاولة تبقى مفتوحة على نفس
+      // الطلب — يجب إبقاء معرّفه الحقيقي هنا بدل تصفيره، وإلا فإن أي
+      // إغلاق لاحق لنفس الطاولة (حتى بدون الخروج منها والعودة إليها) كان
+      // يُنشئ طلباً جديداً بالكامل عبر POST بدل تحديث هذا الطلب: الطلب
+      // الأصلي يبقى معلّقاً بلا عميل في الـ CRM، ويظهر طلب مكرر باسم
+      // العميل الحقيقي فقط عند الإغلاق.
+      setEditingApiOrderId(isClosingOrder || !activeTable ? null : result.id);
       setShowCustomerModal(false);
       if (isClosingOrder || !activeTable) {
         setManualTable("");

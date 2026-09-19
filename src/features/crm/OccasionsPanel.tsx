@@ -1,10 +1,11 @@
-import { CalendarHeart, Pencil, Plus, Repeat, Trash2, X } from "lucide-react";
+import { CalendarHeart, Pencil, Plus, Repeat, Trash2, User, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../auth";
 import { CRM_PERMISSIONS } from "../../auth/permissions";
 import { toast } from "../../components/shared/Toast";
 import { crmApi } from "./api";
 import { CrmState, getCrmError } from "./components";
+import { CrmConfirmDialog } from "./customers-ui/CrmConfirmDialog";
 import { date as fmtDate } from "./format";
 import { CONTACT_METHOD_LABELS, OCCASION_TYPE_LABELS } from "./occasionLabels";
 import { OccasionContactActions, type OccasionContact } from "./OccasionContactActions";
@@ -22,15 +23,34 @@ const labelCls = "mb-1 block text-[13px] font-semibold text-[var(--crmx-text-sec
 
 const EMPTY: CrmOccasionInput = {
   occasion_type: "anniversary", title: "", date: "", repeats_annually: true,
-  notes: "", preferred_contact_method: null, is_active: true,
+  notes: "", preferred_contact_method: null, is_active: true, assigned_user_id: null,
 };
+
+/** GET /crm/occasions/assignable-users — real login accounts holding crm.occasions.update. */
+function useAssignableUsers() {
+  const [users, setUsers] = useState<Array<{ id: CrmId; name: string; branch?: { name: string } | null }>>([]);
+  useEffect(() => {
+    let alive = true;
+    void crmApi.occasionAssignableUsers()
+      .then((rows) => { if (alive) setUsers(rows); })
+      .catch(() => { if (alive) setUsers([]); });
+    return () => { alive = false; };
+  }, []);
+  return users;
+}
 
 /**
  * Mounted only while open, so the form reads `initial` fresh each time —
  * the lesson the notes drawer had to learn after a closed-but-mounted form
  * carried the previous record's values into the next one.
+ *
+ * A centered popup, not a side drawer — a real visual review rejected the
+ * drawer here: it read as "a form hiding at the edge of the screen" rather
+ * than the focused, deliberate action this is. Fields are grouped into two
+ * short rows (type+date, contact method+assignee) instead of stacked one
+ * per line, so the eye scans two rows, not six.
  */
-function OccasionFormDrawer({
+function OccasionFormModal({
   initial, saving, onClose, onSubmit,
 }: {
   initial: CrmOccasionInput;
@@ -39,15 +59,27 @@ function OccasionFormDrawer({
   onSubmit: (data: CrmOccasionInput) => void;
 }) {
   const [form, setForm] = useState(initial);
+  const assignableUsers = useAssignableUsers();
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="مناسبة">
-      <button aria-label="إغلاق" className="absolute inset-0 bg-[#0B1220]/25 backdrop-blur-[2px]" onClick={onClose} />
-      <div dir="rtl" className="crmx-drawer-panel crmx-root relative flex h-full w-full max-w-sm flex-col bg-[var(--crmx-card)] shadow-2xl">
+    <div className="crmx-root fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="مناسبة">
+      <button aria-label="إغلاق" className="absolute inset-0 bg-[#0B1220]/40" onClick={onClose} />
+      <div dir="rtl" className="relative flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] shadow-[var(--crmx-shadow-md)]">
         <header className="flex items-center justify-between border-b border-[var(--crmx-border)] px-5 py-4">
-          <h2 className="text-[17px] font-bold text-[var(--crmx-text)]">
-            {initial.title ? "تعديل مناسبة" : "إضافة مناسبة"}
-          </h2>
+          <span className="flex items-center gap-2.5">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--crmx-primary-soft)] text-[var(--crmx-primary-text)]">
+              <CalendarHeart className="h-4.5 w-4.5" />
+            </span>
+            <h2 className="text-[16px] font-bold text-[var(--crmx-text)]">
+              {initial.title ? "تعديل مناسبة" : "إضافة مناسبة"}
+            </h2>
+          </span>
           <button onClick={onClose} className="rounded-lg p-1.5 text-[var(--crmx-text-muted)] hover:bg-[var(--crmx-neutral-soft)]" aria-label="إغلاق">
             <X className="h-5 w-5" />
           </button>
@@ -55,74 +87,98 @@ function OccasionFormDrawer({
 
         <div className="crmx-scrollbar flex-1 space-y-5 overflow-y-auto px-5 py-4">
           <div>
-            <label className={labelCls}>النوع</label>
-            <select
-              className={inputCls}
-              value={form.occasion_type}
-              onChange={(e) => setForm((f) => ({ ...f, occasion_type: e.target.value as CrmOccasionType }))}
-            >
-              {(Object.keys(OCCASION_TYPE_LABELS) as CrmOccasionType[]).map((v) => (
-                <option key={v} value={v}>{OCCASION_TYPE_LABELS[v]}</option>
-              ))}
-            </select>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className={labelCls}>النوع</label>
+                <select
+                  className={inputCls}
+                  value={form.occasion_type}
+                  onChange={(e) => setForm((f) => ({ ...f, occasion_type: e.target.value as CrmOccasionType }))}
+                >
+                  {(Object.keys(OCCASION_TYPE_LABELS) as CrmOccasionType[]).map((v) => (
+                    <option key={v} value={v}>{OCCASION_TYPE_LABELS[v]}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>التاريخ</label>
+                <input
+                  type="date"
+                  className={inputCls}
+                  value={form.date}
+                  onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <label className={labelCls}>العنوان</label>
+              <input
+                className={inputCls}
+                value={form.title}
+                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                placeholder="مثال: ذكرى تأسيس الشركة"
+                maxLength={255}
+                autoFocus
+              />
+            </div>
+
+            <label className="mt-4 flex items-center gap-2.5 text-[14px] font-semibold text-[var(--crmx-text)]">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-[var(--crmx-border)]"
+                checked={!!form.repeats_annually}
+                onChange={(e) => setForm((f) => ({ ...f, repeats_annually: e.target.checked }))}
+              />
+              تتكرر سنوياً
+            </label>
           </div>
 
-          <div>
-            <label className={labelCls}>العنوان</label>
-            <input
-              className={inputCls}
-              value={form.title}
-              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-              placeholder="مثال: ذكرى تأسيس الشركة"
-              maxLength={255}
-              autoFocus
-            />
-          </div>
+          <div className="border-t border-[var(--crmx-border)] pt-5">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label className={labelCls}>وسيلة التواصل المفضّلة</label>
+                <select
+                  className={inputCls}
+                  value={form.preferred_contact_method ?? ""}
+                  onChange={(e) => setForm((f) => ({
+                    ...f,
+                    preferred_contact_method: e.target.value === "" ? null : (e.target.value as CrmContactMethod),
+                  }))}
+                >
+                  <option value="">غير محددة</option>
+                  {(Object.keys(CONTACT_METHOD_LABELS) as CrmContactMethod[]).map((v) => (
+                    <option key={v} value={v}>{CONTACT_METHOD_LABELS[v]}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>
+                  <span className="inline-flex items-center gap-1.5"><User className="h-3.5 w-3.5" /> الموظف المسؤول</span>
+                </label>
+                <select
+                  className={inputCls}
+                  value={form.assigned_user_id != null ? String(form.assigned_user_id) : ""}
+                  onChange={(e) => setForm((f) => ({ ...f, assigned_user_id: e.target.value === "" ? null : Number(e.target.value) }))}
+                >
+                  <option value="">— بلا إسناد —</option>
+                  {assignableUsers.map((u) => (
+                    <option key={String(u.id)} value={String(u.id)}>
+                      {u.name}{u.branch?.name ? ` — ${u.branch.name}` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
-          <div>
-            <label className={labelCls}>التاريخ</label>
-            <input
-              type="date"
-              className={inputCls}
-              value={form.date}
-              onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))}
-            />
-          </div>
-
-          <label className="flex items-center gap-2.5 text-[14px] font-semibold text-[var(--crmx-text)]">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-[var(--crmx-border)]"
-              checked={!!form.repeats_annually}
-              onChange={(e) => setForm((f) => ({ ...f, repeats_annually: e.target.checked }))}
-            />
-            تتكرر سنوياً
-          </label>
-
-          <div>
-            <label className={labelCls}>وسيلة التواصل المفضّلة</label>
-            <select
-              className={inputCls}
-              value={form.preferred_contact_method ?? ""}
-              onChange={(e) => setForm((f) => ({
-                ...f,
-                preferred_contact_method: e.target.value === "" ? null : (e.target.value as CrmContactMethod),
-              }))}
-            >
-              <option value="">غير محددة</option>
-              {(Object.keys(CONTACT_METHOD_LABELS) as CrmContactMethod[]).map((v) => (
-                <option key={v} value={v}>{CONTACT_METHOD_LABELS[v]}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className={labelCls}>ملاحظات</label>
-            <textarea
-              className={`${inputCls} h-24 resize-none py-2.5`}
-              value={form.notes ?? ""}
-              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-            />
+            <div className="mt-4">
+              <label className={labelCls}>ملاحظات</label>
+              <textarea
+                className={`${inputCls} h-20 resize-none py-2.5`}
+                value={form.notes ?? ""}
+                onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+              />
+            </div>
           </div>
         </div>
 
@@ -181,6 +237,7 @@ export function OccasionsPanel({
   const [saving, setSaving] = useState(false);
   const [pendingId, setPendingId] = useState<CrmId | null>(null);
   const [openId, setOpenId] = useState<CrmId | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<CrmOccasion | null>(null);
 
   // Contact actions belong to a person, never to a group. Guarded on `owner`
   // as well as on `contact` being present, so a caller that passed one by
@@ -221,11 +278,11 @@ export function OccasionsPanel({
   };
 
   const remove = async (occasion: CrmOccasion) => {
-    if (!window.confirm("هل أنت متأكد من حذف هذه المناسبة؟")) return;
     setPendingId(occasion.id);
     try {
       await crmApi.deleteOccasion(owner, ownerId, occasion.id);
       toast.success("تم حذف المناسبة");
+      setConfirmDelete(null);
       await load();
     } catch (e) {
       toast.error("تعذّر حذف المناسبة", getCrmError(e).message);
@@ -290,7 +347,7 @@ export function OccasionsPanel({
                     )}
                     {canDelete && (
                       <button
-                        onClick={(e) => { e.stopPropagation(); void remove(o); }}
+                        onClick={(e) => { e.stopPropagation(); setConfirmDelete(o); }}
                         disabled={pendingId === o.id}
                         title="حذف"
                         className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--crmx-text-muted)] hover:bg-[var(--crmx-danger-soft)] hover:text-[var(--crmx-danger-text)] disabled:opacity-50"
@@ -343,7 +400,7 @@ export function OccasionsPanel({
       )}
 
       {drawer && (
-        <OccasionFormDrawer
+        <OccasionFormModal
           initial={drawer.mode === "edit"
             ? {
                 occasion_type: drawer.occasion.occasion_type,
@@ -353,6 +410,7 @@ export function OccasionsPanel({
                 notes: drawer.occasion.notes ?? "",
                 preferred_contact_method: drawer.occasion.preferred_contact_method ?? null,
                 is_active: drawer.occasion.is_active,
+                assigned_user_id: drawer.occasion.assigned_user_id ?? null,
               }
             : EMPTY}
           saving={saving}
@@ -360,6 +418,16 @@ export function OccasionsPanel({
           onSubmit={submit}
         />
       )}
+
+      <CrmConfirmDialog
+        open={confirmDelete !== null}
+        title="حذف المناسبة؟"
+        description={confirmDelete ? `سيتم حذف "${confirmDelete.title}" نهائياً. لا يمكن التراجع عن هذا الإجراء.` : undefined}
+        confirmLabel="حذف نهائياً"
+        busy={confirmDelete != null && pendingId === confirmDelete.id}
+        onConfirm={() => { if (confirmDelete) void remove(confirmDelete); }}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </div>
   );
 }

@@ -25,6 +25,9 @@ const ACTION_ACCENT: Record<string, string> = {
   // Solid, not soft — this one badge needs to read as more urgent than
   // every other row at a glance.
   urgent: "bg-[var(--crmx-danger)] text-white",
+  // OrderDelayedNotification (CrmOrderDelayAlertService) — same tone as the
+  // "attention" tier of the Active/Delayed orders screens' own SLA colours.
+  order_delayed: "bg-[var(--crmx-warning-soft)] text-[var(--crmx-warning-text)]",
 };
 
 const POLL_MS = 60_000;
@@ -144,7 +147,7 @@ export function CrmNotificationBell() {
                       }`}
                     >
                       <span className={`mt-0.5 shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-black ${ACTION_ACCENT[n.data?.action ?? ""] ?? "bg-[var(--crmx-neutral-soft)] text-[var(--crmx-text-secondary)]"}`}>
-                        {n.data?.action === "urgent" ? "عاجل" : !n.read_at ? "جديد" : "•"}
+                        {n.data?.action === "urgent" ? "عاجل" : n.data?.action === "order_delayed" ? "تأخير" : !n.read_at ? "جديد" : "•"}
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block text-[12.5px] font-semibold leading-5 text-[var(--crmx-text)]">

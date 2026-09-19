@@ -81,6 +81,17 @@ export const dateTime = (value?: string | null): string => {
  */
 export const lastOrder = (value?: string | null): string => (value ? date(value) : "لا يوجد نشاط");
 
+const SHORT_MONTHS = [
+  "ينا", "فبر", "مار", "أبر", "ماي", "يون",
+  "يول", "أغس", "سبت", "أكت", "نوف", "ديس",
+];
+
+/** "2026-08" → "أغس" — the x-axis label for the group spend-trend charts. */
+export const monthLabel = (ym: string): string => {
+  const month = Number(ym.slice(5, 7));
+  return SHORT_MONTHS[month - 1] ?? ym;
+};
+
 /**
  * Arabic relative time — "الآن", "قبل 5 د", "قبل 3 س", "أمس", then falls back
  * to the absolute dateTime for anything older than a week. For the

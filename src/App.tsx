@@ -87,6 +87,12 @@ import {
   CrmGroupsPage,
   CrmOccasionsPage,
   CrmGroupProfilePage,
+  CrmGroupsAnalyticsPage,
+  CrmGroupsSmartSegmentsPage,
+  CrmStaffPermissionsPage,
+  CrmSettingsPage,
+  CrmReportsPage,
+  CrmReportsRevenuePage,
   CrmLoyaltyPage,
 } from "./features/crm";
 
@@ -345,12 +351,18 @@ function AppRoutes() {
           <Route path="complaints/guide" element={<CrmComplaintsGuidePage />} />
           <Route path="complaints/:complaintId" element={<CrmComplaintDetailPage />} />
           <Route path="groups" element={<CrmGroupsPage />} />
+          <Route path="groups/analytics" element={<CrmGroupsAnalyticsPage />} />
+          <Route path="groups/segments" element={<CrmGroupsSmartSegmentsPage />} />
           <Route path="occasions" element={<CrmOccasionsPage />} />
           <Route path="loyalty" element={<CrmLoyaltyPage />} />
           <Route path="groups/:groupId" element={<CrmGroupProfilePage />} />
           <Route path="orders" element={<CrmOrdersPage mode="all" />} />
           <Route path="orders/active" element={<CrmOrdersPage mode="active" />} />
           <Route path="orders/delayed" element={<CrmOrdersPage mode="delayed" />} />
+          <Route path="staff-permissions" element={<CrmStaffPermissionsPage />} />
+          <Route path="settings" element={<CrmSettingsPage />} />
+          <Route path="reports" element={<CrmReportsPage />} />
+          <Route path="reports/revenue" element={<CrmReportsRevenuePage />} />
         </Route>
 
         {/* ═══ مسارات الإدارة العامة ═══

@@ -13,7 +13,7 @@ import { toast } from "../../../components/shared/Toast";
 import type { CrmOrderDetails, CrmOrderItem, CrmOrderItemFeedbackInput, CrmOrderRow } from "../types";
 import { CrmStatusBadge, PaymentStatusBadge } from "./CrmStatusBadge";
 import { CRM_ORDER_SOURCE_LABELS, CRM_ORDER_TYPE_LABELS, crmOrderTypeLabel } from "./sourceOptions";
-import { FeedbackEditor, Field, StarRow, TimelineSection } from "./CrmOrderExpandedPanel";
+import { FeedbackEditor, Field, SecHead, StarRow, TimelineSection } from "./CrmOrderExpandedPanel";
 
 /**
  * Order Details — a single centred pop-up, the CRM orders screens' one
@@ -31,20 +31,6 @@ import { FeedbackEditor, Field, StarRow, TimelineSection } from "./CrmOrderExpan
  * Read-only over the Order domain otherwise — feedback (and the complaints
  * escalated from it) is the only thing CRM writes here.
  */
-
-// Section heading — a solid brand tick plus a dark label, so a section reads
-// as a section without a box around it.
-function SecHead({ children, aside }: { children: React.ReactNode; aside?: React.ReactNode }) {
-  return (
-    <div className="mb-2 flex items-center justify-between gap-3">
-      <h4 className="flex items-center gap-2 text-[13px] font-extrabold text-[var(--crmx-text)]">
-        <span className="h-3.5 w-1 rounded-full bg-[var(--crmx-primary)]" aria-hidden />
-        {children}
-      </h4>
-      {aside}
-    </div>
-  );
-}
 
 // A single invoice line — read-only.
 function InvoiceRow({ item }: { item: CrmOrderItem }) {

@@ -1,8 +1,8 @@
 import type { LucideIcon } from "lucide-react";
 import { CRM_PERMISSIONS } from "../../auth/permissions";
 import {
-  AlertTriangle, BellRing, Building2, CalendarHeart, FileBarChart2, Gift, LayoutDashboard,
-  ListOrdered, MessagesSquare, ShieldAlert, ShoppingBag, UserPlus, Users, UsersRound, Zap,
+  AlertTriangle, BellRing, Building2, CalendarHeart, FileBarChart2, Gift, KeyRound, LayoutDashboard,
+  ListOrdered, MessagesSquare, Settings, ShieldAlert, ShoppingBag, UserPlus, Users, UsersRound, Zap,
 } from "lucide-react";
 
 // Single source of truth for CRM navigation — read by both the app-wide
@@ -109,5 +109,22 @@ export const CRM_NAVIGATION: CrmNavItem[] = [
     permission: CRM_PERMISSIONS.OCCASIONS_VIEW,
   },
   { key: "communication", label: "التواصل", icon: MessagesSquare, comingSoon: true },
-  { key: "reports", label: "التقارير", icon: FileBarChart2, comingSoon: true },
+  // No permission gate here — same convention as "dashboard" above: visible
+  // to every crm.access holder in the nav, with crm.dashboard.view enforced
+  // for real on the actual /crm/reports/* routes (CrmReportController).
+  { key: "reports", label: "التقارير", icon: FileBarChart2, to: "/admin/crm/reports" },
+  {
+    key: "staff-permissions",
+    label: "صلاحيات الفريق",
+    icon: KeyRound,
+    to: "/admin/crm/staff-permissions",
+    permission: CRM_PERMISSIONS.STAFF_MANAGE_PERMISSIONS,
+  },
+  {
+    key: "crm-settings",
+    label: "إعدادات CRM",
+    icon: Settings,
+    to: "/admin/crm/settings",
+    permission: CRM_PERMISSIONS.SETTINGS_MANAGE,
+  },
 ];

@@ -1,18 +1,22 @@
 import {
   Building2, CalendarDays, CalendarHeart, ChevronLeft, ChevronRight,
-  LayoutList, Repeat, User,
+  LayoutList, Pencil, Plus, Repeat, Trash2, User,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useAuth } from "../../auth";
+import { CRM_PERMISSIONS } from "../../auth/permissions";
+import { toast } from "../../components/shared/Toast";
 import { crmApi } from "./api";
 import { CrmState, getCrmError } from "./components";
-import { CrmKpiCard, CrmPageHeader } from "./customers-ui";
+import { CrmConfirmDialog, CrmKpiCard, CrmPageHeader, CrmSearchBar } from "./customers-ui";
 import "./customers-ui/crmx.css";
 import { date as fmtDate, num } from "./format";
 import { OccasionContactActions } from "./OccasionContactActions";
+import { OccasionCrmFormModal } from "./OccasionCrmFormModal";
 import { OccasionDetailDrawer } from "./OccasionDetailDrawer";
 import { OCCASION_TYPE_LABELS } from "./occasionLabels";
-import type { CrmId, CrmOccasionListRow, CrmOccasionsSummary } from "./types";
+import type { CrmId, CrmOccasionInput, CrmOccasionListRow, CrmOccasionsSummary } from "./types";
 
 type View = "list" | "calendar";
 type Range = "today" | "week" | "month" | "upcoming";
@@ -150,7 +154,16 @@ function OwnerBadge({ row }: { row: CrmOccasionListRow }) {
   );
 }
 
-function OccasionCard({ row, onOpen }: { row: CrmOccasionListRow; onOpen: () => void }) {
+function OccasionCard({
+  row, onOpen, onEdit, onDelete, canUpdate, canDelete,
+}: {
+  row: CrmOccasionListRow;
+  onOpen: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  canUpdate: boolean;
+  canDelete: boolean;
+}) {
   return (
     <div
       role="button"
@@ -169,9 +182,33 @@ function OccasionCard({ row, onOpen }: { row: CrmOccasionListRow; onOpen: () => 
           </p>
           <div className="mt-1.5"><OwnerBadge row={row} /></div>
         </div>
-        <span className={`${pill} shrink-0 bg-[var(--crmx-info-soft)] text-[var(--crmx-info-text)]`}>
-          {OCCASION_TYPE_LABELS[row.occasion_type] ?? row.occasion_type}
-        </span>
+        <div className="flex shrink-0 items-center gap-1">
+          {(canUpdate || canDelete) && (
+            <>
+              {canUpdate && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onEdit(); }}
+                  title="تعديل"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--crmx-text-muted)] hover:bg-[var(--crmx-neutral-soft)] hover:text-[var(--crmx-navy)]"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {canDelete && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                  title="حذف"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--crmx-text-muted)] hover:bg-[var(--crmx-danger-soft)] hover:text-[var(--crmx-danger-text)]"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </>
+          )}
+          <span className={`${pill} shrink-0 bg-[var(--crmx-info-soft)] text-[var(--crmx-info-text)]`}>
+            {OCCASION_TYPE_LABELS[row.occasion_type] ?? row.occasion_type}
+          </span>
+        </div>
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-2">
@@ -212,6 +249,11 @@ function OccasionCard({ row, onOpen }: { row: CrmOccasionListRow; onOpen: () => 
  * and only the server knows how to roll it.
  */
 export function OccasionsPage() {
+  const { hasPermission } = useAuth();
+  const canCreate = hasPermission(CRM_PERMISSIONS.OCCASIONS_CREATE);
+  const canUpdate = hasPermission(CRM_PERMISSIONS.OCCASIONS_UPDATE);
+  const canDelete = hasPermission(CRM_PERMISSIONS.OCCASIONS_DELETE);
+
   const [params, setParams] = useSearchParams();
   const rangeParam = (params.get("range") as Range | null) ?? "upcoming";
   const range: Range = ["today", "week", "month", "upcoming"].includes(rangeParam) ? rangeParam : "upcoming";
@@ -219,6 +261,7 @@ export function OccasionsPage() {
   const [view, setView] = useState<View>((params.get("view") as View) === "calendar" ? "calendar" : "list");
   const [ownerType, setOwnerType] = useState(params.get("owner_type") ?? "");
   const [occasionType, setOccasionType] = useState(params.get("occasion_type") ?? "");
+  const [search, setSearch] = useState(params.get("search") ?? "");
 
   const [month, setMonth] = useState(() => {
     const d = new Date();
@@ -231,6 +274,20 @@ export function OccasionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ status?: number; message: string } | null>(null);
   const [openId, setOpenId] = useState<CrmId | null>(null);
+
+  // Add/edit — "add" needs no prefilled data; "edit" fetches the full record
+  // (notes/contact method/assigned user aren't on the list row) before the
+  // drawer opens, the same /crm/occasions/{id} the detail drawer already
+  // reads, so it never drifts from what that view shows.
+  const [formState, setFormState] = useState<
+    | { mode: "add" }
+    | { mode: "edit"; row: CrmOccasionListRow; input: CrmOccasionInput }
+    | null
+  >(null);
+  const [formLoading, setFormLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<CrmOccasionListRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -246,13 +303,14 @@ export function OccasionsPage() {
         ...window,
         owner_type: (ownerType || undefined) as "customer" | "group" | undefined,
         occasion_type: occasionType || undefined,
+        search: search || undefined,
       }));
     } catch (e) {
       setError(getCrmError(e));
     } finally {
       setLoading(false);
     }
-  }, [view, range, month, ownerType, occasionType]);
+  }, [view, range, month, ownerType, occasionType, search]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -284,26 +342,96 @@ export function OccasionsPage() {
 
   const dayRows = selectedDay ? rows.filter((r) => (r.next_occurrence ?? "").slice(0, 10) === selectedDay) : [];
 
+  const openEdit = async (row: CrmOccasionListRow) => {
+    setFormLoading(true);
+    try {
+      const detail = await crmApi.occasion(row.id);
+      setFormState({
+        mode: "edit",
+        row,
+        input: {
+          occasion_type: detail.occasion_type,
+          title: detail.title,
+          date: (detail.date ?? "").slice(0, 10),
+          repeats_annually: detail.repeats_annually,
+          notes: detail.notes ?? "",
+          preferred_contact_method: detail.preferred_contact_method ?? null,
+          is_active: detail.is_active,
+          assigned_user_id: detail.assigned_user_id ?? null,
+        },
+      });
+    } catch (e) {
+      toast.error("تعذّر فتح المناسبة للتعديل", getCrmError(e).message);
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  const submitForm = async (owner: { type: "customer" | "group"; id: CrmId }, data: CrmOccasionInput) => {
+    const endpoint = owner.type === "customer" ? "customers" : "groups";
+    setSaving(true);
+    try {
+      if (formState?.mode === "edit") {
+        await crmApi.updateOccasion(endpoint, owner.id, formState.row.id, data);
+        toast.success("تم تحديث المناسبة");
+      } else {
+        await crmApi.createOccasion(endpoint, owner.id, data);
+        toast.success("تمت إضافة المناسبة");
+      }
+      setFormState(null);
+      await load();
+    } catch (e) {
+      toast.error("تعذّر حفظ المناسبة", getCrmError(e).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeOccasion = async (row: CrmOccasionListRow) => {
+    const endpoint = row.owner_type === "customer" ? "customers" : "groups";
+    setDeleting(true);
+    try {
+      await crmApi.deleteOccasion(endpoint, row.owner_id, row.id);
+      toast.success("تم حذف المناسبة");
+      setConfirmDelete(null);
+      await load();
+    } catch (e) {
+      toast.error("تعذّر حذف المناسبة", getCrmError(e).message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="crmx-root space-y-6 p-4 sm:p-6">
       <CrmPageHeader
         title="المناسبات"
         description="مناسبات العملاء والمجموعات بتاريخها القادم بعد الدحرجة السنوية — لا بتاريخها المسجّل."
         actions={
-          <div className="flex items-center gap-1 rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-1">
-            {([["list", "قائمة", LayoutList], ["calendar", "تقويم", CalendarDays]] as const).map(([key, label, Icon]) => (
+          <div className="flex items-center gap-3">
+            {canCreate && (
               <button
-                key={key}
-                onClick={() => { setView(key); setSelectedDay(null); patchParams({ view: key }); }}
-                className={`flex h-9 items-center gap-1.5 rounded-lg px-3 text-[14px] font-bold transition ${
-                  view === key
-                    ? "bg-[var(--crmx-primary)] text-white"
-                    : "text-[var(--crmx-text-secondary)] hover:bg-[var(--crmx-neutral-soft)]"
-                }`}
+                onClick={() => setFormState({ mode: "add" })}
+                className="flex h-11 items-center gap-2 rounded-xl bg-[var(--crmx-primary)] px-4 text-[14px] font-bold text-white transition hover:bg-[var(--crmx-primary-hover)]"
               >
-                <Icon className="h-4 w-4" /> {label}
+                <Plus className="h-4 w-4" /> إضافة مناسبة
               </button>
-            ))}
+            )}
+            <div className="flex items-center gap-1 rounded-xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-1">
+              {([["list", "قائمة", LayoutList], ["calendar", "تقويم", CalendarDays]] as const).map(([key, label, Icon]) => (
+                <button
+                  key={key}
+                  onClick={() => { setView(key); setSelectedDay(null); patchParams({ view: key }); }}
+                  className={`flex h-9 items-center gap-1.5 rounded-lg px-3 text-[14px] font-bold transition ${
+                    view === key
+                      ? "bg-[var(--crmx-primary)] text-white"
+                      : "text-[var(--crmx-text-secondary)] hover:bg-[var(--crmx-neutral-soft)]"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" /> {label}
+                </button>
+              ))}
+            </div>
           </div>
         }
       />
@@ -335,6 +463,10 @@ export function OccasionsPage() {
       </div>
 
       <div className={`${cardCls} flex flex-wrap items-end gap-3 p-4`}>
+        <div className={fieldLabelCls}>
+          بحث بالاسم
+          <CrmSearchBar value={search} onChange={(v) => { setSearch(v); patchParams({ search: v }); }} placeholder="اسم العميل أو المجموعة..." />
+        </div>
         {view === "list" && (
           <label className={fieldLabelCls}>
             المدى
@@ -424,7 +556,7 @@ export function OccasionsPage() {
             ) : (
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {dayRows.map((r) => (
-                  <OccasionCard key={String(r.id)} row={r} onOpen={() => setOpenId(r.id)} />
+                  <OccasionCard key={String(r.id)} row={r} onOpen={() => setOpenId(r.id)} onEdit={() => void openEdit(r)} onDelete={() => setConfirmDelete(r)} canUpdate={canUpdate} canDelete={canDelete} />
                 ))}
               </div>
             )}
@@ -439,7 +571,7 @@ export function OccasionsPage() {
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
           {rows.map((r) => (
-            <OccasionCard key={String(r.id)} row={r} onOpen={() => setOpenId(r.id)} />
+            <OccasionCard key={String(r.id)} row={r} onOpen={() => setOpenId(r.id)} onEdit={() => void openEdit(r)} onDelete={() => setConfirmDelete(r)} canUpdate={canUpdate} canDelete={canDelete} />
           ))}
         </div>
       )}
@@ -459,6 +591,32 @@ export function OccasionsPage() {
           onChanged={() => void load()}
         />
       )}
+
+      {formState && !formLoading && (
+        <OccasionCrmFormModal
+          title={formState.mode === "edit" ? "تعديل مناسبة" : "إضافة مناسبة"}
+          initial={formState.mode === "edit" ? formState.input : {
+            occasion_type: "birthday", title: "", date: "", repeats_annually: true,
+            notes: "", preferred_contact_method: null, is_active: true, assigned_user_id: null,
+          }}
+          initialOwner={formState.mode === "edit"
+            ? { type: formState.row.owner_type, id: formState.row.owner_id, name: formState.row.owner_name ?? "" }
+            : undefined}
+          saving={saving}
+          onClose={() => setFormState(null)}
+          onSubmit={submitForm}
+        />
+      )}
+
+      <CrmConfirmDialog
+        open={confirmDelete !== null}
+        title="حذف المناسبة؟"
+        description={confirmDelete ? `سيتم حذف "${confirmDelete.title}" نهائياً. لا يمكن التراجع عن هذا الإجراء.` : undefined}
+        confirmLabel="حذف نهائياً"
+        busy={deleting}
+        onConfirm={() => { if (confirmDelete) void removeOccasion(confirmDelete); }}
+        onCancel={() => setConfirmDelete(null)}
+      />
     </div>
   );
 }
