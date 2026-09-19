@@ -175,6 +175,37 @@ function RoleGuard({ allowedRoles }: { allowedRoles: string[] }) {
   return <Outlet />;
 }
 
+/**
+ * DeliveryAccessGuard — مسارات /call-center/delivery* تحتاج "دور إداري (manager/admin)" أو
+ * "صلاحية assign-driver/change-order-status" (موظف T.W) — الاثنان أدوار Spatie واحدة (call-center)
+ * بفارق الصلاحيات الفردية المُفعَّلة، فمنطق role-only العادي (RoleGuard) ما يكفي هون.
+ */
+function DeliveryAccessGuard() {
+  const { user, loading, hasRole, hasPermission } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const hasAccess = DELIVERY_SIP_ROLES.some((r) => hasRole(r))
+    || hasPermission("call-center.assign-driver")
+    || hasPermission("call-center.change-order-status");
+
+  if (!hasAccess) {
+    return <Navigate to="/unauthorized" replace />;
+  }
+
+  return <Outlet />;
+}
+
 /* ══════════════════════════════════════════════════════════════
  *  صفحات مساعدة (Wrappers) — تمرر المعاملات الصحيحة للمكونات
  * ══════════════════════════════════════════════════════════════ */
@@ -447,21 +478,30 @@ function AppRoutes() {
           <Route element={<CallCenterGuard />}>
             <Route element={<CallCenterLayout />}>
               <Route path="/call-center">
-                <Route index element={<OperationsDashboard />} />
-                <Route path="pos" element={<CallCenterPOS />} />
-                <Route path="order" element={<CallCenterPageWithAside />} />
+                {/* لوحة العمليات/صفحة الطلب/الطلبات المغلقة/POS — حصرًا لموظف "الكول سنتر" (يملك
+                    call-center.create-order)، وليس موظف T.W (يملك change-order-status/assign-driver
+                    فقط) رغم إنهما نفس دور Spatie "call-center" — الفرق بصلاحياتهم الفردية فقط. */}
+                <Route index element={<ProtectedRoute permission="call-center.view-dashboard"><OperationsDashboard /></ProtectedRoute>} />
+                <Route path="pos" element={<ProtectedRoute permission="call-center.create-order"><CallCenterPOS /></ProtectedRoute>} />
+                <Route path="order" element={<ProtectedRoute permission="call-center.create-order"><CallCenterPageWithAside /></ProtectedRoute>} />
                 <Route path="active-orders" element={<ActiveOrdersPage />} />
-                <Route path="closed-orders" element={<ClosedOrdersPage />} />
+                <Route path="closed-orders" element={<ProtectedRoute permission="call-center.view-closed-orders"><ClosedOrdersPage /></ProtectedRoute>} />
+                {/* صفحة تفاصيل الطلب مشتركة بين الكول سنتر وT.W — كل زر جواها مضبوط بصلاحيته
+                    الخاصة (تسجيل الدفعة/الإلغاء مقابل بدء التجهيز/تعيين سائق)، راجع OrderDetailPage. */}
                 <Route path="orders/:orderId" element={<OrderDetailPage />} />
                 <Route path="crm" element={<CrmDirectoryPage />} />
                 <Route path="search" element={<CustomerPhoneSearch />} />
                 <Route path="complaints" element={<ComplaintsManagement />} />
                 <Route path="occasions" element={<OccasionsPage />} />
                 <Route path="top-customers" element={<TopCustomersTable />} />
-                {/* إدارة الديليفري وإعدادات SIP — غير متاحتين لموظف الكول سنتر العادي إطلاقاً */}
-                <Route element={<RoleGuard allowedRoles={DELIVERY_SIP_ROLES} />}>
+                {/* الديليفري: رؤساء الكول سنتر/الأدمن (بالدور) أو موظف T.W (بصلاحية assign-driver/
+                    change-order-status) — DeliveryAccessGuard يفحص الاثنين. إعدادات SIP تبقى محصورة
+                    بالدور الإداري فقط، T.W ما إله علاقة فيها. */}
+                <Route element={<DeliveryAccessGuard />}>
                   <Route path="delivery" element={<DeliveryManagementPage />} />
                   <Route path="delivery/:driverId" element={<DriverDetailPage />} />
+                </Route>
+                <Route element={<RoleGuard allowedRoles={DELIVERY_SIP_ROLES} />}>
                   <Route path="sip-settings" element={<SipConfigV2 />} />
                 </Route>
                 {/* محصورة برئيس الكول سنتر فقط — موظف الكول سنتر العادي يُعاد توجيهه لـ /unauthorized */}

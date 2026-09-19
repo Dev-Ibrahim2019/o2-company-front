@@ -30,11 +30,20 @@ const FULL_BLEED_PATHS = new Set(["/call-center/pos"]);
 
 export const CallCenterLayout: React.FC<{ children?: React.ReactNode }> = ({ children }) => {
   const { currentUser } = useApp();
-  const { logout: authLogout, hasRole } = useAuth();
+  const { logout: authLogout, hasRole, hasPermission } = useAuth();
   const canManageCallCenterStaff = hasRole(ROLES.CALL_CENTER_MANAGER) || hasRole(ROLES.SUPER_ADMIN) || hasRole(ROLES.BRANCH_MANAGER);
-  // إدارة الديليفري وإعدادات SIP غير متاحتين لموظف الكول سنتر العادي إطلاقاً — نفس مجموعة
-  // الأدوار المسموحة بمسارَي App.tsx (DELIVERY_SIP_ROLES) بالضبط.
-  const canAccessDeliveryOrSip = canManageCallCenterStaff || hasRole(ROLES.ACCOUNTANT);
+  // إعدادات SIP غير متاحة لموظف الكول سنتر العادي ولا لـ T.W إطلاقاً — نفس مجموعة الأدوار
+  // المسموحة بمسار sip-settings بـ App.tsx (DELIVERY_SIP_ROLES) بالضبط.
+  const canAccessSip = canManageCallCenterStaff || hasRole(ROLES.ACCOUNTANT);
+  // الديليفري: نفس أدوار SIP الإدارية + موظف T.W (بصلاحية assign-driver/change-order-status)
+  // — راجع DeliveryAccessGuard بـ App.tsx لنفس المنطق بالضبط.
+  const canAccessDelivery = canAccessSip
+    || hasPermission("call-center.assign-driver")
+    || hasPermission("call-center.change-order-status");
+  // لوحة العمليات/صفحة الطلب/الطلبات المغلقة — حصرًا لموظف الكول سنتر (create-order)، وليس T.W.
+  const canAccessCallCenterDuties = hasPermission("call-center.create-order");
+  const canViewClosedOrders = hasPermission("call-center.view-closed-orders");
+  const canViewDashboard = hasPermission("call-center.view-dashboard");
   const location = useLocation();
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 1024);
 
@@ -145,22 +154,28 @@ export const CallCenterLayout: React.FC<{ children?: React.ReactNode }> = ({ chi
         </button>
 
         <nav style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4, overflowY: "auto" }}>
-          <SidebarLink to="/call-center" icon={LayoutDashboard} label="لوحة العمليات" end />
-          <SidebarLink to="/call-center/order" icon={ShoppingCart} label="صفحة الطلب" />
+          {canViewDashboard && (
+            <SidebarLink to="/call-center" icon={LayoutDashboard} label="لوحة العمليات" end />
+          )}
+          {canAccessCallCenterDuties && (
+            <SidebarLink to="/call-center/order" icon={ShoppingCart} label="صفحة الطلب" />
+          )}
           <SidebarLink to="/call-center/active-orders" icon={ClipboardList} label="الطلبات النشطة" />
-          <SidebarLink to="/call-center/closed-orders" icon={CheckCircle} label="الطلبات المغلقة" />
+          {canViewClosedOrders && (
+            <SidebarLink to="/call-center/closed-orders" icon={CheckCircle} label="الطلبات المغلقة" />
+          )}
           {/* <SidebarLink to="/call-center/crm" icon={Database} label="العملاء" /> */}
           {/* <SidebarLink to="/call-center/search" icon={Search} label="المكالمات والبحث" /> */}
           {/* <SidebarLink to="/call-center/complaints" icon={MessageSquareWarning} label="الشكاوى والمتابعة" /> */}
           {/* <SidebarLink to="/call-center/occasions" icon={Gift} label="المناسبات" /> */}
           {/* <SidebarLink to="/call-center/top-customers" icon={Star} label="الولاء والعملاء المميزون" /> */}
-          {canAccessDeliveryOrSip && (
+          {canAccessDelivery && (
             <SidebarLink to="/call-center/delivery" icon={Bike} label="إدارة الديليفري" />
           )}
           {canManageCallCenterStaff && (
             <SidebarLink to="/call-center/team" icon={Headphones} label="الفريق" />
           )}
-          {canAccessDeliveryOrSip && (
+          {canAccessSip && (
             <SidebarLink to="/call-center/sip-settings" icon={Phone} label="إعدادات SIP" />
           )}
         </nav>

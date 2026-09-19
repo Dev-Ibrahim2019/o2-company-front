@@ -591,7 +591,11 @@ export const OrderDetailPage: React.FC = () => {
   const paidMethod = order.payment_status === "paid"
     ? PAYMENT_METHOD_LABELS[invoice?.payment_method || ""] || invoice?.payment_method
     : PAYMENT_METHOD_LABELS[lastPayment?.method || lastPayment?.payment_method || ""] || lastPayment?.method;
-  const canPayNow = order.status !== "cancelled";
+  // تسجيل الدفعة/الإغلاق حصرًا لموظف الكول سنتر (create-order/complete-order) — orders/:orderId
+  // صفحة مشتركة مع T.W (الذي يملك change-order-status/assign-driver فقط بدون هذين)، وما كان
+  // فيه أي فحص صلاحية هون أصلاً (بس حالة الطلب) قبل فصل الأدوار.
+  const canHandlePayment = hasPermission("call-center.create-order") || hasPermission("call-center.complete-order");
+  const canPayNow = order.status !== "cancelled" && canHandlePayment;
 
   return (
     <div dir="rtl" style={{ fontFamily: typography.fontFamily.sans, minHeight: "100%", maxWidth: 960, margin: "0 auto" }}>
@@ -757,7 +761,7 @@ export const OrderDetailPage: React.FC = () => {
                   <CheckCircle2 size={14} /> {canManualComplete ? "إتمام قسري" : "إتمام الطلب"}
                 </button>
               )}
-              {order.status !== "cancelled" && (
+              {order.status !== "cancelled" && canHandlePayment && (
                 <button onClick={cancelOrder} style={{
                   display: "flex", alignItems: "center", gap: 6,
                   padding: "8px 14px", borderRadius: radius.lg,

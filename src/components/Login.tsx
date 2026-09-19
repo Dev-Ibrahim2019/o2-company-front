@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useApp } from "../../store";
 import { useAuth } from "../auth";
+import { getPermissions } from "../auth/authStorage";
 import {
   User,
   Lock,
@@ -70,7 +71,11 @@ export const Login: React.FC = () => {
       localStorage.removeItem("pos_register_info");
       localStorage.removeItem("hospitality_device_uuid");
       localStorage.removeItem("hospitality_register_info");
-      navigate("/call-center", { replace: true });
+      // موظف T.W (يملك change-order-status/assign-driver بس، بدون view-dashboard) ما يقدر يدخل
+      // /call-center (index محمي بصلاحية view-dashboard الآن) — نوجّهه مباشرة لـ active-orders.
+      const perms = getPermissions();
+      const isFullCallCenterAgent = primary === "call-center-manager" || perms.includes("call-center.view-dashboard");
+      navigate(isFullCallCenterAgent ? "/call-center" : "/call-center/active-orders", { replace: true });
     } else if (primary === "hospitality") {
       localStorage.removeItem("pos_device_uuid");
       localStorage.removeItem("pos_register_info");
