@@ -3,7 +3,6 @@ import {
   Phone, Search, ShoppingCart, Star, MapPin, User,
   Trash2, Save, Package, TrendingUp, Loader2, CheckCircle, Eye,
   MessageSquare, Sparkles, Users, Receipt, LayoutGrid, List as ListIcon, Plus,
-  Banknote, CreditCard, Wallet, Check,
 } from "lucide-react";
 import { colors, typography, radius, shadows, transitions } from "../design/tokens";
 import { Button, Badge, Card } from "../design/components";
@@ -31,11 +30,14 @@ interface Customer {
 
 interface OrderItem {
   id: number;
+  item_id?: number;
   item_name: string;
   item_name_ar?: string;
   quantity: number;
   price: number;
   total: number;
+  notes?: string | null;
+  feedback?: { rating: number; notes: string | null; complaint_id: number | null } | null;
 }
 
 interface Order {
@@ -46,6 +48,7 @@ interface Order {
   status: string;
   order_type: string;
   items: OrderItem[];
+  note?: string | null;
   customer_name?: string;
   delivery_address?: string;
   payment_method?: string;
@@ -85,10 +88,6 @@ interface FavoriteItem {
   total_spent: number;
 }
 
-type PaymentMethod = "cash" | "card" | "wallet";
-type PaymentSplit = { method: PaymentMethod; amount: number };
-const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = { cash: "نقداً", card: "بطاقة", wallet: "محفظة" };
-const PAYMENT_METHOD_ICONS: Record<PaymentMethod, React.ComponentType<{ size?: number }>> = { cash: Banknote, card: CreditCard, wallet: Wallet };
 const MENU_VIEW_MODE_STORAGE_KEY = "callCenterMenuViewMode";
 
 // يطابق بالاسم (عربي/انجليزي) أو بكود الصنف (نصي زي ITM-40513 أو رقمي زي 901) — نفس المنطق يُستخدم
@@ -119,57 +118,6 @@ const ORDER_TYPE_TOOLTIPS: Record<"takeaway" | "dine_in" | "delivery", string> =
   delivery: "الطلب يُوصَّل إلى عنوان العميل — يتطلب إدخال العنوان أدناه",
 };
 
-// Placeholder shown until a real customer is searched / real data arrives from the API.
-const SAMPLE_ORDERS: Order[] = [
-  {
-    id: 1012, order_number: "1012", created_at: new Date().toISOString(), total: 185, status: "delivered", order_type: "takeaway",
-    delivery_address: "فرع غزة - شارع الوحدة",
-    items: [
-      { id: 1, item_name: "شاورما دجاج", item_name_ar: "شاورما دجاج", quantity: 2, price: 45, total: 90 },
-      { id: 2, item_name: "كابتن", item_name_ar: "كابتن", quantity: 1, price: 95, total: 95 },
-    ],
-  },
-  {
-    id: 1011, order_number: "1011", created_at: new Date(Date.now() - 86400000).toISOString(), total: 76, status: "delivered", order_type: "takeaway",
-    delivery_address: "فرع الرجال",
-    items: [
-      { id: 3, item_name: "فرع دجاج مبهرة", item_name_ar: "فرع دجاج مبهرة", quantity: 1, price: 42, total: 42 },
-      { id: 4, item_name: "كاتل باندنشز", item_name_ar: "كاتل باندنشز", quantity: 1, price: 34, total: 34 },
-    ],
-  },
-  {
-    id: 1010, order_number: "1010", created_at: new Date(Date.now() - 86400000 * 2).toISOString(), total: 300, status: "delivered", order_type: "delivery",
-    delivery_address: "توصيل للمنزل",
-    items: [
-      { id: 5, item_name: "شاورما بالدجاج", item_name_ar: "شاورما بالدجاج", quantity: 5, price: 60, total: 300 },
-    ],
-  },
-  {
-    id: 1009, order_number: "1009", created_at: new Date(Date.now() - 86400000 * 5).toISOString(), total: 60, status: "delivered", order_type: "takeaway",
-    delivery_address: "فرع خان يونس",
-    items: [
-      { id: 6, item_name: "كبه لبن", item_name_ar: "كبه لبن", quantity: 2, price: 30, total: 60 },
-    ],
-  },
-  {
-    id: 1008, order_number: "1008", created_at: new Date(Date.now() - 86400000 * 10).toISOString(), total: 120, status: "delivered", order_type: "takeaway",
-    delivery_address: "فرع غزة - الشجاعية",
-    items: [
-      { id: 7, item_name: "كابتن", item_name_ar: "كابتن", quantity: 1, price: 65, total: 65 },
-      { id: 8, item_name: "شاورما دجاج", item_name_ar: "شاورما دجاج", quantity: 1, price: 55, total: 55 },
-    ],
-  },
-];
-
-const SAMPLE_FAVORITES: FavoriteItem[] = [
-  { item_id: -1, item_name: "شاورما بالدجاج", item_name_ar: "شاورما بالدجاج", orders_count: 12, quantity_sum: 48, total_spent: 0 },
-  { item_id: -2, item_name: "شاورما دجاج", item_name_ar: "شاورما دجاج", orders_count: 10, quantity_sum: 35, total_spent: 0 },
-  { item_id: -3, item_name: "كاتل باندنشز", item_name_ar: "كاتل باندنشز", orders_count: 9, quantity_sum: 30, total_spent: 0 },
-  { item_id: -4, item_name: "فرع دجاج مبهرة", item_name_ar: "فرع دجاج مبهرة", orders_count: 7, quantity_sum: 28, total_spent: 0 },
-  { item_id: -5, item_name: "كابتن", item_name_ar: "كابتن", orders_count: 6, quantity_sum: 22, total_spent: 0 },
-  { item_id: -6, item_name: "كبه لبن", item_name_ar: "كبه لبن", orders_count: 4, quantity_sum: 15, total_spent: 0 },
-];
-
 // ============================================================================
 // CALL CENTER PAGE WITH ASIDE
 // ============================================================================
@@ -182,6 +130,26 @@ export const CallCenterPageWithAside: React.FC = () => {
   const [customerName, setCustomerName] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+
+  // بند 2 بمواصفة الطلب: "مزيد من التفاصيل" — Modal مُمركز (وليس Drawer جانبي)
+  // يعرض حقول هوية العميل الحقيقية من CRM (GET /call-center/customers/{id}/profile
+  // — يُرجع Customer::toArray() كاملًا + إحصائيات حقيقية)، بلا أي حقل مخترَع.
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [customerDetails, setCustomerDetails] = useState<Record<string, any> | null>(null);
+  const openDetailsModal = async () => {
+    if (!customer) return;
+    setDetailsModalOpen(true);
+    setDetailsLoading(true);
+    try {
+      const res = await api.get(`/call-center/customers/${customer.id}/profile`);
+      setCustomerDetails(res.data?.data ?? null);
+    } catch {
+      setCustomerDetails(null);
+    } finally {
+      setDetailsLoading(false);
+    }
+  };
 
   // ── Orders State ──
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
@@ -223,7 +191,6 @@ export const CallCenterPageWithAside: React.FC = () => {
   const [invoiceNote, setInvoiceNote] = useState("");
   const [discountValue, setDiscountValue] = useState(0);
   const [discountType, setDiscountType] = useState<"AMOUNT" | "PERCENT">("AMOUNT");
-  const [payments, setPayments] = useState<PaymentSplit[]>([]);
   const [orderType, setOrderType] = useState<"takeaway" | "dine_in" | "delivery">("takeaway");
 
   // ── Branch / Delivery / Tax / Scheduling State ──
@@ -342,7 +309,12 @@ export const CallCenterPageWithAside: React.FC = () => {
     setOrdersLoading(true);
     try {
       const res = await api.get(`/call-center/customers/${customerId}/orders`, { params: { per_page: 5 } });
-      setRecentOrders(res.data?.data || res.data || []);
+      // getCustomerOrders() returns a cursor-paginated shape ({data, next_cursor}),
+      // and the ApiResponses::success() wrapper nests that under its own "data" key
+      // again — so the real array is at res.data.data.data, not res.data.data.
+      const payload = res.data?.data;
+      const orders = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : [];
+      setRecentOrders(orders);
     } catch {
       setRecentOrders([]);
     } finally {
@@ -467,6 +439,29 @@ export const CallCenterPageWithAside: React.FC = () => {
       return [...prev, { id: item.id, name: item.name, name_ar: item.name_ar, price: item.price, quantity: 1, notes: "" }];
     });
     setLastAddedItemId(item.id);
+  };
+
+  // Previous Order → Cart (بند 5 بالمواصفة): يضيف أصناف طلب سابق للسلة الحالية
+  // للتعديل قبل الحفظ — لا يُنشئ Order جديدة بقاعدة البيانات إطلاقًا، مجرد
+  // تعبئة محلية لـ cart state (نفس آلية addFavoriteToCart أعلاه). الكميات
+  // تُدمَج مع ما هو موجود بالسلة أصلاً بدل استبداله، وملاحظة كل صنف تُنقَل معه.
+  const moveOrderToCart = (order: Order) => {
+    if (!order.items.length) return;
+    setCart(prev => {
+      let next = [...prev];
+      for (const item of order.items) {
+        const itemId = item.item_id ?? item.id;
+        const found = next.find(c => c.id === itemId);
+        if (found) {
+          next = next.map(c => c.id === itemId ? { ...c, quantity: c.quantity + item.quantity, notes: c.notes || item.notes || "" } : c);
+        } else {
+          next = [...next, { id: itemId, name: item.item_name, name_ar: item.item_name_ar, price: item.price, quantity: item.quantity, notes: item.notes || "" }];
+        }
+      }
+      return next;
+    });
+    setExpandedOrder(null);
+    toast.success(`أُضيفت أصناف الطلب #${order.order_number} إلى السلة`, "يمكنك تعديل الكميات والملاحظات قبل الحفظ");
   };
 
   const addFavoriteToCart = (fav: FavoriteItem) => {
@@ -606,40 +601,9 @@ export const CallCenterPageWithAside: React.FC = () => {
   );
   const cartSubtotal = cartTotals.subtotal;
   const manualDiscount = cartTotals.discountAmount;
-  const taxableBase = cartTotals.taxableBase;
   const taxAmount = cartTotals.taxAmount;
   const effectiveDeliveryFee = cartTotals.deliveryFee;
   const total = cartTotals.total;
-
-  const paymentsTotal = payments.reduce((sum, p) => sum + p.amount, 0);
-  const paymentsDiff = total - paymentsTotal;
-  const paymentsValid = payments.length > 0 && Math.abs(paymentsDiff) < 0.01;
-
-  // عند وجود طريقة دفع واحدة فقط، تتحمّل الإجمالي كاملاً دائمًا وتتحدّث تلقائيًا مع أي تغيير بالسلة/الخصم/الضريبة
-  useEffect(() => {
-    setPayments(prev => (prev.length === 1 ? [{ ...prev[0], amount: total }] : prev));
-  }, [total]);
-
-  const togglePaymentMethod = (method: PaymentMethod) => {
-    setPayments(prev => {
-      if (prev.some(p => p.method === method)) {
-        return prev.filter(p => p.method !== method);
-      }
-      if (prev.length >= 2) {
-        toast.error("لا يمكن تفعيل أكثر من طريقتي دفع بنفس الوقت");
-        return prev;
-      }
-      if (prev.length === 0) {
-        return [{ method, amount: total }];
-      }
-      const remaining = Math.max(0, total - prev.reduce((sum, p) => sum + p.amount, 0));
-      return [...prev, { method, amount: remaining }];
-    });
-  };
-
-  const updatePaymentAmount = (method: PaymentMethod, amount: number) => {
-    setPayments(prev => prev.map(p => (p.method === method ? { ...p, amount } : p)));
-  };
 
   // مفضّلات العميل نفسه أولوية أعلى من الأكثر طلبًا عمومًا؛ بيانات SAMPLE التجريبية مستبعدة هون
   // عمدًا (لازم بيانات حقيقية بس لترتيب الشبكة الافتراضي).
@@ -678,7 +642,7 @@ export const CallCenterPageWithAside: React.FC = () => {
   );
 
   const pickupLabel = (order: Order) => {
-    if (order.delivery_address) return order.delivery_address; // بيانات تجريبية (SAMPLE_ORDERS)
+    if (order.delivery_address) return order.delivery_address;
     if (order.order_type === "delivery") {
       const addr = order.delivery_address_snapshot?.address;
       return addr ? `توصيل — ${addr}` : "توصيل للمنزل";
@@ -686,9 +650,11 @@ export const CallCenterPageWithAside: React.FC = () => {
     return order.branch?.name || "—";
   };
 
-  // Fall back to sample data whenever there's nothing real yet, so the page never looks empty/unfinished.
-  const displayOrders = recentOrders.length > 0 ? recentOrders : SAMPLE_ORDERS;
-  const displayFavorites = favorites.length > 0 ? favorites : SAMPLE_FAVORITES;
+  // Real data only — no sample/mock fallback. A customer with zero real
+  // orders/favorites genuinely has an empty list; the sections below render
+  // an explicit empty state for that instead of dressing it up with fake rows.
+  const displayOrders = recentOrders;
+  const displayFavorites = favorites;
 
   const topFavorites = useMemo(
     () => [...displayFavorites].sort((a, b) => b.quantity_sum - a.quantity_sum).slice(0, 6),
@@ -708,27 +674,16 @@ export const CallCenterPageWithAside: React.FC = () => {
   // SUBMIT ORDER
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // execute=true (زر "تنفيذ"): نفس الحمولة لكن نحاول أيضًا إرسال الطلب مباشرة للأقسام بعد الحفظ.
-  // ملاحظة: طلبات الكول سنتر يمنع الباك اند إرسالها للمطبخ قبل اكتمال الفاتورة/الدفع (قاعدة عمل موجودة أصلاً)،
-  // لذا هذه المحاولة "أفضل جهد" ولا تُفشل عملية الحفظ إن رُفضت.
-  const submitOrder = async (execute: boolean) => {
+  // بند 6 بمواصفة الطلب: لا طرق دفع ولا "تنفيذ" بهذا الـflow — إعداد الطلب ثم
+  // حفظ فقط (POST /orders بدون payments، يبقى الطلب pending بانتظار من
+  // يفتحه لاحقًا). ما كان اسمه submitOrder(execute) أصبح دالة حفظ واحدة.
+  const submitOrder = async () => {
     if (cart.length === 0) {
       toast.error("السلة فارغة");
       return;
     }
     if (orderType === "delivery" && !customerAddress.trim()) {
-      toast.error("عنوان التوصيل مطلوب", "أدخل عنوان العميل قبل تنفيذ طلب توصيل");
-      return;
-    }
-    if (!paymentsValid) {
-      toast.error(
-        payments.length === 0 ? "اختر طريقة دفع واحدة على الأقل" : "مجموع المدفوعات لا يساوي الإجمالي",
-        payments.length > 0
-          ? paymentsDiff > 0
-            ? `متبقٍ ${paymentsDiff.toFixed(2)} ₪ من إجمالي الفاتورة`
-            : `المبلغ المُدخل يتجاوز الإجمالي بمقدار ${Math.abs(paymentsDiff).toFixed(2)} ₪`
-          : undefined
-      );
+      toast.error("عنوان التوصيل مطلوب", "أدخل عنوان العميل قبل حفظ طلب توصيل");
       return;
     }
     if (scheduleEnabled) {
@@ -754,7 +709,6 @@ export const CallCenterPageWithAside: React.FC = () => {
         note: invoiceNote,
         discount_value: discountValue || undefined,
         discount_type: discountType === "PERCENT" ? "percent" : "amount",
-        payments: payments.map(p => ({ method: p.method, amount: p.amount })),
         delivery_fee: effectiveDeliveryFee || undefined,
         tax_rate: taxEnabled ? taxRate : undefined,
         scheduled_at: scheduleEnabled && scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
@@ -766,21 +720,9 @@ export const CallCenterPageWithAside: React.FC = () => {
         })),
       };
       const res = await api.post("/orders", payload);
-      const orderId = res.data?.data?.id;
       const orderNumber = res.data?.data?.order_number || res.data?.order_number;
 
-      if (execute && !scheduleEnabled && orderId) {
-        try {
-          await api.post(`/orders/${orderId}/confirm`);
-        } catch {
-          // الباك اند يرفض إرسال طلبات الكول سنتر للمطبخ قبل اكتمال الدفع — الطلب يبقى محفوظًا بانتظار الدفع
-        }
-      }
-
-      toast.success(
-        execute ? "تم تنفيذ الطلب" : "تم حفظ الطلب بنجاح",
-        `رقم الطلب: ${orderNumber}`
-      );
+      toast.success("تم حفظ الطلب بنجاح", `رقم الطلب: ${orderNumber}`);
       clearCart();
       setInvoiceNote("");
       setDiscountValue(0);
@@ -789,7 +731,6 @@ export const CallCenterPageWithAside: React.FC = () => {
       setTaxRate(0);
       setScheduleEnabled(false);
       setScheduledAt("");
-      setPayments([]);
       if (customer?.id) loadCustomerOrders(customer.id);
     } catch (err: any) {
       toast.error("فشل إرسال الطلب", err?.response?.data?.message);
@@ -798,21 +739,21 @@ export const CallCenterPageWithAside: React.FC = () => {
     }
   };
 
-  // بند 6: زر "-" بالكيبورد ينفّذ الطلب مباشرة (نفس شرط زر "تنفيذ" بالماوس)، ما عدا وقت التركيز
-  // بحقل نصي (ملاحظة/خصم/بحث...) عشان ما يتسبب بتنفيذ غير مقصود أثناء الكتابة.
+  // بند 7 بمواصفة الطلب: F2 = نفس زر "حفظ" بالضبط، ولا شيء غيره — يعمل حتى لو
+  // التركيز داخل حقل نصي (بعكس اختصارات أخرى بهذه الصفحة) لأن F2 ليس حرفًا
+  // يُكتب أصلاً، فلا تعارض مع الكتابة. مسجَّل طالما هذا المكوّن (صفحة الطلب)
+  // مُركَّب فقط — يُزال تلقائيًا عند مغادرتها، فلا يتسرّب لصفحات أخرى.
+  // submitting يمنع الضغط المتكرر/المزدوج من إرسال الطلب مرتين.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "-") return;
-      const target = e.target as HTMLElement | null;
-      const tag = target?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
-      if (cart.length === 0 || submitting || !paymentsValid || scheduleEnabled) return;
+      if (e.key !== "F2") return;
       e.preventDefault();
-      submitOrder(true);
+      if (cart.length === 0 || submitting) return;
+      void submitOrder();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [cart.length, submitting, paymentsValid, scheduleEnabled, submitOrder]);
+  }, [cart.length, submitting, submitOrder]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // HELPERS
@@ -1005,7 +946,7 @@ export const CallCenterPageWithAside: React.FC = () => {
 
             <div className="flex flex-col sm:flex-row" style={{ gap: 8, marginTop: 16 }}>
               <Button variant="primary" fullWidth icon={<Save size={14} />} onClick={saveCustomerData}>حفظ البيانات</Button>
-              <Button variant="secondary" fullWidth>مزيد من التفاصيل</Button>
+              <Button variant="secondary" fullWidth disabled={!customer} onClick={() => void openDetailsModal()}>مزيد من التفاصيل</Button>
             </div>
           </Card>
 
@@ -1030,6 +971,17 @@ export const CallCenterPageWithAside: React.FC = () => {
             {ordersLoading ? (
               <div style={{ display: "flex", justifyContent: "center", padding: 30 }}>
                 <Loader2 size={22} className="animate-spin" style={{ color: colors.brand[500] }} />
+              </div>
+            ) : !customer ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "28px 12px", color: colors.neutral[400] }}>
+                <Receipt size={28} strokeWidth={1.5} />
+                <p style={{ fontSize: "12px", fontWeight: 600 }}>ابحث عن عميل لعرض طلباته السابقة</p>
+              </div>
+            ) : displayOrders.length === 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "28px 12px", color: colors.neutral[400] }}>
+                <Receipt size={28} strokeWidth={1.5} />
+                <p style={{ fontSize: "12px", fontWeight: 600, color: colors.neutral[600] }}>لا توجد طلبات سابقة لهذا العميل</p>
+                <p style={{ fontSize: "11px" }}>عميل جديد — ستظهر طلباته هنا بعد أول عملية حفظ</p>
               </div>
             ) : (
               <div style={{ position: "relative" }}>
@@ -1098,7 +1050,7 @@ export const CallCenterPageWithAside: React.FC = () => {
                                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px", marginBottom: 16, minWidth: 420 }}>
                                     <thead>
                                       <tr>
-                                        {["الصنف", "الكمية", "سعر الوحدة", "الإجمالي"].map(h => (
+                                        {["الصنف", "الكمية", "سعر الوحدة", "الإجمالي", "التقييم", "ملاحظات العميل"].map(h => (
                                           <th key={h} style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, color: "#fff", background: colors.semantic.success, fontSize: "11px" }}>
                                             {h}
                                           </th>
@@ -1112,11 +1064,32 @@ export const CallCenterPageWithAside: React.FC = () => {
                                           <td style={{ padding: "10px 12px", color: colors.neutral[500] }}>{item.quantity}</td>
                                           <td style={{ padding: "10px 12px", color: colors.neutral[500] }}>{formatCurrency(item.price)}</td>
                                           <td style={{ padding: "10px 12px", fontWeight: 600, color: colors.neutral[900] }}>{formatCurrency(item.total || item.price * item.quantity)}</td>
+                                          <td style={{ padding: "10px 12px" }}>
+                                            {item.feedback?.rating ? (
+                                              <div style={{ display: "flex", gap: 1 }}>
+                                                {[1, 2, 3, 4, 5].map(s => (
+                                                  <Star key={s} size={12} color={(item.feedback?.rating || 0) >= s ? "#facc15" : "#d1d5db"} fill={(item.feedback?.rating || 0) >= s ? "#facc15" : "none"} />
+                                                ))}
+                                              </div>
+                                            ) : (
+                                              <span style={{ fontSize: "10px", color: colors.neutral[400] }}>لم يُقيَّم</span>
+                                            )}
+                                          </td>
+                                          <td style={{ padding: "10px 12px", color: colors.neutral[500], maxWidth: 160 }}>
+                                            {item.notes || item.feedback?.notes || "—"}
+                                          </td>
                                         </tr>
                                       ))}
                                     </tbody>
                                   </table>
                                 </div>
+
+                                {order.note && (
+                                  <div style={{ marginBottom: 16, padding: "12px 14px", borderRadius: radius.lg, background: "#fffbeb", border: "1px solid #fde68a" }}>
+                                    <h4 style={{ fontSize: "12px", fontWeight: 700, marginBottom: 4, color: "#92400e" }}>ملاحظات على الطلب</h4>
+                                    <p style={{ fontSize: "12px", color: "#92400e" }}>{order.note}</p>
+                                  </div>
+                                )}
 
                                 <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 16 }}>
                                   <div style={{ flex: 1, minWidth: 240, padding: "16px", borderRadius: radius.lg, background: colors.surface.raised, border: `1px solid ${colors.neutral[200]}` }}>
@@ -1145,9 +1118,13 @@ export const CallCenterPageWithAside: React.FC = () => {
                                   </div>
                                 </div>
 
-                                <div style={{ display: "flex", justifyContent: "center" }}>
+                                <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
                                   <button onClick={() => setExpandedOrder(null)} style={{ padding: "8px 24px", borderRadius: radius.lg, border: `1px solid ${colors.neutral[200]}`, background: colors.surface.raised, color: colors.neutral[500], fontSize: "12px", fontWeight: 500, cursor: "pointer" }}>
                                     إلغاء
+                                  </button>
+                                  <button onClick={() => moveOrderToCart(order)} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 24px", borderRadius: radius.lg, border: "none", background: colors.brand[500], color: "#fff", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}>
+                                    <ShoppingCart size={14} />
+                                    نقل إلى السلة
                                   </button>
                                 </div>
                               </div>
@@ -1228,6 +1205,11 @@ export const CallCenterPageWithAside: React.FC = () => {
             {favoritesLoading ? (
               <div style={{ display: "flex", justifyContent: "center", padding: 30 }}>
                 <Loader2 size={20} className="animate-spin" style={{ color: colors.brand[500] }} />
+              </div>
+            ) : !customer || topFavorites.length === 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, padding: "20px 12px", color: colors.neutral[400] }}>
+                <TrendingUp size={26} strokeWidth={1.5} />
+                <p style={{ fontSize: "12px", fontWeight: 600 }}>{customer ? "لا توجد أصناف مفضّلة بعد لهذا العميل" : "ابحث عن عميل لعرض أصنافه الأكثر طلبًا"}</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1548,78 +1530,18 @@ export const CallCenterPageWithAside: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-1.5 pt-1">
-                  <div className="flex gap-1.5">
-                    {(["cash", "card", "wallet"] as const).map(method => {
-                      const active = payments.some(p => p.method === method);
-                      const Icon = PAYMENT_METHOD_ICONS[method];
-                      return (
-                        <button
-                          key={method}
-                          type="button"
-                          onClick={() => togglePaymentMethod(method)}
-                          aria-pressed={active}
-                          className={`relative flex-1 py-2.5 text-[12px] sm:text-[13px] font-black rounded-lg transition-all flex items-center justify-center gap-1.5 ${active ? "bg-slate-700 text-white shadow-lg shadow-black/30 ring-2 ring-white/20" : "bg-slate-800 text-slate-500 hover:text-slate-300 border border-white/5"}`}
-                        >
-                          <Icon size={14} />
-                          {PAYMENT_METHOD_LABELS[method]}
-                          {active && (
-                            <span className="absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full bg-emerald-500 text-white flex items-center justify-center">
-                              <Check size={10} strokeWidth={3} />
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {payments.length === 2 && (
-                    <div className="flex gap-1.5">
-                      {payments.map(p => (
-                        <div key={p.method} className="flex-1 bg-slate-900 px-2 py-1.5 rounded-lg border border-white/5 flex items-center gap-1">
-                          <span className="text-[10px] font-black text-slate-500 shrink-0">{PAYMENT_METHOD_LABELS[p.method]}</span>
-                          <input
-                            type="number"
-                            value={p.amount || ""}
-                            onChange={e => updatePaymentAmount(p.method, parseFloat(e.target.value) || 0)}
-                            className="flex-1 min-w-0 bg-transparent text-center text-[11px] font-black text-white outline-none"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {payments.length > 0 && Math.abs(paymentsDiff) >= 0.01 && (
-                    <div className={`text-[10px] font-black rounded-lg px-2.5 py-1.5 ${paymentsDiff > 0 ? "text-amber-400 bg-amber-500/10 border border-amber-500/20" : "text-red-400 bg-red-500/10 border border-red-500/20"}`}>
-                      {paymentsDiff > 0
-                        ? `متبقٍ ${paymentsDiff.toFixed(2)} ₪ من إجمالي الفاتورة`
-                        : `المبلغ المُدخل يتجاوز الإجمالي بمقدار ${Math.abs(paymentsDiff).toFixed(2)} ₪`}
-                    </div>
-                  )}
-                  {payments.length === 0 && (
-                    <div className="text-[10px] font-black text-slate-600 px-1">اختر طريقة دفع واحدة على الأقل</div>
-                  )}
-                </div>
-
-                <div className={`grid ${scheduleEnabled ? "grid-cols-1" : "grid-cols-2"} gap-2 pt-1`}>
+                {/* بند 6 بمواصفة الطلب: لا طرق دفع ولا زر "تنفيذ" بهذا الـflow — إعداد
+                    الطلب ← حفظ فقط، وليس إعداد ← دفع/تنفيذ. */}
+                <div className="grid grid-cols-1 gap-2 pt-1">
                   <button
-                    onClick={() => submitOrder(false)}
-                    disabled={cart.length === 0 || submitting || !paymentsValid}
-                    className="py-2.5 sm:py-3 bg-slate-800 text-white rounded-xl font-black text-[11px] sm:text-[12px] flex items-center justify-center gap-1.5 hover:bg-slate-700 disabled:opacity-30 transition-all active:scale-95"
+                    onClick={() => void submitOrder()}
+                    disabled={cart.length === 0 || submitting}
+                    title="حفظ (F2)"
+                    className="py-2.5 sm:py-3 bg-red-600 text-white rounded-xl font-black text-[12px] sm:text-[13px] flex items-center justify-center gap-1.5 hover:bg-red-700 shadow-xl shadow-red-900/20 disabled:opacity-30 transition-all active:scale-95"
                   >
                     {submitting ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                    حفظ
+                    {submitting ? "جارٍ الحفظ..." : "حفظ (F2)"}
                   </button>
-                  {!scheduleEnabled && (
-                    <button
-                      onClick={() => submitOrder(true)}
-                      disabled={cart.length === 0 || submitting || !paymentsValid}
-                      className="py-2.5 sm:py-3 bg-red-600 text-white rounded-xl font-black text-[11px] sm:text-[12px] flex items-center justify-center gap-1.5 hover:bg-red-700 shadow-xl shadow-red-900/20 disabled:opacity-30 transition-all active:scale-95"
-                    >
-                      {submitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-                      {submitting ? "جارِ الإرسال..." : "تنفيذ"}
-                    </button>
-                  )}
                 </div>
               </div>
             </div>
@@ -1757,6 +1679,93 @@ export const CallCenterPageWithAside: React.FC = () => {
         </div>
         }
       />
+
+      {/* بند 2 — Modal مُمركز لتفاصيل العميل الإضافية من CRM (وليس Drawer) */}
+      {detailsModalOpen && (
+        <div
+          role="presentation"
+          className="fixed inset-0 z-[90] flex items-center justify-center p-4"
+          style={{ background: "rgba(15, 23, 42, .45)" }}
+          onMouseDown={e => { if (e.target === e.currentTarget) setDetailsModalOpen(false); }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="customer-details-title"
+            dir="rtl"
+            className="w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col"
+            style={{ background: colors.surface.raised, borderRadius: radius.xl, boxShadow: shadows.lg, border: `1px solid ${colors.border.default}` }}
+          >
+            <header className="flex items-center justify-between p-4" style={{ borderBottom: `1px solid ${colors.border.subtle}` }}>
+              <h2 id="customer-details-title" style={{ fontSize: typography.size.lg, fontWeight: typography.weight.bold, color: colors.neutral[900] }}>
+                تفاصيل العميل
+              </h2>
+              <button
+                type="button"
+                onClick={() => setDetailsModalOpen(false)}
+                aria-label="إغلاق"
+                style={{ width: 32, height: 32, borderRadius: radius.md, display: "flex", alignItems: "center", justifyContent: "center", color: colors.neutral[500], background: "transparent", border: "none", cursor: "pointer" }}
+              >
+                ✕
+              </button>
+            </header>
+            <div className="flex-1 overflow-y-auto p-4">
+              {detailsLoading ? (
+                <div style={{ display: "flex", justifyContent: "center", padding: 30 }}>
+                  <Loader2 size={22} className="animate-spin" style={{ color: colors.brand[500] }} />
+                </div>
+              ) : !customerDetails ? (
+                <p style={{ fontSize: "13px", color: colors.neutral[500], textAlign: "center", padding: "20px 0" }}>تعذّر تحميل تفاصيل العميل.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    {([
+                      ["الاسم الكامل", customerDetails.customer?.name],
+                      ["الاسم بالإنجليزية", customerDetails.customer?.name_en],
+                      ["اللقب / الكنية", customerDetails.customer?.title],
+                      ["الجنس", customerDetails.customer?.gender === "male" ? "ذكر" : customerDetails.customer?.gender === "female" ? "أنثى" : null],
+                      ["رقم الهاتف", customerDetails.customer?.phone],
+                      ["رقم إضافي", customerDetails.customer?.mobile],
+                      ["البريد الإلكتروني", customerDetails.customer?.email],
+                      ["المدينة", customerDetails.customer?.city],
+                      ["العنوان", customerDetails.customer?.address],
+                      ["الفرع", customerDetails.customer?.branch?.name],
+                      ["تصنيف العميل", customerDetails.customer?.engagement_status],
+                      ["نقاط الولاء", customerDetails.loyalty_points],
+                    ] as [string, unknown][]).map(([label, value]) => (
+                      <div key={label}>
+                        <p style={{ fontSize: "11px", color: colors.neutral[400], marginBottom: 2 }}>{label}</p>
+                        <p style={{ fontSize: "13px", fontWeight: 600, color: colors.neutral[900] }}>{value != null && value !== "" ? String(value) : "غير محدد"}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ paddingTop: 10, borderTop: `1px solid ${colors.border.subtle}`, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    {([
+                      ["إجمالي الطلبات", customerDetails.total_orders],
+                      ["متوسط قيمة الطلب", customerDetails.avg_order_value != null ? formatCurrency(Number(customerDetails.avg_order_value)) : null],
+                      ["أول طلب", customerDetails.first_order_at ? formatDate(customerDetails.first_order_at) : null],
+                      ["آخر طلب", customerDetails.last_order_at ? formatDate(customerDetails.last_order_at) : null],
+                    ] as [string, unknown][]).map(([label, value]) => (
+                      <div key={label}>
+                        <p style={{ fontSize: "11px", color: colors.neutral[400], marginBottom: 2 }}>{label}</p>
+                        <p style={{ fontSize: "13px", fontWeight: 600, color: colors.neutral[900] }}>{value != null && value !== "" ? String(value) : "غير محدد"}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {customerDetails.latest_note && (
+                    <div style={{ padding: "10px 12px", borderRadius: radius.lg, background: "#fffbeb", border: "1px solid #fde68a" }}>
+                      <p style={{ fontSize: "11px", fontWeight: 700, color: "#92400e", marginBottom: 3 }}>آخر ملاحظة</p>
+                      <p style={{ fontSize: "12px", color: "#92400e" }}>{customerDetails.latest_note}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 };
