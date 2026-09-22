@@ -162,6 +162,9 @@ export const CustomerPhoneSearch: React.FC<Props> = ({
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-bold text-white truncate">{customer.name}</span>
                     {getStatusBadge(customer.status)}
+                    {customer.is_birthday_today && (
+                      <span title="عيد ميلاده اليوم" className="text-[11px]">🎂</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
                     <Phone size={10} /> {customer.phone || customer.mobile || "â€”"}

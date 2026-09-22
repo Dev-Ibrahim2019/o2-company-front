@@ -51,6 +51,7 @@ export interface CrmDashboard {
   customers_count?: number; active_customers_count?: number; new_customers_count?: number;
   open_complaints_count?: number; orders_count?: number; loyalty_points_total?: number;
   branches?: CrmBranch[];
+  branch_breakdown?: { branch_id: CrmId; branch_name: string; customers_count: number; orders_count: number; new_customers_count: number }[];
   trends?: { customers_count?: number | null; active_customers_count?: number | null; open_complaints_count?: number | null };
   monthly_new_customers?: CrmMonthPoint[];
   monthly_active_customers?: CrmMonthPoint[];
@@ -882,6 +883,7 @@ export interface CrmReportOverview {
     cancellation_rate: { pct: number; target: number | null; trend_pct: number | null };
   };
   order_type_distribution: { order_type: string; orders_count: number; revenue: number }[];
+  channel_distribution: { source: string; orders_count: number; revenue: number }[];
   daily_revenue: { date: string; revenue: number; trailing_avg: number | null; deviation_pct: number | null; is_anomaly: boolean }[];
   peak_hours: { hour: number; orders: number }[];
   alerts: { level: "urgent" | "attention"; message: string }[];

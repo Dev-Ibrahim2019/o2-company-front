@@ -24,6 +24,11 @@ const PERIODS: { key: CrmReportPeriod; label: string }[] = [
 const ORDER_TYPE_LABELS: Record<string, string> = { dine_in: "داخل المطعم", takeaway: "استلام ذاتي", delivery: "توصيل" };
 const ORDER_TYPE_COLORS = ["var(--crmx-primary)", "var(--crmx-info)", "var(--crmx-accent)"];
 
+const CHANNEL_LABELS: Record<string, string> = {
+  pos: "الكاشير الفوري", call_center: "الكول سنتر", hospitality: "الضيافة", website: "الموقع الإلكتروني",
+};
+const CHANNEL_COLORS = ["var(--crmx-success)", "var(--crmx-warning)", "var(--crmx-info)", "var(--crmx-accent)"];
+
 const DECISION_TONE: Record<string, { bg: string; text: string; label: string }> = {
   urgent: { bg: "bg-[var(--crmx-danger-soft)]", text: "text-[var(--crmx-danger-text)]", label: "عاجل" },
   attention: { bg: "bg-[var(--crmx-warning-soft)]", text: "text-[var(--crmx-warning-text)]", label: "يستحق الاهتمام" },
@@ -188,6 +193,25 @@ export function CrmReportsPage() {
           )}
         </ChartCard>
       </div>
+
+      <ChartCard title="توزيع الطلبات حسب القناة" aside={<span className="text-[11.5px] text-[var(--crmx-text-muted)]">الكاشير الفوري مقابل الكول سنتر وباقي القنوات</span>}>
+        {data.channel_distribution.length === 0 ? (
+          <div className="flex h-[100px] items-center justify-center text-[13px] text-[var(--crmx-text-muted)]">لا توجد طلبات مكتملة بعد</div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {data.channel_distribution.map((c, i) => (
+              <div key={c.source} className="rounded-xl border border-[var(--crmx-border)] p-3">
+                <div className="flex items-center gap-1.5 text-[12.5px] text-[var(--crmx-text-secondary)]">
+                  <span className="h-2 w-2 rounded-full" style={{ background: CHANNEL_COLORS[i % CHANNEL_COLORS.length] }} />
+                  {CHANNEL_LABELS[c.source] || c.source}
+                </div>
+                <div className="mt-1 text-[18px] font-bold text-[var(--crmx-text)]">{num(c.orders_count)} <span className="text-[12px] font-normal text-[var(--crmx-text-muted)]">طلب</span></div>
+                <div className="text-[12.5px] text-[var(--crmx-text-muted)]">{money(c.revenue)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </ChartCard>
 
       <ChartCard title="أوقات الذروة (طلبات لكل ساعة)" aside={<Clock3 className="h-4 w-4 text-[var(--crmx-text-muted)]" />}>
         <ResponsiveContainer width="100%" height={160}>

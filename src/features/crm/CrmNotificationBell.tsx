@@ -32,6 +32,37 @@ const ACTION_ACCENT: Record<string, string> = {
 
 const POLL_MS = 60_000;
 
+// A short two-tone chime synthesized with the Web Audio API — no audio file
+// to host/fetch, so it never adds a network request or a missing-asset
+// failure mode. Wrapped defensively: some browsers refuse to start an
+// AudioContext before the page has seen a user gesture, and a blocked chime
+// must never take the poll itself down with it.
+function playNotificationChime(): void {
+  try {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const now = ctx.currentTime;
+    [880, 1320].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      const start = now + i * 0.12;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.18, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.28);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.3);
+    });
+    window.setTimeout(() => void ctx.close(), 700);
+  } catch {
+    /* autoplay blocked or Web Audio unavailable — the visual badge still updates */
+  }
+}
+
 export function CrmNotificationBell() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -39,13 +70,23 @@ export function CrmNotificationBell() {
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  // Tracks the previous unread count across polls so a chime only fires when
+  // it genuinely rose (a new notification landed) — never on the first load
+  // (would chime for every notification a user already had waiting) and
+  // never on a poll that found nothing new.
+  const previousUnreadRef = useRef<number | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const res = await crmApi.notifications();
+      const nextUnread = res.unread_count ?? 0;
       setItems(res.data?.data ?? []);
-      setUnread(res.unread_count ?? 0);
+      setUnread(nextUnread);
+      if (previousUnreadRef.current !== null && nextUnread > previousUnreadRef.current) {
+        playNotificationChime();
+      }
+      previousUnreadRef.current = nextUnread;
     } catch {
       /* a failed poll is silent — the bell just keeps its last state */
     } finally {

@@ -38,6 +38,7 @@ export interface CustomerSearchResult extends CustomerIdentity {
   loyalty_points?: number;
   lastOrder?: OrderDetail;
   selectedAddress?: CustomerAddress;
+  is_birthday_today?: boolean;
 }
 
 export interface CustomerAddress {

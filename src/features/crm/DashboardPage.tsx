@@ -12,7 +12,6 @@ import { useAuth } from "../../auth";
 import { crmApi } from "./api";
 import { date as formatDate, num } from "./format";
 import { getCrmError } from "./components";
-import { useCrmOperational } from "./CrmShell";
 import "./customers-ui/crmx.css";
 import { CrmAvatar, CrmKpiCard, CrmPageHeader, CrmStatusBadge } from "./customers-ui";
 import type { CrmCustomerSource, CrmDashboard, CrmOccasionsSummary } from "./types";
@@ -56,7 +55,6 @@ function ChartCard({ title, children, empty }: { title: string; children?: React
 
 export function CrmDashboardPage() {
   const { user } = useAuth();
-  const operational = useCrmOperational();
   // Read straight from GET /crm/occasions/summary rather than from the
   // dashboard payload: that endpoint resolves every count through
   // CustomerOccasion::nextOccurrence(), so an annual occasion stored in 1999
@@ -87,6 +85,16 @@ export function CrmDashboardPage() {
   // `from`/`to`, which the endpoint never reads (it validates `date_from`/
   // `date_to`), so the date filter silently did nothing.
   const [filters, setFilters] = useState({ branch_id: "", date_from: "", date_to: "" });
+  // "الوضع التشغيلي الآن" used to read straight from useCrmOperational() —
+  // fetched once, with no filters, at the CrmShell level (shared with the
+  // sidebar badge). That made it ignore both this page's branch picker and
+  // its date range entirely, despite the cards' own copy claiming "طلبات
+  // الفرع". Fetched here instead, scoped to whichever branch/date range this
+  // page currently has selected; the shell's own unfiltered copy still backs
+  // the sidebar badge, which is deliberately company-wide and un-filterable.
+  const [localOperational, setLocalOperational] = useState<{ activeCount: number | null; delayedCount: number | null; loading: boolean; error: boolean }>(
+    { activeCount: null, delayedCount: null, loading: true, error: false },
+  );
   // The one filter combination GET /crm/dashboard rejects with a 422
   // (date_to must be after_or_equal date_from). ISO date strings compare
   // chronologically, so a plain string compare is enough. Caught here so a
@@ -107,6 +115,34 @@ export function CrmDashboardPage() {
     }
   }, [filters, rangeInvalid]);
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (rangeInvalid) return;
+    let cancelled = false;
+    setLocalOperational((v) => ({ ...v, loading: true }));
+    const activeParams = new URLSearchParams({ active: "1", per_page: "1" });
+    const delayedParams = new URLSearchParams({ per_page: "1" });
+    if (filters.branch_id) {
+      activeParams.set("branch_id", filters.branch_id);
+      delayedParams.set("branch_id", filters.branch_id);
+    }
+    // ordersDelayed() has no date_from/date_to of its own — "delayed" is
+    // inherently about elapsed time from now, not a historical window — so
+    // only the active-orders count takes the date range.
+    if (filters.date_from) activeParams.set("date_from", filters.date_from);
+    if (filters.date_to) activeParams.set("date_to", filters.date_to);
+
+    Promise.allSettled([crmApi.orders(activeParams), crmApi.delayedOrders(delayedParams)]).then(([active, delayed]) => {
+      if (cancelled) return;
+      setLocalOperational({
+        activeCount: active.status === "fulfilled" ? active.value.total : null,
+        delayedCount: delayed.status === "fulfilled" ? delayed.value.total : null,
+        loading: false,
+        error: active.status === "rejected" || delayed.status === "rejected",
+      });
+    });
+    return () => { cancelled = true; };
+  }, [filters, rangeInvalid]);
 
   // Only take over the whole page when the first load itself failed and there
   // is nothing to show. Once data is on screen, a later failure (a bad filter,
@@ -275,9 +311,9 @@ export function CrmDashboardPage() {
               icon={<Zap className="h-5 w-5" />}
               label="الطلبات النشطة"
               tone="navy"
-              loading={operational.loading}
-              value={num(operational.activeCount)}
-              hint={!operational.loading && operational.activeCount == null ? "تعذر تحميل العدد" : "كل طلبات الفرع الآن — لم تُدفع أو تُسلَّم أو تُلغَ بعد"}
+              loading={localOperational.loading}
+              value={num(localOperational.activeCount)}
+              hint={!localOperational.loading && localOperational.activeCount == null ? "تعذر تحميل العدد" : "كل طلبات الفرع الآن — لم تُدفع أو تُسلَّم أو تُلغَ بعد"}
             />
           </Link>
           <Link
@@ -287,10 +323,10 @@ export function CrmDashboardPage() {
             <CrmKpiCard
               icon={<AlertTriangle className="h-5 w-5" />}
               label="الطلبات المتأخرة"
-              tone={operational.delayedCount ? "danger" : "navy"}
-              loading={operational.loading}
-              value={num(operational.delayedCount)}
-              hint={!operational.loading && operational.delayedCount == null ? "تعذر تحميل العدد" : "من طلبات الفرع النشطة — منذ الإنشاء، بعد الحد التشغيلي المحدد"}
+              tone={localOperational.delayedCount ? "danger" : "navy"}
+              loading={localOperational.loading}
+              value={num(localOperational.delayedCount)}
+              hint={!localOperational.loading && localOperational.delayedCount == null ? "تعذر تحميل العدد" : "من طلبات الفرع النشطة — منذ الإنشاء، بعد الحد التشغيلي المحدد"}
             />
           </Link>
           {/* Deep-links into the screen already filtered to today, so the
@@ -316,6 +352,34 @@ export function CrmDashboardPage() {
           </Link>
         </div>
       </div>
+
+      {data && data.branch_breakdown && data.branch_breakdown.length > 0 && (
+        <div className="rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-5">
+          <h3 className="mb-3 text-[15px] font-bold text-[var(--crmx-text)]">الإحصائيات حسب الفرع</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[420px] text-[13px]">
+              <thead>
+                <tr className="border-b border-[var(--crmx-border)] text-[12px] font-bold text-[var(--crmx-text-muted)]">
+                  <th className="py-2 text-start">الفرع</th>
+                  <th className="py-2 text-start">العملاء</th>
+                  <th className="py-2 text-start">عملاء جدد بالفترة</th>
+                  <th className="py-2 text-start">الطلبات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.branch_breakdown.map((b) => (
+                  <tr key={b.branch_id} className="border-b border-[var(--crmx-border)] last:border-0">
+                    <td className="py-2.5 font-semibold text-[var(--crmx-text)]">{b.branch_name}</td>
+                    <td className="py-2.5 text-[var(--crmx-text-secondary)]">{num(b.customers_count)}</td>
+                    <td className="py-2.5 text-[var(--crmx-text-secondary)]">{num(b.new_customers_count)}</td>
+                    <td className="py-2.5 text-[var(--crmx-text-secondary)]">{num(b.orders_count)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         <div className="lg:col-span-2">
