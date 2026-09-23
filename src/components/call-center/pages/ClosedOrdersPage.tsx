@@ -5,7 +5,8 @@ import {
   AlertCircle, RefreshCw, CheckCircle2, XCircle,
 } from "lucide-react";
 import { colors, typography, radius, shadows, transitions } from "../design/tokens";
-import { callCenterService, type ClosedCallCenterOrder } from "../services/callCenterService";
+import { callCenterService, type ClosedCallCenterOrder, type TakeawaySyncStatus } from "../services/callCenterService";
+import { toast } from "../../shared/Toast";
 import { dedupeById, getOrderReference, formatShekel, PAYMENT_STATUS_LABELS } from "../activeOrdersView";
 
 // ============================================================================
@@ -16,6 +17,7 @@ import { dedupeById, getOrderReference, formatShekel, PAYMENT_STATUS_LABELS } fr
 // إما ملغي، أو حالته اكتملت (تم التقديم/التوصيل) والفاتورة مدفوعة بالكامل معًا. الدفع وحده
 // أبدًا ما يغلق الطلب (لهيك الفلتر هون على status الطلب نفسه بس، مش على "مدفوع").
 const STATUS_MAP: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
+  closed:    { label: "مغلق", color: colors.semantic.success, icon: <CheckCircle2 size={14} /> },
   served:    { label: "تم التقديم", color: colors.semantic.success, icon: <CheckCircle2 size={14} /> },
   DELIVERED: { label: "تم التوصيل", color: colors.semantic.success, icon: <CheckCircle2 size={14} /> },
   cancelled: { label: "ملغي", color: colors.semantic.error, icon: <XCircle size={14} /> },
@@ -69,6 +71,17 @@ export const ClosedOrdersPage: React.FC = () => {
   }, [searchQuery, statusFilter]);
 
   useEffect(() => { fetchOrders(currentPage); }, [currentPage, fetchOrders]);
+
+  // إعادة إرسال طلب مغلق فشل وصوله للتيك أواي (الباك اند بيعيد المحاولة تلقائيًا كمان بتأخير متزايد)
+  const handleResend = useCallback(async (orderId: number) => {
+    try {
+      const res = await callCenterService.resendToTakeaway(orderId);
+      (res.data.takeaway_sync === "sent" ? toast.success : toast.warning)(res.message);
+      fetchOrders(currentPage);
+    } catch (err: any) {
+      toast.error("فشلت إعادة الإرسال", err?.response?.data?.message);
+    }
+  }, [currentPage, fetchOrders]);
 
   return (
     <div dir="rtl" style={{ fontFamily: typography.fontFamily.sans, minHeight: "100%" }}>
@@ -162,6 +175,7 @@ export const ClosedOrdersPage: React.FC = () => {
                 order={order}
                 onOpen={() => navigate(`/call-center/orders/${order.id}`)}
                 onViewInvoice={() => navigate(`/call-center/orders/${order.id}?invoice=true`)}
+                onResend={() => handleResend(order.id)}
               />
             ))}
           </div>
@@ -198,9 +212,17 @@ export const ClosedOrdersPage: React.FC = () => {
 // بالأدوار المُصرّح لها فقط (نفس القاعدة الموجودة أصلاً بالمشروع) بزر منفصل واضح.
 // ============================================================================
 
+const TAKEAWAY_SYNC_LABEL: Record<Exclude<TakeawaySyncStatus, null>, string> = {
+  sent: "وصل للتيك أواي ✓", failed: "فشل الإرسال للتيك أواي ⚠", pending: "بانتظار الإرسال للتيك أواي",
+};
+
 export const ClosedOrderCard: React.FC<{
   order: ClosedCallCenterOrder; onOpen: () => void; onViewInvoice: () => void;
-}> = ({ order, onOpen, onViewInvoice }) => {
+  /** إعادة إرسال للتيك أواي — بتظهر بس لما فشل الإرسال */
+  onResend?: () => void;
+}> = ({ order, onOpen, onViewInvoice, onResend }) => {
+  const syncColor = order.takeaway_sync === "sent" ? colors.semantic.success
+    : order.takeaway_sync === "failed" ? colors.semantic.error : colors.neutral[500];
   const statusInfo = STATUS_MAP[order.status] || { label: order.status, color: colors.neutral[500], icon: null };
   const paymentColor = order.payment_status === "paid" ? colors.semantic.success
     : order.payment_status === "pending" ? colors.semantic.warning
@@ -261,6 +283,24 @@ export const ClosedOrderCard: React.FC<{
         }}>
           ● {paymentLabel}
         </span>
+        {order.takeaway_sync && (
+          <span
+            role={order.takeaway_sync === "failed" ? "alert" : undefined}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 6,
+              padding: "3px 9px", borderRadius: radius.full,
+              fontSize: "11px", fontWeight: typography.weight.semibold,
+              background: `color-mix(in srgb, ${syncColor} 12%, transparent)`, color: syncColor,
+            }}
+          >
+            {TAKEAWAY_SYNC_LABEL[order.takeaway_sync]}
+            {order.takeaway_sync === "failed" && onResend && (
+              <button type="button" onClick={onResend} style={{ border: `1px solid ${syncColor}`, background: "transparent", color: syncColor, borderRadius: radius.full, padding: "0 8px", fontSize: "11px", cursor: "pointer" }}>
+                إعادة
+              </button>
+            )}
+          </span>
+        )}
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: typography.size.xs, color: colors.neutral[500] }}>

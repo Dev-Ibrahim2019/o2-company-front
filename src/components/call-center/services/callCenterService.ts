@@ -162,7 +162,7 @@ export interface OrderDetail {
   cashier: { id: number; name: string } | null;
   created_at: string;
   items: OrderDetailItem[];
-  invoice: { id: number; number: string; status: string } | null;
+  invoice: { id: number; number: string; status: string; total?: number; remaining_amount?: number } | null;
   feedback?: OrderFeedback | null;
 }
 
@@ -214,8 +214,88 @@ export interface ActiveCallCenterOrder {
   delivery_assigned_at?: string | null;
   delivered_at?: string | null;
   scopes: ActiveOrderScope[];
+  /** رقم خانة الطلب بلوحة الخانات (null لو ما إله خانة: مدفوع/بالطابور) */
+  slot_number?: number | null;
+  /** وقت طباعة الطلب */
+  printed_at?: string | null;
+  // تدفق الطلب بثلاث محاور مستقلة (OrderFlowService بالباك اند) — الإغلاق بس لما paid && executed
+  lifecycle?: FlowLifecycle;
+  payment_state?: FlowPaymentState;
+  execution_status?: FlowExecutionStatus;
+  ready_to_close?: boolean;
+  /** نصوص عربية بتوضّح شو الناقص لتفعيل الإغلاق */
+  close_blockers?: string[];
+}
+
+export type FlowLifecycle = "open" | "closed" | "cancelled";
+export type FlowPaymentState = "unpaid" | "paid";
+export type FlowExecutionStatus = "pending" | "scheduled" | "executed";
+export type TicketPrintStatus = "printed" | "failed" | null;
+export type TakeawaySyncStatus = "sent" | "failed" | "pending" | null;
+
+export interface OrderFlowTicket {
+  id: number;
+  type: "order" | "cancellation" | "amendment";
+  ticket_number: string;
+  department: string | null;
+  print_status: TicketPrintStatus;
+  print_error: string | null;
+  printed_at: string | null;
+}
+export interface OrderFlow {
+  id: number;
+  status: string;
+  scheduled_at: string | null;
+  executed_at: string | null;
+  execution_failed_reason: string | null;
+  tickets: OrderFlowTicket[];
+  lifecycle: FlowLifecycle;
+  payment_state: FlowPaymentState;
+  execution_status: FlowExecutionStatus;
+  ready_to_close: boolean;
+  close_blockers: string[];
+}
+export interface AmendmentResult extends OrderFlow {
+  total: number;
+  warnings: string[];
+  change_tickets: Array<{ ticket_id: number; department: string | null; success: boolean; message: string | null }>;
+}
+export interface TransferPaymentPayload {
+  reference_number: string;
+  payment_method_id: number;
+  amount: number;
+  /** مفتاح ثابت لكل محاولة دفع: ضغطتين أو إعادة إرسال ما بتسجّل الدفعة مرتين */
+  idempotency_key: string;
+  bank_name?: string;
+  transferred_at?: string;
+  receipt?: File | null;
+}
+export interface TransferPaymentResult {
+  payment_status: string | null;
+  kitchen_release_status: string | null;
+  warnings: string[];
+}
+export interface EditOrderPayload {
+  items: Array<{ item_id: number; quantity: number; notes?: string | null }>;
+  notes?: string | null;
+  reason?: string;
 }
 export type ActiveOrderGroups = Record<ActiveOrderScope, ActiveCallCenterOrder[]>;
+
+// لوحة الخانات (OrderSlotService بالباك اند). الدفع مسبق: الطلب بيمسك خانة لحد ما يتدفع/يتلغى/يتسكّر.
+export type SlotReleaseReason = "paid" | "cancelled" | "closed" | "missing" | null;
+export interface SlotBoardSlot { slot_number: number; assigned_at: string; order: ActiveCallCenterOrder }
+export interface SlotBoardCooling { slot_number: number; reason: SlotReleaseReason; released_at: string }
+export interface SlotBoard {
+  branch_id: number;
+  capacity: number;
+  occupied: number;
+  slots: SlotBoardSlot[];
+  /** خانات فرغت للتو وبفترة الانتظار قبل إعادة استخدامها */
+  cooling: SlotBoardCooling[];
+  /** طلبات بانتظار خانة لأن الفرع ممتلئ (الأقدم أول) */
+  queue: ActiveCallCenterOrder[];
+}
 
 export interface ClosedCallCenterOrder {
   id: number;
@@ -230,6 +310,8 @@ export interface ClosedCallCenterOrder {
   created_at: string;
   updated_at: string;
   payment_status: BackendPaymentStatus;
+  /** إرسال الطلب المغلق لبرنامج التيك أواي: sent | failed | pending، null للملغي/الطلبات القديمة */
+  takeaway_sync?: TakeawaySyncStatus;
 }
 export interface ClosedOrdersPageMeta { current_page: number; last_page: number; per_page: number; total: number }
 export interface ClosedOrdersResponse { data: ClosedCallCenterOrder[]; meta: ClosedOrdersPageMeta }
@@ -243,6 +325,9 @@ export interface OrderDetailItem {
   price: number;
   total: number;
   notes: string | null;
+  /** cancelled = أُزيل بعد التنفيذ (بيضل بالسجل مع سببه) */
+  status?: string;
+  cancel_reason?: string | null;
 }
 
 export interface FavoriteItem {
@@ -449,6 +534,71 @@ export interface CustomerDirectoryPage { data: Array<Omit<CustomerSearchResult,'
 export const callCenterService = {
   getActiveOrders: async (branchId?: number): Promise<ApiResponse<ActiveOrderGroups>> => {
     const res = await api.get("/call-center/active-orders", { params: branchId ? { branch_id: branchId } : undefined });
+    return res.data;
+  },
+  // ── تدفق الطلب: دفع، تنفيذ، جدولة، إغلاق (F7)، إزالة/تعديل ─────────────────────────────
+  getOrderFlow: async (orderId: number): Promise<ApiResponse<OrderFlow>> => {
+    const res = await api.get(`/call-center/orders/${orderId}/flow`);
+    return res.data;
+  },
+  executeOrder: async (orderId: number): Promise<ApiResponse<OrderFlow>> => {
+    const res = await api.post(`/call-center/orders/${orderId}/execute`);
+    return res.data;
+  },
+  scheduleOrder: async (orderId: number, scheduledAtIso: string): Promise<ApiResponse<OrderFlow>> => {
+    const res = await api.put(`/call-center/orders/${orderId}/schedule`, { scheduled_at: scheduledAtIso });
+    return res.data;
+  },
+  unscheduleOrder: async (orderId: number): Promise<ApiResponse<OrderFlow>> => {
+    const res = await api.delete(`/call-center/orders/${orderId}/schedule`);
+    return res.data;
+  },
+  closeOrder: async (orderId: number): Promise<ApiResponse<OrderFlow>> => {
+    const res = await api.post(`/call-center/orders/${orderId}/close`);
+    return res.data;
+  },
+  reprintTicket: async (orderId: number, ticketId: number): Promise<ApiResponse<OrderFlow>> => {
+    const res = await api.post(`/call-center/orders/${orderId}/tickets/${ticketId}/reprint`);
+    return res.data;
+  },
+  resendToTakeaway: async (orderId: number): Promise<ApiResponse<{ takeaway_sync: TakeawaySyncStatus }>> => {
+    const res = await api.post(`/call-center/orders/${orderId}/takeaway-resend`);
+    return res.data;
+  },
+  /** دفع بحوالة بنكية برقم مرجعي (multipart عشان صورة الإشعار الاختيارية). الباك اند بيرفض المرجع المكرر (409). */
+  confirmTransfer: async (orderId: number, payload: TransferPaymentPayload): Promise<ApiResponse<TransferPaymentResult>> => {
+    const form = new FormData();
+    form.append("reference_number", payload.reference_number);
+    form.append("payment_method_id", String(payload.payment_method_id));
+    form.append("amount", String(payload.amount));
+    form.append("idempotency_key", payload.idempotency_key);
+    if (payload.bank_name) form.append("bank_name", payload.bank_name);
+    if (payload.transferred_at) form.append("transferred_at", payload.transferred_at);
+    if (payload.receipt) form.append("receipt", payload.receipt);
+    const res = await api.post(`/call-center/orders/${orderId}/confirm-transfer`, form);
+    return res.data;
+  },
+  removeOrderItem: async (orderId: number, itemId: number, reason?: string): Promise<ApiResponse<AmendmentResult>> => {
+    const res = await api.delete(`/call-center/orders/${orderId}/items/${itemId}`, { data: { reason: reason || undefined } });
+    return res.data;
+  },
+  updateOrder: async (orderId: number, payload: EditOrderPayload): Promise<ApiResponse<AmendmentResult>> => {
+    const res = await api.put(`/call-center/orders/${orderId}`, payload);
+    return res.data;
+  },
+  acquireEditLock: async (orderId: number): Promise<ApiResponse<{ editing_by: number; editing_until: string }>> => {
+    const res = await api.post(`/call-center/orders/${orderId}/edit-lock`);
+    return res.data;
+  },
+  releaseEditLock: async (orderId: number): Promise<void> => {
+    await api.delete(`/call-center/orders/${orderId}/edit-lock`);
+  },
+  getSlotBoard: async (branchId?: number): Promise<ApiResponse<SlotBoard>> => {
+    const res = await api.get("/call-center/slots", { params: branchId ? { branch_id: branchId } : undefined });
+    return res.data;
+  },
+  updateSlotCapacity: async (branchId: number, capacity: number): Promise<ApiResponse<SlotBoard>> => {
+    const res = await api.put("/call-center/slots/capacity", { branch_id: branchId, capacity });
     return res.data;
   },
   getClosedOrders: async (params: {
