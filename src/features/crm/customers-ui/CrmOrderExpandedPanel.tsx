@@ -143,6 +143,9 @@ export function TimelineSection({ orderId, refreshKey = 0 }: { orderId: string |
         <li key={i} className="relative">
           <span className={`absolute -start-[21px] top-0.5 h-2.5 w-2.5 rounded-full ${TIMELINE_DOT[ev.type] ?? "bg-[var(--crmx-primary)]"}`} />
           <p className="text-[14px] font-semibold text-[var(--crmx-text)]">{ev.label}</p>
+          {eventDetailText(ev) && (
+            <p className="text-[12.5px] text-[var(--crmx-text)]">{eventDetailText(ev)}</p>
+          )}
           <p className="text-[12.5px] text-[var(--crmx-text-muted)]">
             {ev.user?.name || "النظام"} · {ev.timestamp ? formatDate(ev.timestamp) : "التاريخ غير متوفر"}
           </p>
@@ -150,6 +153,26 @@ export function TimelineSection({ orderId, refreshKey = 0 }: { orderId: string |
       ))}
     </ul>
   );
+}
+
+// items_added (type from the initial-items grouping) carries its own
+// items[] array (name/quantity/price) with no note string. The
+// activity_log_* item events (item_added/items_updated/item_removed, from
+// order_activity_log — the actual add/delete/quantity-change audit trail)
+// instead carry a pre-built Arabic summary in details.note. Both were
+// previously silently dropped: the timeline only ever rendered ev.label.
+function eventDetailText(ev: CrmOrderTimeline["events"][number]): string | null {
+  const details = ev.details as { items?: { name?: string; quantity?: number }[]; note?: string } | undefined;
+  if (!details) return null;
+  if (Array.isArray(details.items) && details.items.length > 0) {
+    return details.items
+      .map((it) => `${it.name ?? "صنف"} ×${it.quantity ?? 1}`)
+      .join("، ");
+  }
+  if (typeof details.note === "string" && details.note.trim() !== "") {
+    return details.note;
+  }
+  return null;
 }
 
 export function SectionLabel({ children }: { children: React.ReactNode }) {

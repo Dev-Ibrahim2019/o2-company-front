@@ -91,9 +91,9 @@ function PermissionStateControl({
   }
 
   return (
-    <div className="inline-flex overflow-hidden rounded-lg border border-[var(--crmx-border)]">
+    <div className="inline-flex text-white overflow-hidden rounded-lg border border-[var(--crmx-border)]">
       <button onClick={() => onSelect("deny")} className={seg(state === "deny", "danger")}>منع</button>
-      <button onClick={() => onSelect("default")} className={seg(state === "default", "neutral")}>افتراضي</button>
+      <button onClick={() => onSelect("default")} className='{seg(state === "default", "neutral")} text-white '>افتراضي</button>
       <button
         onClick={() => onSelect("grant")}
         disabled={!canGrant}
@@ -355,11 +355,10 @@ export function CrmStaffPermissionsPage() {
                 <button
                   key={member.id}
                   onClick={() => selectStaff(member)}
-                  className={`w-full rounded-xl border-2 p-3 text-right transition-colors ${
-                    selectedId === member.id
-                      ? "border-[var(--crmx-primary)] bg-[var(--crmx-card)] shadow-[var(--crmx-shadow-sm)]"
-                      : "border-transparent bg-[var(--crmx-neutral-soft)] hover:border-[var(--crmx-border)]"
-                  }`}
+                  className={`w-full rounded-xl border-2 p-3 text-right transition-colors ${selectedId === member.id
+                    ? "border-[var(--crmx-primary)] bg-[var(--crmx-card)] shadow-[var(--crmx-shadow-sm)]"
+                    : "border-transparent bg-[var(--crmx-neutral-soft)] hover:border-[var(--crmx-border)]"
+                    }`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex min-w-0 items-center gap-2">

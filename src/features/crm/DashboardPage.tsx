@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  AlertTriangle, ArrowLeft, Award, CalendarDays, CalendarHeart, Footprints, Globe, Headset, Plus, RefreshCw,
+  AlertTriangle, ArrowLeft, Award, CalendarDays, CalendarHeart, Globe, Headset, Plus, RefreshCw,
   ShoppingBag, TriangleAlert, UserCheck, Users2, UserPlus, Users, Wallet, Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -14,20 +14,23 @@ import { date as formatDate, num } from "./format";
 import { getCrmError } from "./components";
 import "./customers-ui/crmx.css";
 import { CrmAvatar, CrmKpiCard, CrmPageHeader, CrmStatusBadge } from "./customers-ui";
-import type { CrmCustomerSource, CrmDashboard, CrmOccasionsSummary } from "./types";
+import type { CrmDashboard, CrmOccasionsSummary, CrmOrderChannel } from "./types";
 
 // Fixed, brand-consistent series colors for the donut — same palette used
 // across the CRM design tokens (green/navy/purple/warning/muted).
 const OCCASION_COLORS = ["var(--crmx-primary)", "var(--crmx-navy)", "var(--crmx-accent)", "var(--crmx-warning)", "var(--crmx-text-muted)"];
-// Customer Source (not Order Source) — icon + tone per acquisition channel.
-// Labels come from the shared CRM_CUSTOMER_SOURCE_LABELS (sourceOptions.ts);
-// only the icon/tone presentation is dashboard-specific.
-const SOURCE_META: Record<CrmCustomerSource, { icon: LucideIcon; tone: string }> = {
-  website: { icon: Globe, tone: "bg-[var(--crmx-info-soft)] text-[var(--crmx-info-text)]" },
-  fawri: { icon: Wallet, tone: "bg-[var(--crmx-warning-soft)] text-[var(--crmx-warning-text)]" },
+
+// Order Channel (which cashier/channel took the order) — the single,
+// unified channel breakdown for this dashboard. A separate "customer
+// sources" card used to exist alongside this one with its own 5-value set
+// (including "walk_in" / حضور مباشر) but was dropped in favor of this one
+// unified list — see order_channel_distribution's backend comment for why
+// "website" is always 0.
+const CHANNEL_META: Record<CrmOrderChannel, { icon: LucideIcon; tone: string }> = {
   families: { icon: Users2, tone: "bg-[var(--crmx-accent-soft)] text-[var(--crmx-accent-text)]" },
+  fawri: { icon: Wallet, tone: "bg-[var(--crmx-warning-soft)] text-[var(--crmx-warning-text)]" },
   call_center: { icon: Headset, tone: "bg-[var(--crmx-success-soft)] text-[var(--crmx-success-text)]" },
-  walk_in: { icon: Footprints, tone: "bg-[var(--crmx-navy-soft)] text-[var(--crmx-navy)]" },
+  website: { icon: Globe, tone: "bg-[var(--crmx-info-soft)] text-[var(--crmx-info-text)]" },
 };
 
 const OCCASION_BADGE: Record<string, string> = {
@@ -201,7 +204,7 @@ export function CrmDashboardPage() {
   }));
   const occasions = data?.occasion_distribution ?? [];
   const occasionsTotal = occasions.reduce((sum, o) => sum + o.count, 0);
-  const sources = data?.customer_sources ?? [];
+  const channels = data?.order_channel_distribution ?? [];
   const topLoyalty = data?.top_customers_by_loyalty ?? [];
   const recentTotal = data?.customers_count ?? data?.recent_customers?.length ?? 0;
 
@@ -536,26 +539,27 @@ export function CrmDashboardPage() {
 
         <div className="space-y-4">
           <div className="rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-5">
-            <h3 className="mb-3 text-[15px] font-bold text-[var(--crmx-text)]">مصادر العملاء</h3>
+            <h3 className="mb-3 text-[15px] font-bold text-[var(--crmx-text)]">قنوات الطلبات</h3>
             {loading ? (
               <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="crmx-skeleton h-4 w-full" />)}</div>
-            ) : sources.length === 0 ? (
-              <p className="py-6 text-center text-[13px] text-[var(--crmx-text-muted)]">لا توجد بيانات مصدر مسجّلة بعد</p>
+            ) : channels.length === 0 ? (
+              <p className="py-6 text-center text-[13px] text-[var(--crmx-text-muted)]">لا توجد طلبات ضمن الفترة المحددة</p>
             ) : (
               <ul className="space-y-3">
-                {sources.map((s) => {
-                  const meta = SOURCE_META[s.source];
+                {channels.map((c) => {
+                  const meta = CHANNEL_META[c.channel];
                   const Icon = meta?.icon ?? Globe;
                   return (
-                    <li key={s.source} className="flex items-center gap-3">
+                    <li key={c.channel} className="flex items-center gap-3">
                       <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${meta?.tone ?? "bg-[var(--crmx-neutral-soft)] text-[var(--crmx-text-secondary)]"}`}>
                         <Icon className="h-4 w-4" />
                       </span>
-                      <span className="w-16 shrink-0 text-[13.5px] font-semibold text-[var(--crmx-text)]">{s.label}</span>
+                      <span className="w-24 shrink-0 text-[13.5px] font-semibold text-[var(--crmx-text)]">{c.label}</span>
                       <span className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--crmx-neutral-soft)]">
-                        <span className="block h-full rounded-full bg-[var(--crmx-primary)]" style={{ width: `${s.percent}%` }} />
+                        <span className="block h-full rounded-full bg-[var(--crmx-primary)]" style={{ width: `${c.percent}%` }} />
                       </span>
-                      <span className="w-10 shrink-0 text-left text-[13.5px] font-bold text-[var(--crmx-text)]">{s.percent}%</span>
+                      <span className="w-16 shrink-0 text-left text-[12.5px] text-[var(--crmx-text-muted)]">{num(c.count)}</span>
+                      <span className="w-10 shrink-0 text-left text-[13.5px] font-bold text-[var(--crmx-text)]">{c.percent}%</span>
                     </li>
                   );
                 })}

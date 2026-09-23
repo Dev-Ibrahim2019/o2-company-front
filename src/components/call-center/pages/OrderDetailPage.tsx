@@ -4,7 +4,7 @@ import {
   ArrowRight, Loader2, Save, Plus, Minus, Trash2, Edit3, X,
   Phone, Clock, CreditCard,
   AlertCircle, Search, CheckCircle2, XCircle, ChefHat, Truck, Ban, Receipt, Keyboard, Bike,
-  History, DollarSign, PackageX, Lock, Unlock,
+  History, DollarSign, PackageX, PackagePlus, Lock, Unlock,
 } from "lucide-react";
 import { colors, typography, radius, shadows, transitions } from "../design/tokens";
 import { orderService, type OrderFromApi, type OrderItemFromApi, type OrderActivityLogEntry } from "../../../services/orderService";
@@ -66,6 +66,9 @@ const activityIcon = (actionType: string): React.ReactNode => {
     case "driver_unassigned": return <PackageX size={13} />;
     case "closed": return <Lock size={13} />;
     case "reopened": return <Unlock size={13} />;
+    case "item_added": return <PackagePlus size={13} />;
+    case "items_updated": return <PackagePlus size={13} />;
+    case "item_removed": return <PackageX size={13} />;
     default: return <History size={13} />;
   }
 };
@@ -77,6 +80,9 @@ const activityColor = (actionType: string): string => {
     case "driver_unassigned": return colors.neutral[500];
     case "closed": return colors.semantic.warning;
     case "reopened": return colors.brand[500];
+    case "item_added": return colors.semantic.success;
+    case "items_updated": return colors.semantic.warning;
+    case "item_removed": return colors.semantic.error;
     default: return colors.neutral[400];
   }
 };
@@ -90,6 +96,9 @@ const activityLabel = (entry: { action_type: string; from_status: string | null;
     case "driver_unassigned": return "إلغاء تعيين السائق";
     case "closed": return "إغلاق الطلب";
     case "reopened": return toLabel ? `إعادة فتح الطلب — الحالة: ${toLabel}` : "إعادة فتح الطلب";
+    case "item_added": return "إضافة صنف";
+    case "items_updated": return "تعديل أصناف الطلب";
+    case "item_removed": return "حذف صنف";
     default:
       if (fromLabel && toLabel) return `تغيير الحالة: ${fromLabel} ← ${toLabel}`;
       if (toLabel) return `الحالة: ${toLabel}`;
