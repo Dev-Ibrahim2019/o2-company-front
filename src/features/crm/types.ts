@@ -44,19 +44,26 @@ export interface CrmNextOccasion {
 export interface CrmPage<T> { items: T[]; currentPage: number; lastPage: number; total: number }
 export interface CrmMonthPoint { month: string; count: number }
 export interface CrmOccasionSlice { type: string; label: string; count: number; percent: number }
-// customer_sources dashboard aggregate — Customer Source, not Order Source.
-export interface CrmSourceSlice { source: CrmCustomerSource; label: string; count: number; percent: number }
+// order_channel_distribution dashboard aggregate — which cashier/channel took
+// the order (families hall / fawri / call center / website). Replaced the
+// old separate "customer sources" dashboard card (a distinct concept: who
+// first registered the customer, with its own 5-value set including
+// "walk_in") — this is now the single, unified channel breakdown for the
+// dashboard. "website" has no real data source in this system yet and is
+// always 0 — see backend comment.
+export type CrmOrderChannel = "families" | "fawri" | "call_center" | "website";
+export interface CrmOrderChannelSlice { channel: CrmOrderChannel; label: string; count: number; percent: number }
 export interface CrmLoyaltyLeader { id: CrmId; name: string; code?: string; loyalty_points: number }
 export interface CrmDashboard {
   customers_count?: number; active_customers_count?: number; new_customers_count?: number;
   open_complaints_count?: number; orders_count?: number; loyalty_points_total?: number;
   branches?: CrmBranch[];
   branch_breakdown?: { branch_id: CrmId; branch_name: string; customers_count: number; orders_count: number; new_customers_count: number }[];
+  order_channel_distribution?: CrmOrderChannelSlice[];
   trends?: { customers_count?: number | null; active_customers_count?: number | null; open_complaints_count?: number | null };
   monthly_new_customers?: CrmMonthPoint[];
   monthly_active_customers?: CrmMonthPoint[];
   occasion_distribution?: CrmOccasionSlice[];
-  customer_sources?: CrmSourceSlice[];
   top_customers_by_loyalty?: CrmLoyaltyLeader[];
   recent_customers?: CrmCustomer[]; [key: string]: unknown;
 }
