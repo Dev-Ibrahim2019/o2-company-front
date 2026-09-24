@@ -635,6 +635,11 @@ export type CrmComplaintDepartment =
 // GET /crm/complaints — Crm\ComplaintController::index(). Carries the customer
 // inline so the list can link to a profile without a second request.
 export interface CrmComplaintRow extends Omit<CrmComplaint, "assigned_to"> {
+  /** Origin branch — the order's branch if this complaint is tied to one,
+   *  otherwise the filing agent's own branch. Stamped at creation, never
+   *  changed by reassignment (assigning to another branch's staff does not
+   *  move this). Backend column is a string, not a numeric FK. */
+  branch_id?: string | null;
   department?: CrmComplaintDepartment | null;
   /**
    * Either the raw column or the eager-loaded relation.
@@ -677,6 +682,15 @@ export interface CrmComplaintFollowup {
   followup_type?: string | null;
   created_at?: string | null;
   user?: { id: CrmId; name: string } | null;
+  /** Structured transfer record on 'assigned'/'unassigned' rows — who held
+   *  it, on which branch, at the time of the change. Snapshotted then, not
+   *  looked up live, so a later branch transfer never rewrites this row. */
+  metadata?: {
+    from_user_id?: CrmId | null; from_branch_id?: CrmId | null;
+    to_user_id?: CrmId | null; to_branch_id?: CrmId | null;
+    from_employee_id?: CrmId | null; to_employee_id?: CrmId | null;
+    complaint_branch_id?: string | null;
+  } | null;
 }
 
 // GET /crm/complaints/summary. The distribution maps are keyed by the raw

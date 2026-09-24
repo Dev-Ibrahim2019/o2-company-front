@@ -97,6 +97,14 @@ export default function OrdersTab() {
                         <td className="px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]">
                           {branchName}
                           {source && <span className="text-[var(--crmx-text-muted)]"> · {source}</span>}
+                          {Boolean(r.is_other_branch_read_only) && (
+                            <span
+                              className="ms-1.5 inline-flex items-center rounded-full bg-[var(--crmx-warning-soft)] px-2 py-0.5 text-[10.5px] font-bold text-[var(--crmx-warning-text)]"
+                              title="طلب من فرع آخر — عرض فقط، لا يمكن تعديله"
+                            >
+                              فرع آخر · قراءة فقط
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-[13px] font-bold text-[var(--crmx-text)]">{money(r.total)}</td>
                         <td className="px-4 py-3"><Rating value={r.rating as number | null | undefined} /></td>

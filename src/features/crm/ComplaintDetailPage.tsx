@@ -9,6 +9,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../auth";
 import { CRM_PERMISSIONS } from "../../auth/permissions";
 import { toast } from "../../components/shared/Toast";
+import { branchService, type Branch } from "../../services/branchService";
 import { crmApi } from "./api";
 import { CrmState, getCrmError } from "./components";
 import {
@@ -48,6 +49,10 @@ const assigneeId = (c: CrmComplaintRow): number | null => {
 };
 const assigneeName = (c: CrmComplaintRow): string | null =>
   c.assigned_user && typeof c.assigned_user === "object" ? c.assigned_user.name : null;
+/** The assignee's own branch — a cross-branch assignment does not move the
+ *  complaint's own origin branch, so these two can legitimately differ. */
+const assigneeBranchId = (c: CrmComplaintRow): CrmId | null =>
+  c.assigned_user && typeof c.assigned_user === "object" ? (c.assigned_user.branch_id ?? null) : null;
 
 const createdByName = (c: CrmComplaintRow): string | null => {
   if (c.createdBy?.name) return c.createdBy.name;
@@ -124,6 +129,7 @@ export function ComplaintDetailPage() {
   const [complaint, setComplaint] = useState<CrmComplaintRow | null>(null);
   const [followups, setFollowups] = useState<CrmComplaintFollowup[]>([]);
   const [users, setUsers] = useState<Array<{ id: CrmId; name: string; branch?: { id: CrmId; name: string } | null }>>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ status?: number; message: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -149,6 +155,15 @@ export function ComplaintDetailPage() {
   }, [complaintId]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => { void branchService.getAll().then(setBranches).catch(() => setBranches([])); }, []);
+  const branchName = useCallback(
+    (id: CrmId | null | undefined) => {
+      if (id == null) return null;
+      return branches.find((b) => String(b.id) === String(id))?.name ?? `فرع #${id}`;
+    },
+    [branches],
+  );
 
   useEffect(() => {
     if (!canAssign) return;
@@ -437,6 +452,29 @@ export function ComplaintDetailPage() {
                     <InfoRow label="رقم الطلب المرتبط">
                       <span dir="ltr" className="font-bold">
                         #{complaint.order?.order_number ?? String(complaint.order_id)}
+                      </span>
+                    </InfoRow>
+                  )}
+                  <InfoRow label="الفرع الأصلي">
+                    {complaint.branch_id != null ? (
+                      <span className={`${COMPLAINT_PILL} bg-[var(--crmx-navy-soft)] text-[var(--crmx-navy)]`}>
+                        {branchName(complaint.branch_id)}
+                      </span>
+                    ) : (
+                      <span className="text-[var(--crmx-text-muted)]">غير محدَّد</span>
+                    )}
+                  </InfoRow>
+                  {assigneeBranchId(complaint) != null && (
+                    <InfoRow label="فرع الموظف المسؤول">
+                      <span
+                        className={`${COMPLAINT_PILL} ${
+                          String(assigneeBranchId(complaint)) === String(complaint.branch_id)
+                            ? "bg-[var(--crmx-success-soft)] text-[var(--crmx-success-text)]"
+                            : "bg-[var(--crmx-warning-soft)] text-[var(--crmx-warning-text)]"
+                        }`}
+                      >
+                        {branchName(assigneeBranchId(complaint))}
+                        {String(assigneeBranchId(complaint)) !== String(complaint.branch_id) && " — عبر الفروع"}
                       </span>
                     </InfoRow>
                   )}
