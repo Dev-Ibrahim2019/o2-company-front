@@ -114,6 +114,7 @@ import { CallCenterPageWithAside } from "./components/call-center/pages/CallCent
 import { ActiveOrdersPage } from "./components/call-center/pages/ActiveOrdersPage";
 import { ClosedOrdersPage } from "./components/call-center/pages/ClosedOrdersPage";
 import { OrderDetailPage } from "./components/call-center/pages/OrderDetailPage";
+import { EditOrderPage } from "./components/call-center/pages/EditOrderPage";
 
 /* ══════════════════════════════════════════════════════════════
  *  حماية الأدوار — تمنع الوصول لمن لا يملك الدور المطلوب
@@ -538,6 +539,8 @@ function AppRoutes() {
                 {/* صفحة تفاصيل الطلب مشتركة بين الكول سنتر وT.W — كل زر جواها مضبوط بصلاحيته
                     الخاصة (تسجيل الدفعة/الإلغاء مقابل بدء التجهيز/تعيين سائق)، راجع OrderDetailPage. */}
                 <Route path="orders/:orderId" element={<OrderDetailPage />} />
+                {/* تعديل طلب مفتوح: نفس الرقم ونفس الخانة (قفل تعديل متزامن + تذكرة بالفرق بس للأقسام) */}
+                <Route path="order/:orderId/edit" element={<ProtectedRoute permission="call-center.create-order"><EditOrderPage /></ProtectedRoute>} />
                 <Route path="crm" element={<CrmDirectoryPage />} />
                 <Route path="search" element={<CustomerPhoneSearch />} />
                 <Route path="complaints" element={<ComplaintsManagement />} />

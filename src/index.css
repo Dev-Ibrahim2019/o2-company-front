@@ -1098,3 +1098,47 @@ body {
 .border-gray-300 {
   border-color: var(--o2-border) !important;
 }
+
+/* ── لوحة الخانات (SlotBoard) ─────────────────────────────────────────────
+   مدة تلاشي/وميض الخانة المحرَّرة (4s) لازم تتطابق مع RELEASE_ANIMATION_MS بـ slotBoardView.ts */
+@keyframes o2-slot-delay-blink {
+  0%, 100% { box-shadow: 0 0 0 2px var(--o2-cc-error); }
+  50% { box-shadow: 0 0 0 2px transparent; }
+}
+@keyframes o2-slot-release-paid {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes o2-slot-release-cancelled {
+  0%, 40%, 80% { opacity: 1; }
+  20%, 60% { opacity: 0.25; }
+  100% { opacity: 0; }
+}
+@keyframes o2-slot-jump {
+  0%, 100% { box-shadow: 0 0 0 3px var(--o2-cc-neutral-900); }
+  50% { box-shadow: 0 0 0 9px transparent; }
+}
+.o2-slot-delayed { animation: o2-slot-delay-blink 1.2s ease-in-out infinite; }
+.o2-slot-released-paid { animation: o2-slot-release-paid 4s ease-out forwards; }
+.o2-slot-released-cancelled { animation: o2-slot-release-cancelled 4s linear forwards; }
+.o2-slot-jump { animation: o2-slot-jump 0.8s ease-in-out 3; }
+.o2-slot:focus-visible { outline: 3px solid var(--o2-cc-border-focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .o2-slot-delayed { animation: none; box-shadow: 0 0 0 2px var(--o2-cc-error); }
+  .o2-slot-released-paid,
+  .o2-slot-released-cancelled { animation-timing-function: steps(1, end); }
+  .o2-slot-jump { animation: none; box-shadow: 0 0 0 4px var(--o2-cc-neutral-900); }
+}
+
+/* ── تدفق الطلب على لوحة الخانات: جاهز للإغلاق (إطار لامع) ── */
+@keyframes o2-slot-ready-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55), 0 0 10px 2px rgba(16, 185, 129, 0.45); }
+  50% { box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25), 0 0 18px 5px rgba(16, 185, 129, 0.65); }
+}
+.o2-slot-ready { animation: o2-slot-ready-glow 1.8s ease-in-out infinite; }
+/* الإغلاق (مدفوع + منفّذ): نفس تلاشي الخانة المحرَّرة — الاسم القديم o2-slot-released-paid بيضل للتوافق */
+.o2-slot-released-closed { animation: o2-slot-release-paid 4s ease-out forwards; }
+@media (prefers-reduced-motion: reduce) {
+  .o2-slot-ready { animation: none; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.45); }
+  .o2-slot-released-closed { animation-timing-function: steps(1, end); }
+}

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ShoppingCart, RefreshCw, Loader2, Search, AlertCircle,
-  LayoutGrid, Rows3, Grid2x2,
+  LayoutGrid, Rows3, Grid2x2, Hash, ListOrdered,
 } from "lucide-react";
 import { colors, typography, radius, shadows, transitions } from "../design/tokens";
 import { callCenterService, type ActiveCallCenterOrder, type ActiveOrderScope } from "../services/callCenterService";
@@ -19,6 +19,8 @@ import { DriverSection, deriveDriverStatus } from "../components/DriverSection";
 import { OrderCard, type CardDensity } from "../components/OrderCard";
 import { useAuth } from "../../../auth/AuthContext";
 import { agentCan } from "../../../auth/callCenterAccess";
+import { branchService, type Branch } from "../../../services/branchService";
+import { SlotBoard } from "../components/SlotBoard";
 
 // مدة التحضير الافتراضية (بالدقائق) قبل موعد الطلب المجدول — تنبيه بصري فقط لمن يشاهد الشاشة
 // حاليًا؛ التنفيذ الفعلي (إرسال للأقسام + طباعة) من الباك اند عبر orders:execute-scheduled.
@@ -26,6 +28,12 @@ const SCHEDULED_PREP_MINUTES = 20;
 
 const PAGE_SIZE = 24;
 const DENSITY_STORAGE_KEY = "o2-cc-orders-density";
+const VIEW_STORAGE_KEY = "o2-cc-orders-view";
+const SLOTS_BRANCH_STORAGE_KEY = "o2-cc-slots-branch";
+
+// "slots" = لوحة الخانات (الطلبات بانتظار الدفع، مكان ثابت لكل طلب) — "all" = الشبكة المرتبة بالأولوية
+// لكل الطلبات النشطة (مطبخ/توصيل كمان) لحد ما تنبني شاشة متابعة التيك أواي.
+type OrdersView = "slots" | "all";
 
 const emptyGroups = (): Record<ActiveOrderScope, ActiveCallCenterOrder[]> => ({
   operational_active: [], awaiting_payment: [], kitchen_active: [], delivery_active: [], no_branch: [],
@@ -42,7 +50,8 @@ const emptyStageCounts = (): Record<WorkflowStage, number> => ({
 
 export const ActiveOrdersPage: React.FC = () => {
   const navigate = useNavigate();
-  const { hasRole, hasPermission } = useAuth();
+  const { user, hasRole, hasPermission } = useAuth();
+  const canManageSlotCapacity = hasRole("call-center-manager") || hasRole("super-admin") || hasRole("branch-manager");
   const canAssignDriver = agentCan("call-center.assign-driver", hasRole, hasPermission);
   const canChangeStatus = agentCan("call-center.change-order-status", hasRole, hasPermission);
   const [orders, setOrders] = useState<Record<ActiveOrderScope, ActiveCallCenterOrder[]>>(emptyGroups());
@@ -55,6 +64,19 @@ export const ActiveOrdersPage: React.FC = () => {
     try { return (localStorage.getItem(DENSITY_STORAGE_KEY) as CardDensity) || "normal"; } catch { return "normal"; }
   });
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [view, setView] = useState<OrdersView>(() => {
+    try { return localStorage.getItem(VIEW_STORAGE_KEY) === "all" ? "all" : "slots"; } catch { return "slots"; }
+  });
+  // موظف الكول سنتر غالبًا بلا فرع (دور مركزي) — فيختار الفرع بنفسه؛ لو مربوط بفرع منستخدم فرعه.
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(() => {
+    try { return Number(localStorage.getItem(SLOTS_BRANCH_STORAGE_KEY)) || null; } catch { return null; }
+  });
+  const userBranchId = user?.branch_id ?? null;
+  const slotsBranchId = userBranchId
+    ?? branches.find(b => b.id === selectedBranchId)?.id
+    ?? branches[0]?.id
+    ?? null;
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -76,16 +98,35 @@ export const ActiveOrdersPage: React.FC = () => {
     } catch { /* قسم السائقين اختياري بصريًا — فشل جلبه ما يوقف الصفحة */ }
   }, []);
 
-  useEffect(() => { fetchOrders(); fetchDrivers(); }, [fetchOrders, fetchDrivers]);
+  // الجلب والتحديث الدوري بس لعرض "الكل" — لوحة الخانات بتجلب لحالها (useSlotBoard)
+  useEffect(() => {
+    if (view !== "all") return;
+    fetchOrders(); fetchDrivers();
+  }, [view, fetchOrders, fetchDrivers]);
 
   useEffect(() => {
+    if (view !== "all") return;
     const interval = setInterval(() => { fetchOrders(); fetchDrivers(); }, 30000);
     return () => clearInterval(interval);
-  }, [fetchOrders, fetchDrivers]);
+  }, [view, fetchOrders, fetchDrivers]);
+
+  useEffect(() => {
+    if (view !== "slots" || userBranchId) return;
+    branchService.getAll().then(setBranches).catch(() => setBranches([]));
+  }, [view, userBranchId]);
 
   useEffect(() => {
     try { localStorage.setItem(DENSITY_STORAGE_KEY, density); } catch { /* تفضيل عرض بسيط — تجاهل لو التخزين غير متاح */ }
   }, [density]);
+
+  useEffect(() => {
+    try { localStorage.setItem(VIEW_STORAGE_KEY, view); } catch { /* تفضيل عرض بسيط */ }
+  }, [view]);
+
+  useEffect(() => {
+    if (!selectedBranchId) return;
+    try { localStorage.setItem(SLOTS_BRANCH_STORAGE_KEY, String(selectedBranchId)); } catch { /* تفضيل عرض بسيط */ }
+  }, [selectedBranchId]);
 
   // إعادة الترقيم لأول صفحة عند تغيير الفلتر/البحث — بدل ما يضل المستخدم على صفحة فاضية
   useEffect(() => { setVisibleCount(PAGE_SIZE); }, [filter, searchQuery]);
@@ -224,7 +265,7 @@ export const ActiveOrdersPage: React.FC = () => {
     <div dir="rtl" style={{ fontFamily: typography.fontFamily.sans, minHeight: "100%" }}>
       {/* رأس الصفحة + الملخص التشغيلي + قسم السائقين + الفلاتر + البحث — ثابتة أعلى الشاشة
           (sticky) عشان تبقى مرئية أثناء تمرير شبكة الطلبات تحتها */}
-      <div style={{ position: "sticky", top: 0, zIndex: 30, background: colors.surface.page, paddingBottom: 16, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ position: view === "all" ? "sticky" : "static", top: 0, zIndex: 30, background: colors.surface.page, paddingBottom: 16, display: "flex", flexDirection: "column", gap: 14 }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
           <div>
@@ -232,10 +273,35 @@ export const ActiveOrdersPage: React.FC = () => {
               الطلبات النشطة
             </h1>
             <p style={{ fontSize: typography.size.sm, color: colors.neutral[500], marginTop: 4 }}>
-              مركز تحكم العمليات — يتم التحديث تلقائيًا كل 30 ثانية
+              {view === "slots"
+                ? "لوحة الخانات — كل طلب بانتظار الدفع بمكان ثابت، والتحديث كل 10 ثواني"
+                : "مركز تحكم العمليات — يتم التحديث تلقائيًا كل 30 ثانية"}
             </p>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            {/* تبديل نوع العرض: لوحة الخانات / كل الطلبات */}
+            <div role="group" aria-label="نوع العرض" style={{ display: "flex", alignItems: "center", gap: 2, padding: 3, borderRadius: radius.lg, background: colors.neutral[100], border: `1px solid ${colors.border.subtle}` }}>
+              {([
+                { value: "slots" as OrdersView, icon: <Hash size={14} />, label: "الخانات" },
+                { value: "all" as OrdersView, icon: <ListOrdered size={14} />, label: "كل الطلبات" },
+              ]).map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  aria-pressed={view === opt.value}
+                  onClick={() => setView(opt.value)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 4, padding: "6px 10px", borderRadius: radius.md,
+                    background: view === opt.value ? colors.neutral[0] : "transparent",
+                    boxShadow: view === opt.value ? shadows.xs : "none",
+                    border: "none", color: view === opt.value ? colors.neutral[800] : colors.neutral[500],
+                    fontSize: "11px", fontWeight: typography.weight.semibold, cursor: "pointer",
+                  }}
+                >
+                  {opt.icon} {opt.label}
+                </button>
+              ))}
+            </div>
             {/* تحكم كثافة الكروت */}
             <div style={{ display: "flex", alignItems: "center", gap: 2, padding: 3, borderRadius: radius.lg, background: colors.neutral[100], border: `1px solid ${colors.border.subtle}` }}>
               {([
@@ -259,34 +325,36 @@ export const ActiveOrdersPage: React.FC = () => {
                 </button>
               ))}
             </div>
-            <button
-              onClick={() => { fetchOrders(); fetchDrivers(); }}
-              disabled={loading}
-              style={{
-                display: "flex", alignItems: "center", gap: 8,
-                padding: "10px 16px", borderRadius: radius.lg,
-                background: colors.neutral[0], border: `1px solid ${colors.border.default}`,
-                color: colors.neutral[700], fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
-                cursor: loading ? "not-allowed" : "pointer", transition: `all ${transitions.fast}`,
-              }}
-            >
-              <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
-              تحديث
-            </button>
+            {view === "all" && (
+              <button
+                onClick={() => { fetchOrders(); fetchDrivers(); }}
+                disabled={loading}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "10px 16px", borderRadius: radius.lg,
+                  background: colors.neutral[0], border: `1px solid ${colors.border.default}`,
+                  color: colors.neutral[700], fontSize: typography.size.sm, fontWeight: typography.weight.semibold,
+                  cursor: loading ? "not-allowed" : "pointer", transition: `all ${transitions.fast}`,
+                }}
+              >
+                <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+                تحديث
+              </button>
+            )}
           </div>
         </div>
 
-        {/* الملخص التشغيلي */}
-        <OrderSummaryBar total={allOrders.length} countsByStage={countsByStage} delayedCount={delayedCount} />
+        {/* الملخص التشغيلي — عرض "كل الطلبات" فقط (لوحة الخانات إلها شريط أدوات خاص فيها) */}
+        {view === "all" && <OrderSummaryBar total={allOrders.length} countsByStage={countsByStage} delayedCount={delayedCount} />}
 
         {/* سائقو التوصيل */}
-        <DriverSection drivers={drivers} driverOrderCounts={driverOrderCounts} />
+        {view === "all" && <DriverSection drivers={drivers} driverOrderCounts={driverOrderCounts} />}
 
         {/* الفلاتر */}
-        <OrderFiltersBar active={filter} onChange={setFilter} total={allOrders.length} countsByStage={countsByStage} delayedCount={delayedCount} />
+        {view === "all" && <OrderFiltersBar active={filter} onChange={setFilter} total={allOrders.length} countsByStage={countsByStage} delayedCount={delayedCount} />}
 
         {/* البحث */}
-        <div style={{ position: "relative" }}>
+        {view === "all" && <div style={{ position: "relative" }}>
           <Search size={16} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", color: colors.neutral[400] }} />
           <input
             value={searchQuery}
@@ -301,11 +369,39 @@ export const ActiveOrdersPage: React.FC = () => {
             onFocus={e => e.currentTarget.style.borderColor = colors.brand[500]}
             onBlur={e => e.currentTarget.style.borderColor = colors.border.default}
           />
-        </div>
+        </div>}
       </div>
 
-      {/* شبكة الطلبات */}
-      {loading && allOrders.length === 0 ? (
+      {/* لوحة الخانات (الافتراضي) أو شبكة كل الطلبات */}
+      {view === "slots" ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {!userBranchId && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <label htmlFor="o2-slots-branch" style={{ fontSize: typography.size.sm, fontWeight: typography.weight.semibold, color: colors.neutral[700] }}>الفرع</label>
+              <select
+                id="o2-slots-branch"
+                value={slotsBranchId ?? ""}
+                onChange={e => setSelectedBranchId(Number(e.target.value))}
+                style={{ height: 40, padding: "0 12px", borderRadius: radius.lg, border: `1px solid ${colors.border.default}`, background: colors.neutral[0], color: colors.neutral[900], fontSize: typography.size.sm }}
+              >
+                {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+          )}
+          {slotsBranchId ? (
+            <SlotBoard
+              key={slotsBranchId}
+              branchId={slotsBranchId}
+              density={density}
+              canManageCapacity={canManageSlotCapacity}
+            />
+          ) : (
+            <p role="status" style={{ fontSize: typography.size.sm, color: colors.neutral[500], padding: "40px 0", textAlign: "center" }}>
+              اختر فرعًا لعرض خاناته — لو ما ظهرت فروع تأكد من صلاحياتك.
+            </p>
+          )}
+        </div>
+      ) : loading && allOrders.length === 0 ? (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "60px 0" }}>
           <Loader2 size={32} className="animate-spin" style={{ color: colors.brand[500] }} />
         </div>
