@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AlertCircle, CalendarClock, Clock, CreditCard, Flame, Loader2, Printer, RefreshCw, Search, Settings2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { AlertCircle, CalendarClock, Clock, CreditCard, Flame, Loader2, Plus, Printer, RefreshCw, Search, Settings2 } from "lucide-react";
 import { colors, typography, radius, shadows, transitions } from "../design/tokens";
 import { toast } from "../../shared/Toast";
 import { useSlotBoard } from "../../../hooks/useSlotBoard";
@@ -18,7 +19,7 @@ import { OrderDrawer } from "./OrderDrawer";
 // ============================================================================
 
 const CELL_MIN_WIDTH: Record<CardDensity, number> = { compact: 64, normal: 132, large: 180 };
-const CELL_HEIGHT: Record<CardDensity, number> = { compact: 56, normal: 96, large: 132 };
+const CELL_HEIGHT: Record<CardDensity, number> = { compact: 74, normal: 118, large: 150 };
 const FILTERS: SlotFilter[] = ["all", "unpaid", "scheduled", "ready", "delayed"];
 
 // بنفسجي للمجدول: مافي token بنفسجي بالتصميم الحالي، فبنستخدم لون ثابت مقروء بالثيمين (نص/إطار) وخلفية شفافة
@@ -45,9 +46,11 @@ const prefersReducedMotion = () => {
   try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; }
 };
 
-const SlotCellView = React.memo(function SlotCellView({ cell, density, dimmed, highlighted, selected, now, onOpenOrder }: {
+const SlotCellView = React.memo(function SlotCellView({ cell, density, dimmed, highlighted, selected, now, onOpenOrder, onCreateInSlot }: {
   cell: SlotCell; density: CardDensity; dimmed: boolean; highlighted: boolean; selected: boolean; now: number;
   onOpenOrder: (orderId: number) => void;
+  /** خانة فاضية: طلب جديد بهالخانة (undefined = ما بتنضغط — ما في صلاحية إنشاء طلب) */
+  onCreateInSlot?: (slotNumber: number) => void;
 }) {
   const style = STATE_STYLE[cell.state];
   const order = cell.order;
@@ -91,20 +94,40 @@ const SlotCellView = React.memo(function SlotCellView({ cell, density, dimmed, h
     ? `خانة ${cell.slotNumber}، طلب ${getOrderReference(order.order_number)}، ${order.customer_name || "بدون اسم"}، ${STATE_LABEL[cell.state]}، ${cell.paid ? "مدفوع" : "غير مدفوع"}، ${cell.executed ? "منفّذ" : "غير منفّذ"}${cell.delayed ? "، متأخر" : ""}${cell.state === "scheduled" && order.scheduled_at ? `، ${formatCountdown(order.scheduled_at, now)}` : `، انتظار ${formatWait(order.created_at, now)}`}`
     : `خانة ${cell.slotNumber}، ${STATE_LABEL[cell.state]}`;
 
-  const body = density === "compact" || !order ? (
-    <>{numberEl}{iconsEl}</>
+  // المبلغ الإجمالي بارز (خط أكبر وأثقل) بكل الأحجام — أكتر معلومة بيسأل عنها العميل على الهاتف
+  const amountEl = order && (
+    <span dir="ltr" style={{
+      fontSize: density === "compact" ? typography.size.sm : density === "large" ? typography.size["2xl"] : typography.size.xl,
+      fontWeight: typography.weight.extrabold, color: colors.neutral[900], fontVariantNumeric: "tabular-nums",
+      lineHeight: 1.1, whiteSpace: "nowrap", textAlign: density === "compact" ? "center" : "end",
+    }}>
+      {formatShekel(order.total)}
+    </span>
+  );
+
+  const canCreate = !occupied && !cell.overCapacity && (cell.state === "empty" || cell.state === "cooling") && !!onCreateInSlot;
+
+  const body = !order ? (
+    <>
+      {numberEl}
+      {canCreate && density !== "compact" && (
+        <span aria-hidden style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: "11px", color: colors.neutral[400], marginTop: "auto" }}>
+          <Plus size={11} /> طلب جديد
+        </span>
+      )}
+    </>
+  ) : density === "compact" ? (
+    <>{numberEl}{amountEl}{iconsEl}</>
   ) : (
     <>
       <span style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>{numberEl}{iconsEl}</span>
-      <span style={{ fontFamily: typography.fontFamily.mono, fontSize: "11px", color: colors.neutral[500] }}>{getOrderReference(order.order_number)}</span>
+      {amountEl}
+      <span style={{ fontFamily: typography.fontFamily.mono, fontSize: "11px", color: colors.neutral[500] }} dir="ltr">{getOrderReference(order.order_number)}</span>
       <span style={{ fontSize: typography.size.sm, fontWeight: typography.weight.semibold, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
         {order.customer_name || "بدون اسم"}
       </span>
       {density === "large" && (
-        <>
-          <span dir="ltr" style={{ fontSize: "11px", color: colors.neutral[500], textAlign: "end" }}>{order.customer_phone}</span>
-          <span style={{ fontSize: "11px", color: colors.neutral[600] }}>{formatShekel(order.total)}</span>
-        </>
+        <span dir="ltr" style={{ fontSize: "11px", color: colors.neutral[500], textAlign: "end" }}>{order.customer_phone}</span>
       )}
       {cell.state === "scheduled" && order.scheduled_at ? (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: "11px", fontWeight: typography.weight.bold, color: SCHEDULED_COLOR, marginTop: "auto" }}>
@@ -126,6 +149,13 @@ const SlotCellView = React.memo(function SlotCellView({ cell, density, dimmed, h
           onMouseLeave={e => { e.currentTarget.style.boxShadow = ""; }}>
           {body}
         </button>
+      ) : canCreate ? (
+        <button type="button" className={classes} style={{ ...boxStyle, cursor: "pointer" }} aria-label={`خانة ${cell.slotNumber} فاضية — إنشاء طلب جديد بهالخانة`}
+          onClick={() => onCreateInSlot!(cell.slotNumber)}
+          onMouseEnter={e => { e.currentTarget.style.boxShadow = shadows.md; }}
+          onMouseLeave={e => { e.currentTarget.style.boxShadow = ""; }}>
+          {body}
+        </button>
       ) : (
         <div className={classes} style={boxStyle} title={cell.overCapacity ? "فوق السعة الحالية — بتختفي لما تفرغ" : undefined}>{body}</div>
       )}
@@ -138,8 +168,15 @@ export const SlotBoard: React.FC<{
   density: CardDensity;
   /** مدير كول سنتر/فرع/سوبر أدمن — بس هدول بيغيّروا عدد الخانات */
   canManageCapacity: boolean;
-}> = ({ branchId, density, canManageCapacity }) => {
+  /** صلاحية call-center.create-order — الضغط على خانة فاضية بيفتح صفحة الطلب لطلب جديد بهالخانة */
+  canCreateOrder?: boolean;
+}> = ({ branchId, density, canManageCapacity, canCreateOrder = false }) => {
+  const navigate = useNavigate();
   const { board, releasing, loading, error, refresh, setCapacity } = useSlotBoard(branchId);
+  const onCreateInSlot = useMemo(
+    () => (canCreateOrder ? (slotNumber: number) => navigate(`/call-center/order?slot=${slotNumber}&branch=${branchId}`) : undefined),
+    [canCreateOrder, navigate, branchId],
+  );
   // الكرت بيفتح Drawer التفاصيل (مش صفحة كاملة) عشان الخانات تضل قدام الموظف
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const onOpenOrder = setSelectedOrderId;
@@ -315,7 +352,7 @@ export const SlotBoard: React.FC<{
 
       <ul aria-label="خانات الطلبات النشطة" style={{ display: "grid", gridTemplateColumns: `repeat(auto-fill, minmax(${CELL_MIN_WIDTH[density]}px, 1fr))`, gap: density === "compact" ? 8 : 12, padding: 0, margin: 0 }}>
         {cells.map(cell => (
-          <SlotCellView key={cell.slotNumber} cell={cell} density={density} now={now} onOpenOrder={onOpenOrder}
+          <SlotCellView key={cell.slotNumber} cell={cell} density={density} now={now} onOpenOrder={onOpenOrder} onCreateInSlot={onCreateInSlot}
             highlighted={highlighted === cell.slotNumber}
             selected={!!cell.order && cell.order.id === selectedOrderId}
             dimmed={isCellDimmed(cell, { query: debouncedQuery, filter, jumpTo, now })} />

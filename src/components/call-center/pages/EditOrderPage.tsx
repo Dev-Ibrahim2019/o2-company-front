@@ -3,23 +3,22 @@ import { useNavigate, useParams } from "react-router-dom";
 import { AlertTriangle, ArrowRight, Loader2, Lock, Minus, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
 import { colors, typography, radius } from "../design/tokens";
 import { toast } from "../../shared/Toast";
-import { useAuth } from "../../../auth/AuthContext";
 import { menuService, type ApiMenuItem } from "../../../services/menuService";
 import { callCenterService, type OrderDetail, type OrderFlow } from "../services/callCenterService";
 import { formatShekel, getOrderReference } from "../activeOrdersView";
 import {
   buildInitialLines, diffLines, editRequirements, estimateTotal, hasAnyItem, payloadFromLines, type EditLine,
 } from "../orderEditView";
-import { MIN_REASON_LENGTH } from "../orderDrawerView";
+import { MIN_REASON_LENGTH, PAID_EDIT_MESSAGE, isEditBlocked } from "../orderDrawerView";
 
 // ============================================================================
 // EDIT ORDER PAGE — تعديل طلب مفتوح: نفس الرقم ونفس الخانة. الحفظ بيبعت الأصناف بشكلها النهائي والباك اند
 // بيحسب الفرق وبيطلّع للأقسام تذكرة بالفرق بس (أصناف مضافة → تذكرة جديدة، ملغاة → تذكرة إلغاء) ويسجّل من عدّل
 // وشو تغيّر. قفل التعديل بيمنع موظفين يعدّلوا نفس الطلب سوا، وبيتجدد كل 45 ثانية وبينتهي لحاله بعد دقيقتين.
+// الطلب المدفوع ممنوع تعديله: لو انفتحت الصفحة برابط مباشر بتعرض رسالة بس (والباك اند بيرفض كمان).
 // ============================================================================
 
 const HEARTBEAT_MS = 45_000;
-const SUPERVISOR_ROLES = ["call-center-manager", "super-admin", "branch-manager", "accountant"];
 
 const inputStyle: React.CSSProperties = {
   height: 40, padding: "0 12px", borderRadius: radius.md, border: `1px solid ${colors.border.default}`,
@@ -34,8 +33,6 @@ export const EditOrderPage: React.FC = () => {
   const { orderId } = useParams();
   const id = Number(orderId);
   const navigate = useNavigate();
-  const { hasRole } = useAuth();
-  const isSupervisor = SUPERVISOR_ROLES.some(r => hasRole(r));
 
   const [details, setDetails] = useState<OrderDetail | null>(null);
   const [flow, setFlow] = useState<OrderFlow | null>(null);
@@ -82,19 +79,18 @@ export const EditOrderPage: React.FC = () => {
   }, [id]);
 
   useEffect(() => {
-    if (!details || flow?.lifecycle !== "open") return;
+    if (!details || flow?.lifecycle !== "open" || isEditBlocked(flow.payment_state)) return;
     void acquireLock();
     const beat = window.setInterval(() => { void acquireLock(); }, HEARTBEAT_MS);
     return () => {
       window.clearInterval(beat);
       if (holdsLock.current) void callCenterService.releaseEditLock(id).catch(() => undefined);
     };
-  }, [details?.id, flow?.lifecycle, id, acquireLock]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [details?.id, flow?.lifecycle, flow?.payment_state, id, acquireLock]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const diff = useMemo(() => diffLines(lines), [lines]);
   const notesChanged = (notes.trim() || null) !== (details?.note ?? null);
-  const requirements = flow ? editRequirements(diff, flow.execution_status, flow.payment_state) : { reason: false, supervisor: false };
-  const blockedForRole = requirements.supervisor && !isSupervisor;
+  const requirements = flow ? editRequirements(diff, flow.execution_status, flow.payment_state) : { reason: false, blocked: true };
   const reasonMissing = requirements.reason && reason.trim().length < MIN_REASON_LENGTH;
   const estimated = estimateTotal(lines);
 
@@ -151,6 +147,20 @@ export const EditOrderPage: React.FC = () => {
     return <div dir="rtl" role="status" aria-label="جاري التحميل" style={{ display: "flex", justifyContent: "center", padding: 60 }}><Loader2 size={30} className="animate-spin" style={{ color: colors.brand[500] }} /></div>;
   }
 
+  // طلب مدفوع (مثلًا انفتح الرابط مباشرة): ما في محرّر أصلًا، رسالة ورجوع بس
+  if (isEditBlocked(flow.payment_state)) {
+    return (
+      <div dir="rtl" role="alert" style={{ maxWidth: 560, margin: "40px auto", padding: 24, textAlign: "center", borderRadius: radius.lg, background: colors.semantic.warningBg, border: `1px solid ${colors.semantic.warningBorder}`, fontFamily: typography.fontFamily.sans }}>
+        <Lock size={28} aria-hidden style={{ color: colors.semantic.warning }} />
+        <h1 style={{ fontSize: typography.size.xl, fontWeight: typography.weight.extrabold, margin: "8px 0", color: colors.neutral[900] }}>{PAID_EDIT_MESSAGE}</h1>
+        <p style={{ fontSize: typography.size.sm, color: colors.neutral[600] }}>
+          الطلب {getOrderReference(details.order_number)} مدفوع، والمبلغ المحوّل ثابت فما بينعدّل.
+        </p>
+        <button type="button" onClick={back} style={{ ...iconButton, width: "auto", padding: "0 16px", marginTop: 14 }}>رجوع للطلبات النشطة</button>
+      </div>
+    );
+  }
+
   const readOnly = flow.lifecycle !== "open" || !!lockError;
 
   return (
@@ -174,11 +184,6 @@ export const EditOrderPage: React.FC = () => {
         <div role="alert" style={{ display: "flex", gap: 8, alignItems: "center", padding: 12, borderRadius: radius.lg, background: colors.semantic.warningBg, border: `1px solid ${colors.semantic.warningBorder}` }}>
           <Lock size={16} aria-hidden /> <span style={{ flex: 1 }}>{lockError}</span>
           <button type="button" onClick={() => void acquireLock()} style={{ ...iconButton, width: "auto", padding: "0 12px" }}>إعادة المحاولة</button>
-        </div>
-      )}
-      {requirements.supervisor && (
-        <div role="status" style={{ padding: 12, borderRadius: radius.lg, background: colors.semantic.warningBg, border: `1px solid ${colors.semantic.warningBorder}`, fontSize: typography.size.sm }}>
-          الطلب مدفوع — تعديل الأصناف بيخلي المبلغ ما يطابق التحويل، فبيحتاج {isSupervisor ? "سبب واضح" : "صلاحية مشرف"}.
         </div>
       )}
 
@@ -249,8 +254,8 @@ export const EditOrderPage: React.FC = () => {
       </section>
 
       <footer style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <button type="button" onClick={save} disabled={readOnly || saving || blockedForRole || (!diff.changed && !notesChanged)}
-          style={{ height: 44, padding: "0 24px", borderRadius: radius.md, border: "none", background: colors.brand[600], color: "#fff", fontWeight: typography.weight.bold, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8, opacity: readOnly || blockedForRole || (!diff.changed && !notesChanged) ? 0.5 : 1 }}>
+        <button type="button" onClick={save} disabled={readOnly || saving || (!diff.changed && !notesChanged)}
+          style={{ height: 44, padding: "0 24px", borderRadius: radius.md, border: "none", background: colors.brand[600], color: "#fff", fontWeight: typography.weight.bold, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8, opacity: readOnly || (!diff.changed && !notesChanged) ? 0.5 : 1 }}>
           {saving && <Loader2 size={16} className="animate-spin" aria-hidden />} حفظ التعديل
         </button>
         <button type="button" onClick={back} style={{ height: 44, padding: "0 18px", borderRadius: radius.md, border: `1px solid ${colors.border.default}`, background: colors.neutral[0], cursor: "pointer", color: colors.neutral[800] }}>إلغاء</button>

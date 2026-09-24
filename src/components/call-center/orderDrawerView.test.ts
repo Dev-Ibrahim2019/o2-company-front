@@ -37,12 +37,13 @@ describe("amountMismatch", () => {
 
 describe("removalRequirements", () => {
   it("قبل التنفيذ والدفع: بدون شروط", () => {
-    expect(removalRequirements("pending", "unpaid")).toEqual({ reason: false, supervisor: false });
-    expect(removalRequirements("scheduled", "unpaid")).toEqual({ reason: false, supervisor: false });
+    expect(removalRequirements("pending", "unpaid")).toEqual({ reason: false, blocked: false });
+    expect(removalRequirements("scheduled", "unpaid")).toEqual({ reason: false, blocked: false });
   });
-  it("بعد التنفيذ: سبب. بعد الدفع: سبب + مشرف", () => {
-    expect(removalRequirements("executed", "unpaid")).toEqual({ reason: true, supervisor: false });
-    expect(removalRequirements("scheduled", "paid")).toEqual({ reason: true, supervisor: true });
+  it("بعد التنفيذ: سبب. المدفوع: ممنوع نهائيًا", () => {
+    expect(removalRequirements("executed", "unpaid")).toEqual({ reason: true, blocked: false });
+    expect(removalRequirements("scheduled", "paid")).toEqual({ reason: false, blocked: true });
+    expect(removalRequirements("executed", "paid")).toEqual({ reason: true, blocked: true });
   });
 });
 

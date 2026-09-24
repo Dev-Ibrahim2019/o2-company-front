@@ -40,12 +40,18 @@ export function amountMismatch(amount: number, remaining: number): boolean {
 }
 
 /**
- * إزالة صنف تحتاج سبب لما الطلب تنفّذ أو انتهى دفعه (نفس قاعدة الباك اند OrderAmendmentService).
- * وبعد الدفع بتحتاج كمان مشرف — الباك اند بيرفض غيره، والواجهة بتنبّه مسبقًا.
+ * قواعد تعديل/إزالة الأصناف (مرآة OrderAmendmentService بالباك اند، اللي بيفرضها فعليًا):
+ * الطلب المدفوع ممنوع تعديله نهائيًا لأي حدا (blocked)، والإزالة بعد التنفيذ بتحتاج سبب.
  */
-export function removalRequirements(execution: FlowExecutionStatus, payment: FlowPaymentState): { reason: boolean; supervisor: boolean } {
-  return { reason: execution === "executed" || payment === "paid", supervisor: payment === "paid" };
+export function isEditBlocked(payment: FlowPaymentState): boolean {
+  return payment === "paid";
 }
+
+export function removalRequirements(execution: FlowExecutionStatus, payment: FlowPaymentState): { reason: boolean; blocked: boolean } {
+  return { reason: execution === "executed", blocked: isEditBlocked(payment) };
+}
+
+export const PAID_EDIT_MESSAGE = "لا يمكن تعديل طلب مدفوع.";
 
 export const MIN_REASON_LENGTH = 3;
 

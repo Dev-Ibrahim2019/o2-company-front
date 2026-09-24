@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Phone, Search, ShoppingCart, Star, MapPin, User,
   Trash2, Save, Package, TrendingUp, Loader2, CheckCircle, Eye,
@@ -193,9 +194,21 @@ export const CallCenterPageWithAside: React.FC = () => {
   const [discountType, setDiscountType] = useState<"AMOUNT" | "PERCENT">("AMOUNT");
   const [orderType, setOrderType] = useState<"takeaway" | "dine_in" | "delivery">("takeaway");
 
+  // ── Target slot: الموظف ضغط على خانة فاضية بلوحة الطلبات النشطة (?slot=N&branch=B) ──
+  // الطلب الجديد بياخد هالخانة (الباك اند بيحجزها بـ slot_number)، ولو انحجزت بنفس اللحظة بياخد أصغر خانة فاضية.
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const targetSlot = Number(searchParams.get("slot")) || null;
+  const targetSlotBranch = Number(searchParams.get("branch")) || null;
+  const clearTargetSlot = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("slot"); next.delete("branch");
+    setSearchParams(next, { replace: true });
+  };
+
   // ── Branch / Delivery / Tax / Scheduling State ──
   const [branches, setBranches] = useState<Branch[]>([]);
-  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
+  const [selectedBranchId, setSelectedBranchId] = useState<number | null>(targetSlotBranch);
   const [deliveryFee, setDeliveryFee] = useState(0);
   const [taxEnabled, setTaxEnabled] = useState(false);
   const [taxRate, setTaxRate] = useState(0);
@@ -698,10 +711,14 @@ export const CallCenterPageWithAside: React.FC = () => {
     }
     setSubmitting(true);
     try {
+      const effectiveBranchId = selectedBranchId ?? getBranchId() ?? 1;
+      // رقم الخانة بيخص فرعها بس — لو الموظف غيّر الفرع بصفحة الطلب، الطلب بياخد أصغر خانة فاضية بفرعه
+      const slotForThisOrder = targetSlot && targetSlotBranch === effectiveBranchId ? targetSlot : undefined;
       const payload = {
-        branch_id: selectedBranchId ?? getBranchId() ?? 1,
+        branch_id: effectiveBranchId,
         order_type: orderType,
         source: "call_center",
+        slot_number: slotForThisOrder,
         customer_id: customer?.id,
         customer_name: customerName || customer?.name,
         customer_phone: customerPhone || phone,
@@ -721,8 +738,17 @@ export const CallCenterPageWithAside: React.FC = () => {
       };
       const res = await api.post("/orders", payload);
       const orderNumber = res.data?.data?.order_number || res.data?.order_number;
+      const savedSlot: number | null = res.data?.data?.slot_number ?? null;
 
-      toast.success("تم حفظ الطلب بنجاح", `رقم الطلب: ${orderNumber}`);
+      toast.success("تم حفظ الطلب بنجاح", `رقم الطلب: ${orderNumber}${savedSlot ? ` — خانة ${savedSlot}` : ""}`);
+      if (slotForThisOrder) {
+        if (savedSlot !== slotForThisOrder) {
+          toast.warning(`الخانة ${slotForThisOrder} انحجزت لطلب تاني`, savedSlot ? `الطلب أخد الخانة ${savedSlot}` : "الطلب بالطابور لحد ما تفرغ خانة");
+        }
+        // الموظف جاي من لوحة الخانات — منرجّعه عليها يشوف الطلب بخانته
+        navigate("/call-center/active-orders");
+        return;
+      }
       clearCart();
       setInvoiceNote("");
       setDiscountValue(0);
@@ -778,6 +804,18 @@ export const CallCenterPageWithAside: React.FC = () => {
           .cc-scroll-col { overflow-y: auto; }
         }
       `}</style>
+
+      {targetSlot && (
+        <div role="status" className="flex items-center justify-center gap-3 border-b px-3 py-2 text-sm" style={{ background: colors.semantic.successBg, borderColor: colors.semantic.successBorder, color: colors.neutral[800] }}>
+          <span>
+            طلب جديد للخانة <strong dir="ltr">{targetSlot}</strong>
+            {targetSlotBranch && selectedBranchId && targetSlotBranch !== selectedBranchId && " — غيّرت الفرع، فالطلب رح ياخد أول خانة فاضية بالفرع الجديد"}
+          </span>
+          <button type="button" onClick={clearTargetSlot} className="rounded-md border px-2 py-0.5 text-xs" style={{ borderColor: colors.border.default, background: colors.neutral[0] }}>
+            إلغاء الخانة
+          </button>
+        </div>
+      )}
 
       {/* ══════════════════════════════════════════════════════════════════
           STICKY CUSTOMER INFO BAR — Transparent pill overlay on scroll.

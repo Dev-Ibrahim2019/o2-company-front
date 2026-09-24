@@ -49,9 +49,13 @@ export function getOrderReference(orderNumber: string): string {
 
 // عملة الكول سنتر: شيكل (₪) — مصدر واحد للتنسيق بدل ما كل صفحة (Active/Closed/Details) تعيد
 // كتابة نفس المنطق بصيغة مختلفة (كانت متفرقة بين "د.إ" و"₪" حسب الملف).
+// أرقام إنجليزية (0-9) دائمًا — مش عربية (٠-٩) — عشان المبالغ تنقرأ وتنمليّ على الهاتف بدون لبس.
 export function formatShekel(amount: number): string {
-  return `₪ ${amount.toLocaleString("ar-EG", { minimumFractionDigits: 2 })}`;
+  return `₪ ${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+
+/** تاريخ/وقت بنص عربي بس بأرقام إنجليزية (nu-latn) — نفس قاعدة الأرقام بصفحات الكول سنتر. */
+export const LATIN_DIGITS_LOCALE = "ar-EG-u-nu-latn";
 
 // مصدر الحقيقة الوحيد لـ Active/Closed بالفرونت — نفس قاعدة CallCenterService::determineLifecycle
 // بالباك اند بالضبط (مكرّرة هون لأن صفحة تفاصيل الطلب تحتاجها فورًا من بيانات order اللي وصلت

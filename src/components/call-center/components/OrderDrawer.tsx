@@ -8,13 +8,12 @@ import {
 import { colors, typography, radius, shadows } from "../design/tokens";
 import { toast } from "../../shared/Toast";
 import { ConfirmModal } from "../../shared/ConfirmModal";
-import { useAuth } from "../../../auth/AuthContext";
 import { orderService, type OrderActivityLogEntry } from "../../../services/orderService";
 import { callCenterService, type OrderDetail, type OrderFlow, type OrderFlowTicket } from "../services/callCenterService";
-import { formatShekel, getOrderReference } from "../activeOrdersView";
+import { LATIN_DIGITS_LOCALE, formatShekel, getOrderReference } from "../activeOrdersView";
 import { formatCountdown } from "../slotBoardView";
 import {
-  MIN_REASON_LENGTH, formatAddress, fromLocalDateTimeInput, removalRequirements, toLocalDateTimeInput,
+  MIN_REASON_LENGTH, PAID_EDIT_MESSAGE, formatAddress, fromLocalDateTimeInput, removalRequirements, toLocalDateTimeInput,
 } from "../orderDrawerView";
 import { TransferPaymentForm } from "./TransferPaymentForm";
 
@@ -22,8 +21,6 @@ import { TransferPaymentForm } from "./TransferPaymentForm";
 // ORDER DRAWER — تفاصيل الطلب بلوحة جانبية (مش صفحة كاملة) عشان الخانات تضل قدام الموظف. الأزرار
 // بتتفعّل حسب حالة الطلب، والإغلاق (F7) بيضل معطّل وبيوضّح شو الناقص لحد ما يصير مدفوع ومنفّذ.
 // ============================================================================
-
-const SUPERVISOR_ROLES = ["call-center-manager", "super-admin", "branch-manager", "accountant"];
 
 const sectionTitle: React.CSSProperties = { fontSize: "12px", fontWeight: typography.weight.bold, color: colors.neutral[500], marginBottom: 6 };
 const card: React.CSSProperties = { padding: 12, borderRadius: radius.lg, background: colors.neutral[0], border: `1px solid ${colors.border.subtle}` };
@@ -43,7 +40,7 @@ const Chip: React.FC<{ label: string; tone: "success" | "warning" | "neutral" | 
   return <span style={{ padding: "3px 10px", borderRadius: radius.full, fontSize: "11px", fontWeight: typography.weight.bold, background: map[tone][0], color: map[tone][1] }}>{label}</span>;
 };
 
-const formatDateTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString("ar-EG", { dateStyle: "short", timeStyle: "short" }) : "");
+const formatDateTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString(LATIN_DIGITS_LOCALE, { dateStyle: "short", timeStyle: "short" }) : "");
 
 const TicketRow: React.FC<{ ticket: OrderFlowTicket; onReprint: (id: number) => void; busy: boolean }> = ({ ticket, onReprint, busy }) => (
   <li style={{ listStyle: "none", display: "flex", alignItems: "center", gap: 8, justifyContent: "space-between", padding: "6px 0", borderBottom: `1px dashed ${colors.border.subtle}` }}>
@@ -75,8 +72,6 @@ export const OrderDrawer: React.FC<{
   onChanged: () => void;
 }> = ({ orderId, slotNumber, onClose, onChanged }) => {
   const navigate = useNavigate();
-  const { hasRole } = useAuth();
-  const isSupervisor = SUPERVISOR_ROLES.some(r => hasRole(r));
 
   const [details, setDetails] = useState<OrderDetail | null>(null);
   const [flow, setFlow] = useState<OrderFlow | null>(null);
@@ -203,8 +198,9 @@ export const OrderDrawer: React.FC<{
     onClose();
   }, "فشل إلغاء الطلب");
 
-  const requirements = flow ? removalRequirements(flow.execution_status, flow.payment_state) : { reason: false, supervisor: false };
-  const removalBlockedForRole = requirements.supervisor && !isSupervisor;
+  // الطلب المدفوع ممنوع تعديله: أزرار التعديل والإزالة بتختفي كليًا (والباك اند بيرفض كمان)
+  const requirements = flow ? removalRequirements(flow.execution_status, flow.payment_state) : { reason: false, blocked: true };
+  const canEditItems = open && !requirements.blocked;
 
   const doRemove = () => {
     if (!removeTarget) return;
@@ -294,9 +290,8 @@ export const OrderDrawer: React.FC<{
                     {item.notes && <span style={{ display: "block", fontSize: "11px", color: colors.semantic.warning }}>{item.notes}</span>}
                   </span>
                   <span style={{ fontSize: typography.size.sm, color: colors.neutral[600] }}>{formatShekel(item.total)}</span>
-                  {open && activeItems.length > 1 && (
+                  {canEditItems && activeItems.length > 1 && (
                     <button type="button" onClick={() => { setRemoveTarget({ id: item.id, name: item.item_name_ar || item.item_name || "" }); setRemoveReason(""); }}
-                      disabled={removalBlockedForRole} title={removalBlockedForRole ? "بعد الدفع إزالة الأصناف للمشرف فقط" : undefined}
                       aria-label={`إزالة ${item.item_name_ar || item.item_name}`} style={{ ...ghostButton, width: 32, height: 32, padding: 0, color: colors.semantic.error }}>
                       <Trash2 size={14} aria-hidden />
                     </button>
@@ -312,14 +307,16 @@ export const OrderDrawer: React.FC<{
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontWeight: typography.weight.extrabold }}>
               <span>الإجمالي</span><span>{formatShekel(details.total)}</span>
             </div>
-            {removeTarget && (
+            {open && requirements.blocked && (
+              <p style={{ fontSize: "11px", color: colors.neutral[500], marginTop: 6 }}>{PAID_EDIT_MESSAGE}</p>
+            )}
+            {removeTarget && canEditItems && (
               <div style={{ marginTop: 10, padding: 10, borderRadius: radius.md, background: colors.semantic.errorBg, border: `1px solid ${colors.semantic.errorBorder}` }}>
                 <div style={{ fontSize: typography.size.sm, fontWeight: typography.weight.bold, marginBottom: 6 }}>إزالة «{removeTarget.name}»</div>
-                {requirements.supervisor && <p style={{ fontSize: "12px", marginBottom: 6 }}>بعد الدفع المبلغ ما عاد يطابق التحويل — بيظهر تحذير بالفرق.</p>}
                 <label htmlFor="remove-reason" style={{ fontSize: "12px" }}>{requirements.reason ? "السبب (إلزامي)" : "السبب (اختياري)"}</label>
                 <input id="remove-reason" value={removeReason} onChange={e => setRemoveReason(e.target.value)} maxLength={500}
                   style={{ width: "100%", height: 36, padding: "0 10px", borderRadius: radius.md, border: `1px solid ${colors.border.default}`, marginBottom: 8 }} />
-                {requirements.reason && !requirements.supervisor && <p style={{ fontSize: "11px", marginBottom: 6 }}>بعد التنفيذ بتطلع تذكرة إلغاء للقسم المعني.</p>}
+                {requirements.reason && <p style={{ fontSize: "11px", marginBottom: 6 }}>بعد التنفيذ بتطلع تذكرة إلغاء للقسم المعني.</p>}
                 <div style={{ display: "flex", gap: 8 }}>
                   <button type="button" onClick={doRemove} disabled={busy === "remove"} style={solidButton(colors.semantic.error)}>{busy === "remove" && <Loader2 size={14} className="animate-spin" aria-hidden />} تأكيد الإزالة</button>
                   <button type="button" onClick={() => setRemoveTarget(null)} style={ghostButton}>تراجع</button>
@@ -334,7 +331,7 @@ export const OrderDrawer: React.FC<{
               <div style={{ display: "flex", alignItems: "center", gap: 6, color: colors.semantic.success, fontWeight: typography.weight.bold }}><CreditCard size={16} aria-hidden /> تم الدفع</div>
             ) : open ? (
               showPayment
-                ? <TransferPaymentForm order={details} onCancel={() => setShowPayment(false)} onPaid={() => { setShowPayment(false); void refreshAll(); }} />
+                ? <TransferPaymentForm order={details} onCancel={() => setShowPayment(false)} onPaid={() => { setShowPayment(false); void refreshAll(); }} onFailed={() => { void load(); }} />
                 : <button type="button" onClick={() => setShowPayment(true)} style={solidButton(colors.brand[600])}><CreditCard size={15} aria-hidden /> تسجيل دفع بنكي</button>
             ) : <span style={{ color: colors.neutral[500], fontSize: typography.size.sm }}>غير مدفوع</span>}
           </section>
@@ -398,7 +395,9 @@ export const OrderDrawer: React.FC<{
 
           {open && (
             <footer style={{ position: "sticky", bottom: 0, background: colors.surface.raised, paddingBlock: 10, display: "flex", gap: 8, flexWrap: "wrap", borderTop: `1px solid ${colors.border.subtle}` }}>
-              <button type="button" onClick={() => navigate(`/call-center/order/${orderId}/edit`)} style={ghostButton}><Pencil size={14} aria-hidden /> تعديل</button>
+              {canEditItems && (
+                <button type="button" onClick={() => navigate(`/call-center/order/${orderId}/edit`)} style={ghostButton}><Pencil size={14} aria-hidden /> تعديل</button>
+              )}
               <button type="button" onClick={() => setConfirmClose(true)} disabled={!flow.ready_to_close}
                 aria-describedby="close-help" style={{ ...solidButton(colors.semantic.success), opacity: flow.ready_to_close ? 1 : 0.5, flex: 1 }}>
                 <Flame size={14} aria-hidden /> إغلاق الطلب (F7)

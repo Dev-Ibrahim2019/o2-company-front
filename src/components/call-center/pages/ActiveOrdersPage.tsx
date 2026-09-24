@@ -54,6 +54,7 @@ export const ActiveOrdersPage: React.FC = () => {
   const canManageSlotCapacity = hasRole("call-center-manager") || hasRole("super-admin") || hasRole("branch-manager");
   const canAssignDriver = agentCan("call-center.assign-driver", hasRole, hasPermission);
   const canChangeStatus = agentCan("call-center.change-order-status", hasRole, hasPermission);
+  const canCreateOrder = agentCan("call-center.create-order", hasRole, hasPermission);
   const [orders, setOrders] = useState<Record<ActiveOrderScope, ActiveCallCenterOrder[]>>(emptyGroups());
   const [drivers, setDrivers] = useState<EmployeeFromApi[]>([]);
   const [loading, setLoading] = useState(true);
@@ -394,6 +395,7 @@ export const ActiveOrdersPage: React.FC = () => {
               branchId={slotsBranchId}
               density={density}
               canManageCapacity={canManageSlotCapacity}
+              canCreateOrder={canCreateOrder}
             />
           ) : (
             <p role="status" style={{ fontSize: typography.size.sm, color: colors.neutral[500], padding: "40px 0", textAlign: "center" }}>

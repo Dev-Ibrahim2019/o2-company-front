@@ -57,14 +57,11 @@ export function diffLines(lines: EditLine[]): EditDiff {
 }
 
 /**
- * متى بيلزم سبب/مشرف — نفس OrderAmendmentService: إزالة بعد التنفيذ = سبب؛ أي تغيير بالأصناف بعد
- * الدفع = سبب + مشرف (المبلغ ما عاد يطابق التحويل).
+ * نفس OrderAmendmentService: الطلب المدفوع ممنوع تعديله نهائيًا (blocked)، والإزالة بعد التنفيذ بتحتاج سبب.
  */
-export function editRequirements(diff: EditDiff, execution: FlowExecutionStatus, payment: FlowPaymentState): { reason: boolean; supervisor: boolean } {
-  if (!diff.changed) return { reason: false, supervisor: false };
-  const paidChange = payment === "paid";
-  const removalNeedsReason = diff.hasRemovals && removalRequirements(execution, "unpaid").reason;
-  return { reason: paidChange || removalNeedsReason, supervisor: paidChange };
+export function editRequirements(diff: EditDiff, execution: FlowExecutionStatus, payment: FlowPaymentState): { reason: boolean; blocked: boolean } {
+  const { reason, blocked } = removalRequirements(execution, payment);
+  return { reason: diff.hasRemovals && reason, blocked };
 }
 
 /** تقدير الإجمالي بالأسعار المعروضة (بدون خصومات المحرك) — الإجمالي الفعلي بيحسبه الباك اند بعد الحفظ. */

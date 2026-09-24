@@ -193,13 +193,10 @@ describe("getOrderReference — رقم قصير للواجهة بدون تغيي
 });
 
 describe("formatShekel — مصدر واحد لتنسيق العملة", () => {
-  it("يعرض الرمز ₪ قبل المبلغ بمنزلتين عشريتين (أرقام ar-EG، نفس اتفاقية باقي المشروع)", () => {
-    expect(formatShekel(150)).toBe("₪ " + (150).toLocaleString("ar-EG", { minimumFractionDigits: 2 }));
-  });
-
-  it("لا يغيّر قيمة المبلغ نفسها، فقط طريقة عرضه — يطابق toLocaleString لنفس الرقم", () => {
-    const amount = 1234.5;
-    expect(formatShekel(amount)).toBe("₪ " + amount.toLocaleString("ar-EG", { minimumFractionDigits: 2 }));
+  it("يعرض الرمز ₪ قبل المبلغ بمنزلتين عشريتين وبأرقام إنجليزية (مش ٠-٩)", () => {
+    expect(formatShekel(150)).toBe("₪ 150.00");
+    expect(formatShekel(1234.5)).toBe("₪ 1,234.50");
+    expect(formatShekel(1234.5)).not.toMatch(/[٠-٩]/);
   });
 });
 

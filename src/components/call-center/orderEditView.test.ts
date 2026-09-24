@@ -52,19 +52,17 @@ describe("editRequirements — مرآة قواعد الباك اند", () => {
   const addition = diffLines([{ itemId: 2, name: "b", price: 1, quantity: 1, notes: null, original: 0 }]);
 
   it("قبل التنفيذ والدفع: حر بدون شروط", () => {
-    expect(editRequirements(removal, "pending", "unpaid")).toEqual({ reason: false, supervisor: false });
-    expect(editRequirements(addition, "pending", "unpaid")).toEqual({ reason: false, supervisor: false });
+    expect(editRequirements(removal, "pending", "unpaid")).toEqual({ reason: false, blocked: false });
+    expect(editRequirements(addition, "pending", "unpaid")).toEqual({ reason: false, blocked: false });
   });
-  it("إزالة بعد التنفيذ: سبب. إضافة بعد التنفيذ بلا دفع: حرة", () => {
-    expect(editRequirements(removal, "executed", "unpaid")).toEqual({ reason: true, supervisor: false });
-    expect(editRequirements(addition, "executed", "unpaid")).toEqual({ reason: false, supervisor: false });
+  it("إزالة بعد التنفيذ: سبب. إضافة بعد التنفيذ: بدون سبب", () => {
+    expect(editRequirements(removal, "executed", "unpaid")).toEqual({ reason: true, blocked: false });
+    expect(editRequirements(addition, "executed", "unpaid")).toEqual({ reason: false, blocked: false });
   });
-  it("أي تغيير بعد الدفع: سبب + مشرف", () => {
-    expect(editRequirements(addition, "pending", "paid")).toEqual({ reason: true, supervisor: true });
-    expect(editRequirements(removal, "executed", "paid")).toEqual({ reason: true, supervisor: true });
-  });
-  it("بدون تغيير: لا شي مطلوب", () => {
-    expect(editRequirements(diffLines([]), "executed", "paid")).toEqual({ reason: false, supervisor: false });
+  it("الطلب المدفوع ممنوع تعديله أيًا كان التغيير", () => {
+    expect(editRequirements(addition, "pending", "paid").blocked).toBe(true);
+    expect(editRequirements(removal, "executed", "paid").blocked).toBe(true);
+    expect(editRequirements(diffLines([]), "executed", "paid").blocked).toBe(true);
   });
 });
 

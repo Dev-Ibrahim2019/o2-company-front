@@ -3,7 +3,6 @@ import { AlertTriangle, Landmark, Loader2 } from "lucide-react";
 import { colors, typography, radius } from "../design/tokens";
 import { toast } from "../../shared/Toast";
 import { settlementService, type PaymentMethodDto } from "../../../services/settlementService";
-import { orderService } from "../../../services/orderService";
 import { callCenterService, type OrderDetail } from "../services/callCenterService";
 import { formatShekel } from "../activeOrdersView";
 import { MAX_RECEIPT_BYTES, amountMismatch, todayDateInput, transferIdempotencyKey } from "../orderDrawerView";
@@ -11,6 +10,10 @@ import { MAX_RECEIPT_BYTES, amountMismatch, todayDateInput, transferIdempotencyK
 // دفع بحوالة بنكية برقم مرجعي: المرجع والطريقة (البنك) والمبلغ إلزاميين، والتاريخ واسم البنك وصورة الإشعار
 // اختيارية. تكرار المرجع بيرفضه الباك اند (409) برسالة بتقول أي طلب استخدمه — بنعرضها تحت الحقل مباشرة.
 // إعادة الإرسال بنفس البيانات آمنة: مفتاح الـidempotency حتمي (راجع transferIdempotencyKey).
+//
+// الفاتورة بتنشأ بالباك اند جوّا نفس transaction الدفع (بعد فحص الرقم المرجعي) — مش من هون بطلب منفصل.
+// قبل هيك محاولة فاشلة (مرجع مكرر) كانت تخلّي فاتورة محفوظة بينما order.invoice بالواجهة لسا null،
+// فالمحاولة الجاية كانت تفشل بـ"يوجد فاتورة مسبقة لهذا الطلب" لحد ما تعيد تحميل الصفحة.
 
 const inputStyle = (invalid = false): React.CSSProperties => ({
   width: "100%", height: 40, padding: "0 12px", borderRadius: radius.md, fontSize: typography.size.sm,
@@ -23,7 +26,9 @@ export const TransferPaymentForm: React.FC<{
   order: OrderDetail;
   onPaid: () => void;
   onCancel: () => void;
-}> = ({ order, onPaid, onCancel }) => {
+  /** بعد محاولة فاشلة — الأم بتعيد جلب الطلب عشان المتبقي/الفاتورة يكونوا محدّثين للمحاولة الجاية */
+  onFailed?: () => void;
+}> = ({ order, onPaid, onCancel, onFailed }) => {
   const uid = useId();
   const remaining = order.invoice?.remaining_amount ?? order.invoice?.total ?? order.total;
 
@@ -66,12 +71,6 @@ export const TransferPaymentForm: React.FC<{
 
     setBusy(true);
     try {
-      if (!order.invoice) {
-        await orderService.createInvoiceFromOrder(order.id, {
-          customer_name: order.customer_name || undefined,
-          customer_phone: order.customer_phone || undefined,
-        });
-      }
       const res = await callCenterService.confirmTransfer(order.id, {
         reference_number: reference.trim(),
         payment_method_id: Number(methodId),
@@ -89,6 +88,7 @@ export const TransferPaymentForm: React.FC<{
       if (err?.response?.status === 409) setReferenceError(message);
       else setFormError(message);
       toast.error("فشل تسجيل الدفعة", message);
+      onFailed?.();
     } finally {
       setBusy(false);
     }

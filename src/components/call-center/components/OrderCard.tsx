@@ -4,7 +4,7 @@ import { colors, typography, radius, shadows, transitions } from "../design/toke
 import type { ActiveCallCenterOrder } from "../services/callCenterService";
 import type { EmployeeFromApi } from "../../../services/employeeService";
 import {
-  getOrderReference, formatShekel, derivePaymentStatus, PAYMENT_STATUS_LABELS,
+  getOrderReference, formatShekel, LATIN_DIGITS_LOCALE, derivePaymentStatus, PAYMENT_STATUS_LABELS,
   deriveWorkflowStage, getOrderSlaLevel, getDelayMinutes, getOrderDelayReferenceTime, WORKFLOW_STAGE_COLORS,
 } from "../activeOrdersView";
 import { OrderStatusBadge, DelayIndicator } from "./OrderStatusBadge";
@@ -13,7 +13,7 @@ export type CardDensity = "compact" | "normal" | "large";
 
 const ORDER_TYPE_MAP: Record<string, string> = { dine_in: "محلي", takeaway: "فوري", delivery: "توصيل" };
 
-const formatTime = (dateStr: string) => new Date(dateStr).toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" });
+const formatTime = (dateStr: string) => new Date(dateStr).toLocaleTimeString(LATIN_DIGITS_LOCALE, { hour: "2-digit", minute: "2-digit" });
 const timeAgo = (dateStr: string) => {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
