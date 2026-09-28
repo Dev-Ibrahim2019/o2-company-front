@@ -1,5 +1,5 @@
-import { Plus, ShieldAlert, ShieldOff } from "lucide-react";
-import { useState } from "react";
+import { Building2, Plus, ShieldAlert, ShieldOff } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../../auth";
 import { CRM_PERMISSIONS } from "../../../auth/permissions";
@@ -10,7 +10,7 @@ import { ComplaintStatusControl } from "../ComplaintStatusControl";
 import { getCrmError } from "../components";
 import type {
   CrmComplaintChannel, CrmComplaintCreateInput, CrmComplaintPriority,
-  CrmComplaintStatus, CrmId,
+  CrmComplaintStatus, CrmComplaintsElsewhere, CrmId,
 } from "../types";
 import {
   COMPLAINT_CHANNEL_LABELS, COMPLAINT_PILL, COMPLAINT_PRIORITY_TONE, COMPLAINT_STATUS_TONE,
@@ -52,6 +52,18 @@ export default function ComplaintsTab() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pendingId, setPendingId] = useState<CrmId | null>(null);
+  // This customer's complaints at other branches — counts only. The rows
+  // themselves stay with their own branch; this just tells the reader the
+  // customer has had problems elsewhere.
+  const [elsewhere, setElsewhere] = useState<CrmComplaintsElsewhere | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    crmApi.complaintsElsewhere(customerId)
+      .then((d) => { if (!cancelled) setElsewhere(d); })
+      .catch(() => { if (!cancelled) setElsewhere(null); });
+    return () => { cancelled = true; };
+  }, [customerId]);
 
   const create = async (targetCustomerId: CrmId | null, data: CrmComplaintCreateInput) => {
     setSaving(true);
@@ -114,19 +126,41 @@ export default function ComplaintsTab() {
         </button>
       )}
 
+      {elsewhere && elsewhere.total > 0 && (
+        <div
+          role="note"
+          className="flex items-start gap-2.5 rounded-xl border border-[var(--crmx-warning-soft)] bg-[var(--crmx-warning-soft)] px-4 py-3 text-[13px] text-[var(--crmx-warning-text)]"
+        >
+          <Building2 className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            <span className="font-bold">
+              لهذا العميل {elsewhere.total} {elsewhere.total === 1 ? "شكوى" : "شكاوى"} في فروع أخرى
+              {elsewhere.open > 0 ? ` (${elsewhere.open} مفتوحة)` : ""}
+            </span>
+            {elsewhere.branches.some((b) => b.branch_name) && (
+              <> — {elsewhere.branches.filter((b) => b.branch_name).map((b) => `${b.branch_name}: ${b.count}`).join("، ")}</>
+            )}
+            {elsewhere.last_at && <> · آخرها {date(elsewhere.last_at)}</>}
+            . تفاصيلها لدى الفرع المعني.
+          </p>
+        </div>
+      )}
+
       <SectionFrame state={state}>
         {(d) => (
           <DomainTable
             empty="لا توجد شكاوى مسجلة"
+            viewKey="customer-complaints"
             rows={unwrapRows(d, ["complaints"])}
             // Opens the full complaint page — one screen, so a complaint reads
             // and is worked identically wherever it is opened from.
             onRowClick={(row) => navigate(`/admin/crm/complaints/${row.id as CrmId}`)}
             columns={[
-              { key: "id", label: "رقم الشكوى", render: (v, r) => text(v ?? r.code) },
+              { key: "id", label: "رقم الشكوى", card: "subtitle", render: (v, r) => `#${text(v ?? r.code)}` },
               {
                 key: "title",
                 label: "الموضوع",
+                card: "title",
                 render: (v, r) => (
                   <span className="inline-flex items-center gap-2">
                     {text(v ?? r.subject)}
@@ -150,6 +184,7 @@ export default function ComplaintsTab() {
               {
                 key: "priority",
                 label: "الأولوية",
+                card: "badge",
                 render: (v) => {
                   const entry = COMPLAINT_PRIORITY_TONE[v as CrmComplaintPriority];
                   return entry ? <span className={`${COMPLAINT_PILL} ${entry.tone}`}>{entry.label}</span> : text(v);
@@ -158,6 +193,7 @@ export default function ComplaintsTab() {
               {
                 key: "status",
                 label: "الحالة",
+                card: "badge",
                 render: (v) => {
                   const entry = COMPLAINT_STATUS_TONE[v as CrmComplaintStatus];
                   return entry ? <span className={`${COMPLAINT_PILL} ${entry.tone}`}>{entry.label}</span> : text(v);
@@ -168,6 +204,7 @@ export default function ComplaintsTab() {
                 ? [{
                     key: "status_action",
                     label: "تغيير الحالة",
+                    card: "actions" as const,
                     render: (_v: unknown, r: Record<string, unknown>) => (
                       <ComplaintStatusControl
                         compact
@@ -182,6 +219,7 @@ export default function ComplaintsTab() {
                 ? [{
                     key: "is_sensitive",
                     label: "التصنيف",
+                    card: "actions" as const,
                     render: (v: unknown, r: Record<string, unknown>) => {
                       const sensitive = Boolean(v);
                       const id = r.id as CrmId;

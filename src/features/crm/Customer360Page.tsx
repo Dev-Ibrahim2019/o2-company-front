@@ -226,7 +226,10 @@ export function Customer360Page() {
           the fourth slot is not dropped from the product — it remains on the
           Financial tab, which is the only place it is permission-gated
           anyway. */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      {/* Profile card full width until lg, the four KPIs two-by-two beside
+          or under it — one KPI per row used to take a whole phone screen. */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-5">
+        <div className="col-span-2 lg:col-span-1 [&>*]:h-full">
         <CrmProfileCard
           group={identity.group ? { id: identity.group.id, name: identity.group.name } : null}
           name={identity.name}
@@ -237,6 +240,7 @@ export function Customer360Page() {
           email={identity.email}
           editHref={`/admin/crm/customers/${customer.id}/edit`}
         />
+        </div>
         <CrmKpiCard
             icon={<CalendarClock className="h-5 w-5" />}
             label="آخر طلب"
@@ -254,6 +258,9 @@ export function Customer360Page() {
             icon={<Award className="h-5 w-5" />}
             label="إجمالي الطلبات"
             value={num(summary.orders_count)}
+            // Cancelled orders are not in the purchase totals — shown here
+            // instead, since frequent cancelling says something about the customer.
+            hint={summary.cancelled_orders_count ? `منها ${num(summary.cancelled_orders_count)} ملغى` : undefined}
             tone="success"
         />
         <CrmKpiCard
@@ -267,7 +274,7 @@ export function Customer360Page() {
       <CustomerFacts customer={customer} />
 
       {/* ── Tabs ── */}
-      <div className="flex flex-wrap gap-1.5 border-b border-[var(--crmx-border)] pb-0.5">
+      <div className="crmx-scrollbar -mx-4 flex gap-1.5 overflow-x-auto border-b border-[var(--crmx-border)] px-4 pb-0.5 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
         {TABS.filter(([key]) => (key !== "financial" || canFinancial) && (key !== "loyalty" || canLoyalty)).map(([key, label]) => {
           const count = key === "orders" ? summary.orders_count : key === "complaints" ? summary.open_complaints_count : undefined;
           return (
@@ -281,7 +288,7 @@ export function Customer360Page() {
               // the catch-all and renders "القسم غير موجود".
               to={`/admin/crm/customers/${customer.id}/${key}`}
               className={({ isActive }) =>
-                `rounded-t-xl px-4 py-2.5 text-[14px] font-bold transition-colors ${
+                `shrink-0 whitespace-nowrap rounded-t-xl px-4 py-2.5 text-[14px] font-bold transition-colors ${
                   isActive
                     ? "border-b-2 border-[var(--crmx-primary)] text-[var(--crmx-primary-text)]"
                     : "text-[var(--crmx-text-secondary)] hover:text-[var(--crmx-text)]"

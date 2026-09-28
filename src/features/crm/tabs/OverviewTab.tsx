@@ -1,13 +1,13 @@
-import { ArrowLeft, ChevronLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { CrmState } from "../components";
-import { CrmFavoriteProductsChart, CrmOrderDetailsModal, CrmPurchaseHistoryChart, CrmStatusBadge } from "../customers-ui";
-import { CRM_ORDER_SOURCE_LABELS } from "../customers-ui/sourceOptions";
+import { CrmDataView, CrmFavoriteProductsChart, CrmOrderDetailsModal, CrmPurchaseHistoryChart, CrmViewToggle, useCrmViewMode } from "../customers-ui";
 import type { CrmOrderRow } from "../types";
-import { date, money, SectionFrame, text, unwrapRows, useCrmSection } from "./shared";
+import { customerOrderColumns } from "./orderColumns";
+import { SectionFrame, unwrapRows, useCrmSection } from "./shared";
 
-const TH = "px-4 py-3 text-[12px] font-bold text-[var(--crmx-text-secondary)] whitespace-nowrap";
+const RECENT_ORDER_COLUMNS = customerOrderColumns.filter((c) => c.key !== "rating" && c.key !== "has_complaint");
 
 /**
  * "آخر 5 طلبات" — the mockup's bottom panel. Same columns as the full Orders
@@ -27,11 +27,13 @@ function RecentOrders() {
   // OrdersTab.tsx's own doc comment on why a row from this endpoint is a
   // real CrmOrderRow now, not the loose shape this used to read.
   const [modalOrder, setModalOrder] = useState<CrmOrderRow | null>(null);
+  const [mode, setMode] = useCrmViewMode("customer-recent-orders");
 
   return (
     <div className="rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)]">
-      <div className="flex items-center justify-between border-b border-[var(--crmx-border)] px-5 py-4">
+      <div className="flex items-center justify-between gap-3 border-b border-[var(--crmx-border)] px-5 py-4">
         <h3 className="text-[15px] font-bold text-[var(--crmx-text)]">آخر 5 طلبات</h3>
+        <CrmViewToggle mode={mode} onChange={setMode} />
       </div>
       <SectionFrame state={state} empty="لا توجد طلبات مسجلة لهذا العميل">
         {(data) => {
@@ -47,52 +49,15 @@ function RecentOrders() {
           }
           return (
             <>
-              <div className="crmx-scrollbar overflow-x-auto">
-                <table className="w-full min-w-[640px] border-collapse text-right">
-                  <thead>
-                    <tr className="border-b border-[var(--crmx-border)] bg-[#FAFBFC]">
-                      <th className="w-8"></th>
-                      <th className={TH}>رقم الطلب</th>
-                      <th className={TH}>تاريخ الطلب</th>
-                      <th className={TH}>الحالة</th>
-                      <th className={TH}>الفرع / المصدر</th>
-                      <th className={TH}>الإجمالي</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r, i) => {
-                      const id = r.id as string | number | undefined;
-                      const branchName = text(r.branch_name ?? (r.branch as { name?: unknown })?.name);
-                      const source = r.source ? CRM_ORDER_SOURCE_LABELS[String(r.source)] || String(r.source) : null;
-                      return (
-                        <tr
-                          key={String(r.id ?? i)}
-                          onClick={() => id != null && setModalOrder(r as unknown as CrmOrderRow)}
-                          tabIndex={id != null ? 0 : undefined}
-                          role={id != null ? "button" : undefined}
-                          aria-haspopup={id != null ? "dialog" : undefined}
-                          onKeyDown={(e) => {
-                            if ((e.key === "Enter" || e.key === " ") && id != null) { e.preventDefault(); setModalOrder(r as unknown as CrmOrderRow); }
-                          }}
-                          className="crmx-table-row cursor-pointer border-b border-[var(--crmx-border)] transition-colors focus:outline-none last:border-0"
-                        >
-                          <td className="px-2 text-center">
-                            <ChevronLeft className="mx-auto h-4 w-4 text-[var(--crmx-text-muted)]" aria-hidden />
-                          </td>
-                          <td className="px-4 py-3 text-[13px] font-semibold text-[var(--crmx-text)]" dir="ltr">{text(r.number ?? r.order_number ?? r.code)}</td>
-                          <td className="px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]">{date(r.created_at)}</td>
-                          <td className="px-4 py-3"><CrmStatusBadge value={String(r.status ?? "")} /></td>
-                          <td className="px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]">
-                            {branchName}
-                            {source && <span className="text-[var(--crmx-text-muted)]"> · {source}</span>}
-                          </td>
-                          <td className="px-4 py-3 text-[13px] font-bold text-[var(--crmx-text)]">{money(r.total)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <CrmDataView
+                rows={rows}
+                columns={RECENT_ORDER_COLUMNS}
+                rowKey={(r, i) => String(r.id ?? i)}
+                mode={mode}
+                bordered={false}
+                minTableWidth={640}
+                onRowClick={(r) => { if (r.id != null) setModalOrder(r as unknown as CrmOrderRow); }}
+              />
               <div className="border-t border-[var(--crmx-border)] px-5 py-3.5">
                 <Link
                   to={`/admin/crm/customers/${customerId}/orders`}

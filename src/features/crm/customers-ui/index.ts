@@ -23,6 +23,11 @@ export { CrmSwitch } from "./CrmSwitch";
 export { CrmStatusBadge, CrmYesNoBadge, PaymentStatusBadge } from "./CrmStatusBadge";
 export { CRM_OCCASION_OPTIONS } from "./occasionOptions";
 export { CrmTable } from "./CrmTable";
+export { CrmDataView } from "./CrmDataView";
+export type { CrmColumn, CrmCardRole } from "./CrmDataView";
+export { CrmViewToggle } from "./CrmViewToggle";
+export { useCrmViewMode } from "./useCrmViewMode";
+export type { CrmViewMode } from "./useCrmViewMode";
 export { CrmTableSkeleton, CrmToolbarSkeleton } from "./CrmSkeleton";
 export {
   COMPLAINT_TRANSITIONS, COMPLAINT_STATUS_TONE, COMPLAINT_PRIORITY_TONE,

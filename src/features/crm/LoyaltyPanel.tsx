@@ -5,14 +5,15 @@ import { CRM_PERMISSIONS } from "../../auth/permissions";
 import { toast } from "../../components/shared/Toast";
 import { crmApi } from "./api";
 import { CrmState, getCrmError } from "./components";
-import { CrmKpiCard } from "./customers-ui";
-import { date as fmtDate, num } from "./format";
+import { CrmDataView, CrmKpiCard, CrmViewToggle, useCrmViewMode } from "./customers-ui";
+import { num } from "./format";
 import { LoyaltyManualAdjustmentDrawer } from "./LoyaltyManualAdjustmentDrawer";
-import { TXN_STATUS_LABELS, TXN_TYPE_LABELS, TXN_TYPE_TONE } from "./loyaltyLabels";
+import { loyaltyTxnColumns } from "./loyaltyColumns";
 import type { CrmId, CrmLoyaltyOwnerSummary, CrmLoyaltyTransaction } from "./types";
 
 const cardCls = "rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)]";
-const pill = "inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-bold whitespace-nowrap";
+// Each ledger row is the owner's own, so no owner column.
+const PANEL_COLUMNS = loyaltyTxnColumns({ withOwner: false });
 
 /**
  * The loyalty half of a customer or group profile.
@@ -34,6 +35,7 @@ export function LoyaltyPanel({ owner, ownerId }: { owner: "customers" | "groups"
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ status?: number; message: string } | null>(null);
   const [adjustOpen, setAdjustOpen] = useState(false);
+  const [viewMode, setViewMode] = useCrmViewMode(owner === "customers" ? "customer-loyalty" : "group-loyalty");
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -108,45 +110,17 @@ export function LoyaltyPanel({ owner, ownerId }: { owner: "customers" | "groups"
       {rows.length === 0 ? (
         <CrmState kind="empty" title="لا توجد حركات ولاء بعد" />
       ) : (
-        <div className={cardCls}>
-          <div className="crmx-scrollbar overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse text-right">
-              <thead>
-                <tr className="border-b border-[var(--crmx-border)] bg-[#FAFBFC]">
-                  {["النوع", "النقاط", "الحالة", "الطلب", "ملاحظات", "التاريخ"].map((h) => (
-                    <th key={h} className="whitespace-nowrap px-4 py-3.5 text-[12.5px] font-bold text-[var(--crmx-text-secondary)]">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((t) => {
-                  const positive = Number(t.points) >= 0;
-                  return (
-                    <tr key={String(t.id)} className="border-b border-[var(--crmx-border)] last:border-0">
-                      <td className="whitespace-nowrap px-4 py-3">
-                        <span className={`${pill} ${TXN_TYPE_TONE[t.type]}`}>{TXN_TYPE_LABELS[t.type]}</span>
-                      </td>
-                      <td className={`whitespace-nowrap px-4 py-3 text-[13px] font-bold ${positive ? "text-[var(--crmx-success-text)]" : "text-[var(--crmx-danger-text)]"}`}>
-                        {positive ? "+" : ""}{num(Number(t.points))}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-[12.5px] text-[var(--crmx-text-secondary)]">
-                        {TXN_STATUS_LABELS[t.status]}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]">
-                        {t.order?.order_number ?? "—"}
-                      </td>
-                      <td className="max-w-[220px] truncate px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]" title={t.notes ?? undefined}>
-                        {t.notes ?? "—"}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-[12.5px] text-[var(--crmx-text-muted)]">
-                        {fmtDate(t.created_at)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <div className="space-y-2">
+          <div className="flex justify-end">
+            <CrmViewToggle mode={viewMode} onChange={setViewMode} />
           </div>
+          <CrmDataView
+            rows={rows}
+            columns={PANEL_COLUMNS}
+            rowKey={(t) => String(t.id)}
+            mode={viewMode}
+            minTableWidth={720}
+          />
         </div>
       )}
 

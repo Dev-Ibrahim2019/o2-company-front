@@ -65,8 +65,10 @@ export function CrmFavoriteProductsChart() {
       ) : !items?.length ? (
         <ChartEmpty icon={PackageSearch}>لا توجد منتجات مفضلة بعد — تظهر هنا بعد أول طلبات العميل.</ChartEmpty>
       ) : (
-        <div className="flex items-center gap-4">
-          <div className="relative w-[45%] shrink-0">
+        // Donut above its legend on a phone — beside it, the ring needs more
+        // than 45% of a phone-width card and spilled past the card's edge.
+        <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-center">
+          <div className="relative w-full shrink-0 sm:w-[45%]">
             <ResponsiveContainer width="100%" height={210}>
               <PieChart>
                 <Pie data={items} dataKey="quantity_sum" nameKey="item_name_ar" innerRadius={58} outerRadius={88} paddingAngle={3} stroke="none">

@@ -336,12 +336,12 @@ export function CrmOrderExpandedPanel({
                       {order.items.map((item) => (
                         <tr key={item.id}>
                           <td className="px-3.5 py-3">
-                            <p className="truncate text-[14px] font-semibold text-[var(--crmx-text)]">{item.item_name_ar || item.item_name}</p>
+                            <p className="break-words text-[14px] font-semibold text-[var(--crmx-text)]">{item.item_name_ar || item.item_name}</p>
                             {item.notes && <p className="text-[12px] text-[var(--crmx-text-muted)]">{item.notes}</p>}
                           </td>
                           <td className="px-3.5 py-3 text-center text-[13px] text-[var(--crmx-text-secondary)]">{num(item.quantity)}</td>
-                          <td className="px-3.5 py-3 text-[13px] text-[var(--crmx-text-secondary)]">{formatMoney(item.price)}</td>
-                          <td className="px-3.5 py-3 text-[14px] font-bold text-[var(--crmx-text)]">{formatMoney(item.total)}</td>
+                          <td className="whitespace-nowrap px-3.5 py-3 text-[13px] text-[var(--crmx-text-secondary)]">{formatMoney(item.price)}</td>
+                          <td className="whitespace-nowrap px-3.5 py-3 text-[14px] font-bold text-[var(--crmx-text)]">{formatMoney(item.total)}</td>
                         </tr>
                       ))}
                     </tbody>

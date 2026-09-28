@@ -17,14 +17,27 @@ const VALUE_MAP: Record<string, { label: string; tone: Tone }> = {
   important: { label: "مهم", tone: "warning" },
   follow_up: { label: "متابعة", tone: "warning" },
   complaints: { label: "شكاوى", tone: "danger" },
-  // orders.status — see database/migrations/2026_07_03_000001_create_orders_table.php.
-  // Only these 7 values exist; anything else falls back to the raw string.
+  // orders.status — every value the orders_status_check constraint allows
+  // (latest: 2026_12_18_000005_add_closed_status_to_orders_table.php).
+  // Keys are matched lower-cased, so the delivery flow's upper-case values
+  // (DELIVERED, CANCELLED, ...) land here too.
   pending: { label: "قيد الانتظار", tone: "warning" },
+  pending_confirmation: { label: "بانتظار التأكيد", tone: "warning" },
+  pending_payment: { label: "بانتظار الدفع", tone: "warning" },
+  scheduled: { label: "مجدول", tone: "info" },
   confirmed: { label: "مؤكد", tone: "info" },
   in_progress: { label: "قيد التنفيذ", tone: "info" },
+  preparation: { label: "قيد التحضير", tone: "info" },
+  assembling: { label: "قيد التجهيز", tone: "info" },
   ready: { label: "جاهز", tone: "accent" },
+  ready_for_delivery: { label: "جاهز للتوصيل", tone: "accent" },
+  out_for_delivery: { label: "قيد التوصيل", tone: "info" },
   served: { label: "تم التسليم", tone: "success" },
+  delivered: { label: "تم التوصيل", tone: "success" },
   paid: { label: "مدفوع", tone: "success" },
+  closed: { label: "مغلق", tone: "neutral" },
+  cancellation_requested: { label: "طلب إلغاء", tone: "orange" },
+  failed_delivery: { label: "فشل التوصيل", tone: "danger" },
   cancelled: { label: "ملغي", tone: "danger" },
 };
 

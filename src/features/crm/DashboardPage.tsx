@@ -9,11 +9,12 @@ import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { useAuth } from "../../auth";
+import { CRM_PERMISSIONS } from "../../auth/permissions";
 import { crmApi } from "./api";
 import { date as formatDate, num } from "./format";
 import { getCrmError } from "./components";
 import "./customers-ui/crmx.css";
-import { CrmAvatar, CrmKpiCard, CrmPageHeader, CrmStatusBadge } from "./customers-ui";
+import { CrmAvatar, CrmDataView, CrmKpiCard, CrmPageHeader, CrmStatusBadge, CrmViewToggle, useCrmViewMode } from "./customers-ui";
 import type { CrmDashboard, CrmOccasionsSummary, CrmOrderChannel } from "./types";
 
 // Fixed, brand-consistent series colors for the donut — same palette used
@@ -36,8 +37,9 @@ const CHANNEL_META: Record<CrmOrderChannel, { icon: LucideIcon; tone: string }> 
 const OCCASION_BADGE: Record<string, string> = {
   birthday: "bg-[var(--crmx-success-soft)] text-[var(--crmx-success-text)]",
   anniversary: "bg-[var(--crmx-warning-soft)] text-[var(--crmx-warning-text)]",
-  wedding: "bg-[var(--crmx-accent-soft)] text-[var(--crmx-accent-text)]",
   graduation: "bg-[var(--crmx-info-soft)] text-[var(--crmx-info-text)]",
+  company_founding: "bg-[var(--crmx-accent-soft)] text-[var(--crmx-accent-text)]",
+  contract_renewal: "bg-[var(--crmx-orange-soft)] text-[var(--crmx-orange-text)]",
   other: "bg-[var(--crmx-neutral-soft)] text-[var(--crmx-text-secondary)]",
 };
 
@@ -57,7 +59,12 @@ function ChartCard({ title, children, empty }: { title: string; children?: React
 }
 
 export function CrmDashboardPage() {
-  const { user } = useAuth();
+  const { user, hasPermission } = useAuth();
+  // Branch picker/breakdown is a manager tool; without the permission the
+  // backend ignores branch_id and returns no branch list.
+  const canFilterByBranch = hasPermission(CRM_PERMISSIONS.CUSTOMERS_FILTER_BY_BRANCH);
+  const [branchView, setBranchView] = useCrmViewMode("dashboard-branches");
+  const [recentView, setRecentView] = useCrmViewMode("dashboard-recent");
   // Read straight from GET /crm/occasions/summary rather than from the
   // dashboard payload: that endpoint resolves every count through
   // CustomerOccasion::nextOccurrence(), so an annual occasion stored in 1999
@@ -239,17 +246,19 @@ export function CrmDashboardPage() {
 
       <div className="rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-4">
         <div className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1 text-[13px] font-semibold text-[var(--crmx-text-secondary)]">
-            الفرع
-            <select
-              value={filters.branch_id}
-              onChange={(e) => setFilters((v) => ({ ...v, branch_id: e.target.value }))}
-              className="h-11 min-w-[160px] rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
-            >
-              <option value="">جميع الفروع</option>
-              {data?.branches?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
-          </label>
+          {canFilterByBranch && (
+            <label className="flex flex-col gap-1 text-[13px] font-semibold text-[var(--crmx-text-secondary)]">
+              الفرع
+              <select
+                value={filters.branch_id}
+                onChange={(e) => setFilters((v) => ({ ...v, branch_id: e.target.value }))}
+                className="h-11 min-w-[160px] rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
+              >
+                <option value="">جميع الفروع</option>
+                {data?.branches?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </label>
+          )}
           <label className="flex flex-col gap-1 text-[13px] font-semibold text-[var(--crmx-text-secondary)]">
             <span className="flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" /> من</span>
             <input type="date" value={filters.date_from} max={filters.date_to || undefined} onChange={(e) => setFilters((v) => ({ ...v, date_from: e.target.value }))} className={`h-11 rounded-xl border bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:ring-2 focus:ring-[var(--crmx-primary)]/10 ${rangeInvalid ? "border-[var(--crmx-danger)] focus:border-[var(--crmx-danger)]" : "border-[var(--crmx-border)] focus:border-[var(--crmx-primary)]"}`} />
@@ -358,29 +367,23 @@ export function CrmDashboardPage() {
 
       {data && data.branch_breakdown && data.branch_breakdown.length > 0 && (
         <div className="rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-5">
-          <h3 className="mb-3 text-[15px] font-bold text-[var(--crmx-text)]">الإحصائيات حسب الفرع</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[420px] text-[13px]">
-              <thead>
-                <tr className="border-b border-[var(--crmx-border)] text-[12px] font-bold text-[var(--crmx-text-muted)]">
-                  <th className="py-2 text-start">الفرع</th>
-                  <th className="py-2 text-start">العملاء</th>
-                  <th className="py-2 text-start">عملاء جدد بالفترة</th>
-                  <th className="py-2 text-start">الطلبات</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.branch_breakdown.map((b) => (
-                  <tr key={b.branch_id} className="border-b border-[var(--crmx-border)] last:border-0">
-                    <td className="py-2.5 font-semibold text-[var(--crmx-text)]">{b.branch_name}</td>
-                    <td className="py-2.5 text-[var(--crmx-text-secondary)]">{num(b.customers_count)}</td>
-                    <td className="py-2.5 text-[var(--crmx-text-secondary)]">{num(b.new_customers_count)}</td>
-                    <td className="py-2.5 text-[var(--crmx-text-secondary)]">{num(b.orders_count)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h3 className="text-[15px] font-bold text-[var(--crmx-text)]">الإحصائيات حسب الفرع</h3>
+            <CrmViewToggle mode={branchView} onChange={setBranchView} />
           </div>
+          <CrmDataView
+            rows={data.branch_breakdown}
+            rowKey={(b) => b.branch_id}
+            mode={branchView}
+            minTableWidth={420}
+            cardGridClassName="grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-4"
+            columns={[
+              { key: "branch", label: "الفرع", card: "title", cellClassName: "text-[13px] font-semibold", render: (b) => b.branch_name },
+              { key: "customers", label: "العملاء", cellClassName: "text-[13px] text-[var(--crmx-text-secondary)]", render: (b) => num(b.customers_count) },
+              { key: "new", label: "عملاء جدد بالفترة", cellClassName: "text-[13px] text-[var(--crmx-text-secondary)]", render: (b) => num(b.new_customers_count) },
+              { key: "orders", label: "الطلبات", cellClassName: "text-[13px] text-[var(--crmx-text-secondary)]", render: (b) => num(b.orders_count) },
+            ]}
+          />
         </div>
       )}
 
@@ -390,8 +393,8 @@ export function CrmDashboardPage() {
             {loading ? (
               <div className="crmx-skeleton h-[220px] w-full rounded-xl" />
             ) : (
-              <div className="flex items-center gap-4">
-                <div className="relative w-[45%] shrink-0">
+              <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-center">
+                <div className="relative w-full shrink-0 sm:w-[45%]">
                   <ResponsiveContainer width="100%" height={200}>
                     <PieChart>
                       {occasionsTotal > 0 ? (
@@ -417,7 +420,7 @@ export function CrmDashboardPage() {
                     </div>
                   )}
                 </div>
-                <ul className="flex-1 space-y-2">
+                <ul className="min-w-0 flex-1 space-y-2">
                   {occasions.map((o, i) => (
                     <li key={o.type} className="flex items-center justify-between text-[12.5px]">
                       <span className="flex items-center gap-2 text-[var(--crmx-text-secondary)]">
@@ -456,14 +459,17 @@ export function CrmDashboardPage() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="overflow-hidden rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] shadow-[var(--crmx-shadow-sm)] lg:col-span-2">
-          <div className="flex items-center justify-between border-b border-[var(--crmx-border)] px-5 py-4">
-            <div>
+          <div className="flex flex-col gap-3 border-b border-[var(--crmx-border)] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 flex-1">
               <h2 className="text-[16px] font-bold text-[var(--crmx-text)]">آخر العملاء المضافين</h2>
               <p className="mt-0.5 text-[13px] text-[var(--crmx-text-secondary)]">أحدث السجلات التي وصلت إلى مساحة CRM.</p>
             </div>
-            <Link to="/admin/crm/customers" className="flex shrink-0 items-center gap-1.5 text-[13px] font-bold text-[var(--crmx-navy)] hover:text-[var(--crmx-primary)]">
-              عرض جميع العملاء <ArrowLeft className="h-3.5 w-3.5" />
-            </Link>
+            <div className="flex shrink-0 items-center justify-between gap-3">
+              <CrmViewToggle mode={recentView} onChange={setRecentView} />
+              <Link to="/admin/crm/customers" className="flex shrink-0 items-center gap-1.5 text-[13px] font-bold text-[var(--crmx-navy)] hover:text-[var(--crmx-primary)]">
+                عرض جميع العملاء <ArrowLeft className="h-3.5 w-3.5" />
+              </Link>
+            </div>
           </div>
           {loading ? (
             <div className="space-y-3 p-5">
@@ -472,62 +478,66 @@ export function CrmDashboardPage() {
           ) : !data?.recent_customers?.length ? (
             <div className="py-14 text-center text-[13px] text-[var(--crmx-text-secondary)]">لا توجد بيانات ضمن النطاق المحدد</div>
           ) : (
-            <div className="crmx-scrollbar overflow-x-auto">
-              <table className="w-full min-w-[760px] border-collapse text-right">
-                <thead>
-                  <tr className="border-b border-[var(--crmx-border)] bg-[#FAFBFC]">
-                    <th className="px-4 py-3 text-[12px] font-bold text-[var(--crmx-text-secondary)]">#</th>
-                    <th className="px-4 py-3 text-[12px] font-bold text-[var(--crmx-text-secondary)]">العميل</th>
-                    <th className="px-4 py-3 text-[12px] font-bold text-[var(--crmx-text-secondary)]">رقم الجوال</th>
-                    <th className="px-4 py-3 text-[12px] font-bold text-[var(--crmx-text-secondary)]">البريد الإلكتروني</th>
-                    <th className="px-4 py-3 text-[12px] font-bold text-[var(--crmx-text-secondary)]">المناسبة</th>
-                    <th className="px-4 py-3 text-[12px] font-bold text-[var(--crmx-text-secondary)]">نقاط الولاء</th>
-                    <th className="px-4 py-3 text-[12px] font-bold text-[var(--crmx-text-secondary)]">الحالة</th>
-                    <th className="px-4 py-3 text-[12px] font-bold text-[var(--crmx-text-secondary)]">تاريخ الإضافة</th>
-                    <th className="px-4 py-3 text-[12px] font-bold text-[var(--crmx-text-secondary)]"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.recent_customers.map((c, i) => (
-                    <tr key={c.id} className="crmx-table-row border-b border-[var(--crmx-border)] last:border-0">
-                      <td className="px-4 py-3 text-[12px] text-[var(--crmx-text-muted)]">{i + 1}</td>
-                      <td className="px-4 py-3">
-                        <Link to={`/admin/crm/customers/${c.id}`} className="flex items-center gap-3">
-                          <CrmAvatar name={c.name} size={32} />
-                          <div className="min-w-0">
-                            <p className="max-w-[140px] truncate text-[13px] font-bold text-[var(--crmx-text)]">{c.name}</p>
-                            <p className="truncate text-[11px] text-[var(--crmx-text-muted)]">{c.code || `#${c.id}`}</p>
-                          </div>
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]" dir="ltr">{c.mobile || c.phone || "—"}</td>
-                      <td className="px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]" dir="ltr">{(c.email as string) || "—"}</td>
-                      <td className="px-4 py-3">
-                        {c.occasion_label ? (
-                          <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-bold whitespace-nowrap ${OCCASION_BADGE[c.occasion_type || ""] || OCCASION_BADGE.other}`}>
-                            {c.occasion_label}
-                          </span>
-                        ) : (
-                          <span className="text-[13px] text-[var(--crmx-text-muted)]">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-[13px] font-semibold text-[var(--crmx-text)]">{c.loyalty_points ?? "—"}</td>
-                      <td className="px-4 py-3"><CrmStatusBadge value={c.status} /></td>
-                      <td className="px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]">{formatDate(c.created_at)}</td>
-                      <td className="px-4 py-3">
-                        <Link
-                          to={`/admin/crm/customers/${c.id}`}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--crmx-text-muted)] transition hover:bg-[var(--crmx-neutral-soft)] hover:text-[var(--crmx-navy)]"
-                          title="عرض الملف"
-                        >
-                          <ArrowLeft className="h-4 w-4" />
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <CrmDataView
+              rows={data.recent_customers}
+              rowKey={(c) => c.id}
+              mode={recentView}
+              bordered={false}
+              minTableWidth={760}
+              columns={[
+                {
+                  key: "customer",
+                  label: "العميل",
+                  card: "title",
+                  render: (c) => (
+                    <Link to={`/admin/crm/customers/${c.id}`} className="flex min-w-0 items-center gap-3">
+                      <CrmAvatar name={c.name} size={32} />
+                      <div className="min-w-0">
+                        <p className="max-w-[200px] truncate text-[13px] font-bold text-[var(--crmx-text)]">{c.name}</p>
+                        <p className="truncate text-[11px] font-normal text-[var(--crmx-text-muted)]">{c.code || `#${c.id}`}</p>
+                      </div>
+                    </Link>
+                  ),
+                },
+                { key: "phone", label: "رقم الجوال", cellClassName: "text-[13px] text-[var(--crmx-text-secondary)]", render: (c) => <span dir="ltr">{c.mobile || c.phone || "—"}</span> },
+                {
+                  key: "email",
+                  label: "البريد الإلكتروني",
+                  cellClassName: "text-[13px] text-[var(--crmx-text-secondary)]",
+                  render: (c) => <span className="block max-w-[220px] truncate" dir="ltr">{(c.email as string) || "—"}</span>,
+                },
+                {
+                  key: "occasion",
+                  label: "المناسبة",
+                  render: (c) =>
+                    c.occasion_label ? (
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-bold whitespace-nowrap ${OCCASION_BADGE[c.occasion_type || ""] || OCCASION_BADGE.other}`}>
+                        {c.occasion_label}
+                      </span>
+                    ) : (
+                      <span className="text-[13px] text-[var(--crmx-text-muted)]">—</span>
+                    ),
+                },
+                { key: "loyalty", label: "نقاط الولاء", cellClassName: "text-[13px] font-semibold", render: (c) => c.loyalty_points ?? "—" },
+                { key: "status", label: "الحالة", card: "badge", render: (c) => <CrmStatusBadge value={c.status} /> },
+                { key: "created_at", label: "تاريخ الإضافة", cellClassName: "text-[13px] text-[var(--crmx-text-secondary)]", render: (c) => formatDate(c.created_at) },
+                {
+                  key: "open",
+                  label: "",
+                  card: "none",
+                  render: (c) => (
+                    <Link
+                      to={`/admin/crm/customers/${c.id}`}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--crmx-text-muted)] transition hover:bg-[var(--crmx-neutral-soft)] hover:text-[var(--crmx-navy)]"
+                      title="عرض الملف"
+                      aria-label={`عرض ملف ${c.name}`}
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                    </Link>
+                  ),
+                },
+              ]}
+            />
           )}
           {!loading && !!data?.recent_customers?.length && (
             <div className="flex items-center justify-between border-t border-[var(--crmx-border)] px-5 py-3 text-[12.5px] font-semibold text-[var(--crmx-text-secondary)]">

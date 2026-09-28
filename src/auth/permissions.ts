@@ -174,6 +174,12 @@ export const CRM_PERMISSIONS = {
   // The module kill-switch + auto-register toggle — super-admin only
   // (CrmSettingController, migration 2027_02_06_000002).
   SETTINGS_MANAGE: "crm.settings.manage",
+  // Branch filter on the customer directory and CRM dashboard — a management
+  // tool (crm-manager / super-admin), not a branch employee's view.
+  CUSTOMERS_FILTER_BY_BRANCH: "crm.customers.filter-by-branch",
+  // The CRM staff activity log (CrmStaffActivityController) — oversight only,
+  // never delegable from the team-permissions screen.
+  STAFF_ACTIVITY_VIEW: "crm.staff-activity.view",
 } as const;
 
 /** نوع يمثل جميع قيم الصلاحيات الممكنة */

@@ -1,4 +1,4 @@
-import { AlertTriangle, Bell, ChevronLeft, Clock, Loader2, Search, X } from "lucide-react";
+import { AlertTriangle, Bell, Clock, Loader2, Search, SlidersHorizontal, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../../auth";
@@ -11,7 +11,7 @@ import { getCrmError } from "./components";
 import "./customers-ui/crmx.css";
 import {
   CrmOrderDetailsModal, CrmPageHeader, CrmPagination, CrmSearchBar,
-  CrmStatusBadge, CrmToolbarSkeleton, PaymentStatusBadge,
+  CrmDataView, CrmStatusBadge, CrmToolbarSkeleton, CrmViewToggle, PaymentStatusBadge, useCrmViewMode, type CrmColumn,
 } from "./customers-ui";
 import { CRM_ORDER_SOURCE_LABELS, CRM_ORDER_TYPE_LABELS, crmOrderTypeLabel } from "./customers-ui/sourceOptions";
 import type { CrmOrderRow, CrmPage } from "./types";
@@ -24,7 +24,7 @@ import type { CrmOrderRow, CrmPage } from "./types";
 const STATUS_FILTER_OPTIONS: Array<[string, string]> = [
   ["", "كل الحالات"], ["pending", "قيد الانتظار"], ["confirmed", "مؤكد"],
   ["in_progress", "قيد التنفيذ"], ["ready", "جاهز"], ["served", "تم التسليم"],
-  ["paid", "مدفوع"], ["cancelled", "ملغي"],
+  ["DELIVERED", "تم التوصيل"], ["paid", "مدفوع"], ["closed", "مغلق"], ["cancelled", "ملغي"],
 ];
 // Real orders.payment_status values (Order::PAYMENT_STATUSES) — only ever
 // populated for Call Center orders today (POS folds payment into `status`
@@ -221,7 +221,6 @@ function liveElapsedMinutes(order: CrmOrderRow, nowMs: number): number {
   return Math.max(0, Math.floor((nowMs - createdMs) / 60_000));
 }
 
-const COLUMNS = ["", "رقم الطلب", "العميل", "المصدر", "النوع / الطاولة", "الفرع", "الحالة", "الدفع", "الإجمالي", "منذ"];
 
 // Options for the delay-alert threshold control below — the same handful of
 // round numbers the Delayed screen's own ?minutes= filter already offers,
@@ -245,6 +244,10 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
   // one dialog with the full breakdown, replacing the older row-click popover
   // plus inline row expansion.
   const [modalOrder, setModalOrder] = useState<CrmOrderRow | null>(null);
+  const [viewMode, setViewMode] = useCrmViewMode(`orders-${mode}`);
+  // Phones/tablets: secondary filters live in a collapsible panel so the
+  // orders stay near the top; on desktop they sit inline as before.
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const closeModal = useCallback(() => setModalOrder(null), []);
 
   // The persisted, company-wide "alert CRM staff once an active order has
@@ -297,6 +300,71 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
   const perPage = Number(params.get("per_page") || 20);
 
   const hasFilters = Boolean(search || status || paymentStatus || source || branchId || dateFrom || dateTo);
+  const secondaryFilterCount = [status, paymentStatus, source, branchId, dateFrom, dateTo].filter(Boolean).length;
+
+  // Live, not the server's `is_delayed` snapshot: an order that crosses the
+  // threshold while the tab sits open flags itself on the next tick instead
+  // of waiting for a reload. The server flag is only the no-clock fallback.
+  const severityOf = (order: CrmOrderRow) => {
+    const elapsed = liveElapsedMinutes(order, nowMs);
+    const isFlagged = mode === "delayed" && (order.created_at ? elapsed >= minutes : Boolean(order.is_delayed));
+    return isFlagged ? delaySeverity(elapsed, minutes) : null;
+  };
+
+  // One column set for the table and the cards (CrmDataView).
+  const orderColumns: CrmColumn<CrmOrderRow>[] = [
+    {
+      key: "number",
+      label: "رقم الطلب",
+      card: "title",
+      cellClassName: "font-bold",
+      // Channel dot next to the SLA dot, not a row-wide background — a real
+      // visual review flagged that as competing with the status/payment badges.
+      render: (order) => (
+        <span className="flex items-center gap-2" dir="ltr">
+          <ChannelDot order={order} />
+          {mode === "active" && <SlaDot createdAt={order.created_at} nowMs={nowMs} />}
+          {order.order_number}
+        </span>
+      ),
+    },
+    {
+      key: "customer",
+      label: "العميل",
+      card: "subtitle",
+      cellClassName: "text-[var(--crmx-text-secondary)]",
+      render: (order) => (
+        <>
+          {order.customer?.name ? (
+            <span className="font-semibold text-[var(--crmx-text)]">{order.customer.name}</span>
+          ) : (
+            <span className="text-[var(--crmx-text-muted)]">غير مرتبط بعميل</span>
+          )}
+          {order.customer_phone && <div className="text-[12.5px] text-[var(--crmx-text-muted)]" dir="ltr">{order.customer_phone}</div>}
+        </>
+      ),
+    },
+    { key: "source", label: "المصدر", cellClassName: "text-[var(--crmx-text-secondary)]", render: (o) => CRM_ORDER_SOURCE_LABELS[o.source ?? ""] || o.source || "—" },
+    { key: "type", label: "النوع / الطاولة", cellClassName: "text-[var(--crmx-text-secondary)]", render: (o) => crmOrderTypeLabel(o) },
+    { key: "branch", label: "الفرع", cellClassName: "text-[var(--crmx-text-secondary)]", render: (o) => o.branch?.name || "—" },
+    { key: "status", label: "الحالة", card: "badge", render: (o) => <CrmStatusBadge value={o.status} /> },
+    { key: "payment", label: "الدفع", card: "badge", render: (o) => <PaymentStatusBadge isPaid={o.is_paid} paymentStatus={o.payment_status} /> },
+    { key: "total", label: "الإجمالي", cellClassName: "font-bold", render: (o) => formatMoney(o.total) },
+    {
+      key: "elapsed",
+      label: "منذ",
+      render: (order) => {
+        const severity = severityOf(order);
+        const style = severity ? SEVERITY_STYLE[severity] : null;
+        return (
+          <span className={`flex items-center gap-1.5 font-semibold ${style?.time ?? "text-[var(--crmx-text-secondary)]"}`}>
+            {style?.icon && <Clock className="h-3.5 w-3.5" />}
+            {formatElapsed(liveElapsedMinutes(order, nowMs))}
+          </span>
+        );
+      },
+    },
+  ];
 
   const set = (key: string, value: string) => {
     const next = new URLSearchParams(params);
@@ -385,11 +453,31 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
       ) : (
         <div className="flex flex-wrap items-center gap-3">
           <CrmSearchBar value={search} onChange={(v) => set("search", v)} placeholder="ابحث برقم الطلب أو اسم العميل أو الهاتف..." />
+          <button
+            type="button"
+            onClick={() => setFiltersOpen((v) => !v)}
+            aria-expanded={filtersOpen}
+            aria-controls="crm-orders-filters"
+            aria-label="فلاتر"
+            className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--crmx-border)] bg-white text-[var(--crmx-text)] lg:hidden"
+          >
+            {secondaryFilterCount > 0 && (
+              <span className="absolute -top-1 -end-1 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--crmx-primary)] text-[10px] font-bold text-white">
+                {secondaryFilterCount}
+              </span>
+            )}
+            <SlidersHorizontal className="h-4 w-4" />
+          </button>
+          <CrmViewToggle mode={viewMode} onChange={setViewMode} className="lg:order-last" />
+          <div
+            id="crm-orders-filters"
+            className={`${filtersOpen ? "grid" : "hidden"} w-full grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:grid-cols-3 lg:contents`}
+          >
           {mode === "delayed" && (
             <select
               value={minutes}
               onChange={(e) => set("minutes", e.target.value)}
-              className="h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
+              className="h-11 w-full min-w-0 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10 lg:w-auto"
             >
               <option value={10}>أكثر من 10 دقائق</option>
               <option value={20}>أكثر من 20 دقيقة</option>
@@ -402,7 +490,7 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
             <select
               value={status}
               onChange={(e) => set("status", e.target.value)}
-              className="h-11 min-w-[140px] rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
+              className="h-11 w-full min-w-0 rounded-xl border lg:w-auto lg:min-w-[140px] border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
             >
               {STATUS_FILTER_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
@@ -412,7 +500,7 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
             <select
               value={paymentStatus}
               onChange={(e) => set("payment_status", e.target.value)}
-              className="h-11 min-w-[150px] rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
+              className="h-11 w-full min-w-0 rounded-xl border lg:w-auto lg:min-w-[150px] border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
             >
               {PAYMENT_STATUS_FILTER_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
@@ -421,7 +509,7 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
           <select
             value={source}
             onChange={(e) => set("source", e.target.value)}
-            className="h-11 min-w-[140px] rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
+            className="h-11 w-full min-w-0 rounded-xl border lg:w-auto lg:min-w-[140px] border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
             aria-label="مصدر الطلب"
           >
             {SOURCE_FILTER_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -431,7 +519,7 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
             <select
               value={branchId}
               onChange={(e) => set("branch_id", e.target.value)}
-              className="h-11 min-w-[140px] rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
+              className="h-11 w-full min-w-0 rounded-xl border lg:w-auto lg:min-w-[140px] border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
             >
               <option value="">كل الفروع</option>
               {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -440,18 +528,18 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
 
           {mode !== "delayed" && (
             <>
-              <label className="flex items-center gap-1.5 text-[13px] font-semibold text-[var(--crmx-text-secondary)]">
+              <label className="flex min-w-0 items-center gap-1.5 text-[13px] font-semibold text-[var(--crmx-text-secondary)]">
                 من
                 <input
                   type="date" value={dateFrom} onChange={(e) => set("date_from", e.target.value)}
-                  className="h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
+                  className="h-11 min-w-0 flex-1 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10 lg:flex-none"
                 />
               </label>
-              <label className="flex items-center gap-1.5 text-[13px] font-semibold text-[var(--crmx-text-secondary)]">
+              <label className="flex min-w-0 items-center gap-1.5 text-[13px] font-semibold text-[var(--crmx-text-secondary)]">
                 إلى
                 <input
                   type="date" value={dateTo} onChange={(e) => set("date_to", e.target.value)}
-                  className="h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10"
+                  className="h-11 min-w-0 flex-1 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10 lg:flex-none"
                 />
               </label>
             </>
@@ -466,6 +554,7 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
               <X className="h-3.5 w-3.5" /> إعادة تعيين
             </button>
           )}
+          </div>
         </div>
       )}
 
@@ -509,90 +598,19 @@ export function CrmOrdersPage({ mode }: { mode: "all" | "active" | "delayed" }) 
         </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)]">
-          <div className="crmx-scrollbar overflow-x-auto">
-            <table className="w-full min-w-[900px] border-collapse text-right">
-              <thead>
-                <tr className="border-b border-[var(--crmx-border)] bg-[#FAFBFC]">
-                  {COLUMNS.map((c) => (
-                    <th key={c} className="whitespace-nowrap px-4 py-3.5 text-[13px] font-bold text-[var(--crmx-text-secondary)]">{c}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {result.items.map((order) => {
-                  const elapsed = liveElapsedMinutes(order, nowMs);
-                  // Live, not the server's `is_delayed` snapshot: an order that
-                  // crosses the threshold while the tab sits open flags itself
-                  // on the next tick instead of waiting for a reload. The server
-                  // flag is kept only as the fallback when there's no clock.
-                  const isFlagged = mode === "delayed" && (order.created_at ? elapsed >= minutes : Boolean(order.is_delayed));
-                  const severity = isFlagged ? delaySeverity(elapsed, minutes) : null;
-                  const style = severity ? SEVERITY_STYLE[severity] : null;
-                  const isSelected = modalOrder?.id === order.id;
-                  return (
-                    // Clicking (or Enter/Space-activating) the row opens the
-                    // order-details pop-up. The closest(...) guard mirrors
-                    // DomainTable's row handler (tabs/shared.tsx): nothing
-                    // interactive lives in these cells today, but the guard
-                    // costs nothing and prevents that class of bug later.
-                    <tr
-                      key={order.id}
-                      onClick={(e) => {
-                        if ((e.target as HTMLElement).closest("button, select, a, input, textarea, label")) return;
-                        setModalOrder(order);
-                      }}
-                      tabIndex={0}
-                      role="button"
-                      aria-haspopup="dialog"
-                      onKeyDown={(e) => {
-                        if ((e.target as HTMLElement).closest("button, select, a, input, textarea, label")) return;
-                        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setModalOrder(order); }
-                      }}
-                      className={`crmx-table-row cursor-pointer border-b border-[var(--crmx-border)] transition-colors focus:outline-none last:border-0 ${style?.row ?? ""} ${
-                        isSelected ? "bg-[var(--crmx-primary-soft)]/40" : ""
-                      }`}
-                    >
-                      <td className="px-2 text-center">
-                        <ChevronLeft className="mx-auto h-4 w-4 text-[var(--crmx-text-muted)]" aria-hidden />
-                      </td>
-                      <td className="px-4 py-4 text-[14px] font-bold text-[var(--crmx-text)]" dir="ltr">
-                        {/* Channel dot next to the SLA dot, not a row-wide background or
-                            a full-height bar — a real visual review flagged both of those
-                            as competing with the status/payment badges for attention.
-                            This stays a small, secondary cue at the same visual weight as
-                            SlaDot, whose colour is the one that's actually load-bearing. */}
-                        <span className="flex items-center gap-2">
-                          <ChannelDot order={order} />
-                          {mode === "active" && <SlaDot createdAt={order.created_at} nowMs={nowMs} />}
-                          {order.order_number}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">
-                        {order.customer?.name ? (
-                          <span className="font-semibold text-[var(--crmx-text)]">{order.customer.name}</span>
-                        ) : (
-                          <span className="text-[var(--crmx-text-muted)]">غير مرتبط بعميل</span>
-                        )}
-                        {order.customer_phone && <div className="text-[12.5px] text-[var(--crmx-text-muted)]" dir="ltr">{order.customer_phone}</div>}
-                      </td>
-                      <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">{CRM_ORDER_SOURCE_LABELS[order.source ?? ""] || order.source || "—"}</td>
-                      <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">{crmOrderTypeLabel(order)}</td>
-                      <td className="px-4 py-4 text-[14px] text-[var(--crmx-text-secondary)]">{order.branch?.name || "—"}</td>
-                      <td className="px-4 py-4"><CrmStatusBadge value={order.status} /></td>
-                      <td className="px-4 py-4"><PaymentStatusBadge isPaid={order.is_paid} paymentStatus={order.payment_status} /></td>
-                      <td className="px-4 py-4 text-[14px] font-bold text-[var(--crmx-text)]">{formatMoney(order.total)}</td>
-                      <td className={`px-4 py-4 text-[14px] font-semibold ${style?.time ?? "text-[var(--crmx-text-secondary)]"}`}>
-                        <span className="flex items-center gap-1.5">
-                          {style?.icon && <Clock className="h-3.5 w-3.5" />}
-                          {formatElapsed(elapsed)}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <CrmDataView
+            rows={result.items}
+            columns={orderColumns}
+            rowKey={(o) => o.id}
+            mode={viewMode}
+            bordered={false}
+            minTableWidth={900}
+            onRowClick={setModalOrder}
+            rowClassName={(order) => {
+              const severity = severityOf(order);
+              return `${severity ? SEVERITY_STYLE[severity].row : ""} ${modalOrder?.id === order.id ? "bg-[var(--crmx-primary-soft)]/40" : ""}`;
+            }}
+          />
           <CrmPagination
             currentPage={result.currentPage}
             lastPage={result.lastPage}

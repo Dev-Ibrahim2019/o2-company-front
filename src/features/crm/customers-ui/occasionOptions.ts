@@ -10,7 +10,8 @@
 export const CRM_OCCASION_OPTIONS: Array<[string, string]> = [
   ["birthday", "عيد ميلاد"],
   ["anniversary", "ذكرى سنوية"],
-  ["wedding", "زواج"],
   ["graduation", "تخرج"],
+  ["company_founding", "تأسيس"],
+  ["contract_renewal", "تجديد عقد"],
   ["other", "أخرى"],
 ];

@@ -1,4 +1,4 @@
-import { BarChart3, Building2, Check, ChevronLeft, Layers, Loader2, Plus, RotateCcw, Sparkles, Users, X } from "lucide-react";
+import { BarChart3, Building2, Check, Layers, Loader2, Plus, RotateCcw, Sparkles, Users, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../auth";
@@ -6,7 +6,7 @@ import { CRM_PERMISSIONS } from "../../auth/permissions";
 import { toast } from "../../components/shared/Toast";
 import { crmApi } from "./api";
 import { CrmState, getCrmError } from "./components";
-import { CrmKpiCard, CrmPageHeader, CrmSearchBar } from "./customers-ui";
+import { CrmDataView, CrmKpiCard, CrmPageHeader, CrmSearchBar, CrmViewToggle, useCrmViewMode } from "./customers-ui";
 import { money } from "./format";
 import { CRM_GROUP_COLORS, type CrmCustomerGroup, type CrmCustomerGroupInput, type CrmGroupColor, type CrmGroupType } from "./types";
 
@@ -169,6 +169,7 @@ export function GroupFormDrawer({
  * move server-side rather than paginating a filtered array.
  */
 export function GroupsPage() {
+  const [viewMode, setViewMode] = useCrmViewMode("groups");
   const { hasPermission } = useAuth();
   const canCreate = hasPermission(CRM_PERMISSIONS.GROUPS_CREATE);
   const navigate = useNavigate();
@@ -321,56 +322,48 @@ export function GroupsPage() {
           )}
         </div>
       ) : (
-        <div className={cardCls}>
-          <div className="crmx-scrollbar overflow-x-auto">
-            <table className="w-full min-w-[560px] border-collapse text-right">
-              <thead>
-                <tr className="border-b border-[var(--crmx-border)] bg-[#FAFBFC]">
-                  {["المجموعة", "النوع", "عدد الأعضاء", "الإنفاق", ""].map((h, i) => (
-                    <th key={h || `sp-${i}`} className="whitespace-nowrap px-4 py-3.5 text-[12.5px] font-bold text-[var(--crmx-text-secondary)]">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((g) => (
-                  <tr
-                    key={String(g.id)}
-                    onClick={() => navigate(`/admin/crm/groups/${g.id}`)}
-                    tabIndex={0}
-                    role="button"
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate(`/admin/crm/groups/${g.id}`); } }}
-                    className="crmx-table-row group cursor-pointer border-b border-[var(--crmx-border)] transition-colors last:border-0 hover:bg-[var(--crmx-neutral-soft)]/70 focus:bg-[var(--crmx-neutral-soft)]/70 focus:outline-none"
-                  >
-                    <td className="px-4 py-3 text-[13px] font-bold text-[var(--crmx-text)]">
-                      <span className="flex items-center gap-2.5">
-                        <span
-                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white"
-                          style={{ background: groupColorHex(g) }}
-                        >
-                          <Building2 className="h-4 w-4" />
-                        </span>
-                        {g.name}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      <span className={`${GROUP_PILL} ${GROUP_TYPE_TONE[g.group_type]}`}>
-                        {GROUP_TYPE_LABELS[g.group_type] ?? g.group_type}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]">
-                      {g.customers_count ?? 0}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-[13px] font-bold text-[var(--crmx-text)]">
-                      {g.total_spend != null ? money(g.total_spend) : "—"}
-                    </td>
-                    <td className="w-8 px-3 py-3 text-[var(--crmx-text-muted)]">
-                      <ChevronLeft className="h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="space-y-2">
+          <div className="flex justify-end">
+            <CrmViewToggle mode={viewMode} onChange={setViewMode} />
           </div>
+          <CrmDataView
+            rows={visible}
+            rowKey={(g) => String(g.id)}
+            mode={viewMode}
+            minTableWidth={560}
+            onRowClick={(g) => navigate(`/admin/crm/groups/${g.id}`)}
+            columns={[
+              {
+                key: "name",
+                label: "المجموعة",
+                card: "title",
+                cellClassName: "text-[13px] font-bold",
+                render: (g) => (
+                  <span className="flex min-w-0 items-center gap-2.5">
+                    <span
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white"
+                      style={{ background: groupColorHex(g) }}
+                    >
+                      <Building2 className="h-4 w-4" />
+                    </span>
+                    <span className="min-w-0 break-words">{g.name}</span>
+                  </span>
+                ),
+              },
+              {
+                key: "type",
+                label: "النوع",
+                card: "badge",
+                render: (g) => (
+                  <span className={`${GROUP_PILL} ${GROUP_TYPE_TONE[g.group_type]}`}>
+                    {GROUP_TYPE_LABELS[g.group_type] ?? g.group_type}
+                  </span>
+                ),
+              },
+              { key: "members", label: "عدد الأعضاء", cellClassName: "text-[13px] text-[var(--crmx-text-secondary)]", render: (g) => g.customers_count ?? 0 },
+              { key: "spend", label: "الإنفاق", cellClassName: "text-[13px] font-bold", render: (g) => (g.total_spend != null ? money(g.total_spend) : "—") },
+            ]}
+          />
         </div>
       )}
 

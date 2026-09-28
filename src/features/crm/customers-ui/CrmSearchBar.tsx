@@ -37,7 +37,7 @@ export function CrmSearchBar({
   };
 
   return (
-    <label className="relative min-w-[220px] flex-1">
+    <label className="relative min-w-0 flex-1 sm:min-w-[220px]">
       <Search className="pointer-events-none absolute start-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--crmx-text-muted)]" />
       <span className="sr-only">بحث</span>
       <input

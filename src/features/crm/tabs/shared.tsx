@@ -4,6 +4,7 @@ import { crmApi } from "../api";
 import { CrmState, getCrmError, StatusChip } from "../components";
 import { date as fmtDate, money as fmtMoney, num as fmtNum } from "../format";
 import type { CrmSection } from "../types";
+import { CrmDataView, CrmViewToggle, useCrmViewMode, type CrmCardRole, type CrmColumn, type CrmViewMode } from "../customers-ui";
 
 export type Row = Record<string, unknown>;
 export const unwrapRows = (value: unknown, keys: string[] = []): Row[] => {
@@ -54,8 +55,16 @@ export function SectionFrame({
   if (state.data == null) return <CrmState kind="empty" title={empty} />;
   return <>{children(state.data)}</>;
 }
-export function DomainTable({ columns, rows, empty, onRowClick }: {
-  columns: { key: string; label: string; render?: (v: unknown, row: Row) => React.ReactNode }[];
+export type DomainColumn = {
+  key: string;
+  label: string;
+  render?: (v: unknown, row: Row) => React.ReactNode;
+  /** Card placement (see CrmCardRole). Defaults: first column = title, rest = fields. */
+  card?: CrmCardRole;
+};
+
+export function DomainTable({ columns, rows, empty, onRowClick, viewKey = "profile-tab", fixedMode, minTableWidth = 560 }: {
+  columns: DomainColumn[];
   rows: Row[];
   empty: string;
   /**
@@ -63,60 +72,39 @@ export function DomainTable({ columns, rows, empty, onRowClick }: {
    * those tables keep their plain, non-interactive rows.
    */
   onRowClick?: (row: Row) => void;
+  /** Remembers this list's table/cards choice separately from other lists. */
+  viewKey?: string;
+  /** Pin one presentation and hide the switch (e.g. a 2-column summary that fits any width). */
+  fixedMode?: CrmViewMode;
+  minTableWidth?: number;
 }) {
+  const [chosen, setMode] = useCrmViewMode(viewKey);
+  const mode = fixedMode ?? chosen;
   if (!rows.length) return <CrmState kind="empty" title={empty} />;
+
+  const dataColumns: CrmColumn<Row>[] = columns.map((c, i) => ({
+    key: c.key,
+    label: c.label,
+    card: c.card ?? (i === 0 ? "title" : "field"),
+    cellClassName: "text-[13px]",
+    render: (row) => (c.render ? c.render(row[c.key], row) : text(row[c.key])),
+  }));
+
   return (
-    <div className="crmx-root crmx-scrollbar overflow-x-auto rounded-2xl border border-[var(--crmx-border)]">
-      <table className="w-full min-w-[560px] border-collapse text-right">
-        <thead>
-          <tr className="border-b border-[var(--crmx-border)] bg-[#FAFBFC]">
-            {columns.map((c) => (
-              <th key={c.key} className="whitespace-nowrap px-4 py-3 text-[12px] font-bold text-[var(--crmx-text-secondary)]">{c.label}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr
-              key={String(row.id ?? i)}
-              onClick={onRowClick ? (e) => {
-                // Rows carry their own controls (status selects, toggle
-                // buttons). A click that started on one of those is that
-                // control's business, not a request to open the row.
-                if ((e.target as HTMLElement).closest("button, select, a, input, textarea, label")) return;
-                onRowClick(row);
-              } : undefined}
-              tabIndex={onRowClick ? 0 : undefined}
-              role={onRowClick ? "button" : undefined}
-              onKeyDown={onRowClick ? (e) => {
-                // Same guard as onClick above, and just as necessary here —
-                // arguably more so. A row's own status-change control opens a
-                // dialog rendered via createPortal(dialog, document.body): the
-                // dialog's DOM lives outside this <tr>, but React still bubbles
-                // its synthetic events through the React tree (this row is a
-                // real React ancestor of that portalled content), not the DOM
-                // tree. Without this check, every Space keystroke typed into a
-                // portalled textarea inside this row — e.g. the complaint
-                // resolution note — bubbled up here, got preventDefault()'d
-                // before the browser could insert the character, and fired
-                // onRowClick as an unwanted side effect. Confirmed live: typing
-                // in that field silently dropped every space.
-                if ((e.target as HTMLElement).closest("button, select, a, input, textarea, label")) return;
-                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onRowClick(row); }
-              } : undefined}
-              className={`crmx-table-row border-b border-[var(--crmx-border)] last:border-0 ${
-                onRowClick ? "cursor-pointer transition-colors hover:bg-[var(--crmx-neutral-soft)]/70 focus:bg-[var(--crmx-neutral-soft)]/70 focus:outline-none" : ""
-              }`}
-            >
-              {columns.map((c) => (
-                <td key={c.key} className="whitespace-nowrap px-4 py-3 text-[13px] text-[var(--crmx-text)]">
-                  {c.render ? c.render(row[c.key], row) : text(row[c.key])}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="space-y-2">
+      {!fixedMode && (
+        <div className="flex justify-end">
+          <CrmViewToggle mode={mode} onChange={setMode} />
+        </div>
+      )}
+      <CrmDataView
+        rows={rows}
+        columns={dataColumns}
+        rowKey={(row, i) => String(row.id ?? i)}
+        mode={mode}
+        onRowClick={onRowClick}
+        minTableWidth={minTableWidth}
+      />
     </div>
   );
 }

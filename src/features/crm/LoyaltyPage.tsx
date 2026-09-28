@@ -1,13 +1,13 @@
 import { Award, BadgeCheck, Coins, Layers } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { crmApi } from "./api";
 import { CrmState, getCrmError } from "./components";
-import { CrmKpiCard, CrmPageHeader, CrmPagination, CrmSearchBar } from "./customers-ui";
+import { CrmDataView, CrmKpiCard, CrmPageHeader, CrmPagination, CrmSearchBar, CrmViewToggle, useCrmViewMode } from "./customers-ui";
 import "./customers-ui/crmx.css";
-import { date as fmtDate, num } from "./format";
+import { num } from "./format";
 import { LoyaltyRulesTab } from "./LoyaltyRulesTab";
-import { TXN_STATUS_LABELS, TXN_TYPE_LABELS, TXN_TYPE_TONE } from "./loyaltyLabels";
+import { loyaltyTxnColumns } from "./loyaltyColumns";
+import { TXN_TYPE_LABELS } from "./loyaltyLabels";
 import type { CrmLoyaltyGlobalSummary, CrmLoyaltyTransaction, CrmLoyaltyTxnType } from "./types";
 
 type Tab = "ledger" | "rules";
@@ -16,7 +16,7 @@ const selectCls =
   "h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10";
 const fieldLabelCls = "flex flex-col gap-1 text-[13px] font-semibold text-[var(--crmx-text-secondary)]";
 const cardCls = "rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)]";
-const pill = "inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-bold whitespace-nowrap";
+const LEDGER_COLUMNS = loyaltyTxnColumns({ withOwner: true });
 
 type Filters = { owner_type: string; type: string; date_from: string; date_to: string; search: string };
 const EMPTY: Filters = { owner_type: "", type: "", date_from: "", date_to: "", search: "" };
@@ -28,6 +28,7 @@ const EMPTY: Filters = { owner_type: "", type: "", date_from: "", date_to: "", s
  */
 export function LoyaltyPage() {
   const [tab, setTab] = useState<Tab>("ledger");
+  const [viewMode, setViewMode] = useCrmViewMode("loyalty-transactions");
 
   const [filters, setFilters] = useState<Filters>(EMPTY);
   const [applied, setApplied] = useState<Filters>(EMPTY);
@@ -111,7 +112,7 @@ export function LoyaltyPage() {
         <>
           <div className={`${cardCls} p-4`}>
             <div className="flex flex-wrap items-end gap-3">
-              <div className="min-w-[220px] flex-1">
+              <div className="min-w-0 flex-1 basis-full sm:basis-auto sm:min-w-[220px]">
                 <label className={fieldLabelCls}>
                   بحث
                   <CrmSearchBar value={filters.search} onChange={(v) => setFilters((f) => ({ ...f, search: v }))} placeholder="اسم العميل أو المجموعة أو رقم العميل..." />
@@ -164,49 +165,19 @@ export function LoyaltyPage() {
           ) : rows.length === 0 ? (
             <CrmState kind="empty" title={activeCount > 0 ? "لا توجد حركات مطابقة للفلاتر" : "لا توجد حركات ولاء بعد"} />
           ) : (
-            <div className={cardCls}>
-              <div className="crmx-scrollbar overflow-x-auto">
-                <table className="w-full min-w-[900px] border-collapse text-right">
-                  <thead>
-                    <tr className="border-b border-[var(--crmx-border)] bg-[#FAFBFC]">
-                      {["المالك", "النوع", "النقاط", "الحالة", "الطلب", "ملاحظات", "التاريخ"].map((h) => (
-                        <th key={h} className="whitespace-nowrap px-4 py-3.5 text-[12.5px] font-bold text-[var(--crmx-text-secondary)]">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((t) => {
-                      const positive = Number(t.points) >= 0;
-                      const href = t.owner_type === "customer"
-                        ? `/admin/crm/customers/${t.owner_id}/loyalty`
-                        : `/admin/crm/groups/${t.owner_id}`;
-                      return (
-                        <tr key={String(t.id)} className="crmx-table-row border-b border-[var(--crmx-border)] transition-colors last:border-0 hover:bg-[var(--crmx-neutral-soft)]/70">
-                          <td className="whitespace-nowrap px-4 py-3 text-[13px]">
-                            <Link to={href} className="font-semibold text-[var(--crmx-primary)] hover:underline">
-                              {t.owner_name ?? `#${t.owner_id}`}
-                            </Link>
-                            <span className="ms-1.5 text-[11.5px] text-[var(--crmx-text-muted)]">
-                              {t.owner_type === "customer" ? "عميل" : "مجموعة"}
-                            </span>
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-3">
-                            <span className={`${pill} ${TXN_TYPE_TONE[t.type]}`}>{TXN_TYPE_LABELS[t.type]}</span>
-                          </td>
-                          <td className={`whitespace-nowrap px-4 py-3 text-[13px] font-bold ${positive ? "text-[var(--crmx-success-text)]" : "text-[var(--crmx-danger-text)]"}`}>
-                            {positive ? "+" : ""}{num(Number(t.points))}
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-3 text-[12.5px] text-[var(--crmx-text-secondary)]">{TXN_STATUS_LABELS[t.status]}</td>
-                          <td className="whitespace-nowrap px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]">{t.order?.order_number ?? "—"}</td>
-                          <td className="max-w-[200px] truncate px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]" title={t.notes ?? undefined}>{t.notes ?? "—"}</td>
-                          <td className="whitespace-nowrap px-4 py-3 text-[12.5px] text-[var(--crmx-text-muted)]">{fmtDate(t.created_at)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+            <div className="space-y-2">
+              <div className="flex justify-end">
+                <CrmViewToggle mode={viewMode} onChange={setViewMode} />
               </div>
-
+            <div className={cardCls}>
+              <CrmDataView
+                rows={rows}
+                columns={LEDGER_COLUMNS}
+                rowKey={(t) => String(t.id)}
+                mode={viewMode}
+                bordered={false}
+                minTableWidth={900}
+              />
               <CrmPagination
                 currentPage={meta.currentPage}
                 lastPage={meta.lastPage}
@@ -216,6 +187,7 @@ export function LoyaltyPage() {
                 onPerPageChange={(n: number) => { setPerPage(n); setPage(1); }}
                 itemLabel="حركة"
               />
+            </div>
             </div>
           )}
         </>

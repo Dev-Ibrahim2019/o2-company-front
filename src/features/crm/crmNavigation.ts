@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { CRM_PERMISSIONS } from "../../auth/permissions";
 import {
-  AlertTriangle, BellRing, Building2, CalendarHeart, FileBarChart2, Gift, KeyRound, LayoutDashboard,
+  AlertTriangle, BellRing, Building2, CalendarHeart, FileBarChart2, Gift, History, KeyRound, LayoutDashboard,
   ListOrdered, MessagesSquare, Settings, ShieldAlert, ShoppingBag, UserPlus, Users, UsersRound, Zap,
 } from "lucide-react";
 
@@ -119,6 +119,13 @@ export const CRM_NAVIGATION: CrmNavItem[] = [
     icon: KeyRound,
     to: "/admin/crm/staff-permissions",
     permission: CRM_PERMISSIONS.STAFF_MANAGE_PERMISSIONS,
+  },
+  {
+    key: "staff-activity",
+    label: "سجل نشاطات الفريق",
+    icon: History,
+    to: "/admin/crm/staff-activity",
+    permission: CRM_PERMISSIONS.STAFF_ACTIVITY_VIEW,
   },
   {
     key: "crm-settings",

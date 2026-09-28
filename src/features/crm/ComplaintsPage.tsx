@@ -1,4 +1,4 @@
-import { AlertOctagon, BellRing, BookOpen, Building2, CalendarDays, ChevronLeft, Inbox, Loader2, Megaphone, Plus, RotateCcw } from "lucide-react";
+import { AlertOctagon, BellRing, BookOpen, Building2, CalendarDays, Inbox, Loader2, Megaphone, Plus, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -11,7 +11,8 @@ import { CrmState, getCrmError } from "./components";
 import {
   COMPLAINT_CHANNEL_LABELS, COMPLAINT_DEPARTMENT_LABELS, COMPLAINT_PILL,
   COMPLAINT_PRIORITY_TONE, COMPLAINT_STATUS_TONE,
-  CrmKpiCard, CrmPageHeader, CrmPagination, CrmSearchBar,
+  CrmDataView, CrmKpiCard, CrmPageHeader, CrmPagination, CrmSearchBar, CrmViewToggle, useCrmViewMode,
+  type CrmColumn,
 } from "./customers-ui";
 import { date as fmtDate } from "./format";
 import type {
@@ -89,8 +90,75 @@ const PAGE_TITLES: Record<"all" | "open", { title: string; description: string; 
 // offer a value the page itself would never show.
 const OPEN_STATUSES: CrmComplaintStatus[] = ["new", "open", "in_progress", "waiting_customer"];
 
+// One column set for the table and the cards (CrmDataView).
+const complaintColumns: CrmColumn<CrmComplaintRow>[] = [
+  { key: "id", label: "رقم", card: "subtitle", cellClassName: "text-[13px] font-bold text-[var(--crmx-text-muted)]", render: (c) => `#${c.id}` },
+  { key: "title", label: "الموضوع", card: "title", wrap: true, cellClassName: "min-w-[200px] text-[13px]", render: (c) => c.title || "—" },
+  {
+    key: "customer",
+    label: "العميل",
+    cellClassName: "text-[13px]",
+    render: (c) =>
+      c.customer ? (
+        <Link to={`/admin/crm/customers/${c.customer.id}/overview`} className="font-semibold text-[var(--crmx-primary)] hover:underline">
+          {c.customer.name}
+        </Link>
+      ) : (
+        <span className={`${COMPLAINT_PILL} gap-1 bg-[var(--crmx-navy-soft)] text-[var(--crmx-navy)]`}>
+          <Megaphone className="h-3 w-3" /> شكوى عامة
+        </span>
+      ),
+  },
+  {
+    key: "assignee",
+    label: "المسؤول",
+    cellClassName: "text-[13px]",
+    render: (c) =>
+      c.assigned_user && typeof c.assigned_user === "object" ? (
+        <span className="font-semibold text-[var(--crmx-text)]">{c.assigned_user.name}</span>
+      ) : (
+        <span className="text-[12px] font-semibold text-[var(--crmx-warning-text)]">غير مُسندة</span>
+      ),
+  },
+  {
+    key: "channel",
+    label: "القناة",
+    render: (c) => (
+      <span className={`${COMPLAINT_PILL} bg-[var(--crmx-neutral-soft)] text-[var(--crmx-text-secondary)]`}>
+        {c.channel ? COMPLAINT_CHANNEL_LABELS[c.channel] : "—"}
+      </span>
+    ),
+  },
+  {
+    key: "department",
+    label: "القسم",
+    cellClassName: "text-[13px] text-[var(--crmx-text-secondary)]",
+    render: (c) => (c.department ? COMPLAINT_DEPARTMENT_LABELS[c.department] : "غير مصنَّف"),
+  },
+  {
+    key: "priority",
+    label: "الأولوية",
+    card: "badge",
+    render: (c) => {
+      const priority = COMPLAINT_PRIORITY_TONE[c.priority];
+      return priority ? <span className={`${COMPLAINT_PILL} ${priority.tone}`}>{priority.label}</span> : "—";
+    },
+  },
+  {
+    key: "status",
+    label: "الحالة",
+    card: "badge",
+    render: (c) => {
+      const status = COMPLAINT_STATUS_TONE[c.status];
+      return status ? <span className={`${COMPLAINT_PILL} ${status.tone}`}>{status.label}</span> : c.status;
+    },
+  },
+  { key: "created_at", label: "تاريخ التسجيل", cellClassName: "text-[13px] text-[var(--crmx-text-secondary)]", render: (c) => fmtDate(c.created_at ?? null) },
+];
+
 export function ComplaintsPage({ mode = "all" }: { mode?: "all" | "open" }) {
   const navigate = useNavigate();
+  const [viewMode, setViewMode] = useCrmViewMode("complaints");
   const { hasPermission } = useAuth();
   const canCreate = hasPermission(CRM_PERMISSIONS.COMPLAINTS_CREATE);
   const [filters, setFilters] = useState<Filters>(EMPTY);
@@ -379,8 +447,8 @@ export function ComplaintsPage({ mode = "all" }: { mode?: "all" | "open" }) {
           {loading ? (
             <div className="crmx-skeleton h-[220px] w-full rounded-xl" />
           ) : (
-            <div className="flex items-center gap-4">
-              <div className="w-[45%] shrink-0">
+            <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-center">
+              <div className="w-full shrink-0 sm:w-[45%]">
                 <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
                     <Pie data={statusSeries} dataKey="count" nameKey="label" innerRadius={55} outerRadius={85} paddingAngle={3}>
@@ -390,7 +458,7 @@ export function ComplaintsPage({ mode = "all" }: { mode?: "all" | "open" }) {
                   </PieChart>
                 </ResponsiveContainer>
               </div>
-              <ul className="flex-1 space-y-2">
+              <ul className="min-w-0 flex-1 space-y-2">
                 {statusSeries.map((d, i) => (
                   <li key={d.key} className="flex items-center justify-between text-[12.5px]">
                     <span className="flex items-center gap-2 text-[var(--crmx-text-secondary)]">
@@ -418,77 +486,20 @@ export function ComplaintsPage({ mode = "all" }: { mode?: "all" | "open" }) {
           title={activeCount > 0 ? "لا توجد شكاوى مطابقة للفلاتر" : PAGE_TITLES[mode].empty}
         />
       ) : (
-        <div className={cardCls}>
-          <div className="crmx-scrollbar overflow-x-auto">
-            <table className="w-full min-w-[1080px] border-collapse text-right">
-              <thead>
-                <tr className="border-b border-[var(--crmx-border)] bg-[#FAFBFC]">
-                  {["رقم", "الموضوع", "العميل", "المسؤول", "القناة", "القسم", "الأولوية", "الحالة", "تاريخ التسجيل", ""].map((h, i) => (
-                    <th key={h || `sp-${i}`} className="whitespace-nowrap px-4 py-3.5 text-[12.5px] font-bold text-[var(--crmx-text-secondary)]">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((c) => {
-                  const status = COMPLAINT_STATUS_TONE[c.status];
-                  const priority = COMPLAINT_PRIORITY_TONE[c.priority];
-                  return (
-                    <tr
-                      key={String(c.id)}
-                      onClick={() => navigate(`/admin/crm/complaints/${c.id}`)}
-                      tabIndex={0}
-                      role="button"
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate(`/admin/crm/complaints/${c.id}`); } }}
-                      // The whole row is the target, so it has to look like one:
-                      // a tinted ground, a start-edge accent, and the chevron in
-                      // the last cell all say "this opens".
-                      className="crmx-table-row group cursor-pointer border-b border-[var(--crmx-border)] transition-colors last:border-0 hover:bg-[var(--crmx-neutral-soft)]/70 focus:bg-[var(--crmx-neutral-soft)]/70 focus:outline-none"
-                    >
-                      <td className="whitespace-nowrap px-4 py-3 text-[13px] font-bold text-[var(--crmx-text-muted)]">{c.id}</td>
-                      <td className="px-4 py-3 text-[13px] text-[var(--crmx-text)]">{c.title || "—"}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-[13px]">
-                        {c.customer ? (
-                          <Link to={`/admin/crm/customers/${c.customer.id}/overview`} className="font-semibold text-[var(--crmx-primary)] hover:underline">
-                            {c.customer.name}
-                          </Link>
-                        ) : (
-                          <span className={`${COMPLAINT_PILL} gap-1 bg-[var(--crmx-navy-soft)] text-[var(--crmx-navy)]`}>
-                            <Megaphone className="h-3 w-3" /> شكوى عامة
-                          </span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-[13px]">
-                        {c.assigned_user && typeof c.assigned_user === "object" ? (
-                          <span className="font-semibold text-[var(--crmx-text)]">{c.assigned_user.name}</span>
-                        ) : (
-                          <span className="text-[12px] font-semibold text-[var(--crmx-warning-text)]">غير مُسندة</span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        <span className={`${COMPLAINT_PILL} bg-[var(--crmx-neutral-soft)] text-[var(--crmx-text-secondary)]`}>
-                          {c.channel ? COMPLAINT_CHANNEL_LABELS[c.channel] : "—"}
-                        </span>
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]">
-                        {c.department ? COMPLAINT_DEPARTMENT_LABELS[c.department] : "غير مصنَّف"}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        {priority ? <span className={`${COMPLAINT_PILL} ${priority.tone}`}>{priority.label}</span> : "—"}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        {status ? <span className={`${COMPLAINT_PILL} ${status.tone}`}>{status.label}</span> : c.status}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]">{fmtDate(c.created_at ?? null)}</td>
-                      <td className="w-8 px-3 py-3 text-[var(--crmx-text-muted)]">
-                        <ChevronLeft className="h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <div className="space-y-2">
+          <div className="flex justify-end">
+            <CrmViewToggle mode={viewMode} onChange={setViewMode} />
           </div>
-
+        <div className={cardCls}>
+          <CrmDataView
+            rows={rows}
+            columns={complaintColumns}
+            rowKey={(c) => String(c.id)}
+            mode={viewMode}
+            bordered={false}
+            minTableWidth={1080}
+            onRowClick={(c) => navigate(`/admin/crm/complaints/${c.id}`)}
+          />
           <CrmPagination
             currentPage={meta.currentPage}
             lastPage={meta.lastPage}
@@ -498,6 +509,7 @@ export function ComplaintsPage({ mode = "all" }: { mode?: "all" | "open" }) {
             onPerPageChange={(n: number) => { setPerPage(n); setPage(1); }}
             itemLabel="شكوى"
           />
+        </div>
         </div>
       )}
 

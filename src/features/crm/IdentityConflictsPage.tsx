@@ -7,7 +7,7 @@ import { useAuth } from "../../auth";
 import { CRM_PERMISSIONS } from "../../auth/permissions";
 import { crmApi } from "./api";
 import { CrmState, getCrmError } from "./components";
-import { CrmAvatar, CrmPageHeader, CrmPagination } from "./customers-ui";
+import { CrmAvatar, CrmDataView, CrmPageHeader, CrmPagination, CrmViewToggle, useCrmViewMode } from "./customers-ui";
 import { date as fmtDate, money } from "./format";
 import type { CrmCandidateOrder, CrmIdentityConflict } from "./types";
 
@@ -167,6 +167,7 @@ function StatusPill({ value }: { value: string }) {
 export function IdentityConflictsPage() {
   const { hasPermission } = useAuth();
   const canResolve = hasPermission(CRM_PERMISSIONS.MANAGE_IDENTITY_CONFLICTS);
+  const [viewMode, setViewMode] = useCrmViewMode("identity-conflicts");
 
   const [params, setParams] = useSearchParams();
   const status = params.get("status") ?? "open";
@@ -230,6 +231,7 @@ export function IdentityConflictsPage() {
           {Object.entries(CHANNEL_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
         <span className="text-[13px] text-[var(--crmx-text-muted)]">{meta.total} تذكرة</span>
+        <CrmViewToggle mode={viewMode} onChange={setViewMode} className="ms-auto" />
       </div>
 
       {loading ? (
@@ -242,45 +244,46 @@ export function IdentityConflictsPage() {
         <CrmState kind="empty" title="لا توجد تعارضات مطابقة" detail="تُفتح التذاكر تلقائيًا عند ورود اسم مختلف على رقم مسجّل." />
       ) : (
         <>
-          <div className="crmx-scrollbar overflow-x-auto rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)]">
-            <table className="w-full min-w-[860px] border-collapse text-right">
-              <thead>
-                <tr className="border-b border-[var(--crmx-border)] bg-[#FAFBFC]">
-                  {["العميل المسجّل", "الاسم الوارد", "الرقم", "القناة", "الحالة", "التاريخ", ""].map((h, i) => (
-                    <th key={i} className="px-4 py-3 text-[12px] font-bold text-[var(--crmx-text-secondary)] whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((c) => (
-                  <tr key={String(c.id)} className="crmx-table-row border-b border-[var(--crmx-border)] last:border-0">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <CrmAvatar name={c.customer?.name ?? "?"} size={32} />
-                        <div className="min-w-0">
-                          <p className="truncate text-[13px] font-semibold text-[var(--crmx-text)]">{c.customer?.name ?? "—"}</p>
-                          <p className="text-[11.5px] text-[var(--crmx-text-muted)]">{c.customer?.code ?? ""}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-[13px] font-semibold text-[var(--crmx-warning-text)]">{c.incoming_name}</td>
-                    <td className="px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]" dir="ltr">{c.incoming_phone_normalized}</td>
-                    <td className="px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]">{CHANNEL_LABELS[c.source_channel] ?? c.source_channel}</td>
-                    <td className="px-4 py-3"><StatusPill value={c.status} /></td>
-                    <td className="px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]">{fmtDate(c.created_at)}</td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={() => setSelected(c)}
-                        className="rounded-[var(--crmx-radius-control)] border border-[var(--crmx-border)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--crmx-text)] hover:bg-[var(--crmx-neutral-soft)]"
-                      >
-                        {c.status === "open" ? "مراجعة" : "التفاصيل"}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <CrmDataView
+            rows={rows}
+            rowKey={(c) => String(c.id)}
+            mode={viewMode}
+            minTableWidth={860}
+            columns={[
+              {
+                key: "customer",
+                label: "العميل المسجّل",
+                card: "title",
+                render: (c) => (
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <CrmAvatar name={c.customer?.name ?? "?"} size={32} />
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] font-semibold text-[var(--crmx-text)]">{c.customer?.name ?? "—"}</p>
+                      <p className="text-[11.5px] font-normal text-[var(--crmx-text-muted)]">{c.customer?.code ?? ""}</p>
+                    </div>
+                  </div>
+                ),
+              },
+              { key: "incoming_name", label: "الاسم الوارد", cellClassName: "text-[13px] font-semibold text-[var(--crmx-warning-text)]", render: (c) => <span className="font-semibold text-[var(--crmx-warning-text)]">{c.incoming_name}</span> },
+              { key: "phone", label: "الرقم", cellClassName: "text-[13px] text-[var(--crmx-text-secondary)]", render: (c) => <span dir="ltr">{c.incoming_phone_normalized}</span> },
+              { key: "channel", label: "القناة", cellClassName: "text-[13px] text-[var(--crmx-text-secondary)]", render: (c) => CHANNEL_LABELS[c.source_channel] ?? c.source_channel },
+              { key: "status", label: "الحالة", card: "badge", render: (c) => <StatusPill value={c.status} /> },
+              { key: "created_at", label: "التاريخ", cellClassName: "text-[13px] text-[var(--crmx-text-secondary)]", render: (c) => fmtDate(c.created_at) },
+              {
+                key: "action",
+                label: "",
+                card: "actions",
+                render: (c) => (
+                  <button
+                    onClick={() => setSelected(c)}
+                    className="min-h-10 rounded-[var(--crmx-radius-control)] border border-[var(--crmx-border)] px-3 py-1.5 text-[12.5px] font-semibold text-[var(--crmx-text)] hover:bg-[var(--crmx-neutral-soft)] lg:min-h-0"
+                  >
+                    {c.status === "open" ? "مراجعة" : "التفاصيل"}
+                  </button>
+                ),
+              },
+            ]}
+          />
 
           <CrmPagination
             currentPage={meta.currentPage}
@@ -456,7 +459,7 @@ function ConflictReviewDialog({
               <div className="grid grid-cols-3 divide-x divide-x-reverse divide-[var(--crmx-border)] rounded-xl bg-[var(--crmx-neutral-soft)] py-3">
                 <div className="px-2 text-center">
                   <p className="text-[11px] font-bold text-[var(--crmx-text-muted)]">الرقم</p>
-                  <p className="mt-1 text-[13px] font-bold text-[var(--crmx-text)]" dir="ltr">{conflict.incoming_phone_normalized}</p>
+                  <p className="mt-1 break-all text-[13px] font-bold text-[var(--crmx-text)]" dir="ltr">{conflict.incoming_phone_normalized}</p>
                 </div>
                 <div className="px-2 text-center">
                   <p className="text-[11px] font-bold text-[var(--crmx-text-muted)]">القناة</p>

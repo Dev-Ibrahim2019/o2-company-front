@@ -92,7 +92,7 @@ function Summary() {
 // Added here only — unwrapRows() itself is untouched, and every other call
 // site (ComplaintsTab, NotesOccasionsTab, OrdersTab, OverviewTab,
 // AddressesTab) passes its own distinct keys, so this cannot affect them.
-function Statement(){const s=useCrmSection("statement");return <SectionFrame state={s} hideOnForbidden>{d=><DomainTable empty="لا توجد حركات مالية" rows={unwrapRows(d,["lines","transactions","statement"])} columns={[{key:"date",label:"التاريخ",render:(v,r)=>date(v??r.created_at)},{key:"description",label:"البيان",render:(v,r)=>text(v??r.reference)},{key:"debit",label:"مدين",render:money},{key:"credit",label:"دائن",render:money},{key:"balance",label:"الرصيد",render:money}]}/>}</SectionFrame>}
+function Statement(){const s=useCrmSection("statement");return <SectionFrame state={s} hideOnForbidden>{d=><DomainTable empty="لا توجد حركات مالية" viewKey="customer-statement" rows={unwrapRows(d,["lines","transactions","statement"])} columns={[{key:"date",label:"التاريخ",render:(v,r)=>date(v??r.created_at)},{key:"description",label:"البيان",card:"wide",render:(v,r)=>text(v??r.reference)},{key:"debit",label:"مدين",render:money},{key:"credit",label:"دائن",render:money},{key:"balance",label:"الرصيد",render:money}]}/>}</SectionFrame>}
 
 // GET .../aging returns a flat bucket object ({current, 1_30, 31_60, 61_90,
 // over_90, total}), never an array — unwrapRows() is an array-unwrapper, not
@@ -112,7 +112,7 @@ function Aging(){
     // value; filtering them out would make an aging report that only shows
     // the customer's problems, never confirms the absence of one.
     const rows = AGING_BUCKETS.map(([key, label]) => ({ label, amount: r[key] }));
-    return <DomainTable empty="لا توجد أرصدة مستحقة" rows={rows} columns={[{key:"label",label:"الفترة"},{key:"amount",label:"القيمة",render:money}]}/>;
+    return <DomainTable empty="لا توجد أرصدة مستحقة" fixedMode="table" minTableWidth={260} rows={rows} columns={[{key:"label",label:"الفترة"},{key:"amount",label:"القيمة",render:money}]}/>;
   }}</SectionFrame>;
 }
 

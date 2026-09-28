@@ -2,6 +2,7 @@ import { AlertTriangle, Award, Download, Plus, UserCheck, UserPlus, Users } from
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../../auth";
+import { CRM_PERMISSIONS } from "../../auth/permissions";
 import { branchService, type Branch } from "../../services/branchService";
 import { crmApi } from "./api";
 import { getCrmError } from "./components";
@@ -10,6 +11,8 @@ import "./customers-ui/crmx.css";
 import {
   CrmEmptyState,
   CrmFilterBar,
+  CrmViewToggle,
+  useCrmViewMode,
   CrmFilterDrawer,
   CrmKpiCard,
   CrmPageHeader,
@@ -57,9 +60,11 @@ function exportCsv(items: CrmCustomer[]) {
 }
 
 export function CrmCustomersPage() {
-  const { user } = useAuth();
+  const { hasPermission } = useAuth();
   const navigate = useNavigate();
-  const isGlobal = !user?.branch_id;
+  // Filtering by branch is a manager tool — the backend ignores branch_id
+  // without this permission (Customer360QueryService::directory()).
+  const canFilterByBranch = hasPermission(CRM_PERMISSIONS.CUSTOMERS_FILTER_BY_BRANCH);
 
   const [params, setParams] = useSearchParams();
   const [result, setResult] = useState<CrmPage<CrmCustomer>>();
@@ -67,6 +72,7 @@ export function CrmCustomersPage() {
   const [loading, setLoading] = useState(true);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [viewMode, setViewMode] = useCrmViewMode("customers");
   const [quickViewCustomer, setQuickViewCustomer] = useState<CrmCustomer | null>(null);
 
   const [kpi, setKpi] = useState<{ total?: number; active?: number; recent?: number; vip?: number }>({});
@@ -87,9 +93,9 @@ export function CrmCustomersPage() {
   useEffect(() => { void load(); }, [load]);
 
   useEffect(() => {
-    if (!isGlobal) return;
+    if (!canFilterByBranch) return;
     branchService.getAll().then(setBranches).catch(() => setBranches([]));
-  }, [isGlobal]);
+  }, [canFilterByBranch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -237,6 +243,7 @@ export function CrmCustomersPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M7 12h10M10 18h4" />
             </svg>
           </button>
+          <CrmViewToggle mode={viewMode} onChange={setViewMode} />
           <CrmFilterBar
             status={status}
             onStatusChange={(v) => set("status", v)}
@@ -251,7 +258,7 @@ export function CrmCustomersPage() {
             branchId={branchId}
             onBranchChange={(v) => set("branch_id", v)}
             branches={branches}
-            showBranchFilter={isGlobal}
+            showBranchFilter={canFilterByBranch}
             advancedActiveCount={advancedActiveCount}
             onOpenAdvanced={() => setAdvancedOpen(true)}
           />
@@ -270,7 +277,7 @@ export function CrmCustomersPage() {
         <CrmEmptyState hasFilters={hasFilters} onResetFilters={resetFilters} onAddCustomer={() => navigate("/admin/crm/customers/new")} />
       ) : (
         <div className="overflow-hidden rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)]">
-          <CrmTable items={result.items} onQuickView={setQuickViewCustomer} onEdit={(c) => navigate(`/admin/crm/customers/${c.id}/edit`)} />
+          <CrmTable items={result.items} mode={viewMode} onQuickView={setQuickViewCustomer} onEdit={(c) => navigate(`/admin/crm/customers/${c.id}/edit`)} />
           <CrmPagination
             currentPage={result.currentPage}
             lastPage={result.lastPage}
@@ -287,7 +294,7 @@ export function CrmCustomersPage() {
         onClose={() => setAdvancedOpen(false)}
         values={{ status, category, branchId, source, gender, hasComplaints, hasOccasion, occasionType }}
         branches={branches}
-        showBranchFilter={isGlobal}
+        showBranchFilter={canFilterByBranch}
         onApply={applyAdvanced}
         onReset={resetFilters}
       />

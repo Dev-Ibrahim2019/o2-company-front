@@ -18,7 +18,9 @@ export function CrmPageHeader({
         <h1 className="text-[28px] font-extrabold text-[var(--crmx-text)] md:text-[32px]">{title}</h1>
         <p className="mt-1 max-w-xl text-[15px] text-[var(--crmx-text-secondary)]">{description}</p>
       </div>
-      {actions && <div className="flex items-center gap-2.5">{actions}</div>}
+      {/* Wraps instead of pushing the last action off a phone screen; each
+          action keeps its label on one line. */}
+      {actions && <div className="flex flex-wrap items-center gap-2.5 [&>*]:whitespace-nowrap">{actions}</div>}
     </div>
   );
 }

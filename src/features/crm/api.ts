@@ -13,6 +13,7 @@ import type {
   CrmAddress, CrmAddressInput,
   CrmStaffPermissionCatalogItem, CrmStaffMember, CrmStaffPermissionDetail, CrmStaffPermissionActivityEvent,
   CrmSettings, CrmReportOverview, CrmReportRevenue, CrmReportPeriod,
+  CrmComplaintsElsewhere, CrmStaffActivityRow, CrmStaffActivityMeta,
 } from "./types";
 
 const payload = <T,>(raw: unknown): T => {
@@ -80,6 +81,14 @@ export const crmApi = {
     payload<CrmStaffPermissionDetail>((await api.post(`/crm/staff/${userId}/permissions/deny`, { permissions })).data),
   staffPermissionActivity: async (userId: CrmId) => payload<CrmStaffPermissionActivityEvent[]>((await api.get(`/crm/staff/${userId}/activity`)).data),
   // ── CRM settings ──
+  // CRM staff activity log — managers/super-admin only (crm.staff-activity.view).
+  staffActivity: async (params: URLSearchParams) => {
+    const body = (await api.get("/crm/staff-activity", { params })).data as { meta?: CrmStaffActivityMeta };
+    return { page: list<CrmStaffActivityRow>(body), meta: body.meta };
+  },
+  // Counts of this customer's complaints at other branches (no rows).
+  complaintsElsewhere: async (customerId: CrmId) =>
+    payload<CrmComplaintsElsewhere>((await api.get(`/crm/customers/${customerId}/complaints/elsewhere`)).data),
   crmSettings: async () => payload<CrmSettings>((await api.get("/crm/settings")).data),
   updateCrmSettings: async (data: Partial<CrmSettings>) => payload<CrmSettings>((await api.put("/crm/settings", data)).data),
   // ── Reports & analytics ──

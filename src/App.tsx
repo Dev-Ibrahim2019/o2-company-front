@@ -14,7 +14,7 @@ import {
   ProtectedRoute,
   UnauthorizedPage,
 } from "./auth";
-import { ROLES } from "./auth/permissions";
+import { CRM_PERMISSIONS, ROLES } from "./auth/permissions";
 import { O2LoadingSpinner } from "./components/shared/O2LoadingSpinner";
 
 // ── المكونات ──
@@ -90,6 +90,7 @@ import {
   CrmGroupsAnalyticsPage,
   CrmGroupsSmartSegmentsPage,
   CrmStaffPermissionsPage,
+  CrmStaffActivityPage,
   CrmSettingsPage,
   CrmReportsPage,
   CrmReportsRevenuePage,
@@ -415,6 +416,10 @@ function AppRoutes() {
           <Route path="orders/active" element={<CrmOrdersPage mode="active" />} />
           <Route path="orders/delayed" element={<CrmOrdersPage mode="delayed" />} />
           <Route path="staff-permissions" element={<CrmStaffPermissionsPage />} />
+          <Route
+            path="staff-activity"
+            element={<ProtectedRoute permission={CRM_PERMISSIONS.STAFF_ACTIVITY_VIEW}><CrmStaffActivityPage /></ProtectedRoute>}
+          />
           <Route path="settings" element={<CrmSettingsPage />} />
           <Route path="reports" element={<CrmReportsPage />} />
           <Route path="reports/revenue" element={<CrmReportsRevenuePage />} />

@@ -7,13 +7,13 @@ import { departmentService } from "../../services/departmentService";
 import { fetchItems } from "../../services/itemService";
 import { crmApi } from "./api";
 import { CrmState, getCrmError } from "./components";
+import { CrmDataView, CrmViewToggle, useCrmViewMode } from "./customers-ui";
 import { LoyaltyBaseRuleCard } from "./LoyaltyBaseRuleCard";
 import { LoyaltyRuleFormDrawer } from "./LoyaltyRuleFormDrawer";
 import { SCOPE_TYPE_LABELS } from "./loyaltyLabels";
 import { date as fmtDate } from "./format";
 import type { CrmLoyaltyRule } from "./types";
 
-const cardCls = "rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)]";
 const selectCls =
   "h-11 rounded-xl border border-[var(--crmx-border)] bg-white px-3 text-[14px] text-[var(--crmx-text)] outline-none focus:border-[var(--crmx-primary)] focus:ring-2 focus:ring-[var(--crmx-primary)]/10";
 const fieldLabelCls = "flex flex-col gap-1 text-[13px] font-semibold text-[var(--crmx-text-secondary)]";
@@ -22,6 +22,7 @@ const pill = "inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font
 export function LoyaltyRulesTab({ onChanged }: { onChanged?: () => void }) {
   const { hasPermission } = useAuth();
   const canManage = hasPermission(CRM_PERMISSIONS.LOYALTY_MANAGE);
+  const [viewMode, setViewMode] = useCrmViewMode("loyalty-rules");
 
   const [rules, setRules] = useState<CrmLoyaltyRule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -200,85 +201,97 @@ export function LoyaltyRulesTab({ onChanged }: { onChanged?: () => void }) {
       ) : otherRules.length === 0 ? (
         <CrmState kind="empty" title="لا توجد قواعد إضافية بعد" />
       ) : (
-        <div className={cardCls}>
-          <div className="crmx-scrollbar overflow-x-auto">
-            <table className="w-full min-w-[820px] border-collapse text-right">
-              <thead>
-                <tr className="border-b border-[var(--crmx-border)] bg-[#FAFBFC]">
-                  {["الاسم", "النطاق", "المستوى", "المضاعِف", "الفترة", "الحالة", ""].map((h) => (
-                    <th key={h} className="whitespace-nowrap px-4 py-3.5 text-[12.5px] font-bold text-[var(--crmx-text-secondary)]">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {otherRules.map((r) => (
-                  <tr key={String(r.id)} className="crmx-table-row border-b border-[var(--crmx-border)] transition-colors last:border-0 hover:bg-[var(--crmx-neutral-soft)]/70">
-                    <td className="px-4 py-3 text-[13px] font-bold text-[var(--crmx-text)]">{r.name}</td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      <span className={`${pill} bg-[var(--crmx-info-soft)] text-[var(--crmx-info-text)]`}>
-                        {/* "قسم: الكيك" not just "قسم" — the point of a table
-                            row is answering "what does this rule do?" without
-                            opening it, and the scope type alone never did. */}
-                        {scopeTarget(r) ? `${SCOPE_TYPE_LABELS[r.scope_type]}: ${scopeTarget(r)}` : SCOPE_TYPE_LABELS[r.scope_type]}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-[13px] text-[var(--crmx-text-secondary)]">
-                      {r.min_order_value != null ? `فاتورة ≥ ${num(r.min_order_value)} ₪` : "بند"}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-[13px] font-bold text-[var(--crmx-text)]">×{num(r.multiplier)}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-[12.5px] text-[var(--crmx-text-muted)]">
-                      {r.starts_at || r.ends_at ? (
-                        // "من X إلى Y", not "X → Y": an RTL paragraph holding
-                        // an arrow glyph between two Latin-digit dates is
-                        // exactly the shape the bidi algorithm reorders —
-                        // the arrow read as pointing the wrong way and the
-                        // end date could appear to precede the start date.
-                        // Explicit "من/إلى" removes the ambiguous glyph
-                        // entirely; each date is also isolated in its own
-                        // dir="ltr" span so its internal YYYY-MM-DD order
-                        // can never be affected by the surrounding RTL run.
-                        <span className="inline-flex items-center gap-1">
-                          <CalendarOff className="h-3 w-3 shrink-0" />
-                          <span>من</span>
-                          <span dir="ltr">{r.starts_at ? fmtDate(r.starts_at) : "—"}</span>
-                          <span>إلى</span>
-                          <span dir="ltr">{r.ends_at ? fmtDate(r.ends_at) : "بلا نهاية"}</span>
-                        </span>
-                      ) : "دائمة"}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      <span className={`${pill} ${r.is_active ? "bg-[var(--crmx-success-soft)] text-[var(--crmx-success-text)]" : "bg-[var(--crmx-neutral-soft)] text-[var(--crmx-text-muted)]"}`}>
-                        {r.is_active ? "فعّالة" : "معطَّلة"}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      {canManage && (
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => setDrawer({ mode: "edit", rule: r })}
-                            title="تعديل"
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--crmx-text-muted)] hover:bg-[var(--crmx-neutral-soft)] hover:text-[var(--crmx-navy)]"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                          {r.is_active && (
-                            <button
-                              onClick={() => void deactivate(r)}
-                              disabled={pendingId === r.id}
-                              title="تعطيل"
-                              className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--crmx-text-muted)] hover:bg-[var(--crmx-danger-soft)] hover:text-[var(--crmx-danger-text)] disabled:opacity-50"
-                            >
-                              <ShieldOff className="h-3.5 w-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="space-y-2">
+          <div className="flex justify-end">
+            <CrmViewToggle mode={viewMode} onChange={setViewMode} />
           </div>
+          <CrmDataView
+            rows={otherRules}
+            rowKey={(r) => String(r.id)}
+            mode={viewMode}
+            minTableWidth={820}
+            columns={[
+              { key: "name", label: "الاسم", card: "title", wrap: true, cellClassName: "min-w-[160px] text-[13px] font-bold", render: (r) => r.name },
+              {
+                key: "scope",
+                label: "النطاق",
+                card: "wide",
+                // "قسم: الكيك" not just "قسم" — a row should answer "what does
+                // this rule do?" without opening it.
+                render: (r) => (
+                  <span className={`${pill} bg-[var(--crmx-info-soft)] text-[var(--crmx-info-text)]`}>
+                    {scopeTarget(r) ? `${SCOPE_TYPE_LABELS[r.scope_type]}: ${scopeTarget(r)}` : SCOPE_TYPE_LABELS[r.scope_type]}
+                  </span>
+                ),
+              },
+              {
+                key: "level",
+                label: "المستوى",
+                cellClassName: "text-[13px] text-[var(--crmx-text-secondary)]",
+                render: (r) => (r.min_order_value != null ? `فاتورة ≥ ${num(r.min_order_value)} ₪` : "بند"),
+              },
+              { key: "multiplier", label: "المضاعِف", cellClassName: "text-[13px] font-bold", render: (r) => <span dir="ltr">×{num(r.multiplier)}</span> },
+              {
+                key: "period",
+                label: "الفترة",
+                card: "wide",
+                cellClassName: "text-[12.5px] text-[var(--crmx-text-muted)]",
+                // "من X إلى Y", not "X → Y": an arrow between two Latin-digit
+                // dates inside RTL text is exactly what the bidi algorithm
+                // reorders. Each date is isolated in its own dir="ltr" span.
+                render: (r) =>
+                  r.starts_at || r.ends_at ? (
+                    <span className="inline-flex flex-wrap items-center gap-1">
+                      <CalendarOff className="h-3 w-3 shrink-0" />
+                      <span>من</span>
+                      <span dir="ltr">{r.starts_at ? fmtDate(r.starts_at) : "—"}</span>
+                      <span>إلى</span>
+                      <span dir="ltr">{r.ends_at ? fmtDate(r.ends_at) : "بلا نهاية"}</span>
+                    </span>
+                  ) : "دائمة",
+              },
+              {
+                key: "active",
+                label: "الحالة",
+                card: "badge",
+                render: (r) => (
+                  <span className={`${pill} ${r.is_active ? "bg-[var(--crmx-success-soft)] text-[var(--crmx-success-text)]" : "bg-[var(--crmx-neutral-soft)] text-[var(--crmx-text-muted)]"}`}>
+                    {r.is_active ? "فعّالة" : "معطَّلة"}
+                  </span>
+                ),
+              },
+              ...(canManage
+                ? [{
+                    key: "actions",
+                    label: "",
+                    card: "actions" as const,
+                    render: (r: CrmLoyaltyRule) => (
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => setDrawer({ mode: "edit", rule: r })}
+                          title="تعديل"
+                          aria-label={`تعديل ${r.name}`}
+                          className="flex h-10 w-10 items-center justify-center rounded-lg text-[var(--crmx-text-muted)] hover:bg-[var(--crmx-neutral-soft)] hover:text-[var(--crmx-navy)] lg:h-8 lg:w-8"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        {r.is_active && (
+                          <button
+                            onClick={() => void deactivate(r)}
+                            disabled={pendingId === r.id}
+                            title="تعطيل"
+                            aria-label={`تعطيل ${r.name}`}
+                            className="flex h-10 w-10 items-center justify-center rounded-lg text-[var(--crmx-text-muted)] hover:bg-[var(--crmx-danger-soft)] hover:text-[var(--crmx-danger-text)] disabled:opacity-50 lg:h-8 lg:w-8"
+                          >
+                            <ShieldOff className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    ),
+                  }]
+                : []),
+            ]}
+          />
         </div>
       )}
 

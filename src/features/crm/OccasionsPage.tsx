@@ -273,7 +273,9 @@ export function OccasionsPage() {
   const [summary, setSummary] = useState<CrmOccasionsSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ status?: number; message: string } | null>(null);
-  const [openId, setOpenId] = useState<CrmId | null>(null);
+  // ?occasion=<id> — the deep link the "occasion today" bell notice uses —
+  // opens that occasion's drawer straight away.
+  const [openId, setOpenId] = useState<CrmId | null>(() => params.get("occasion") || null);
 
   // Add/edit — "add" needs no prefilled data; "edit" fetches the full record
   // (notes/contact method/assigned user aren't on the list row) before the

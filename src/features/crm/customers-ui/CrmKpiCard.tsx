@@ -47,20 +47,22 @@ export function CrmKpiCard({
   const TrendIcon = isUp ? TrendingUp : TrendingDown;
 
   return (
-    <div className="rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-5">
-      <div className="flex items-center gap-4">
+    <div className="min-w-0 rounded-2xl border border-[var(--crmx-border)] bg-[var(--crmx-card)] p-4 sm:p-5">
+      {/* Two-up on a phone leaves ~165px per card: the icon goes above the
+          value there, so a full date still fits on one line. */}
+      <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-4">
         <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--crmx-radius-control)] ${TONE_CLASS[tone]}`}>
           {icon}
         </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-[14px] font-semibold text-[var(--crmx-text-secondary)]">{label}</p>
+        <div className="min-w-0 max-w-full flex-1">
+          <p className="text-[13px] font-semibold text-[var(--crmx-text-secondary)] sm:text-[14px]">{label}</p>
           {loading ? (
             <div className="crmx-skeleton mt-1.5 h-7 w-16" />
           ) : (
             // nowrap + a size that fits the longest value these cards carry
             // (a full "2026-08-23" date), so a KPI never breaks across lines
             // in the narrow columns of the five-across row.
-            <p className="whitespace-nowrap text-[24px] font-extrabold leading-tight text-[var(--crmx-text)]">{value}</p>
+            <p className="whitespace-nowrap text-[20px] font-extrabold leading-tight text-[var(--crmx-text)] sm:text-[24px]">{value}</p>
           )}
         </div>
       </div>

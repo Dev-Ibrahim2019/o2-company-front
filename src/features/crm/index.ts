@@ -17,6 +17,7 @@ export { GroupsAnalyticsPage as CrmGroupsAnalyticsPage } from "./GroupsAnalytics
 export { GroupsSmartSegmentsPage as CrmGroupsSmartSegmentsPage } from "./GroupsSmartSegmentsPage";
 export { CrmStaffPermissionsPage } from "./CrmStaffPermissionsPage";
 export { CrmSettingsPage } from "./CrmSettingsPage";
+export { CrmStaffActivityPage } from "./CrmStaffActivityPage";
 export { CrmReportsPage } from "./CrmReportsPage";
 export { CrmReportsRevenuePage } from "./CrmReportsRevenuePage";
 export { LoyaltyPage as CrmLoyaltyPage } from "./LoyaltyPage";

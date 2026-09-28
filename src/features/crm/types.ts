@@ -175,6 +175,9 @@ export interface CrmCustomerProfile {
   };
   summary: {
     orders_count?: number; completed_orders_count?: number; average_order_value?: number;
+    // Cancelled orders are excluded from total_purchases/average_order_value
+    // and counted here on their own.
+    cancelled_orders_count?: number;
     total_purchases?: number; last_order_at?: string | null; open_complaints_count?: number;
   };
   permissions: { can_edit?: boolean; can_view_financial?: boolean; can_view_sensitive_notes?: boolean };
@@ -388,6 +391,47 @@ export interface CrmStaffPermissionDetail {
 // GET /crm/staff/{user}/activity — only this screen's own writes (direct
 // grants / explicit denials), not the customer-group style created/updated/
 // deleted trail.
+// GET /crm/customers/{id}/complaints/elsewhere — counts only, never the rows,
+// of this customer's complaints at branches the viewer cannot open.
+export interface CrmComplaintsElsewhere {
+  total: number;
+  open: number;
+  last_at: string | null;
+  branches: { branch_id: number | null; branch_name: string | null; count: number }[];
+}
+
+// GET /crm/staff-activity — CrmStaffActivityController. Oversight log of what
+// CRM staff did to customers/complaints; unusual moves carry flags.
+export interface CrmStaffActivityRow {
+  id: number;
+  action: string;
+  action_label: string;
+  subject_type: "customer" | "complaint" | "note";
+  subject_id: number | null;
+  customer: { id: CrmId; name: string; code?: string | null } | null;
+  actor: { id: CrmId; name: string } | null;
+  actor_branch: string | null;
+  subject_branch: string | null;
+  is_flagged: boolean;
+  flags: { key: string; label: string }[];
+  details: {
+    customer_name?: string;
+    complaint_title?: string;
+    attempt?: "view" | "update" | "followup";
+    note_type?: string;
+    content?: string;
+    changes?: Record<string, { old: unknown; new: unknown }>;
+  } | null;
+  ip_address: string | null;
+  created_at: string | null;
+}
+
+export interface CrmStaffActivityMeta {
+  actions: Record<string, string>;
+  flags: Record<string, string>;
+  fields: Record<string, string>;
+}
+
 export interface CrmStaffPermissionActivityEvent {
   id: string;
   kind: "direct" | "deny";

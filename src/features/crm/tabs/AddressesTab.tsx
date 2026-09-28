@@ -203,10 +203,11 @@ export default function AddressesTab() {
         {(d) => (
           <DomainTable
             empty="لا توجد عناوين محفوظة"
+            viewKey="customer-addresses"
             rows={unwrapRows(d, ["addresses"])}
             columns={[
               { key: "label", label: "نوع العنوان", render: (v, r) => text(v ?? r.type) },
-              { key: "street", label: "العنوان", render: (_v, r) => streetLine(r) },
+              { key: "street", label: "العنوان", card: "wide", render: (_v, r) => streetLine(r) },
               { key: "city", label: "المدينة" },
               { key: "area", label: "المنطقة" },
               { key: "is_default", label: "الافتراضي", render: (v) => (v ? "نعم" : "لا") },
