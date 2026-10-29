@@ -41,6 +41,9 @@ export const ROLES = {
 
   /** رئيس الكول سنتر — كل صلاحيات موظف الكول سنتر + إدارة موظفي الكول سنتر حصرًا */
   CALL_CENTER_MANAGER: "call-center-manager",
+
+  /** أمين المخزن — لوحة المخازن /inventory فقط (الخادم يرفض أي API خارج /api/inventory) */
+  STOREKEEPER: "storekeeper",
 } as const;
 
 /** نوع يمثل جميع قيم الأدوار الممكنة */
@@ -176,6 +179,35 @@ export const CRM_PERMISSIONS = {
   SETTINGS_MANAGE: "crm.settings.manage",
 } as const;
 
+/** صلاحيات وحدة المخازن (migration 2027_03_01_000003). الوصول لمخزن بعينه يتطلب أيضاً
+ *  ربط المستخدم به (warehouse_user) أو امتلاك WAREHOUSES_ALL — يُفحص في الخلفية. */
+export const INVENTORY_PERMISSIONS = {
+  ACCESS: "inventory.access",
+  ITEMS_MANAGE: "inventory.items.manage",
+  CATALOG_MANAGE: "inventory.catalog.manage",
+  WAREHOUSES_MANAGE: "inventory.warehouses.manage",
+  WAREHOUSES_ALL: "inventory.warehouses.all",
+  // المرحلة 2 (migration 2027_03_02_000002)
+  MOVEMENTS_OPENING: "inventory.movements.opening",
+  MOVEMENTS_REVERSE: "inventory.movements.reverse",
+  SETTINGS_MANAGE: "inventory.settings.manage",
+  // المرحلة 3 (migration 2027_03_03_000002)
+  DOCUMENTS_MANAGE: "inventory.documents.manage",
+  DOCUMENTS_POST: "inventory.documents.post",
+  DOCUMENTS_REVERSE: "inventory.documents.reverse",
+  SUPPLIERS_MANAGE: "inventory.suppliers.manage",
+  COSTS_VIEW: "inventory.costs.view",
+  // المرحلة 4 (migration 2027_03_04_000002)
+  RECIPES_MANAGE: "inventory.recipes.manage",
+  COUNTS_MANAGE: "inventory.counts.manage",
+  COUNTS_POST: "inventory.counts.post",
+  ANALYTICS_VIEW: "inventory.analytics.view",
+  // لوحة المخازن المستقلة (migration 2027_03_07_000001) — تفصيل ITEMS_MANAGE
+  ITEMS_CREATE: "inventory.items.create",
+  ITEMS_EDIT: "inventory.items.edit",
+  ITEMS_DELETE: "inventory.items.delete",
+} as const;
+
 /** نوع يمثل جميع قيم الصلاحيات الممكنة */
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
@@ -267,6 +299,9 @@ export const ROLE_PERMISSIONS: Record<RoleKey, PermissionKey[]> = {
     PERMISSIONS.MANAGE_CALL_CENTER,
     PERMISSIONS.MANAGE_CALL_CENTER_EMPLOYEES,
   ],
+
+  // صلاحيات المخازن فقط (INVENTORY_PERMISSIONS، تُمنح في migration 2027_03_07_000001)
+  [ROLES.STOREKEEPER]: [],
 };
 
 /**

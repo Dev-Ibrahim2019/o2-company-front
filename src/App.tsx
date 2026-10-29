@@ -71,6 +71,26 @@ import { ExtensionsTestView } from "./components/administration/ExtensionsTestVi
 import { PbxExtensionsTestView } from "./components/administration/PbxExtensionsTestView";
 import { PbxRecordingsView } from "./components/administration/PbxRecordingsView";
 import FreePBXTestPage from "./pages/FreePBXTestPage";
+import { InventoryLayout } from "./components/inventory/InventoryLayout";
+import { InventoryDashboardPage } from "./components/inventory/InventoryDashboardPage";
+import { StockItemsPage } from "./components/administration/inventory/StockItemsPage";
+import { CategoriesPage as StockCategoriesPage } from "./components/administration/inventory/CategoriesPage";
+import { UnitsPage as StockUnitsPage } from "./components/administration/inventory/UnitsPage";
+import { WarehousesPage } from "./components/administration/inventory/WarehousesPage";
+import { BalancesPage } from "./components/administration/inventory/BalancesPage";
+import { KardexPage } from "./components/administration/inventory/KardexPage";
+import { StockDocumentsPage } from "./components/administration/inventory/StockDocumentsPage";
+import { RecipesPage } from "./components/administration/inventory/RecipesPage";
+import { StockCountsPage } from "./components/administration/inventory/StockCountsPage";
+import { InventoryAnalyticsPage } from "./components/administration/inventory/InventoryAnalyticsPage";
+import {
+  BatchesPage,
+  DepartmentSettingsPage,
+  ProductivityPage,
+  QualityReportsPage,
+  ShawarmaPage,
+} from "./components/administration/inventory/QualityPages";
+import { INVENTORY_PERMISSIONS } from "./auth/permissions";
 import {
   CrmRouteGuard,
   CrmShell,
@@ -188,10 +208,21 @@ function RoleGuard({ allowedRoles }: { allowedRoles: string[] }) {
   const hasAccess = user.roles.some((r) => allowedRoles.includes(r));
 
   if (!hasAccess) {
+    // أمين المخزن مكانه لوحة المخازن — أي محاولة لـ /admin أو الكاشير تعيده إليها
+    if (user.roles.includes(ROLES.STOREKEEPER)) {
+      return <Navigate to="/inventory/dashboard" replace />;
+    }
     return <Navigate to="/unauthorized" replace />;
   }
 
   return <Outlet />;
+}
+
+/** /admin/inventory/x?q → /inventory/x?q (الروابط القديمة قبل فصل لوحة المخازن). */
+function LegacyInventoryRedirect() {
+  const { pathname, search, hash } = useLocation();
+  const rest = pathname.replace(/^\/admin\/inventory\/?/, "");
+  return <Navigate to={`/inventory/${rest || "dashboard"}${search}${hash}`} replace />;
 }
 
 /**
@@ -352,6 +383,8 @@ function AppRoutes() {
       {/* ── مسارات عامة ── */}
       <Route path="/login" element={<Login />} />
       <Route path="/unauthorized" element={<UnauthorizedPage />} />
+      {/* الروابط القديمة للمخازن داخل الإدارة → اللوحة المستقلة (مع الحفاظ على ?query) */}
+      <Route path="/admin/inventory/*" element={<LegacyInventoryRedirect />} />
 
       {/* ── مسارات عامة ── */}
       <Route path="/freepbx/test" element={<FreePBXTestPage />} />
@@ -490,6 +523,43 @@ function AppRoutes() {
               <Route path="pos" element={<AdminPOSWrapper />} />
             </Route>
           </Route>
+        </Route>
+
+        {/* ═══ لوحة المخازن المستقلة ═══
+            inventory.access يفتحها (أمين المخزن والإدارة). أزرار الكتابة تُخفى حسب صلاحيتها والخادم
+            يفرضها، والوصول لمخزن بعينه يُفحص في الخادم (WarehouseAccess). نفس صفحات administration/inventory.
+        */}
+        <Route
+          path="/inventory"
+          element={
+            <ProtectedRoute permission={INVENTORY_PERMISSIONS.ACCESS}>
+              <InventoryLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<InventoryDashboardPage />} />
+          <Route path="items" element={<StockItemsPage />} />
+          <Route path="categories" element={<StockCategoriesPage />} />
+          <Route path="units" element={<StockUnitsPage />} />
+          <Route path="warehouses" element={<WarehousesPage />} />
+          <Route path="balances" element={<BalancesPage />} />
+          <Route path="kardex" element={<KardexPage />} />
+          <Route path="receipts" element={<StockDocumentsPage type="receipt" />} />
+          <Route path="transfers" element={<StockDocumentsPage type="transfer" />} />
+          <Route path="waste" element={<StockDocumentsPage type="waste" />} />
+          <Route path="recipes" element={<RecipesPage />} />
+          <Route path="counts" element={<StockCountsPage />} />
+          <Route path="analytics" element={<InventoryAnalyticsPage />} />
+          <Route path="batches" element={<BatchesPage />} />
+          <Route path="productivity" element={<ProductivityPage />} />
+          <Route path="shawarma" element={<ShawarmaPage />} />
+          <Route path="departments" element={<DepartmentSettingsPage />} />
+          <Route path="quality-reports" element={<QualityReportsPage />} />
+          <Route path="breakdowns" element={<StockDocumentsPage type="breakdown" />} />
+          <Route path="production" element={<StockDocumentsPage type="production" />} />
+          <Route path="skewers" element={<StockDocumentsPage type="skewer" />} />
+          <Route path="showroom-sales" element={<StockDocumentsPage type="showroom_sale" />} />
         </Route>
 
         {/* ═══ مسارات نقطة البيع ═══

@@ -7,7 +7,7 @@ import React, { useState, useEffect } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useApp } from "../../../store";
 import { useAuth, Can } from "../../auth";
-import { PERMISSIONS } from "../../auth/permissions";
+import { PERMISSIONS, INVENTORY_PERMISSIONS } from "../../auth/permissions";
 import { ThemeToggle } from "../shared/ThemeToggle";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -43,6 +43,7 @@ import {
   Printer,
   Calendar,
   Headphones,
+  Warehouse,
 } from "lucide-react";
 
 /* ── روابط التنقل ── */
@@ -446,6 +447,14 @@ export const AdminLayout: React.FC<{ children?: React.ReactNode }> = ({
               indent
             />
           </SidebarGroup>
+
+          {/* المخازن — لوحة مستقلة على /inventory (InventoryLayout) */}
+          <SidebarLink
+            to="/inventory/dashboard"
+            icon={Warehouse}
+            label="المخازن"
+            permission={INVENTORY_PERMISSIONS.ACCESS}
+          />
 
           {/* إدارة الموظفين */}
           <SidebarLink

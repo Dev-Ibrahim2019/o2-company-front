@@ -1,7 +1,10 @@
-import { 
+import {
   Printer,
   Building2,
 } from 'lucide-react';
+import { Can } from '../../auth';
+import { INVENTORY_PERMISSIONS } from '../../auth/permissions';
+import { InventorySettingsCard } from './inventory/InventorySettingsCard';
 
 const SettingsPage = () => (
     <div className="max-w-4xl space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -52,6 +55,11 @@ const SettingsPage = () => (
           </button>
         </div>
       </div>
+
+      {/* قسم المخزون — الوحيد المربوط بالخادم في هذه الصفحة حالياً */}
+      <Can permission={INVENTORY_PERMISSIONS.ACCESS}>
+        <InventorySettingsCard />
+      </Can>
 
       <div className="bg-slate-900/50 border border-white/5 rounded-2xl p-8">
         <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">

@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import api from "../api/axios";
-import { PERMISSIONS } from "../auth/permissions";
+import { PERMISSIONS, INVENTORY_PERMISSIONS } from "../auth/permissions";
 import { Can } from "../auth";
 import {
   Shield,
@@ -31,6 +31,7 @@ import {
   UserCog,
   Archive,
   Monitor,
+  Warehouse,
 } from "lucide-react";
 
 /* ── Types ── */
@@ -87,6 +88,11 @@ const PERMISSION_GROUPS: { title: string; icon: React.ElementType; items: string
     icon: Monitor,
     items: [PERMISSIONS.MANAGE_POS_REGISTERS, PERMISSIONS.ACCESS_POS_INTERFACE, PERMISSIONS.MANAGE_HOSPITALITY_DEVICES, PERMISSIONS.MANAGE_DINING_ZONES],
   },
+  {
+    title: "المخازن",
+    icon: Warehouse,
+    items: Object.values(INVENTORY_PERMISSIONS),
+  },
 ];
 
 const ROLE_LABELS: Record<string, string> = {
@@ -96,6 +102,7 @@ const ROLE_LABELS: Record<string, string> = {
   "cashier": "كاشير",
   "hospitality": "ضيافة",
   "dept-staff": "موظف قسم",
+  "storekeeper": "أمين مخزن",
 };
 
 const PERMISSION_LABELS: Record<string, string> = {
@@ -119,6 +126,26 @@ const PERMISSION_LABELS: Record<string, string> = {
   [PERMISSIONS.MANAGE_HOSPITALITY_DEVICES]: "إدارة أجهزة الضيافة",
   [PERMISSIONS.MANAGE_DINING_ZONES]: "إدارة القاعات والطاولات",
   [PERMISSIONS.ACCESS_POS_INTERFACE]: "الوصول لواجهة الكاشير",
+  [INVENTORY_PERMISSIONS.ACCESS]: "الدخول لوحدة المخازن",
+  [INVENTORY_PERMISSIONS.ITEMS_MANAGE]: "إدارة الأصناف المخزنية (قديمة — تشمل الإنشاء والتعديل والحذف)",
+  [INVENTORY_PERMISSIONS.ITEMS_CREATE]: "إنشاء صنف مخزني",
+  [INVENTORY_PERMISSIONS.ITEMS_EDIT]: "تعديل صنف مخزني",
+  [INVENTORY_PERMISSIONS.ITEMS_DELETE]: "حذف صنف مخزني",
+  [INVENTORY_PERMISSIONS.CATALOG_MANAGE]: "إدارة التصنيفات ووحدات القياس",
+  [INVENTORY_PERMISSIONS.WAREHOUSES_MANAGE]: "إدارة المخازن وربط المستخدمين",
+  [INVENTORY_PERMISSIONS.WAREHOUSES_ALL]: "الوصول لكل المخازن دون ربط",
+  [INVENTORY_PERMISSIONS.MOVEMENTS_OPENING]: "إدخال أرصدة أول المدة",
+  [INVENTORY_PERMISSIONS.MOVEMENTS_REVERSE]: "عكس الحركات المخزنية",
+  [INVENTORY_PERMISSIONS.SETTINGS_MANAGE]: "إدارة إعدادات المخزون",
+  [INVENTORY_PERMISSIONS.DOCUMENTS_MANAGE]: "إنشاء مسودات الاستلام والتحويل والهالك",
+  [INVENTORY_PERMISSIONS.DOCUMENTS_POST]: "ترحيل المستندات المخزنية",
+  [INVENTORY_PERMISSIONS.DOCUMENTS_REVERSE]: "عكس المستندات المخزنية",
+  [INVENTORY_PERMISSIONS.SUPPLIERS_MANAGE]: "ربط الأصناف بالموردين وأسعارهم",
+  [INVENTORY_PERMISSIONS.COSTS_VIEW]: "رؤية التكاليف والقيم",
+  [INVENTORY_PERMISSIONS.RECIPES_MANAGE]: "إدارة الوصفات",
+  [INVENTORY_PERMISSIONS.COUNTS_MANAGE]: "إنشاء أوراق الجرد وإدخال المعدود",
+  [INVENTORY_PERMISSIONS.COUNTS_POST]: "ترحيل الجرد وتسوية الفروق",
+  [INVENTORY_PERMISSIONS.ANALYTICS_VIEW]: "عرض تحليلات المخزون",
 };
 
 const RolesPermissionsPage: React.FC = () => {

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useApp } from "../../store";
 import { useAuth } from "../auth";
 import { getPermissions } from "../auth/authStorage";
@@ -31,10 +31,14 @@ const API_ROLE_TO_STORE_ROLE: Record<string, string> = {
   "dept-staff": "DEPARTMENT_STAFF",
   "call-center": "CALL_CENTER",
   "call-center-manager": "CALL_CENTER",
+  "storekeeper": "EMPLOYEE",
 };
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
+  // الصفحة التي طلبها قبل تحويله للدخول (ProtectedRoute يضعها في state.from)
+  const location = useLocation();
+  const returnTo = (location.state as { from?: { pathname?: string; search?: string } } | null)?.from;
   const { login: storeLogin, branches, departments } = useApp();
   const { login: apiLogin, updateRoles, isLoggedIn } = useAuth();
 
@@ -66,7 +70,20 @@ export const Login: React.FC = () => {
   // ── تحويل المستخدم حسب دوره ──
   const redirectByRole = (roles: string[]) => {
     const primary = roles[0] || "";
-    if (primary === "crm-manager") {
+    // رجوع للوحة المخازن إن كان قد طلبها ويملك صلاحيتها
+    if (returnTo?.pathname?.startsWith("/inventory") && getPermissions().includes("inventory.access")) {
+      navigate(`${returnTo.pathname}${returnTo.search ?? ""}`, { replace: true });
+      return;
+    }
+    if (primary === "storekeeper") {
+      localStorage.removeItem("pos_device_uuid");
+      localStorage.removeItem("pos_register_info");
+      localStorage.removeItem("call_center_device_uuid");
+      localStorage.removeItem("call_center_register_info");
+      localStorage.removeItem("hospitality_device_uuid");
+      localStorage.removeItem("hospitality_register_info");
+      navigate("/inventory/dashboard", { replace: true });
+    } else if (primary === "crm-manager") {
       localStorage.removeItem("pos_device_uuid");
       localStorage.removeItem("pos_register_info");
       localStorage.removeItem("call_center_device_uuid");
