@@ -133,7 +133,7 @@ export const Modal: React.FC<{
         </button>
       </div>
       <div className="p-5 overflow-y-auto custom-scrollbar space-y-4">{children}</div>
-      {footer && <div className="p-5 border-t border-white/5 flex gap-2 justify-end">{footer}</div>}
+      {footer && <div className="p-5 border-t border-white/5 flex flex-wrap gap-2 justify-end">{footer}</div>}
     </div>
   </div>
 );

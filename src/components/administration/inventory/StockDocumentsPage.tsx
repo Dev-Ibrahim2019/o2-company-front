@@ -4,7 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, FileText, ChevronRight, ChevronLeft, Pencil, Trash2, Send, Undo2, PackageCheck, Copy } from "lucide-react";
+import { Plus, FileText, ChevronRight, ChevronLeft, Pencil, Trash2, Send, Undo2, PackageCheck, Copy, Printer } from "lucide-react";
 import { useCan } from "../../../auth";
 import { INVENTORY_PERMISSIONS } from "../../../auth/permissions";
 import { toast } from "../../shared/Toast";
@@ -22,6 +22,7 @@ import {
 } from "../../../services/inventoryService";
 import { DOCUMENT_TITLES, StockDocumentFormModal } from "./StockDocumentFormModal";
 import { TransferDocumentForm } from "./TransferDocumentForm";
+import { printTransferVoucher } from "./printTransferVoucher";
 import {
   EmptyBlock,
   Field,
@@ -455,6 +456,11 @@ const StockDocumentViewModal: React.FC<{
               <PrimaryButton onClick={() => run("post")} loading={busy === "post"} disabled={busy !== null}>
                 <Send size={15} /> ترحيل
               </PrimaryButton>
+            )}
+            {doc.type === "transfer" && !reversing && (
+              <SecondaryButton onClick={() => printTransferVoucher(doc)}>
+                <Printer size={15} className="inline ml-1" /> طباعة
+              </SecondaryButton>
             )}
             {doc.type === "transfer" && doc.status !== "draft" && canManage && !reversing && (
               <SecondaryButton onClick={duplicate} disabled={busy !== null}>
