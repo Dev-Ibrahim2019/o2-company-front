@@ -75,6 +75,7 @@ export function printTransferVoucher(doc: StockDocument): void {
       <div class="meta">
         <div><span>التاريخ</span><strong class="ltr">${esc(doc.document_date)}</strong></div>
         <div><span>أنشأه</span><strong>${esc(doc.creator?.name ?? "—")}</strong></div>
+        ${doc.reference_no ? `<div><span>رقم المرجع</span><strong class="ltr">${esc(doc.reference_no)}</strong></div>` : ""}
         <div><span>من مخزن</span><strong>${esc(doc.warehouse?.name)}</strong></div>
         <div><span>إلى مخزن</span><strong>${esc(doc.to_warehouse?.name)}</strong></div>
         ${doc.destination ? `<div><span>الجهة</span><strong>${esc(doc.destination)}</strong></div>` : ""}

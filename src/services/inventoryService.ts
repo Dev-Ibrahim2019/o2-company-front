@@ -244,6 +244,8 @@ export interface StockDocument {
   to_warehouse_id: number | null;
   supplier_id: number | null;
   supplier_invoice_no: string | null;
+  /** رقم مرجع اختياري (رقم دفتر/طلب القسم). */
+  reference_no?: string | null;
   document_date: string;
   notes: string | null;
   /** null إن كان المستخدم لا يملك رؤية التكاليف. */
@@ -279,6 +281,7 @@ export interface StockDocumentPayload {
   to_warehouse_id?: number | null;
   supplier_id?: number | null;
   supplier_invoice_no?: string | null;
+  reference_no?: string | null;
   document_date?: string | null;
   notes?: string | null;
   destination?: string | null;

@@ -233,6 +233,7 @@ export const TransferDocumentForm: React.FC<Props> = ({ document, warehouses, on
   const [warehouseId, setWarehouseId] = useState<number | "">(document?.warehouse_id ?? (active.length === 1 ? active[0].id : ""));
   const [toWarehouseId, setToWarehouseId] = useState<number | "">(document?.to_warehouse_id ?? "");
   const [destination, setDestination] = useState(document?.destination ?? "");
+  const [referenceNo, setReferenceNo] = useState(document?.reference_no ?? "");
   const [documentDate, setDocumentDate] = useState(document?.document_date ?? "");
   const [notes, setNotes] = useState(document?.notes ?? "");
   const [lines, setLines] = useState<Line[]>(() => [emptyLine()]);
@@ -403,6 +404,7 @@ export const TransferDocumentForm: React.FC<Props> = ({ document, warehouses, on
       warehouse_id: warehouseId,
       to_warehouse_id: toWarehouseId,
       destination: destination.trim() || null,
+      reference_no: referenceNo.trim() || null,
       document_date: documentDate || null,
       notes: notes.trim() || null,
       lines: filled.map((l) => ({
@@ -523,7 +525,7 @@ export const TransferDocumentForm: React.FC<Props> = ({ document, warehouses, on
         </>
       }
     >
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
         <Field label="من مخزن" required>
           {whSelect(warehouseId, changeWarehouse)}
         </Field>
@@ -532,6 +534,9 @@ export const TransferDocumentForm: React.FC<Props> = ({ document, warehouses, on
         </Field>
         <Field label="الجهة">
           <input className={inputClass} value={destination} onChange={(e) => touched(setDestination)(e.target.value)} maxLength={150} placeholder="مثال: قسم الشاورما — النصيرات" />
+        </Field>
+        <Field label="رقم المرجع">
+          <input className={inputClass} value={referenceNo} onChange={(e) => touched(setReferenceNo)(e.target.value)} maxLength={64} dir="auto" placeholder="اختياري" />
         </Field>
         <Field label="التاريخ" hint="اليوم المحاسبي؛ فارغ = اليوم.">
           <input type="date" className={inputClass} value={documentDate} onChange={(e) => touched(setDocumentDate)(e.target.value)} dir="ltr" />

@@ -171,7 +171,7 @@ export const StockDocumentsPage: React.FC<{ type: StockDocumentType }> = ({ type
       />
 
       <div className="flex flex-wrap items-center gap-3">
-        <SearchBox value={searchInput} onChange={setSearchInput} placeholder={type === "receipt" ? "رقم المستند أو فاتورة المورّد..." : "رقم المستند..."} />
+        <SearchBox value={searchInput} onChange={setSearchInput} placeholder={type === "receipt" ? "رقم المستند أو فاتورة المورّد..." : type === "transfer" ? "رقم المستند أو رقم المرجع..." : "رقم المستند..."} />
         <select className={`${inputClass} !w-auto`} value={filters.status} onChange={(e) => setFilter({ status: e.target.value })} aria-label="الحالة">
           <option value="">كل الحالات</option>
           {(Object.keys(DOCUMENT_STATUS_LABELS) as StockDocumentStatus[]).map((s) => (
@@ -242,6 +242,7 @@ export const StockDocumentsPage: React.FC<{ type: StockDocumentType }> = ({ type
                 >
                   <td className="p-4">
                     <bdi className="font-mono text-xs font-bold text-white">{d.number}</bdi>
+                    {d.reference_no && <bdi className="block text-[11px] text-slate-500 font-mono">مرجع {d.reference_no}</bdi>}
                   </td>
                   <td className="p-4 text-slate-300 tabular-nums">{d.document_date}</td>
                   <td className="p-4 text-slate-300">
@@ -512,6 +513,11 @@ const StockDocumentViewModal: React.FC<{
             {doc.poster && <Info label="رحّله">{doc.poster.name}</Info>}
             {doc.reverser && <Info label="عكسه">{doc.reverser.name}</Info>}
             {doc.destination && <Info label="الجهة">{doc.destination}</Info>}
+            {doc.reference_no && (
+              <Info label="رقم المرجع">
+                <bdi className="font-mono">{doc.reference_no}</bdi>
+              </Info>
+            )}
             {doc.type === "transfer" && (
               <Info label="الاستلام">
                 <ReceiptBadge doc={doc} />
