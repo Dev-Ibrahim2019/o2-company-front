@@ -4,7 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, FileText, ChevronRight, ChevronLeft, Pencil, Trash2, Send, Undo2, PackageCheck } from "lucide-react";
+import { Plus, FileText, ChevronRight, ChevronLeft, Pencil, Trash2, Send, Undo2, PackageCheck, Copy } from "lucide-react";
 import { useCan } from "../../../auth";
 import { INVENTORY_PERMISSIONS } from "../../../auth/permissions";
 import { toast } from "../../shared/Toast";
@@ -364,7 +364,7 @@ const StockDocumentViewModal: React.FC<{
   const canPost = useCan(INVENTORY_PERMISSIONS.DOCUMENTS_POST);
   const canReverse = useCan(INVENTORY_PERMISSIONS.DOCUMENTS_REVERSE);
   const [doc, setDoc] = useState<StockDocument | null>(null);
-  const [busy, setBusy] = useState<"post" | "delete" | "reverse" | "receive" | null>(null);
+  const [busy, setBusy] = useState<"post" | "delete" | "reverse" | "receive" | "duplicate" | null>(null);
   const [reversing, setReversing] = useState(false);
   const [reason, setReason] = useState("");
   const closeRef = useRef(onClose);
@@ -383,6 +383,20 @@ const StockDocumentViewModal: React.FC<{
       cancelled = true;
     };
   }, [id]);
+
+  const duplicate = async () => {
+    if (!doc) return;
+    setBusy("duplicate");
+    try {
+      const copy = await inventoryService.duplicateDocument(doc.id);
+      toast.success(`أُنشئت المسودة ${copy.number}`, "اختر الدفعات من جديد ثم احفظ.");
+      onChanged();
+      onEdit(copy);
+    } catch (e) {
+      toast.error("تعذّر التكرار", inventoryErrorMessage(e));
+      setBusy(null);
+    }
+  };
 
   const run = async (kind: "post" | "delete" | "reverse" | "receive") => {
     if (!doc) return;
@@ -441,6 +455,11 @@ const StockDocumentViewModal: React.FC<{
               <PrimaryButton onClick={() => run("post")} loading={busy === "post"} disabled={busy !== null}>
                 <Send size={15} /> ترحيل
               </PrimaryButton>
+            )}
+            {doc.type === "transfer" && doc.status !== "draft" && canManage && !reversing && (
+              <SecondaryButton onClick={duplicate} disabled={busy !== null}>
+                <Copy size={15} className="inline ml-1" /> {busy === "duplicate" ? "جارٍ التكرار..." : "تكرار"}
+              </SecondaryButton>
             )}
             {doc.can_receive && !reversing && (
               <PrimaryButton onClick={() => run("receive")} loading={busy === "receive"} disabled={busy !== null}>

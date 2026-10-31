@@ -821,6 +821,8 @@ export const inventoryService = {
   updateDocument: (id: number, data: StockDocumentPayload) => unwrap<StockDocument>(api.put(`${BASE}/documents/${id}`, data)),
   deleteDocument: (id: number) => unwrap<null>(api.delete(`${BASE}/documents/${id}`)),
   postDocument: (id: number) => unwrap<StockDocument>(api.post(`${BASE}/documents/${id}/post`)),
+  /** مسودة صرف جديدة بنفس المخزنين والأصناف والكميات، بتاريخ اليوم وبلا دفعات. */
+  duplicateDocument: (id: number) => unwrap<StockDocument>(api.post(`${BASE}/documents/${id}/duplicate`)),
   reverseDocument: (id: number, reason: string) => unwrap<StockDocument>(api.post(`${BASE}/documents/${id}/reverse`, { reason })),
 
   itemSuppliers: (itemId: number) => unwrap<SupplierItemLink[]>(api.get(`${BASE}/items/${itemId}/suppliers`)),
