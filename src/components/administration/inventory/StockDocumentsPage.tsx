@@ -93,6 +93,8 @@ export const StockDocumentsPage: React.FC<{ type: StockDocumentType }> = ({ type
   const [page, setPage] = useState(1);
   const [viewingId, setViewingId] = useState<number | null>(null);
   const [editing, setEditing] = useState<StockDocument | "new" | null>(null);
+  /** يتغير مع F3 (مستند جديد) ليُعاد بناء نموذج الصرف من الصفر. */
+  const [formKey, setFormKey] = useState(0);
   const requestSeq = useRef(0);
 
   // الصفحة نفسها تُستخدم للأنواع الثلاثة: تغيير النوع يعيد الحالة.
@@ -300,8 +302,13 @@ export const StockDocumentsPage: React.FC<{ type: StockDocumentType }> = ({ type
 
       {editing !== null && meta && type === "transfer" && (
         <TransferDocumentForm
+          key={formKey}
           document={editing === "new" ? null : editing}
           warehouses={warehouses}
+          onNew={() => {
+            setEditing("new");
+            setFormKey((k) => k + 1);
+          }}
           onClose={() => setEditing(null)}
           onSaved={(doc) => {
             setEditing(null);

@@ -4,6 +4,10 @@
  * لكل سطر: رصيد الصنف في مخزن المصدر بالوحدة المختارة، ومتوسط تكلفته، ودفعاته (نداء واحد items/{id}/stock).
  * الكمية التي تتجاوز المتاح تُعلَّم على السطر وتمنع "حفظ وترحيل" (المسودة مسموحة)؛ والخادم يرفض التجاوز
  * عند الترحيل على كل حال. الأنواع الأخرى من المستندات تبقى على StockDocumentFormModal.
+ *
+ * لوحة المفاتيح: Enter للخانة التالية (وفي آخر خانة لسطر جديد)، ↑/↓ بين الصفوف في خانات الكتابة
+ * (القوائم المنسدلة تحتفظ بأسهمها)، Ctrl+Delete يحذف السطر. F2 مسودة، F9 ترحيل، F3 مستند جديد،
+ * Esc إغلاق — مع تأكيد إن وُجدت تغييرات غير محفوظة.
  */
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -38,6 +42,9 @@ let nextKey = 1;
 const emptyLine = (): Line => ({ key: nextKey++, item: null, stock: null, loading: false, unitId: "", batchId: "", quantity: "", notes: "" });
 
 const EPS = 1e-9;
+/** ترتيب خانات السطر لـ Enter. */
+const COLS = ["unit", "batch", "qty", "notes"] as const;
+type FocusTarget = { key: number; col: string } | "search";
 const cellInput =
   "w-full px-2 py-1.5 bg-slate-800 border border-white/10 rounded-lg text-white text-sm outline-none focus:ring-2 focus:ring-red-600 placeholder:text-slate-600 disabled:opacity-50";
 
@@ -151,6 +158,7 @@ const ItemSearch: React.FC<{
         }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
+        data-col="search"
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" && results.length > 0) {
             e.preventDefault();
@@ -215,9 +223,11 @@ interface Props {
   warehouses: Warehouse[];
   onClose: () => void;
   onSaved: (doc: StockDocument) => void;
+  /** F3: فتح مستند جديد فارغ مكان الحالي. */
+  onNew: () => void;
 }
 
-export const TransferDocumentForm: React.FC<Props> = ({ document, warehouses, onClose, onSaved }) => {
+export const TransferDocumentForm: React.FC<Props> = ({ document, warehouses, onClose, onSaved, onNew }) => {
   const canPost = useCan(INVENTORY_PERMISSIONS.DOCUMENTS_POST);
   const active = warehouses.filter((w) => w.is_active);
   const [warehouseId, setWarehouseId] = useState<number | "">(document?.warehouse_id ?? (active.length === 1 ? active[0].id : ""));
@@ -228,8 +238,23 @@ export const TransferDocumentForm: React.FC<Props> = ({ document, warehouses, on
   const [lines, setLines] = useState<Line[]>(() => [emptyLine()]);
   const [saving, setSaving] = useState<"draft" | "post" | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
+  const [focusReq, setFocusReq] = useState<FocusTarget | null>(null);
+  /** تغييرات المستخدم منذ الفتح (لتأكيد الإغلاق). */
+  const dirty = useRef(false);
 
   const update = (key: number, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  /** تعديل من المستخدم (لا من تحميل الرصيد). */
+  const edit = (key: number, patch: Partial<Line>) => {
+    dirty.current = true;
+    update(key, patch);
+  };
+  const touched =
+    <T,>(set: (v: T) => void) =>
+    (v: T) => {
+      dirty.current = true;
+      set(v);
+    };
 
   /** يجلب رصيد الصنف في المصدر؛ ويختار الدفعة تلقائياً إن كانت الوحيدة ولا رصيد خارج الدفعات. */
   const loadStock = async (key: number, itemId: number, wh: number | "", keep?: { unitId: number | ""; batchId: number | "" }) => {
@@ -267,6 +292,7 @@ export const TransferDocumentForm: React.FC<Props> = ({ document, warehouses, on
   }, [document]);
 
   const changeWarehouse = (wh: number | "") => {
+    dirty.current = true;
     setWarehouseId(wh);
     // تغيير المصدر يعيد رصيد كل الأسطر ودفعاتها.
     for (const l of lines) {
@@ -277,14 +303,74 @@ export const TransferDocumentForm: React.FC<Props> = ({ document, warehouses, on
   };
 
   const pickItem = (key: number, item: StockItem) => {
+    dirty.current = true;
     setLines((ls) => {
       const next = ls.map((l) => (l.key === key ? { ...l, item: { id: item.id, name: item.name, code: item.code } } : l));
       return next[next.length - 1].item ? [...next, emptyLine()] : next;
     });
+    setFocusReq({ key, col: "qty" });
     loadStock(key, item.id, warehouseId);
   };
 
-  const removeLine = (key: number) => setLines((ls) => (ls.length > 1 ? ls.filter((l) => l.key !== key) : ls));
+  const removeLine = (key: number) => {
+    dirty.current = true;
+    setLines((ls) => (ls.length > 1 ? ls.filter((l) => l.key !== key) : ls));
+  };
+
+  // التركيز بعد الرسم (السطر الجديد أو التالي للمحذوف لا يوجد قبل إعادة الرسم).
+  useEffect(() => {
+    if (!focusReq) return;
+    if (focusReq === "search") searchRef.current?.focus();
+    else {
+      const el = tableRef.current?.querySelector<HTMLInputElement>(`[data-key="${focusReq.key}"][data-col="${focusReq.col}"]`);
+      el?.focus();
+      if (el?.tagName === "INPUT") el.select();
+    }
+    setFocusReq(null);
+  }, [focusReq, lines]);
+
+  /** يعيد true إن وُجدت الخانة وكانت مفعّلة. */
+  const focusCell = (key: number, col: string) => {
+    const el = tableRef.current?.querySelector<HTMLInputElement>(`[data-key="${key}"][data-col="${col}"]`);
+    if (!el || el.disabled) return false;
+    el.focus();
+    if (el.tagName === "INPUT") el.select();
+    return true;
+  };
+
+  const onTableKeyDown = (e: React.KeyboardEvent) => {
+    const t = e.target as HTMLElement;
+    const col = t.dataset.col;
+    if (!col) return;
+    if (col === "search") {
+      // من خانة البحث (بلا نتائج مفتوحة) ↑ يعود لآخر سطر.
+      const last = [...lines].reverse().find((l) => l.item);
+      if (e.key === "ArrowUp" && last) {
+        e.preventDefault();
+        focusCell(last.key, "qty");
+      }
+      return;
+    }
+    const key = Number(t.dataset.key);
+    const idx = lines.findIndex((l) => l.key === key);
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const from = COLS.indexOf(col as (typeof COLS)[number]);
+      for (let j = from + 1; j < COLS.length; j++) if (focusCell(key, COLS[j])) return;
+      setFocusReq("search");
+    } else if ((e.key === "ArrowDown" || e.key === "ArrowUp") && t.tagName === "INPUT") {
+      e.preventDefault();
+      const next = lines[idx + (e.key === "ArrowDown" ? 1 : -1)];
+      if (!next) return;
+      if (next.item) focusCell(next.key, col);
+      else setFocusReq("search");
+    } else if (e.key === "Delete" && e.ctrlKey) {
+      e.preventDefault();
+      const next = lines.slice(idx + 1).find((l) => l.item) ?? lines.slice(0, idx).reverse().find((l) => l.item);
+      removeLine(key);
+      setFocusReq(next ? { key: next.key, col } : "search");
+    }
+  };
 
   const filled = lines.filter((l) => l.item);
   const states = useMemo(() => new Map(lines.map((l) => [l.key, lineState(l)])), [lines]);
@@ -357,8 +443,34 @@ export const TransferDocumentForm: React.FC<Props> = ({ document, warehouses, on
       toast.success(`تم حفظ المسودة ${saved.number}`);
     }
     setSaving(null);
+    dirty.current = false;
     onSaved(saved);
   };
+
+  const confirmDiscard = () => !dirty.current || window.confirm("توجد تغييرات غير محفوظة. تجاهلها؟");
+  const requestClose = () => confirmDiscard() && onClose();
+
+  // اختصارات المستند — فقط والنموذج مفتوح؛ أحدث الدوال عبر ref حتى لا يُعاد ربط المستمع كل رسم.
+  const actions = useRef({ save, requestClose, onNew, confirmDiscard });
+  actions.current = { save, requestClose, onNew, confirmDiscard };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+      const a = actions.current;
+      if (e.key === "F2" || e.key === "F9") {
+        e.preventDefault();
+        a.save(e.key === "F9");
+      } else if (e.key === "F3") {
+        e.preventDefault();
+        if (a.confirmDiscard()) a.onNew();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        a.requestClose();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const whSelect = (value: number | "", set: (v: number | "") => void, exclude?: number | "") => (
     <select className={inputClass} value={value} onChange={(e) => set(e.target.value ? Number(e.target.value) : "")}>
@@ -377,9 +489,13 @@ export const TransferDocumentForm: React.FC<Props> = ({ document, warehouses, on
     <Modal
       xwide
       title={document ? `تعديل ${document.number}` : "صرف للأقسام / تحويل — مستند جديد"}
-      onClose={onClose}
+      onClose={requestClose}
       footer={
         <>
+          <span className="hidden lg:flex items-center text-[11px] text-slate-500 font-semibold" dir="rtl">
+            <kbd className="font-mono">F2</kbd>&nbsp;مسودة · <kbd className="font-mono">F9</kbd>&nbsp;ترحيل · <kbd className="font-mono">F3</kbd>&nbsp;جديد ·{" "}
+            <kbd className="font-mono">Ctrl+Del</kbd>&nbsp;حذف سطر · <kbd className="font-mono">Esc</kbd>&nbsp;إغلاق
+          </span>
           <div className="flex items-center gap-4 ml-auto text-sm font-bold text-slate-400">
             <span>
               عدد الأصناف: <span className="text-white tabular-nums">{filled.length}</span>
@@ -390,7 +506,7 @@ export const TransferDocumentForm: React.FC<Props> = ({ document, warehouses, on
               </span>
             )}
           </div>
-          <SecondaryButton onClick={onClose}>إلغاء</SecondaryButton>
+          <SecondaryButton onClick={requestClose}>إلغاء</SecondaryButton>
           <SecondaryButton onClick={() => save(false)} disabled={saving !== null}>
             {saving === "draft" ? "جارٍ الحفظ..." : "حفظ كمسودة"}
           </SecondaryButton>
@@ -412,16 +528,16 @@ export const TransferDocumentForm: React.FC<Props> = ({ document, warehouses, on
           {whSelect(warehouseId, changeWarehouse)}
         </Field>
         <Field label="إلى مخزن (القسم)" required>
-          {whSelect(toWarehouseId, setToWarehouseId, warehouseId)}
+          {whSelect(toWarehouseId, touched(setToWarehouseId), warehouseId)}
         </Field>
         <Field label="الجهة">
-          <input className={inputClass} value={destination} onChange={(e) => setDestination(e.target.value)} maxLength={150} placeholder="مثال: قسم الشاورما — النصيرات" />
+          <input className={inputClass} value={destination} onChange={(e) => touched(setDestination)(e.target.value)} maxLength={150} placeholder="مثال: قسم الشاورما — النصيرات" />
         </Field>
         <Field label="التاريخ" hint="اليوم المحاسبي؛ فارغ = اليوم.">
-          <input type="date" className={inputClass} value={documentDate} onChange={(e) => setDocumentDate(e.target.value)} dir="ltr" />
+          <input type="date" className={inputClass} value={documentDate} onChange={(e) => touched(setDocumentDate)(e.target.value)} dir="ltr" />
         </Field>
         <Field label="ملاحظات">
-          <input className={inputClass} value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={1000} />
+          <input className={inputClass} value={notes} onChange={(e) => touched(setNotes)(e.target.value)} maxLength={1000} />
         </Field>
       </div>
 
@@ -429,7 +545,7 @@ export const TransferDocumentForm: React.FC<Props> = ({ document, warehouses, on
         الصرف من دفعة محددة ولا يتجاوز رصيدها. الصنف يخرج بمتوسط تكلفته ويدخل مخزن القسم بالتكلفة نفسها.
       </p>
 
-      <div className="bg-slate-950/40 rounded-2xl border border-white/5 overflow-x-auto custom-scrollbar">
+      <div ref={tableRef} onKeyDown={onTableKeyDown} className="bg-slate-950/40 rounded-2xl border border-white/5 overflow-x-auto custom-scrollbar">
         <table className="w-full text-sm min-w-[1100px]">
           <thead>
             <tr className="text-slate-500 text-xs font-black border-b border-white/5">
@@ -475,8 +591,10 @@ export const TransferDocumentForm: React.FC<Props> = ({ document, warehouses, on
                       <select
                         className={cellInput}
                         value={l.unitId}
-                        onChange={(e) => update(l.key, { unitId: Number(e.target.value) })}
+                        onChange={(e) => edit(l.key, { unitId: Number(e.target.value) })}
                         disabled={!l.stock}
+                        data-key={l.key}
+                        data-col="unit"
                         aria-label={`وحدة السطر ${idx + 1}`}
                       >
                         {l.stock?.units.map((u) => (
@@ -493,8 +611,10 @@ export const TransferDocumentForm: React.FC<Props> = ({ document, warehouses, on
                       <select
                         className={cellInput}
                         value={l.batchId}
-                        onChange={(e) => update(l.key, { batchId: e.target.value ? Number(e.target.value) : "" })}
+                        onChange={(e) => edit(l.key, { batchId: e.target.value ? Number(e.target.value) : "" })}
                         disabled={!l.stock || l.stock.batches.length === 0}
+                        data-key={l.key}
+                        data-col="batch"
                         aria-label={`دفعة السطر ${idx + 1}`}
                       >
                         <option value="">{l.stock && l.stock.batches.length === 0 ? "لا دفعات" : "— بلا دفعة —"}</option>
@@ -519,7 +639,9 @@ export const TransferDocumentForm: React.FC<Props> = ({ document, warehouses, on
                         step="any"
                         dir="ltr"
                         value={l.quantity}
-                        onChange={(e) => update(l.key, { quantity: e.target.value })}
+                        onChange={(e) => edit(l.key, { quantity: e.target.value })}
+                        data-key={l.key}
+                        data-col="qty"
                         aria-label={`كمية السطر ${idx + 1}`}
                         aria-invalid={Boolean(st.error)}
                       />
@@ -530,8 +652,10 @@ export const TransferDocumentForm: React.FC<Props> = ({ document, warehouses, on
                       <input
                         className={cellInput}
                         value={l.notes}
-                        onChange={(e) => update(l.key, { notes: e.target.value })}
+                        onChange={(e) => edit(l.key, { notes: e.target.value })}
                         maxLength={500}
+                        data-key={l.key}
+                        data-col="notes"
                         aria-label={`ملاحظة السطر ${idx + 1}`}
                       />
                     </td>
