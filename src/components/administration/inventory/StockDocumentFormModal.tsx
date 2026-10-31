@@ -126,7 +126,6 @@ export const StockDocumentFormModal: React.FC<Props> = ({ type, document, meta, 
   const [supplierId, setSupplierId] = useState<number | "">(document?.supplier_id ?? "");
   const [invoiceNo, setInvoiceNo] = useState(document?.supplier_invoice_no ?? "");
   const [destination, setDestination] = useState(document?.destination ?? "");
-  const [delivery, setDelivery] = useState<"delivered" | "undelivered">(document?.delivery_status ?? "undelivered");
   const [documentDate, setDocumentDate] = useState(document?.document_date ?? "");
   const [notes, setNotes] = useState(document?.notes ?? "");
   const [lines, setLines] = useState<Line[]>(() => (type === "breakdown" ? [emptyLine("in"), emptyLine("out")] : [emptyLine()]));
@@ -270,7 +269,6 @@ export const StockDocumentFormModal: React.FC<Props> = ({ type, document, meta, 
       supplier_id: isReceipt ? (supplierId as number) : null,
       supplier_invoice_no: isReceipt ? invoiceNo.trim() || null : null,
       destination: isTransfer ? destination.trim() || null : null,
-      delivery_status: isTransfer ? delivery : null,
       document_date: documentDate || null,
       notes: notes.trim() || null,
       lines: filled.map((l) => ({
@@ -380,17 +378,9 @@ export const StockDocumentFormModal: React.FC<Props> = ({ type, document, meta, 
             </Field>
           )}
           {isTransfer && (
-            <>
-              <Field label="الجهة">
-                <input className={inputClass} value={destination} onChange={(e) => setDestination(e.target.value)} maxLength={150} placeholder="مثال: قسم الشاورما — النصيرات" />
-              </Field>
-              <Field label="حالة الفاتورة">
-                <select className={inputClass} value={delivery} onChange={(e) => setDelivery(e.target.value as "delivered" | "undelivered")}>
-                  <option value="undelivered">غير مسلّمة</option>
-                  <option value="delivered">مسلّمة</option>
-                </select>
-              </Field>
-            </>
+            <Field label="الجهة">
+              <input className={inputClass} value={destination} onChange={(e) => setDestination(e.target.value)} maxLength={150} placeholder="مثال: قسم الشاورما — النصيرات" />
+            </Field>
           )}
           {isReceipt && (
             <>

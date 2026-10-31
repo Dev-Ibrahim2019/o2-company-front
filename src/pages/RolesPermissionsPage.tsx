@@ -140,6 +140,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   [INVENTORY_PERMISSIONS.DOCUMENTS_MANAGE]: "إنشاء مسودات الاستلام والتحويل والهالك",
   [INVENTORY_PERMISSIONS.DOCUMENTS_POST]: "ترحيل المستندات المخزنية",
   [INVENTORY_PERMISSIONS.DOCUMENTS_REVERSE]: "عكس المستندات المخزنية",
+  [INVENTORY_PERMISSIONS.DOCUMENTS_REVERSE_RECEIVED]: "عكس مستند صرف بعد تأكيد استلامه (مدير)",
   [INVENTORY_PERMISSIONS.SUPPLIERS_MANAGE]: "ربط الأصناف بالموردين وأسعارهم",
   [INVENTORY_PERMISSIONS.COSTS_VIEW]: "رؤية التكاليف والقيم",
   [INVENTORY_PERMISSIONS.RECIPES_MANAGE]: "إدارة الوصفات",

@@ -4,7 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, FileText, ChevronRight, ChevronLeft, Pencil, Trash2, Send, Undo2 } from "lucide-react";
+import { Plus, FileText, ChevronRight, ChevronLeft, Pencil, Trash2, Send, Undo2, PackageCheck } from "lucide-react";
 import { useCan } from "../../../auth";
 import { INVENTORY_PERMISSIONS } from "../../../auth/permissions";
 import { toast } from "../../shared/Toast";
@@ -62,11 +62,25 @@ interface Filters {
   status: string;
   warehouseId: string;
   supplierId: string;
+  /** حالة الاستلام (الصرف): "" الكل، "1" مستلَم، "0" غير مستلَم. */
+  received: string;
   from: string;
   to: string;
 }
 
-const EMPTY_FILTERS: Filters = { search: "", status: "", warehouseId: "", supplierId: "", from: "", to: "" };
+const EMPTY_FILTERS: Filters = { search: "", status: "", warehouseId: "", supplierId: "", received: "", from: "", to: "" };
+
+const fmtDateTime = (iso: string) => new Date(iso).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" });
+
+/** شارة الاستلام لمستند الصرف المرحّل. */
+const ReceiptBadge: React.FC<{ doc: StockDocument }> = ({ doc }) =>
+  doc.status === "draft" ? (
+    <span className="text-slate-600">—</span>
+  ) : doc.received_at ? (
+    <span className="inline-flex px-2 py-0.5 rounded-md text-[11px] font-black whitespace-nowrap bg-green-500/15 text-green-400">مستلَم</span>
+  ) : (
+    <span className="inline-flex px-2 py-0.5 rounded-md text-[11px] font-black whitespace-nowrap bg-red-500/15 text-red-400">غير مستلَم</span>
+  );
 
 export const StockDocumentsPage: React.FC<{ type: StockDocumentType }> = ({ type }) => {
   const canManage = useCan(INVENTORY_PERMISSIONS.DOCUMENTS_MANAGE);
@@ -121,6 +135,7 @@ export const StockDocumentsPage: React.FC<{ type: StockDocumentType }> = ({ type
         status: filters.status || undefined,
         warehouse_id: filters.warehouseId || undefined,
         supplier_id: filters.supplierId || undefined,
+        received: filters.received || undefined,
         from: filters.from || undefined,
         to: filters.to || undefined,
       });
@@ -180,6 +195,13 @@ export const StockDocumentsPage: React.FC<{ type: StockDocumentType }> = ({ type
             ))}
           </select>
         )}
+        {type === "transfer" && (
+          <select className={`${inputClass} !w-auto`} value={filters.received} onChange={(e) => setFilter({ received: e.target.value })} aria-label="حالة الاستلام">
+            <option value="">الاستلام: الكل</option>
+            <option value="1">مستلَم</option>
+            <option value="0">غير مستلَم</option>
+          </select>
+        )}
         <input type="date" className={`${inputClass} !w-auto`} value={filters.from} onChange={(e) => setFilter({ from: e.target.value })} aria-label="من يوم" dir="ltr" />
         <input type="date" className={`${inputClass} !w-auto`} value={filters.to} onChange={(e) => setFilter({ to: e.target.value })} aria-label="إلى يوم" dir="ltr" />
       </div>
@@ -200,6 +222,7 @@ export const StockDocumentsPage: React.FC<{ type: StockDocumentType }> = ({ type
                 <th className="text-right p-4">الأصناف</th>
                 <th className="text-right p-4">القيمة (₪)</th>
                 <th className="text-right p-4">الحالة</th>
+                {type === "transfer" && <th className="text-right p-4">الاستلام</th>}
                 <th className="text-right p-4">بواسطة</th>
               </tr>
             </thead>
@@ -233,6 +256,12 @@ export const StockDocumentsPage: React.FC<{ type: StockDocumentType }> = ({ type
                   <td className="p-4">
                     <DocumentStatusBadge status={d.status} />
                   </td>
+                  {type === "transfer" && (
+                    <td className="p-4">
+                      <ReceiptBadge doc={d} />
+                      {d.receiver && <span className="block text-[11px] text-slate-500 mt-0.5">{d.receiver.name}</span>}
+                    </td>
+                  )}
                   <td className="p-4 text-xs text-slate-400">{d.creator?.name ?? "—"}</td>
                 </tr>
               ))}
@@ -328,7 +357,7 @@ const StockDocumentViewModal: React.FC<{
   const canPost = useCan(INVENTORY_PERMISSIONS.DOCUMENTS_POST);
   const canReverse = useCan(INVENTORY_PERMISSIONS.DOCUMENTS_REVERSE);
   const [doc, setDoc] = useState<StockDocument | null>(null);
-  const [busy, setBusy] = useState<"post" | "delete" | "reverse" | null>(null);
+  const [busy, setBusy] = useState<"post" | "delete" | "reverse" | "receive" | null>(null);
   const [reversing, setReversing] = useState(false);
   const [reason, setReason] = useState("");
   const closeRef = useRef(onClose);
@@ -348,12 +377,16 @@ const StockDocumentViewModal: React.FC<{
     };
   }, [id]);
 
-  const run = async (kind: "post" | "delete" | "reverse") => {
+  const run = async (kind: "post" | "delete" | "reverse" | "receive") => {
     if (!doc) return;
     if (kind === "delete" && !window.confirm(`حذف المسودة ${doc.number}؟`)) return;
+    if (kind === "receive" && !window.confirm(`تأكيد استلام ${doc.number} في ${doc.to_warehouse?.name ?? "مخزن الوجهة"}؟ لا يمكن التراجع عن التأكيد.`)) return;
     setBusy(kind);
     try {
-      if (kind === "post") {
+      if (kind === "receive") {
+        setDoc(await inventoryService.confirmReceipt(doc.id));
+        toast.success(`تم تأكيد استلام ${doc.number}`);
+      } else if (kind === "post") {
         setDoc(await inventoryService.postDocument(doc.id));
         toast.success(`تم ترحيل ${doc.number}`);
       } else if (kind === "reverse") {
@@ -402,8 +435,17 @@ const StockDocumentViewModal: React.FC<{
                 <Send size={15} /> ترحيل
               </PrimaryButton>
             )}
+            {doc.can_receive && !reversing && (
+              <PrimaryButton onClick={() => run("receive")} loading={busy === "receive"} disabled={busy !== null}>
+                <PackageCheck size={15} /> تأكيد الاستلام
+              </PrimaryButton>
+            )}
             {doc.status === "posted" && canReverse && !reversing && (
-              <SecondaryButton onClick={() => setReversing(true)}>
+              <SecondaryButton
+                onClick={() => setReversing(true)}
+                disabled={doc.can_reverse === false}
+                title={doc.can_reverse === false ? "المستند مستلَم — عكسه للمدير فقط" : undefined}
+              >
                 <Undo2 size={15} className="inline ml-1" /> عكس المستند
               </SecondaryButton>
             )}
@@ -438,24 +480,9 @@ const StockDocumentViewModal: React.FC<{
             {doc.poster && <Info label="رحّله">{doc.poster.name}</Info>}
             {doc.reverser && <Info label="عكسه">{doc.reverser.name}</Info>}
             {doc.destination && <Info label="الجهة">{doc.destination}</Info>}
-            {doc.type === "transfer" && doc.delivery_status && (
-              <Info label="الفاتورة">
-                <button
-                  type="button"
-                  disabled={!canManage}
-                  onClick={async () => {
-                    try {
-                      setDoc(await inventoryService.setDelivery(doc.id, doc.delivery_status === "delivered" ? "undelivered" : "delivered"));
-                      onChanged();
-                    } catch (e) {
-                      toast.error("تعذّر التحديث", inventoryErrorMessage(e));
-                    }
-                  }}
-                  className={`px-2 py-0.5 rounded-md text-[11px] font-black ${doc.delivery_status === "delivered" ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"}`}
-                  title={canManage ? "اضغط للتبديل" : undefined}
-                >
-                  {doc.delivery_status === "delivered" ? "مسلّمة" : "غير مسلّمة"}
-                </button>
+            {doc.type === "transfer" && (
+              <Info label="الاستلام">
+                <ReceiptBadge doc={doc} />
               </Info>
             )}
             {doc.revenue && doc.status !== "draft" && <Info label="الإيراد">{fmtNum(doc.revenue, 2)} ₪</Info>}
@@ -467,6 +494,11 @@ const StockDocumentViewModal: React.FC<{
             )}
           </div>
           {doc.notes && <p className="text-sm text-slate-400">{doc.notes}</p>}
+          {doc.received_at && (
+            <p className="text-sm text-green-400 font-bold">
+              استلمه: {doc.receiver?.name ?? "—"} · التاريخ: <bdi className="tabular-nums">{fmtDateTime(doc.received_at)}</bdi>
+            </p>
+          )}
           {doc.reversal_reason && <p className="text-sm text-amber-300 font-bold">سبب العكس: {doc.reversal_reason}</p>}
 
           <div className="bg-slate-900 rounded-2xl border border-white/5 overflow-x-auto">

@@ -256,6 +256,13 @@ export interface StockDocument {
   lines?: StockDocumentLine[];
   destination?: string | null;
   delivery_status?: "delivered" | "undelivered" | null;
+  /** تأكيد الاستلام الفعلي في مخزن الوجهة (الصرف) — توثيق فقط. */
+  received_by?: number | null;
+  received_at?: string | null;
+  receiver?: Named | null;
+  /** يحسبها الخادم في عرض المستند: زر "تأكيد الاستلام" وزر "عكس المستند". */
+  can_receive?: boolean;
+  can_reverse?: boolean;
   revenue?: string | null;
   breakdown?: { input: string; output: string; loss: string; loss_percent: string | null; prime_percent: string | null } | null;
   warehouse?: Named;
@@ -275,7 +282,6 @@ export interface StockDocumentPayload {
   document_date?: string | null;
   notes?: string | null;
   destination?: string | null;
-  delivery_status?: "delivered" | "undelivered" | null;
   lines: {
     stock_item_id: number;
     unit_id?: number | null;
@@ -795,8 +801,8 @@ export const inventoryService = {
   qualityReport: (kind: "main" | "department" | "factory", params: Record<string, string | number | undefined>) =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     unwrap<Record<string, any>>(api.get(`${BASE}/quality/reports/${kind}`, { params })),
-  setDelivery: (documentId: number, delivery_status: "delivered" | "undelivered") =>
-    unwrap<StockDocument>(api.patch(`${BASE}/documents/${documentId}/delivery`, { delivery_status })),
+  confirmReceipt: (documentId: number) =>
+    unwrap<StockDocument>(api.patch(`${BASE}/documents/${documentId}/delivery`, { delivery_status: "delivered" })),
 
   balances: (params: Record<string, string | number | boolean | undefined>) =>
     unwrap<Paginated<StockBalanceRow>>(api.get(`${BASE}/balances`, { params })),

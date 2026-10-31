@@ -206,6 +206,8 @@ export const INVENTORY_PERMISSIONS = {
   ITEMS_CREATE: "inventory.items.create",
   ITEMS_EDIT: "inventory.items.edit",
   ITEMS_DELETE: "inventory.items.delete",
+  // عكس مستند صرف بعد تأكيد استلامه (migration 2027_03_08_000001)
+  DOCUMENTS_REVERSE_RECEIVED: "inventory.documents.reverse_received",
 } as const;
 
 /** نوع يمثل جميع قيم الصلاحيات الممكنة */
