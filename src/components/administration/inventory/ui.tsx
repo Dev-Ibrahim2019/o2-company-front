@@ -108,7 +108,9 @@ export const Modal: React.FC<{
   children: React.ReactNode;
   footer?: React.ReactNode;
   wide?: boolean;
-}> = ({ title, onClose, children, footer, wide }) => (
+  /** نموذج إدخال بجدول عريض (≥ 1100px) — الجدول نفسه يتمرّر أفقياً على الشاشات الضيقة. */
+  xwide?: boolean;
+}> = ({ title, onClose, children, footer, wide, xwide }) => (
   <div
     className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
     onMouseDown={(e) => e.target === e.currentTarget && onClose()}
@@ -117,7 +119,7 @@ export const Modal: React.FC<{
       role="dialog"
       aria-modal="true"
       aria-label={title}
-      className={`bg-slate-900 border border-white/10 rounded-3xl w-full ${wide ? "max-w-3xl" : "max-w-lg"} max-h-[92vh] flex flex-col shadow-2xl`}
+      className={`bg-slate-900 border border-white/10 rounded-3xl w-full ${xwide ? "max-w-[1200px]" : wide ? "max-w-3xl" : "max-w-lg"} max-h-[92vh] flex flex-col shadow-2xl`}
     >
       <div className="flex items-center justify-between p-5 border-b border-white/5">
         <h2 className="text-lg font-black text-white">{title}</h2>

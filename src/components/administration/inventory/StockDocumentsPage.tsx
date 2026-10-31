@@ -21,6 +21,7 @@ import {
   type Warehouse,
 } from "../../../services/inventoryService";
 import { DOCUMENT_TITLES, StockDocumentFormModal } from "./StockDocumentFormModal";
+import { TransferDocumentForm } from "./TransferDocumentForm";
 import {
   EmptyBlock,
   Field,
@@ -268,7 +269,20 @@ export const StockDocumentsPage: React.FC<{ type: StockDocumentType }> = ({ type
         />
       )}
 
-      {editing !== null && meta && (
+      {editing !== null && meta && type === "transfer" && (
+        <TransferDocumentForm
+          document={editing === "new" ? null : editing}
+          warehouses={warehouses}
+          onClose={() => setEditing(null)}
+          onSaved={(doc) => {
+            setEditing(null);
+            load();
+            setViewingId(doc.id);
+          }}
+        />
+      )}
+
+      {editing !== null && meta && type !== "transfer" && (
         <StockDocumentFormModal
           type={type}
           document={editing === "new" ? null : editing}

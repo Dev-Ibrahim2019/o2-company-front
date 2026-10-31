@@ -294,6 +294,20 @@ export interface StockDocumentPayload {
   }[];
 }
 
+/** رصيد صنف واحد في مخزن واحد (لسطر المستند) — الكميات والتكلفة بالوحدة الأساسية. */
+export interface ItemStock {
+  stock_item_id: number;
+  code: string;
+  name: string;
+  tracks_expiry: boolean;
+  qty: string;
+  unit: string | null;
+  /** null إن كان المستخدم لا يملك رؤية التكاليف. */
+  avg_cost: string | null;
+  units: { id: number; name: string; factor: string }[];
+  batches: { id: number; code: string; qty: string; expiry: string | null }[];
+}
+
 /* ── الجودة والرقابة (منطق O2) ── */
 
 export type ExpiryStatus = "ok" | "warning" | "critical" | "expired" | "none";
@@ -751,6 +765,7 @@ export const inventoryService = {
   items: (params: Record<string, string | number | boolean | undefined>) =>
     unwrap<Paginated<StockItem>>(api.get(`${BASE}/items`, { params })),
   item: (id: number) => unwrap<StockItem>(api.get(`${BASE}/items/${id}`)),
+  itemStock: (id: number, warehouseId: number) => unwrap<ItemStock>(api.get(`${BASE}/items/${id}/stock`, { params: { warehouse_id: warehouseId } })),
   createItem: (data: StockItemPayload) => unwrap<StockItem>(api.post(`${BASE}/items`, data)),
   updateItem: (id: number, data: Partial<StockItemPayload>) => unwrap<StockItem>(api.put(`${BASE}/items/${id}`, data)),
   deleteItem: (id: number) => unwrap<null>(api.delete(`${BASE}/items/${id}`)),
