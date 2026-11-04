@@ -116,45 +116,6 @@ export const InventorySettingsCard: React.FC = () => {
               <span className="text-sm text-slate-400 font-bold">%</span>
             </div>
           </div>
-          <div className="p-4 rounded-xl bg-slate-800/30 border border-white/5 space-y-3">
-            <p className="text-sm font-bold text-white">الجودة والرقابة</p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {(
-                [
-                  ["expiry_warning_days", "تنبيه الصلاحية (برتقالي) — أيام", 1],
-                  ["expiry_critical_days", "الصلاحية الحرجة (أحمر) — أيام", 1],
-                  ["showroom_max_days", "أقصى مدة عرض في المعرض — أيام", 1],
-                  ["spice_grams_per_kg", "البهار لكل كغ لحم — غرام", 0.5],
-                ] as const
-              ).map(([key, label, step]) => (
-                <label key={key} className="space-y-1">
-                  <span className="block text-[11px] text-slate-500 font-bold">{label}</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step={step}
-                    defaultValue={String(Number(settings[key] ?? 0))}
-                    disabled={!canManage || saving}
-                    dir="ltr"
-                    className="w-full bg-slate-800 border border-white/10 rounded-lg px-2 py-1.5 text-white text-sm tabular-nums"
-                    onBlur={async (e) => {
-                      if (Number(e.target.value) === Number(settings[key] ?? 0)) return;
-                      setSaving(true);
-                      try {
-                        setSettings(await inventoryService.updateSettings({ [key]: key === "spice_grams_per_kg" ? e.target.value : Number(e.target.value) }));
-                        toast.success("تم الحفظ");
-                      } catch (err) {
-                        toast.error("تعذّر الحفظ", inventoryErrorMessage(err));
-                      } finally {
-                        setSaving(false);
-                      }
-                    }}
-                  />
-                </label>
-              ))}
-            </div>
-            <p className="text-[11px] text-slate-500">البهار المفترض = اللحوم المستهلكة (كغ) × هذه الغرامات (30 غ = 1.5 كغ لكل 50 كغ).</p>
-          </div>
           <div className="p-4 rounded-xl bg-slate-800/30 border border-white/5">
             <p className="text-sm font-bold text-white">اليوم المحاسبي</p>
             <p className="text-xs text-slate-500 mt-1">

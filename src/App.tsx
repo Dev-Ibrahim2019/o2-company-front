@@ -66,7 +66,8 @@ import { VouchersView } from "./components/administration/VouchersView";
 import { CustomerVouchersView } from "./components/administration/CustomerVouchersView";
 import { SupplierVouchersView } from "./components/administration/SupplierVouchersView";
 import { SupplierPaymentVouchersView } from "./components/administration/SupplierPaymentVouchersView";
-import { PurchaseBillsView } from "./components/administration/PurchaseBillsView";
+import { PurchaseInvoicesPage } from "./components/administration/inventory/purchases/PurchaseInvoicesPage";
+import { PurchaseInvoiceFormPage } from "./components/administration/inventory/purchases/PurchaseInvoiceFormPage";
 import { ExtensionsTestView } from "./components/administration/ExtensionsTestView";
 import { PbxExtensionsTestView } from "./components/administration/PbxExtensionsTestView";
 import { PbxRecordingsView } from "./components/administration/PbxRecordingsView";
@@ -83,13 +84,6 @@ import { StockDocumentsPage } from "./components/administration/inventory/StockD
 import { RecipesPage } from "./components/administration/inventory/RecipesPage";
 import { StockCountsPage } from "./components/administration/inventory/StockCountsPage";
 import { InventoryAnalyticsPage } from "./components/administration/inventory/InventoryAnalyticsPage";
-import {
-  BatchesPage,
-  DepartmentSettingsPage,
-  ProductivityPage,
-  QualityReportsPage,
-  ShawarmaPage,
-} from "./components/administration/inventory/QualityPages";
 import { INVENTORY_PERMISSIONS } from "./auth/permissions";
 import {
   CrmRouteGuard,
@@ -492,7 +486,8 @@ function AppRoutes() {
                 path="supplier-payment-vouchers"
                 element={<SupplierPaymentVouchersView />}
               />
-              <Route path="purchase-bills" element={<PurchaseBillsView />} />
+              {/* فواتير المشتريات صارت مستنداً واحداً مع الاستلام المخزني (2027_03_09). الشاشة القديمة باقية في الكود. */}
+              <Route path="purchase-bills" element={<Navigate to="/inventory/purchases" replace />} />
               <Route path="extensions-test" element={<ExtensionsTestView />} />
               <Route path="pbx-extensions" element={<PbxExtensionsTestView />} />
               <Route path="pbx-recordings" element={<PbxRecordingsView />} />
@@ -545,21 +540,18 @@ function AppRoutes() {
           <Route path="warehouses" element={<WarehousesPage />} />
           <Route path="balances" element={<BalancesPage />} />
           <Route path="kardex" element={<KardexPage />} />
+          <Route path="purchases" element={<ProtectedRoute permission={INVENTORY_PERMISSIONS.PURCHASES_VIEW}><PurchaseInvoicesPage /></ProtectedRoute>} />
+          <Route path="purchases/:id" element={<ProtectedRoute permission={INVENTORY_PERMISSIONS.PURCHASES_VIEW}><PurchaseInvoiceFormPage /></ProtectedRoute>} />
           <Route path="receipts" element={<StockDocumentsPage type="receipt" />} />
           <Route path="transfers" element={<StockDocumentsPage type="transfer" />} />
           <Route path="waste" element={<StockDocumentsPage type="waste" />} />
           <Route path="recipes" element={<RecipesPage />} />
           <Route path="counts" element={<StockCountsPage />} />
           <Route path="analytics" element={<InventoryAnalyticsPage />} />
-          <Route path="batches" element={<BatchesPage />} />
-          <Route path="productivity" element={<ProductivityPage />} />
-          <Route path="shawarma" element={<ShawarmaPage />} />
-          <Route path="departments" element={<DepartmentSettingsPage />} />
-          <Route path="quality-reports" element={<QualityReportsPage />} />
-          <Route path="breakdowns" element={<StockDocumentsPage type="breakdown" />} />
-          <Route path="production" element={<StockDocumentsPage type="production" />} />
-          <Route path="skewers" element={<StockDocumentsPage type="skewer" />} />
-          <Route path="showroom-sales" element={<StockDocumentsPage type="showroom_sale" />} />
+          {/* قسم الإنتاج والجودة والدفعات أُلغي — الروابط القديمة تعود للرئيسية بدل صفحة فارغة. */}
+          {["batches", "productivity", "shawarma", "departments", "quality-reports", "breakdowns", "production", "skewers", "showroom-sales"].map((p) => (
+            <Route key={p} path={p} element={<Navigate to="/inventory/dashboard" replace />} />
+          ))}
         </Route>
 
         {/* ═══ مسارات نقطة البيع ═══

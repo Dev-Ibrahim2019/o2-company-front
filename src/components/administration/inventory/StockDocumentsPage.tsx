@@ -4,6 +4,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { Plus, FileText, ChevronRight, ChevronLeft, Pencil, Trash2, Send, Undo2, PackageCheck, Copy, Printer } from "lucide-react";
 import { useCan } from "../../../auth";
 import { INVENTORY_PERMISSIONS } from "../../../auth/permissions";
@@ -37,13 +38,9 @@ import {
 } from "./ui";
 
 const SUBTITLES: Record<StockDocumentType, string> = {
-  receipt: "استلام بضاعة من المورّدين. الترحيل يزيد الرصيد ويحدّث متوسط التكلفة وآخر سعر شراء.",
+  receipt: "سجل استلامات المخزن. الاستلام من المورّدين يتم بفاتورة المشتريات (تُنشئ الاستلام تلقائياً)؛ الاستلام المباشر هنا بصلاحية خاصة.",
   transfer: "نقل أصناف بين المخازن (مثلاً من المخزن الجاف إلى المطبخ) بمتوسط تكلفة المصدر.",
-  waste: "إخراج التالف والمنتهي وهدر التحضير من المخزون مع سبب لكل سطر. محضر الإتلاف اليومي من شاشة الإنتاجية.",
-  breakdown: "تفريك اللحوم: صنف داخل يخرج منه أصناف ناتجة كدفعات جديدة، مع نسبة الفاقد ونسبة الصدر والفخذ.",
-  production: "الإنتاج اليومي للمصانع: كل منتج بوزنه يدخل مخزن المنتجات برقم منتج تلقائي وبتكلفة وصفته.",
-  skewer: "أسياخ الشاورما: رقم تسلسلي فريد لكل سيخ ووزنه وتاريخ إنتاجه. تبقى في مخزن القسم حتى تُصدَّر.",
-  showroom_sale: "مبيعات المعارض بالوزن: تُخصم من المعرض ولا تتجاوز المتوفر.",
+  waste: "إخراج التالف والمنتهي وهدر التحضير من المخزون مع سبب لكل سطر.",
 };
 
 const STATUS_STYLES: Record<StockDocumentStatus, string> = {
@@ -84,7 +81,9 @@ const ReceiptBadge: React.FC<{ doc: StockDocument }> = ({ doc }) =>
   );
 
 export const StockDocumentsPage: React.FC<{ type: StockDocumentType }> = ({ type }) => {
-  const canManage = useCan(INVENTORY_PERMISSIONS.DOCUMENTS_MANAGE);
+  // الاستلام من المورّدين صار بفاتورة المشتريات؛ الاستلام بدون فاتورة بصلاحية خاصة.
+  const canDirectReceipt = useCan(INVENTORY_PERMISSIONS.RECEIPTS_DIRECT);
+  const canManage = useCan(INVENTORY_PERMISSIONS.DOCUMENTS_MANAGE) && (type !== "receipt" || canDirectReceipt);
   const [meta, setMeta] = useState<DocumentsMeta | null>(null);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [result, setResult] = useState<Paginated<StockDocument> | null>(null);
@@ -477,7 +476,13 @@ const StockDocumentViewModal: React.FC<{
               <SecondaryButton
                 onClick={() => setReversing(true)}
                 disabled={doc.can_reverse === false}
-                title={doc.can_reverse === false ? "المستند مستلَم — عكسه للمدير فقط" : undefined}
+                title={
+                  doc.can_reverse === false
+                    ? doc.purchase_bill
+                      ? "جزء من فاتورة مشتريات — اعكس الفاتورة نفسها"
+                      : "المستند مستلَم — عكسه للمدير فقط"
+                    : undefined
+                }
               >
                 <Undo2 size={15} className="inline ml-1" /> عكس المستند
               </SecondaryButton>
@@ -512,6 +517,13 @@ const StockDocumentViewModal: React.FC<{
             <Info label="أنشأه">{doc.creator?.name ?? "—"}</Info>
             {doc.poster && <Info label="رحّله">{doc.poster.name}</Info>}
             {doc.reverser && <Info label="عكسه">{doc.reverser.name}</Info>}
+            {doc.purchase_bill && (
+              <Info label="فاتورة المشتريات">
+                <Link to={`/inventory/purchases/${doc.purchase_bill.id}`} className="text-sky-300 hover:underline">
+                  <bdi className="font-mono">{doc.purchase_bill.bill_number}</bdi>
+                </Link>
+              </Info>
+            )}
             {doc.destination && <Info label="الجهة">{doc.destination}</Info>}
             {doc.reference_no && (
               <Info label="رقم المرجع">
@@ -522,13 +534,6 @@ const StockDocumentViewModal: React.FC<{
               <Info label="الاستلام">
                 <ReceiptBadge doc={doc} />
               </Info>
-            )}
-            {doc.revenue && doc.status !== "draft" && <Info label="الإيراد">{fmtNum(doc.revenue, 2)} ₪</Info>}
-            {doc.breakdown && (
-              <>
-                <Info label="نسبة الفاقد">{fmtNum(doc.breakdown.loss_percent, 2)}%</Info>
-                <Info label="صدر + فخذ">{fmtNum(doc.breakdown.prime_percent, 2)}%</Info>
-              </>
             )}
           </div>
           {doc.notes && <p className="text-sm text-slate-400">{doc.notes}</p>}
@@ -556,11 +561,7 @@ const StockDocumentViewModal: React.FC<{
                   <tr key={l.id} className="border-b border-white/5 last:border-0">
                     <td className="p-3 text-slate-500 tabular-nums">{l.line_no}</td>
                     <td className="p-3 font-bold text-white">
-                      {l.direction && <span className="text-[10px] text-slate-500 ml-1">{l.direction === "in" ? "داخل" : "ناتج"}</span>}
                       {l.stock_item?.name} <bdi className="text-xs text-slate-500 font-mono">{l.stock_item?.code}</bdi>
-                      {(l.batch || l.created_batch) && (
-                        <bdi className="block text-[11px] text-sky-300 font-mono">دفعة {(l.created_batch ?? l.batch)!.code}</bdi>
-                      )}
                     </td>
                     <td className="p-3 text-slate-200 tabular-nums">
                       {fmtNum(l.quantity)} <span className="text-xs text-slate-500">{l.unit?.name}</span>

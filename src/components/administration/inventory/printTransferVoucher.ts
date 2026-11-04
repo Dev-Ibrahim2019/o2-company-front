@@ -25,8 +25,7 @@ export function printTransferVoucher(doc: StockDocument): void {
       return `
       <tr>
         <td class="c">${i + 1}</td>
-        <td>${esc(l.stock_item?.name)} <span class="muted ltr">${esc(l.stock_item?.code)}</span>
-          ${l.batch ? `<div class="muted ltr">دفعة ${esc(l.batch.code)}</div>` : ""}</td>
+        <td>${esc(l.stock_item?.name)} <span class="muted ltr">${esc(l.stock_item?.code)}</span></td>
         <td class="c">${esc(l.unit?.name)}</td>
         <td class="c num">${esc(fmtNum(qty))}</td>
         ${showCosts ? `<td class="c num">${unitCost !== null ? esc(fmtNum(unitCost, 4)) : "—"}</td><td class="c num">${value !== null ? esc(fmtNum(value, 2)) : "—"}</td>` : ""}

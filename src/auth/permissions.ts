@@ -208,6 +208,13 @@ export const INVENTORY_PERMISSIONS = {
   ITEMS_DELETE: "inventory.items.delete",
   // عكس مستند صرف بعد تأكيد استلامه (migration 2027_03_08_000001)
   DOCUMENTS_REVERSE_RECEIVED: "inventory.documents.reverse_received",
+  // فاتورة المشتريات الموحّدة (migration 2027_03_09_000001)
+  PURCHASES_VIEW: "purchases.view",
+  PURCHASES_CREATE: "purchases.create",
+  PURCHASES_POST: "purchases.post",
+  PURCHASES_REVERSE: "purchases.reverse",
+  PURCHASES_PAY: "purchases.pay",
+  RECEIPTS_DIRECT: "inventory.receipts.direct",
 } as const;
 
 /** نوع يمثل جميع قيم الصلاحيات الممكنة */

@@ -19,9 +19,7 @@ import {
   inventoryErrorMessage,
   type InventoryLookups,
   type Warehouse,
-  type WarehouseRole,
   type WarehouseUser,
-  WAREHOUSE_ROLES,
 } from "../../../services/inventoryService";
 import {
   EmptyBlock,
@@ -45,13 +43,12 @@ interface Draft {
   type: Warehouse["type"];
   branch_id: number | "";
   department_id: number | "";
-  role: WarehouseRole;
   is_default_sales: boolean;
   is_active: boolean;
   notes: string;
 }
 
-const EMPTY: Draft = { name: "", code: "", type: "standard", branch_id: "", department_id: "", role: "department", is_default_sales: false, is_active: true, notes: "" };
+const EMPTY: Draft = { name: "", code: "", type: "standard", branch_id: "", department_id: "", is_default_sales: false, is_active: true, notes: "" };
 
 export const WarehousesPage: React.FC = () => {
   const canManage = useCan(INVENTORY_PERMISSIONS.WAREHOUSES_MANAGE);
@@ -101,7 +98,6 @@ export const WarehousesPage: React.FC = () => {
       type: draft.type,
       branch_id: transit ? null : Number(draft.branch_id),
       department_id: transit || draft.department_id === "" ? null : draft.department_id,
-      role: draft.role,
       is_default_sales: transit ? false : draft.is_default_sales,
       is_active: draft.is_active,
       notes: draft.notes.trim() || null,
@@ -139,7 +135,6 @@ export const WarehousesPage: React.FC = () => {
       type: w.type,
       branch_id: w.branch_id ?? "",
       department_id: w.department_id ?? "",
-      role: w.role ?? "department",
       is_default_sales: w.is_default_sales,
       is_active: w.is_active,
       notes: w.notes ?? "",
@@ -322,17 +317,6 @@ export const WarehousesPage: React.FC = () => {
                     ))}
                   </select>
                 </Field>
-                {draft.department_id !== "" && (
-                  <Field label="دور المخزن في القسم" hint="القسم الواحد قد يملك مخزن مواد مصنع ومخزن منتجات ومعرضاً في الفرع نفسه.">
-                    <select className={inputClass} value={draft.role} onChange={(e) => setDraft({ ...draft, role: e.target.value as WarehouseRole })}>
-                      {(Object.keys(WAREHOUSE_ROLES) as WarehouseRole[]).map((r) => (
-                        <option key={r} value={r}>
-                          {WAREHOUSE_ROLES[r]}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                )}
                 <div className="space-y-1">
                   <Toggle
                     checked={draft.is_default_sales}

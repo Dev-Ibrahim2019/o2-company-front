@@ -57,7 +57,6 @@ export interface StockItem {
   barcode: string | null;
   supplier_code: string | null;
   safety_stock: string;
-  tracks_expiry: boolean;
   is_active: boolean;
   notes: string | null;
   name_en?: string | null;
@@ -82,7 +81,6 @@ export interface StockItemPayload {
   barcode?: string | null;
   supplier_code?: string | null;
   safety_stock?: number;
-  tracks_expiry?: boolean;
   is_active?: boolean;
   notes?: string | null;
   units?: { unit_id: number; factor: number }[];
@@ -98,7 +96,6 @@ export interface Warehouse {
   /** القسم الذي تُنسب مبيعاته لهذا المخزن (الاستهلاك النظري). */
   department_id?: number | null;
   department?: { id: number; name: string; nameAr: string | null } | null;
-  role?: WarehouseRole;
   name: string;
   code: string;
   type: "standard" | "transit";
@@ -190,10 +187,6 @@ export interface InventorySettings {
   allow_negative_stock: boolean;
   /** حد تنبيه الفرق (فعلي − نظري) % في التحليلات. */
   variance_alert_percent?: string;
-  expiry_warning_days?: number;
-  expiry_critical_days?: number;
-  showroom_max_days?: number;
-  spice_grams_per_kg?: string;
   business_timezone: string;
   accounting_day_start: string;
   updated_at: string | null;
@@ -201,7 +194,7 @@ export interface InventorySettings {
 
 /* ── المستندات المخزنية وموردو الأصناف (المرحلة 3) ── */
 
-export type StockDocumentType = "receipt" | "transfer" | "waste" | "breakdown" | "production" | "skewer" | "showroom_sale";
+export type StockDocumentType = "receipt" | "transfer" | "waste";
 export type StockDocumentStatus = "draft" | "posted" | "reversed";
 
 export interface StockDocumentLine {
@@ -214,17 +207,8 @@ export interface StockDocumentLine {
   waste_reason: string | null;
   notes: string | null;
   posted_cost: string | null;
-  batch_id?: number | null;
-  direction?: "in" | "out" | null;
   cartons?: string | null;
-  production_date?: string | null;
-  expiry_date?: string | null;
-  value_ratio?: string | null;
-  is_prime?: boolean;
-  sale_price?: string | null;
-  batch?: { id: number; code: string; expiry_date: string | null } | null;
-  created_batch?: { id: number; code: string; expiry_date: string | null } | null;
-  stock_item?: { id: number; code: string; name: string; base_unit_id: number; tracks_expiry?: boolean; base_unit?: { id: number; name: string } };
+  stock_item?: { id: number; code: string; name: string; base_unit_id: number; base_unit?: { id: number; name: string } };
   unit?: { id: number; name: string };
 }
 
@@ -265,8 +249,8 @@ export interface StockDocument {
   /** يحسبها الخادم في عرض المستند: زر "تأكيد الاستلام" وزر "عكس المستند". */
   can_receive?: boolean;
   can_reverse?: boolean;
-  revenue?: string | null;
-  breakdown?: { input: string; output: string; loss: string; loss_percent: string | null; prime_percent: string | null } | null;
+  /** الاستلام الذي أنشأته فاتورة مشتريات (لا يُعكس وحده). */
+  purchase_bill?: { id: number; bill_number: string } | null;
   warehouse?: Named;
   to_warehouse?: Named | null;
   supplier?: Named | null;
@@ -292,14 +276,7 @@ export interface StockDocumentPayload {
     unit_cost?: number | null;
     waste_reason?: string | null;
     notes?: string | null;
-    batch_id?: number | null;
-    direction?: "in" | "out" | null;
     cartons?: number | null;
-    production_date?: string | null;
-    expiry_date?: string | null;
-    value_ratio?: number | null;
-    is_prime?: boolean;
-    sale_price?: number | null;
   }[];
 }
 
@@ -308,160 +285,12 @@ export interface ItemStock {
   stock_item_id: number;
   code: string;
   name: string;
-  tracks_expiry: boolean;
   qty: string;
   unit: string | null;
   /** null إن كان المستخدم لا يملك رؤية التكاليف. */
   avg_cost: string | null;
   units: { id: number; name: string; factor: string }[];
-  batches: { id: number; code: string; qty: string; expiry: string | null }[];
 }
-
-/* ── الجودة والرقابة (منطق O2) ── */
-
-export type ExpiryStatus = "ok" | "warning" | "critical" | "expired" | "none";
-
-export interface BatchRow {
-  id: number;
-  code: string;
-  source: string;
-  stock_item_id: number;
-  item: string;
-  item_code: string;
-  base_unit: string;
-  warehouse_id: number;
-  warehouse: string;
-  supplier: string | null;
-  unit_cost: string | null;
-  original: string;
-  remaining: string;
-  cartons: string | null;
-  production_date: string | null;
-  expiry_date: string | null;
-  notes: string | null;
-  storage_days: number | null;
-  days_to_expiry: number | null;
-  status: ExpiryStatus;
-  showroom_overdue: boolean;
-}
-
-export type Trend = "better" | "worse" | "stable" | null;
-
-export interface ProductivityRow {
-  stock_item_id: number;
-  name: string;
-  code: string | null;
-  base_unit: string | null;
-  display_unit: DisplayUnit | null;
-  opening: string;
-  received: string;
-  transferred_out: string;
-  remaining: string;
-  waste: string;
-  consumed: string;
-  theoretical: string;
-  deficit: string;
-  deficit_value: string | null;
-  deficit_percent: string | null;
-  alert: boolean;
-  previous_deficit_percent: string | null;
-  trend: Trend;
-}
-
-export interface ProductivityResult {
-  day: string;
-  warehouse: { id: number; name: string };
-  count: { id: number; number: string; status: "draft" | "posted" } | null;
-  rows: ProductivityRow[];
-  totals: {
-    consumed_value: string | null;
-    theoretical_value: string | null;
-    deficit_value: string | null;
-    deficit_percent: string | null;
-    previous_deficit_percent: string | null;
-    trend: Trend;
-  };
-}
-
-export interface WasteMinutes {
-  day: string;
-  branch: string | null;
-  department: string | null;
-  warehouse: string;
-  rows: { document: string; item: string; code: string; batch: string | null; quantity: string; unit: string; reason: string; value: string | null; posted_by: string | null }[];
-  total_value: string | null;
-}
-
-export interface ShawarmaDay {
-  day: string;
-  meat_consumed: string | null;
-  meat_details: { name: string; remaining: string; dissected: string; marinated: string; undissected: string }[];
-  skewers_count: number;
-  skewers_weight: string;
-  skewers_exceed_meat: boolean;
-  exported_weight: string;
-  revenue: string;
-  yield_per_kg: string | null;
-  spice_theoretical: string | null;
-  spice_actual: string | null;
-  spice_deficit: string | null;
-  counted: boolean;
-}
-
-export interface ShawarmaPeriod {
-  days: ShawarmaDay[];
-  totals: {
-    skewers_count: number;
-    skewers_weight: string;
-    exported_weight: string;
-    meat_consumed: string;
-    revenue: string;
-    yield_per_kg: string | null;
-    spice_theoretical: string;
-    spice_actual: string;
-    spice_deficit: string;
-  };
-  best_day: ShawarmaDay | null;
-  worst_day: ShawarmaDay | null;
-}
-
-export interface DepartmentSetting {
-  department_id: number;
-  branch_id: number;
-  department: string;
-  branch: string;
-  has_meals: boolean;
-  has_factory: boolean;
-  has_showroom: boolean;
-  is_shawarma: boolean;
-  meat_category_id: number | null;
-  spice_item_id: number | null;
-  skewer_item_id: number | null;
-  warehouses: { id: number; name: string; role: WarehouseRole }[];
-}
-
-export type WarehouseRole = "department" | "factory_raw" | "factory_products" | "showroom";
-
-export const WAREHOUSE_ROLES: Record<WarehouseRole, string> = {
-  department: "مخزن القسم",
-  factory_raw: "مواد خام المصنع",
-  factory_products: "منتجات المصنع",
-  showroom: "المعرض",
-};
-
-export const EXPIRY_STYLES: Record<ExpiryStatus, string> = {
-  ok: "bg-green-500/15 text-green-400",
-  warning: "bg-orange-500/15 text-orange-300",
-  critical: "bg-red-500/15 text-red-400",
-  expired: "bg-red-600/25 text-red-300",
-  none: "bg-slate-500/15 text-slate-400",
-};
-
-export const TREND_LABELS: Record<Exclude<Trend, null>, { label: string; tone: string }> = {
-  better: { label: "أفضل", tone: "text-green-400" },
-  worse: { label: "أسوأ", tone: "text-red-400" },
-  stable: { label: "مستقر", tone: "text-slate-300" },
-};
 
 export interface Option {
   value: string;
@@ -787,23 +616,6 @@ export const inventoryService = {
   syncWarehouseUsers: (id: number, userIds: number[], levels: Record<number, "view" | "edit"> = {}) =>
     unwrap<null>(api.put(`${BASE}/warehouses/${id}/users`, { user_ids: userIds, levels })),
 
-  batches: (params: { warehouse_id?: number | ""; stock_item_id?: number | ""; available?: number; search?: string }) =>
-    unwrap<BatchRow[]>(api.get(`${BASE}/quality/batches`, { params })),
-  productivity: (warehouseId: number, day: string) =>
-    unwrap<ProductivityResult>(api.get(`${BASE}/quality/productivity`, { params: { warehouse_id: warehouseId, day } })),
-  productivityExport: (warehouseId: number, day: string) => downloadBlob(`${BASE}/quality/productivity`, { warehouse_id: warehouseId, day, export: 1 }, `productivity-${day}.xlsx`),
-  dailyCount: (warehouseId: number, day: string) => unwrap<{ id: number }>(api.post(`${BASE}/quality/daily-count`, { warehouse_id: warehouseId, day })),
-  wasteMinutes: (warehouseId: number, day: string) =>
-    unwrap<WasteMinutes>(api.get(`${BASE}/quality/waste-minutes`, { params: { warehouse_id: warehouseId, day } })),
-  shawarma: (warehouseId: number, from: string, to: string) =>
-    unwrap<ShawarmaPeriod>(api.get(`${BASE}/quality/shawarma`, { params: { warehouse_id: warehouseId, from, to } })),
-  exportSkewer: (batchId: number) => unwrap<unknown>(api.post(`${BASE}/quality/skewers/${batchId}/export`)),
-  departmentSettings: () => unwrap<DepartmentSetting[]>(api.get(`${BASE}/quality/department-settings`)),
-  saveDepartmentSetting: (data: Omit<DepartmentSetting, "department" | "branch" | "warehouses">) =>
-    unwrap<unknown>(api.put(`${BASE}/quality/department-settings`, data)),
-  qualityReport: (kind: "main" | "department" | "factory", params: Record<string, string | number | undefined>) =>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    unwrap<Record<string, any>>(api.get(`${BASE}/quality/reports/${kind}`, { params })),
   confirmReceipt: (documentId: number) =>
     unwrap<StockDocument>(api.patch(`${BASE}/documents/${documentId}/delivery`, { delivery_status: "delivered" })),
 
@@ -881,7 +693,7 @@ export const inventoryService = {
   settings: () => unwrap<InventorySettings>(api.get(`${BASE}/settings`)),
   updateSettings: (
     data: Partial<
-      Pick<InventorySettings, "allow_negative_stock" | "variance_alert_percent" | "expiry_warning_days" | "expiry_critical_days" | "showroom_max_days" | "spice_grams_per_kg">
+      Pick<InventorySettings, "allow_negative_stock" | "variance_alert_percent">
     >,
   ) =>
     unwrap<InventorySettings>(api.put(`${BASE}/settings`, data)),

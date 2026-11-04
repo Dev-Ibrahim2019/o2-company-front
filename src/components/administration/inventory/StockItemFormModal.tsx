@@ -4,7 +4,7 @@
  * قواعد مرآة للخادم (StockItemService) — الخادم هو الحَكَم، الواجهة تمنع الخطأ مبكراً فقط:
  *  - المنتج النهائي والصنف غير الخاضع للمخزون: ربط إلزامي بصنف بيع غير مربوط بصنف آخر.
  *  - المادة الخام والمنتج الوسيط: لا ربط بصنف بيع.
- *  - المادة الخام تُخزَّن دائماً؛ غير الخاضع للمخزون لا يُخزَّن أبداً ولا يتتبع الصلاحية.
+ *  - المادة الخام تُخزَّن دائماً؛ غير الخاضع للمخزون لا يُخزَّن أبداً.
  *  - صنف له حركات: لا يتغيّر نوعه ولا وحدته الأساسية.
  *  - الوحدة الأساسية لا تتكرر ضمن الوحدات البديلة.
  */
@@ -44,7 +44,6 @@ interface Form {
   barcode: string;
   supplier_code: string;
   safety_stock: string;
-  tracks_expiry: boolean;
   is_active: boolean;
   notes: string;
   units: { unit_id: number | ""; factor: string }[];
@@ -64,7 +63,6 @@ const EMPTY: Form = {
   barcode: "",
   supplier_code: "",
   safety_stock: "0",
-  tracks_expiry: false,
   is_active: true,
   notes: "",
   units: [],
@@ -112,7 +110,6 @@ export const StockItemFormModal: React.FC<Props> = ({ lookups, itemId, onClose, 
           barcode: it.barcode ?? "",
           supplier_code: it.supplier_code ?? "",
           safety_stock: String(Number(it.safety_stock)),
-          tracks_expiry: it.tracks_expiry,
           is_active: it.is_active,
           notes: it.notes ?? "",
           units: (it.units ?? []).map((u) => ({ unit_id: u.unit_id, factor: String(Number(u.factor)) })),
@@ -159,7 +156,6 @@ export const StockItemFormModal: React.FC<Props> = ({ lookups, itemId, onClose, 
       type,
       item_id: SOLD_TYPES.includes(type) ? f.item_id : null,
       is_stored: type === "raw" ? true : type === "non_stock" ? false : f.is_stored,
-      tracks_expiry: type === "non_stock" ? false : f.tracks_expiry,
     }));
     if (!SOLD_TYPES.includes(type)) setLinked(null);
   };
@@ -201,7 +197,6 @@ export const StockItemFormModal: React.FC<Props> = ({ lookups, itemId, onClose, 
       barcode: form.barcode.trim() || null,
       supplier_code: form.supplier_code.trim() || null,
       safety_stock: Number(form.safety_stock) || 0,
-      tracks_expiry: form.tracks_expiry,
       is_active: form.is_active,
       notes: form.notes.trim() || null,
       name_en: form.name_en.trim() || null,
@@ -540,12 +535,6 @@ export const StockItemFormModal: React.FC<Props> = ({ lookups, itemId, onClose, 
               onChange={(v) => set("is_stored", v)}
               disabled={form.type === "raw" || form.type === "non_stock"}
               label={form.type === "raw" ? "يُخزَّن (إلزامي للمادة الخام)" : form.type === "non_stock" ? "لا يُخزَّن" : "يُخزَّن"}
-            />
-            <Toggle
-              checked={form.tracks_expiry}
-              onChange={(v) => set("tracks_expiry", v)}
-              disabled={form.type === "non_stock"}
-              label="يتتبع تاريخ الصلاحية"
             />
             <Toggle checked={form.is_active} onChange={(v) => set("is_active", v)} label="نشط" />
           </div>
