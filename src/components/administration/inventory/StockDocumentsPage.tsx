@@ -1,11 +1,12 @@
 /**
- * StockDocumentsPage.tsx — قائمة مستندات نوع واحد (استلام مشتريات / تحويل / هالك) ونافذة عرضها.
+ * StockDocumentsPage.tsx — قائمة مستندات نوع واحد (استلام مشتريات / هالك) ونافذة عرضها.
+ * صرفيات الأصناف لها صفحتاها الخاصتان (TransfersPage وTransferEntryPage).
  * المسودة تُعدَّل وتُحذف وتُرحَّل؛ المرحّل لا يُعدَّل ويُصحَّح بعكسه كاملاً مع ذكر السبب.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, FileText, ChevronRight, ChevronLeft, Pencil, Trash2, Send, Undo2, PackageCheck, Copy, Printer } from "lucide-react";
+import { Plus, FileText, ChevronRight, ChevronLeft, Pencil, Trash2, Send, Undo2 } from "lucide-react";
 import { useCan } from "../../../auth";
 import { INVENTORY_PERMISSIONS } from "../../../auth/permissions";
 import { toast } from "../../shared/Toast";
@@ -22,8 +23,6 @@ import {
   type Warehouse,
 } from "../../../services/inventoryService";
 import { DOCUMENT_TITLES, StockDocumentFormModal } from "./StockDocumentFormModal";
-import { TransferDocumentForm } from "./TransferDocumentForm";
-import { printTransferVoucher } from "./printTransferVoucher";
 import {
   EmptyBlock,
   Field,
@@ -93,8 +92,6 @@ export const StockDocumentsPage: React.FC<{ type: StockDocumentType }> = ({ type
   const [page, setPage] = useState(1);
   const [viewingId, setViewingId] = useState<number | null>(null);
   const [editing, setEditing] = useState<StockDocument | "new" | null>(null);
-  /** يتغير مع F3 (مستند جديد) ليُعاد بناء نموذج الصرف من الصفر. */
-  const [formKey, setFormKey] = useState(0);
   const requestSeq = useRef(0);
 
   // الصفحة نفسها تُستخدم للأنواع الثلاثة: تغيير النوع يعيد الحالة.
@@ -103,7 +100,8 @@ export const StockDocumentsPage: React.FC<{ type: StockDocumentType }> = ({ type
     setSearchInput("");
     setPage(1);
     setResult(null);
-    setViewingId(null);
+    // ?open=ID يفتح المستند مباشرة (من شاشة الحركات المخزنية أو سجل الحركة).
+    setViewingId(Number(new URLSearchParams(window.location.search).get("open")) || null);
     setEditing(null);
   }, [type]);
 
@@ -301,24 +299,6 @@ export const StockDocumentsPage: React.FC<{ type: StockDocumentType }> = ({ type
         />
       )}
 
-      {editing !== null && meta && type === "transfer" && (
-        <TransferDocumentForm
-          key={formKey}
-          document={editing === "new" ? null : editing}
-          warehouses={warehouses}
-          onNew={() => {
-            setEditing("new");
-            setFormKey((k) => k + 1);
-          }}
-          onClose={() => setEditing(null)}
-          onSaved={(doc) => {
-            setEditing(null);
-            load();
-            setViewingId(doc.id);
-          }}
-        />
-      )}
-
       {editing !== null && meta && type !== "transfer" && (
         <StockDocumentFormModal
           type={type}
@@ -365,7 +345,7 @@ const StockDocumentViewModal: React.FC<{
   const canPost = useCan(INVENTORY_PERMISSIONS.DOCUMENTS_POST);
   const canReverse = useCan(INVENTORY_PERMISSIONS.DOCUMENTS_REVERSE);
   const [doc, setDoc] = useState<StockDocument | null>(null);
-  const [busy, setBusy] = useState<"post" | "delete" | "reverse" | "receive" | "duplicate" | null>(null);
+  const [busy, setBusy] = useState<"post" | "delete" | "reverse" | null>(null);
   const [reversing, setReversing] = useState(false);
   const [reason, setReason] = useState("");
   const closeRef = useRef(onClose);
@@ -385,30 +365,12 @@ const StockDocumentViewModal: React.FC<{
     };
   }, [id]);
 
-  const duplicate = async () => {
-    if (!doc) return;
-    setBusy("duplicate");
-    try {
-      const copy = await inventoryService.duplicateDocument(doc.id);
-      toast.success(`أُنشئت المسودة ${copy.number}`, "اختر الدفعات من جديد ثم احفظ.");
-      onChanged();
-      onEdit(copy);
-    } catch (e) {
-      toast.error("تعذّر التكرار", inventoryErrorMessage(e));
-      setBusy(null);
-    }
-  };
-
-  const run = async (kind: "post" | "delete" | "reverse" | "receive") => {
+  const run = async (kind: "post" | "delete" | "reverse") => {
     if (!doc) return;
     if (kind === "delete" && !window.confirm(`حذف المسودة ${doc.number}؟`)) return;
-    if (kind === "receive" && !window.confirm(`تأكيد استلام ${doc.number} في ${doc.to_warehouse?.name ?? "مخزن الوجهة"}؟ لا يمكن التراجع عن التأكيد.`)) return;
     setBusy(kind);
     try {
-      if (kind === "receive") {
-        setDoc(await inventoryService.confirmReceipt(doc.id));
-        toast.success(`تم تأكيد استلام ${doc.number}`);
-      } else if (kind === "post") {
+      if (kind === "post") {
         setDoc(await inventoryService.postDocument(doc.id));
         toast.success(`تم ترحيل ${doc.number}`);
       } else if (kind === "reverse") {
@@ -455,21 +417,6 @@ const StockDocumentViewModal: React.FC<{
             {doc.status === "draft" && canPost && (
               <PrimaryButton onClick={() => run("post")} loading={busy === "post"} disabled={busy !== null}>
                 <Send size={15} /> ترحيل
-              </PrimaryButton>
-            )}
-            {doc.type === "transfer" && !reversing && (
-              <SecondaryButton onClick={() => printTransferVoucher(doc)}>
-                <Printer size={15} className="inline ml-1" /> طباعة
-              </SecondaryButton>
-            )}
-            {doc.type === "transfer" && doc.status !== "draft" && canManage && !reversing && (
-              <SecondaryButton onClick={duplicate} disabled={busy !== null}>
-                <Copy size={15} className="inline ml-1" /> {busy === "duplicate" ? "جارٍ التكرار..." : "تكرار"}
-              </SecondaryButton>
-            )}
-            {doc.can_receive && !reversing && (
-              <PrimaryButton onClick={() => run("receive")} loading={busy === "receive"} disabled={busy !== null}>
-                <PackageCheck size={15} /> تأكيد الاستلام
               </PrimaryButton>
             )}
             {doc.status === "posted" && canReverse && !reversing && (

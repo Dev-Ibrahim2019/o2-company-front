@@ -66,7 +66,11 @@ export interface StockItem {
   last_cost?: string | null;
   base_unit?: StockUnit;
   units?: StockItemUnit[];
-  categories?: Pick<StockCategory, "id" | "name">[];
+  categories?: Pick<StockCategory, "id" | "name" | "parent_id">[];
+  /** with_stock=1: الرصيد الإجمالي في مخازن المستخدم، وأقل/أعلى سعر بيع نشط للصنف المرتبط. */
+  total_quantity?: string;
+  sale_price_min?: string | null;
+  sale_price_max?: string | null;
   item?: Pick<SaleItem, "id" | "name" | "name_ar" | "code"> | null;
   has_movements?: boolean;
 }
@@ -105,6 +109,8 @@ export interface Warehouse {
   branch?: { id: number; name: string } | null;
   users_count?: number;
   has_movements?: boolean;
+  /** أمناء المخزن (مستوى "تعديل") — قائمة المخازن فقط. */
+  keepers?: string[];
 }
 
 export interface WarehouseUser {
@@ -161,15 +167,42 @@ export interface KardexRow {
   entered_unit: string | null;
   notes: string | null;
   created_by: string | null;
+  /** كرت الصنف: المخزن، والوارد/الصادر، والمستند الأصلي ورقمه، والحساب المقابل. */
+  warehouse?: { id: number; name: string; code: string } | null;
+  quantity_in?: string;
+  quantity_out?: string;
+  description?: string;
+  number?: string | null;
+  account_name?: string | null;
+  source?: KardexSource | null;
+}
+
+export interface KardexSource {
+  kind: "document" | "count" | "opening";
+  type: string;
+  id: number;
+  purchase_bill_id?: number | null;
+}
+
+/** رابط أصل حركة في كرت الصنف (null لرصيد أول المدة — يُعرض في نافذة). */
+export function kardexSourcePath(s: KardexSource): string | null {
+  if (s.kind === "count") return `/inventory/counts/${s.id}`;
+  if (s.kind !== "document") return null;
+  if (s.type === "transfer") return `/inventory/transfers/${s.id}`;
+  if (s.type === "receipt") return s.purchase_bill_id ? `/inventory/purchases/${s.purchase_bill_id}` : `/inventory/receipts?open=${s.id}`;
+  return `/inventory/waste?open=${s.id}`;
 }
 
 export interface Kardex {
   item: { id: number; code: string; name: string; base_unit: string | null };
-  warehouse: { id: number; name: string; code: string };
+  /** null = كل مخازن المستخدم. */
+  warehouse: { id: number; name: string; code: string } | null;
   from: string;
   to: string;
-  opening: { quantity: string; value: string };
-  totals: { quantity_in: string; quantity_out: string; closing_quantity: string; closing_value: string };
+  /** القيم null لمن لا يملك inventory.costs.view. */
+  costs_visible: boolean;
+  opening: { quantity: string; value: string | null };
+  totals: { quantity_in: string; quantity_out: string; closing_quantity: string; closing_value: string | null };
   rows: KardexRow[];
   current_page: number;
   last_page: number;
@@ -187,6 +220,11 @@ export interface InventorySettings {
   allow_negative_stock: boolean;
   /** حد تنبيه الفرق (فعلي − نظري) % في التحليلات. */
   variance_alert_percent?: string;
+  /** خصم المخزون حسب الوصفات عند دفع الطلب، ولحظة آخر تشغيل (لا خصم بأثر رجعي قبلها). */
+  deduct_sales?: boolean;
+  deduct_sales_from?: string | null;
+  /** طلبات فشل خصمها، أو مدفوعة بلا خصم مسجّل، أو خُصمت جزئياً (أسطر بلا وصفة/مخزن). */
+  sales_deduction?: { failed: number; pending: number; partial: number };
   business_timezone: string;
   accounting_day_start: string;
   updated_at: string | null;
@@ -207,7 +245,9 @@ export interface StockDocumentLine {
   waste_reason: string | null;
   notes: string | null;
   posted_cost: string | null;
-  cartons?: string | null;
+  /** مخزن الوجهة لهذا السطر في الصرفية (فارغ = مخزن الرأس). */
+  to_warehouse_id?: number | null;
+  to_warehouse?: Named | null;
   stock_item?: { id: number; code: string; name: string; base_unit_id: number; base_unit?: { id: number; name: string } };
   unit?: { id: number; name: string };
 }
@@ -231,7 +271,11 @@ export interface StockDocument {
   /** رقم مرجع اختياري (رقم دفتر/طلب القسم). */
   reference_no?: string | null;
   document_date: string;
+  /** وقت الحركة في الرأس (HH:MM:SS) — للعرض والطباعة. */
+  document_time?: string | null;
   notes: string | null;
+  /** صرفية كميات فقط: الأسعار والإجماليات مخفية في الشاشة والطباعة. */
+  quantities_only?: boolean;
   /** null إن كان المستخدم لا يملك رؤية التكاليف. */
   total_cost: string | null;
   costs_visible: boolean;
@@ -246,6 +290,13 @@ export interface StockDocument {
   received_by?: number | null;
   received_at?: string | null;
   receiver?: Named | null;
+  /** استلام الصرفية المرحّلة: كل الوجهات، بعضها، أو لا شيء. */
+  receipt_status?: ReceiptStatus | null;
+  destinations_count?: number;
+  /** وجهات الصرفية مع حالة استلام كل وجهة (عرض المستند فقط). */
+  destinations?: { id: number; name: string | null; code: string | null; received_at: string | null; received_by: string | null }[];
+  /** الوجهات التي ينتظر استلامها ويملك المستخدم تأكيدها. */
+  receivable_warehouse_ids?: number[];
   /** يحسبها الخادم في عرض المستند: زر "تأكيد الاستلام" وزر "عكس المستند". */
   can_receive?: boolean;
   can_reverse?: boolean;
@@ -259,6 +310,14 @@ export interface StockDocument {
   reverser?: Named | null;
 }
 
+export type ReceiptStatus = "received" | "partial" | "pending";
+
+export const RECEIPT_STATUS_LABELS: Record<ReceiptStatus, string> = {
+  received: "مستلَم",
+  partial: "مستلَم جزئياً",
+  pending: "غير مستلَم",
+};
+
 export interface StockDocumentPayload {
   type?: StockDocumentType;
   warehouse_id: number;
@@ -267,16 +326,18 @@ export interface StockDocumentPayload {
   supplier_invoice_no?: string | null;
   reference_no?: string | null;
   document_date?: string | null;
+  document_time?: string | null;
   notes?: string | null;
   destination?: string | null;
+  quantities_only?: boolean;
   lines: {
     stock_item_id: number;
+    to_warehouse_id?: number | null;
     unit_id?: number | null;
     quantity: number;
     unit_cost?: number | null;
     waste_reason?: string | null;
     notes?: string | null;
-    cartons?: number | null;
   }[];
 }
 
@@ -308,6 +369,10 @@ export interface DocumentsMeta {
   types: Option[];
   waste_reasons: Option[];
   suppliers: SupplierLite[];
+  /** اليوم المحاسبي الحالي (02:00 → 02:00) من الخادم — "اليوم" في كل الشاشات. */
+  accounting_today: string;
+  /** الوقت الآن بتوقيت المنشأة (HH:MM). */
+  now_time: string;
 }
 
 export interface SupplierItemLink {
@@ -393,11 +458,15 @@ export interface StockCountLine {
   variance_quantity: string | null;
   unit_cost: string | null;
   variance_value: string | null;
+  /** الرصيد ومتوسط التكلفة الحاليان في المخزن (avg_cost null لمن لا يرى التكاليف). */
+  current_quantity?: string;
+  avg_cost?: string | null;
   stock_item?: {
     id: number;
     code: string;
     name: string;
     base_unit_id: number;
+    safety_stock?: string;
     base_unit?: { id: number; name: string };
     units?: { id: number; unit_id: number; factor: string; unit?: { id: number; name: string } }[];
   };
@@ -421,6 +490,19 @@ export interface StockCount {
   warehouse?: { id: number; name: string; code?: string };
   creator?: { id: number; name: string } | null;
   poster?: { id: number; name: string } | null;
+  /** تاريخ الحركة: يوم التثبيت، أو اليوم المحاسبي لإنشاء المسودة. */
+  day?: string;
+  created_at?: string;
+  /** مسودات المخزن نفسه الأخرى (للدمج). */
+  other_drafts?: { id: number; number: string; notes: string | null; counted_lines_count: number }[];
+}
+
+export interface CountMissingItem {
+  id: number;
+  code: string;
+  name: string;
+  quantity: string;
+  unit: string | null;
 }
 
 /* ── تحليلات المخزون ── */
@@ -541,11 +623,129 @@ export const DOCUMENT_STATUS_LABELS: Record<StockDocumentStatus, string> = {
   reversed: "معكوس",
 };
 
+/* ── أرصدة المخازن في تاريخ ── */
+
+export type BalancesReportType = "index" | "category" | "count_sheet" | "matrix";
+
+export interface BalancesReportParams {
+  to?: string;
+  from?: string;
+  warehouse_ids?: number[];
+  category_id?: number;
+  status?: "active" | "inactive" | "all";
+  code_from?: string;
+  code_to?: string;
+  zeros?: number;
+  valuation?: "avg" | "last";
+  report?: BalancesReportType;
+}
+
+export interface BalancesReportRow {
+  stock_item_id?: number;
+  code?: string;
+  name?: string;
+  unit?: string | null;
+  is_active?: boolean;
+  category?: string | null;
+  safety_stock?: string;
+  opening?: string | null;
+  quantity_in?: string | null;
+  quantity_out?: string | null;
+  quantity: string;
+  unit_cost?: string | null;
+  value: string | null;
+  warehouse_id?: number;
+  warehouse?: string;
+  by_warehouse?: Record<string, string>;
+  items_count?: number;
+}
+
+export interface BalancesReport {
+  report: BalancesReportType;
+  valuation: "avg" | "last";
+  from: string | null;
+  to: string;
+  costs_visible: boolean;
+  warehouses: { id: number; name: string; code: string }[];
+  rows: BalancesReportRow[];
+  totals: { rows: number; quantity: string | null; value: string | null };
+}
+
+/* ── الحركات المخزنية الموحدة ── */
+
+export type JournalKind = "receipt" | "transfer" | "waste" | "count" | "opening";
+
+export const JOURNAL_KIND_LABELS: Record<JournalKind, string> = {
+  receipt: "استلام مشتريات",
+  transfer: "صرفية أصناف",
+  waste: "هالك",
+  count: "تسوية جرد",
+  opening: "رصيد أول المدة",
+};
+
+export interface JournalRow {
+  source: "document" | "count" | "opening";
+  id: number;
+  number: string;
+  kind: JournalKind;
+  kind_label: string;
+  status: string;
+  day: string;
+  time: string | null;
+  reference_no: string | null;
+  account_code: string | null;
+  account_name: string | null;
+  description: string;
+  amount: string | null;
+  warehouse_id: number;
+  purchase_bill_id: number | null;
+}
+
+export interface JournalOpening {
+  number: string;
+  warehouse: { id: number; name: string; code: string } | null;
+  day: string | null;
+  notes: string | null;
+  created_by: string | null;
+  costs_visible: boolean;
+  lines: {
+    movement_id: number;
+    stock_item_id: number;
+    code: string | null;
+    name: string | null;
+    quantity: string;
+    unit: string | null;
+    entered_quantity: string | null;
+    entered_unit: string | null;
+    unit_cost: string | null;
+    total_cost: string | null;
+    is_reversed: boolean;
+  }[];
+}
+
+/** رابط المستند الأصلي لسطر حركة (null = رصيد أول المدة، يُعرض في نافذة). */
+export function journalSourcePath(r: Pick<JournalRow, "kind" | "id" | "purchase_bill_id">): string | null {
+  switch (r.kind) {
+    case "transfer":
+      return `/inventory/transfers/${r.id}`;
+    case "receipt":
+      return r.purchase_bill_id ? `/inventory/purchases/${r.purchase_bill_id}` : `/inventory/receipts?open=${r.id}`;
+    case "waste":
+      return `/inventory/waste?open=${r.id}`;
+    case "count":
+      return `/inventory/counts/${r.id}`;
+    default:
+      return null;
+  }
+}
+
 export interface Paginated<T> {
   data: T[];
   current_page: number;
   last_page: number;
   total: number;
+  /** قائمة المستندات: العدد المطابق وإجمالي قيمة المرحّل (null بلا صلاحية التكاليف). */
+  summary?: { count: number; posted_total: string | null };
 }
 
 /* ── الاستدعاءات ── */
@@ -616,12 +816,22 @@ export const inventoryService = {
   syncWarehouseUsers: (id: number, userIds: number[], levels: Record<number, "view" | "edit"> = {}) =>
     unwrap<null>(api.put(`${BASE}/warehouses/${id}/users`, { user_ids: userIds, levels })),
 
-  confirmReceipt: (documentId: number) =>
-    unwrap<StockDocument>(api.patch(`${BASE}/documents/${documentId}/delivery`, { delivery_status: "delivered" })),
+  /** تأكيد الاستلام: كل الوجهات التي يملكها المستخدم، أو وجهة واحدة. */
+  confirmReceipt: (documentId: number, warehouseId?: number) =>
+    unwrap<StockDocument>(api.patch(`${BASE}/documents/${documentId}/delivery`, { delivery_status: "delivered", warehouse_id: warehouseId })),
+  /** التنقل بين مستندات النوع (الأول/السابق/التالي/الأخير) أو فتح مستند برقمه. */
+  navigateDocument: (params: { type: StockDocumentType; dir?: "first" | "prev" | "next" | "last"; id?: number; number?: string }) =>
+    unwrap<{ id: number; number: string } | null>(api.get(`${BASE}/documents/navigate`, { params })),
+
+  balancesReport: (params: BalancesReportParams) =>
+    unwrap<BalancesReport>(api.get(`${BASE}/reports/balances`, { params })),
+  journal: (params: { from?: string; to?: string; type?: string; search?: string; page?: number; per_page?: number }) =>
+    unwrap<Paginated<JournalRow> & { summary: { count: number; amount: string | null }; costs_visible: boolean }>(api.get(`${BASE}/journal`, { params })),
+  journalOpening: (movementId: number) => unwrap<JournalOpening>(api.get(`${BASE}/journal/opening/${movementId}`)),
 
   balances: (params: Record<string, string | number | boolean | undefined>) =>
     unwrap<Paginated<StockBalanceRow>>(api.get(`${BASE}/balances`, { params })),
-  kardex: (params: { warehouse_id: number; stock_item_id: number; from?: string; to?: string; page?: number }) =>
+  kardex: (params: { warehouse_id?: number; stock_item_id: number; from?: string; to?: string; page?: number; per_page?: number }) =>
     unwrap<Kardex>(api.get(`${BASE}/kardex`, { params })),
   postOpening: (data: { warehouse_id: number; lines: OpeningLine[]; notes?: string | null }) =>
     unwrap<unknown[]>(api.post(`${BASE}/movements/opening`, data)),
@@ -636,7 +846,7 @@ export const inventoryService = {
   updateDocument: (id: number, data: StockDocumentPayload) => unwrap<StockDocument>(api.put(`${BASE}/documents/${id}`, data)),
   deleteDocument: (id: number) => unwrap<null>(api.delete(`${BASE}/documents/${id}`)),
   postDocument: (id: number) => unwrap<StockDocument>(api.post(`${BASE}/documents/${id}/post`)),
-  /** مسودة صرف جديدة بنفس المخزنين والأصناف والكميات، بتاريخ اليوم وبلا دفعات. */
+  /** مسودة صرف جديدة بنفس المخازن والأصناف والكميات ووجهة كل سطر، بتاريخ اليوم. */
   duplicateDocument: (id: number) => unwrap<StockDocument>(api.post(`${BASE}/documents/${id}/duplicate`)),
   reverseDocument: (id: number, reason: string) => unwrap<StockDocument>(api.post(`${BASE}/documents/${id}/reverse`, { reason })),
 
@@ -652,7 +862,8 @@ export const inventoryService = {
   saveRecipe: (type: RecipeOwnerType, id: number, data: RecipePayload) => unwrap<RecipeVersion>(api.post(`${BASE}/recipes/${type}/${id}`, data)),
   deleteRecipeVersion: (recipeId: number) => unwrap<null>(api.delete(`${BASE}/recipes/versions/${recipeId}`)),
 
-  counts: (params: Record<string, string | number | undefined>) => unwrap<Paginated<StockCount>>(api.get(`${BASE}/counts`, { params })),
+  counts: (params: Record<string, string | number | undefined>) =>
+    unwrap<Paginated<StockCount> & { summary?: { count: number; variance_value: string | null } }>(api.get(`${BASE}/counts`, { params })),
   count: (id: number) => unwrap<StockCount>(api.get(`${BASE}/counts/${id}`)),
   createCount: (data: { warehouse_id: number; category_id?: number | null; notes?: string | null }) =>
     unwrap<StockCount>(api.post(`${BASE}/counts`, data)),
@@ -666,6 +877,11 @@ export const inventoryService = {
     unwrap<StockCount>(api.put(`${BASE}/counts/${id}`, data)),
   deleteCount: (id: number) => unwrap<null>(api.delete(`${BASE}/counts/${id}`)),
   postCount: (id: number) => unwrap<StockCount>(api.post(`${BASE}/counts/${id}/post`)),
+  recalculateCount: (id: number) => unwrap<StockCount>(api.post(`${BASE}/counts/${id}/recalculate`)),
+  countMissing: (id: number) => unwrap<CountMissingItem[]>(api.get(`${BASE}/counts/${id}/missing`)),
+  addCountLines: (id: number, stockItemIds: number[]) => unwrap<StockCount>(api.post(`${BASE}/counts/${id}/lines`, { stock_item_ids: stockItemIds })),
+  mergeCounts: (id: number, countIds: number[]) => unwrap<StockCount>(api.post(`${BASE}/counts/${id}/merge`, { count_ids: countIds })),
+  duplicateCount: (id: number) => unwrap<StockCount>(api.post(`${BASE}/counts/${id}/duplicate`)),
 
   analyticsOverview: (f: AnalyticsFilters) => unwrap<OverviewResult>(api.get(`${BASE}/analytics/overview`, { params: analyticsParams(f) })),
   analyticsVariance: (f: AnalyticsFilters) => unwrap<VarianceResult>(api.get(`${BASE}/analytics/variance`, { params: analyticsParams(f) })),
@@ -693,10 +909,12 @@ export const inventoryService = {
   settings: () => unwrap<InventorySettings>(api.get(`${BASE}/settings`)),
   updateSettings: (
     data: Partial<
-      Pick<InventorySettings, "allow_negative_stock" | "variance_alert_percent">
+      Pick<InventorySettings, "allow_negative_stock" | "variance_alert_percent" | "deduct_sales">
     >,
   ) =>
     unwrap<InventorySettings>(api.put(`${BASE}/settings`, data)),
+  retrySalesDeduction: () =>
+    unwrap<InventorySettings & { retry: { posted: number; failed: number } }>(api.post(`${BASE}/sales-deduction/retry`)),
 };
 
 /** تنزيل ملف (Excel) من الخادم. */

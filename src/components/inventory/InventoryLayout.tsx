@@ -8,15 +8,18 @@ import React, { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  Activity,
   ArrowLeftRight,
   BarChart3,
   BookOpen,
   Boxes,
   ClipboardCheck,
+  FileBarChart,
   FolderTree,
   History,
   LayoutDashboard,
   LayoutGrid,
+  ListTree,
   Menu,
   PackagePlus,
   PackageX,
@@ -39,6 +42,8 @@ interface NavItem {
   icon: React.ElementType;
   label: string;
   permission?: string;
+  /** مطابقة تامة للرابط: لشاشة لها شاشة فرعية بعنصر مستقل في القائمة (الأرصدة ← التقرير، الأصناف ← الشجرة). */
+  exact?: boolean;
 }
 
 const NAV: { title: string; items: NavItem[] }[] = [
@@ -49,27 +54,45 @@ const NAV: { title: string; items: NavItem[] }[] = [
   {
     title: "الأرصدة والحركات",
     items: [
-      { to: "/inventory/balances", icon: Scale, label: "أرصدة المخزون" },
-      { to: "/inventory/kardex", icon: History, label: "سجل حركة الصنف" },
-      { to: "/inventory/purchases", icon: Receipt, label: "فواتير المشتريات", permission: INVENTORY_PERMISSIONS.PURCHASES_VIEW },
-      { to: "/inventory/receipts", icon: PackagePlus, label: "استلام مشتريات" },
-      { to: "/inventory/transfers", icon: ArrowLeftRight, label: "تحويلات مخزنية" },
-      { to: "/inventory/waste", icon: PackageX, label: "الهالك" },
-      { to: "/inventory/counts", icon: ClipboardCheck, label: "الجرد الفعلي" },
+      { to: "/inventory/balances", icon: Scale, label: "أرصدة المخزون", exact: true },
+      { to: "/inventory/movements", icon: Activity, label: "الحركات المخزنية" },
+      { to: "/inventory/kardex", icon: History, label: "كرت الصنف" },
+      { to: "/inventory/balances/report", icon: FileBarChart, label: "أرصدة المخازن في تاريخ" },
     ],
   },
   {
-    title: "التقارير",
-    items: [{ to: "/inventory/analytics", icon: BarChart3, label: "تحليلات المخزون", permission: INVENTORY_PERMISSIONS.ANALYTICS_VIEW }],
+    title: "الصرفيات",
+    items: [{ to: "/inventory/transfers", icon: ArrowLeftRight, label: "صرفيات الأصناف" }],
   },
   {
-    title: "البيانات الأساسية",
+    title: "الأصناف",
     items: [
-      { to: "/inventory/items", icon: Boxes, label: "الأصناف المخزنية" },
+      { to: "/inventory/items", icon: Boxes, label: "فهرس الأصناف", exact: true },
+      { to: "/inventory/items/tree", icon: ListTree, label: "شجرة الأصناف" },
       { to: "/inventory/categories", icon: FolderTree, label: "التصنيفات" },
-      { to: "/inventory/units", icon: Ruler, label: "وحدات القياس" },
-      { to: "/inventory/warehouses", icon: Warehouse, label: "المخازن" },
+      { to: "/inventory/units", icon: Ruler, label: "الوحدات" },
       { to: "/inventory/recipes", icon: BookOpen, label: "الوصفات" },
+    ],
+  },
+  {
+    title: "الجرد والهالك",
+    items: [
+      { to: "/inventory/counts", icon: ClipboardCheck, label: "الجرد" },
+      { to: "/inventory/waste", icon: PackageX, label: "الهالك" },
+    ],
+  },
+  {
+    title: "المشتريات",
+    items: [
+      { to: "/inventory/purchases", icon: Receipt, label: "فواتير المشتريات", permission: INVENTORY_PERMISSIONS.PURCHASES_VIEW },
+      { to: "/inventory/receipts", icon: PackagePlus, label: "استلام مشتريات" },
+    ],
+  },
+  {
+    title: "أخرى",
+    items: [
+      { to: "/inventory/warehouses", icon: Warehouse, label: "المخازن" },
+      { to: "/inventory/analytics", icon: BarChart3, label: "التحليلات", permission: INVENTORY_PERMISSIONS.ANALYTICS_VIEW },
     ],
   },
 ];
@@ -130,10 +153,11 @@ export const InventoryLayout: React.FC = () => {
               {section.title && (
                 <p className="px-4 pb-1 text-[10px] font-black text-slate-500 uppercase tracking-widest">{section.title}</p>
               )}
-              {section.items.map(({ to, icon: Icon, label }) => (
+              {section.items.map(({ to, icon: Icon, label, exact }) => (
                 <NavLink
                   key={to}
                   to={to}
+                  end={exact}
                   className={({ isActive }) =>
                     `w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 ${
                       isActive

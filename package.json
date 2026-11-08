@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "vitest run src/components/call-center",
+    "test": "vitest run src/components/call-center src/components/administration/inventory",
     "preview": "vite preview"
   },
   "dependencies": {

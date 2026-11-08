@@ -26,8 +26,8 @@ import { Field, Modal, PrimaryButton, SecondaryButton, inputClass } from "./ui";
 
 export const DOCUMENT_TITLES: Record<StockDocumentType, string> = {
   receipt: "استلام مشتريات",
-  transfer: "صرف للأقسام / تحويل",
-  waste: "الإتلاف",
+  transfer: "صرفيات الأصناف",
+  waste: "الهالك",
 };
 
 const HINTS: Record<StockDocumentType, string> = {
@@ -51,11 +51,10 @@ interface Line {
   unitCost: string;
   wasteReason: string;
   notes: string;
-  cartons: string;
 }
 
 let nextKey = 1;
-const emptyLine = (): Line => ({ key: nextKey++, item: null, units: [], unitId: "", quantity: "", unitCost: "", wasteReason: "", notes: "", cartons: "" });
+const emptyLine = (): Line => ({ key: nextKey++, item: null, units: [], unitId: "", quantity: "", unitCost: "", wasteReason: "", notes: "" });
 
 /** وحدات الصنف: الأساسية (معامل 1) ثم البديلة. */
 async function loadUnits(itemId: number): Promise<{ units: UnitOption[]; item: StockItem }> {
@@ -108,7 +107,6 @@ export const StockDocumentFormModal: React.FC<Props> = ({ type, document, meta, 
           unitCost: l.unit_cost !== null ? String(Number(l.unit_cost)) : "",
           wasteReason: l.waste_reason ?? "",
           notes: l.notes ?? "",
-          cartons: l.cartons ? String(Number(l.cartons)) : "",
         };
       }),
     ).then((loaded) => !cancelled && loaded.length > 0 && setLines(loaded));
@@ -162,7 +160,7 @@ export const StockDocumentFormModal: React.FC<Props> = ({ type, document, meta, 
     }
     const bad = filled.find((l) => !(Number(l.quantity) > 0) || (isReceipt && (l.unitCost === "" || Number(l.unitCost) < 0)) || (isWaste && !l.wasteReason));
     if (bad) {
-      toast.warning(`أكمل بيانات الصنف "${bad.item?.name}"`, isReceipt ? "الكمية وتكلفة الوحدة مطلوبتان." : isWaste ? "الكمية وسبب الإتلاف مطلوبان." : "الكمية أكبر من صفر.");
+      toast.warning(`أكمل بيانات الصنف "${bad.item?.name}"`, isReceipt ? "الكمية وتكلفة الوحدة مطلوبتان." : isWaste ? "الكمية وسبب الهالك مطلوبان." :"الكمية أكبر من صفر.");
       return null;
     }
     return {
@@ -179,7 +177,6 @@ export const StockDocumentFormModal: React.FC<Props> = ({ type, document, meta, 
         unit_cost: isReceipt ? Number(l.unitCost) : null,
         waste_reason: isWaste ? l.wasteReason : null,
         notes: l.notes.trim() || null,
-        cartons: isReceipt && l.cartons ? Number(l.cartons) : null,
       })),
     };
   };
@@ -317,15 +314,12 @@ export const StockDocumentFormModal: React.FC<Props> = ({ type, document, meta, 
                       <Field label="تكلفة الوحدة (₪)" required>
                         <input className={inputClass} type="number" min={0} step="any" dir="ltr" value={l.unitCost} onChange={(e) => update(l.key, { unitCost: e.target.value })} />
                       </Field>
-                      <Field label="الكراتين">
-                        <input className={inputClass} type="number" min={0} step="any" dir="ltr" value={l.cartons} onChange={(e) => update(l.key, { cartons: e.target.value })} />
-                      </Field>
                       <div className="pb-3 text-sm font-bold text-slate-300 tabular-nums">= {fmtNum((Number(l.quantity) || 0) * (Number(l.unitCost) || 0), 2)} ₪</div>
                     </>
                   )}
 
                   {isWaste && (
-                    <Field label="سبب الإتلاف" required>
+                    <Field label="سبب الهالك" required>
                       <select className={inputClass} value={l.wasteReason} onChange={(e) => update(l.key, { wasteReason: e.target.value })}>
                         <option value="">— اختر —</option>
                         {meta.waste_reasons.map((r) => (

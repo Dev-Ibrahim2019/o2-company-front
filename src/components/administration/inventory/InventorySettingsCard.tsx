@@ -48,6 +48,37 @@ export const InventorySettingsCard: React.FC = () => {
     }
   };
 
+  const toggleDeduct = async (value: boolean) => {
+    if (!settings) return;
+    if (value && !window.confirm("تشغيل خصم المخزون عند البيع؟ يبدأ من الطلبات المدفوعة بعد الآن فقط، والبيع لا يتوقف حتى لو نقص الرصيد.")) return;
+    const previous = settings;
+    setSettings({ ...settings, deduct_sales: value });
+    setSaving(true);
+    try {
+      setSettings(await inventoryService.updateSettings({ deduct_sales: value }));
+      toast.success(value ? "تم تشغيل خصم المخزون عند البيع" : "تم إيقاف خصم المخزون عند البيع");
+    } catch (e) {
+      setSettings(previous);
+      toast.error("تعذّر الحفظ", inventoryErrorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const retryDeduction = async () => {
+    setSaving(true);
+    try {
+      const r = await inventoryService.retrySalesDeduction();
+      setSettings(r);
+      if (r.retry.failed) toast.warning(`خُصم ${r.retry.posted} طلب، وفشل ${r.retry.failed}`, "راجع سجل الأخطاء أو أعد المحاولة لاحقاً.");
+      else toast.success(`خُصم ${r.retry.posted} طلب`);
+    } catch (e) {
+      toast.error("تعذّرت إعادة المحاولة", inventoryErrorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const toggleNegative = async (value: boolean) => {
     if (!settings) return;
     const previous = settings;
@@ -78,11 +109,54 @@ export const InventorySettingsCard: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-4">
+          <div className="p-4 rounded-xl bg-slate-800/30 border border-white/5 space-y-3">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-bold text-white">خصم المخزون عند البيع حسب الوصفات</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  عند دفع الطلب تُخصم مكوّنات كل صنف حسب وصفته من مخزن قسمه. البيع لا يتوقف أبداً: إن نقص الرصيد يصبح سالباً ويصحّحه الجرد،
+                  وإن تعذّر الخصم يُسجَّل لإعادة المحاولة. إلغاء الطلب المدفوع يعيد الكميات.
+                </p>
+                {settings.deduct_sales && settings.deduct_sales_from && (
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    مفعّل منذ <bdi className="tabular-nums">{new Date(settings.deduct_sales_from).toLocaleString("ar-EG-u-nu-latn")}</bdi> — الطلبات المدفوعة قبلها لا تُخصم.
+                  </p>
+                )}
+              </div>
+              <Toggle
+                checked={Boolean(settings.deduct_sales)}
+                onChange={toggleDeduct}
+                disabled={!canManage || saving}
+                label={settings.deduct_sales ? "مفعّل" : "موقوف"}
+              />
+            </div>
+            {settings.sales_deduction && (settings.sales_deduction.failed > 0 || settings.sales_deduction.pending > 0 || settings.sales_deduction.partial > 0) && (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-3 border-t border-white/5 text-xs font-bold">
+                {settings.sales_deduction.failed > 0 && <span className="text-red-400">فشل خصمها: {settings.sales_deduction.failed}</span>}
+                {settings.sales_deduction.pending > 0 && <span className="text-amber-300">مدفوعة بلا خصم: {settings.sales_deduction.pending}</span>}
+                {settings.sales_deduction.partial > 0 && (
+                  <span className="text-slate-400" title="أصناف بيعت بلا وصفة أو من قسم غير مربوط بمخزن — تظهر في التحليلات تحت 'بلا وصفة'">
+                    خُصمت جزئياً: {settings.sales_deduction.partial}
+                  </span>
+                )}
+                {canManage && (settings.sales_deduction.failed > 0 || settings.sales_deduction.pending > 0) && (
+                  <button
+                    type="button"
+                    onClick={retryDeduction}
+                    disabled={saving}
+                    className="mr-auto px-3 py-1.5 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 border border-white/10 disabled:opacity-50"
+                  >
+                    إعادة المحاولة
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <div className="flex items-center justify-between gap-4 p-4 rounded-xl bg-slate-800/30 border border-white/5">
             <div>
               <p className="text-sm font-bold text-white">السماح بالرصيد السالب</p>
               <p className="text-xs text-slate-500 mt-1">
-                عند الإيقاف (الافتراضي) تُرفض أي حركة صادرة تجعل رصيد الصنف أقل من صفر. خصم المبيعات لاحقاً لا يوقف الكاشير في كل الأحوال.
+                عند الإيقاف (الافتراضي) تُرفض أي حركة صادرة يدوية تجعل رصيد الصنف أقل من صفر. خصم المبيعات مستثنى دائماً حتى لا يتوقف الكاشير.
               </p>
             </div>
             <Toggle

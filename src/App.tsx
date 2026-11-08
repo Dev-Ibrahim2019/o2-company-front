@@ -81,6 +81,13 @@ import { WarehousesPage } from "./components/administration/inventory/Warehouses
 import { BalancesPage } from "./components/administration/inventory/BalancesPage";
 import { KardexPage } from "./components/administration/inventory/KardexPage";
 import { StockDocumentsPage } from "./components/administration/inventory/StockDocumentsPage";
+import { TransfersPage } from "./components/administration/inventory/TransfersPage";
+import { TransferEntryPage } from "./components/administration/inventory/TransferEntryPage";
+import { MovementsPage } from "./components/administration/inventory/MovementsPage";
+import { MovementEntryPage } from "./components/administration/inventory/MovementEntryPage";
+import { ItemsTreePage } from "./components/administration/inventory/ItemsTreePage";
+import { BalancesReportPage } from "./components/administration/inventory/BalancesReportPage";
+import { CountSheetPage } from "./components/administration/inventory/CountSheetPage";
 import { RecipesPage } from "./components/administration/inventory/RecipesPage";
 import { StockCountsPage } from "./components/administration/inventory/StockCountsPage";
 import { InventoryAnalyticsPage } from "./components/administration/inventory/InventoryAnalyticsPage";
@@ -210,6 +217,12 @@ function RoleGuard({ allowedRoles }: { allowedRoles: string[] }) {
   }
 
   return <Outlet />;
+}
+
+/** يعيد بناء الصفحة مع كل تنقل (مثلاً F3 "جديد" من مستند جديد) حتى تبدأ حالتها من الصفر. */
+function RemountOnNavigate({ children }: { children: React.ReactElement }) {
+  const location = useLocation();
+  return <React.Fragment key={location.key}>{children}</React.Fragment>;
 }
 
 /** /admin/inventory/x?q → /inventory/x?q (الروابط القديمة قبل فصل لوحة المخازن). */
@@ -535,18 +548,25 @@ function AppRoutes() {
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<InventoryDashboardPage />} />
           <Route path="items" element={<StockItemsPage />} />
+          <Route path="items/tree" element={<ItemsTreePage />} />
           <Route path="categories" element={<StockCategoriesPage />} />
           <Route path="units" element={<StockUnitsPage />} />
           <Route path="warehouses" element={<WarehousesPage />} />
           <Route path="balances" element={<BalancesPage />} />
+          <Route path="balances/report" element={<BalancesReportPage />} />
           <Route path="kardex" element={<KardexPage />} />
+          <Route path="movements" element={<MovementsPage />} />
+          <Route path="movements/new" element={<RemountOnNavigate><MovementEntryPage /></RemountOnNavigate>} />
           <Route path="purchases" element={<ProtectedRoute permission={INVENTORY_PERMISSIONS.PURCHASES_VIEW}><PurchaseInvoicesPage /></ProtectedRoute>} />
           <Route path="purchases/:id" element={<ProtectedRoute permission={INVENTORY_PERMISSIONS.PURCHASES_VIEW}><PurchaseInvoiceFormPage /></ProtectedRoute>} />
           <Route path="receipts" element={<StockDocumentsPage type="receipt" />} />
-          <Route path="transfers" element={<StockDocumentsPage type="transfer" />} />
+          <Route path="transfers" element={<TransfersPage />} />
+          <Route path="transfers/new" element={<RemountOnNavigate><TransferEntryPage /></RemountOnNavigate>} />
+          <Route path="transfers/:id" element={<RemountOnNavigate><TransferEntryPage /></RemountOnNavigate>} />
           <Route path="waste" element={<StockDocumentsPage type="waste" />} />
           <Route path="recipes" element={<RecipesPage />} />
           <Route path="counts" element={<StockCountsPage />} />
+          <Route path="counts/:id" element={<RemountOnNavigate><CountSheetPage /></RemountOnNavigate>} />
           <Route path="analytics" element={<InventoryAnalyticsPage />} />
           {/* قسم الإنتاج والجودة والدفعات أُلغي — الروابط القديمة تعود للرئيسية بدل صفحة فارغة. */}
           {["batches", "productivity", "shawarma", "departments", "quality-reports", "breakdowns", "production", "skewers", "showroom-sales"].map((p) => (

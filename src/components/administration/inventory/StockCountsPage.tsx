@@ -1,10 +1,13 @@
 /**
- * StockCountsPage.tsx — الجرد الفعلي: ورقة لكل مخزن، إدخال المعدود بأي وحدة معرّفة، ثم ترحيل يسوّي الفروق.
- * الفرق يُحسب عند الترحيل مقابل الرصيد المسجّل لحظتها، والصنف غير المعدود لا يُسوّى.
+ * StockCountsPage.tsx — مراجعة الجرد (/inventory/counts) ببنية شاشات الأمين: فلاتر التاريخ والمخزن، وجدول الأوراق
+ * (مسودات ومثبّتة) وتذييل للإجماليات. Enter أو النقر المزدوج يفتح الورقة في /inventory/counts/:id.
+ * "تاريخ الحركة" = يوم التثبيت، أو اليوم المحاسبي لإنشاء المسودة. الافتراضي آخر 30 يوماً.
+ * ?open=ID (روابط قديمة) يُحوَّل إلى صفحة الورقة.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ClipboardCheck, Plus, Send, Trash2 } from "lucide-react";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, ClipboardCheck, ExternalLink, LogOut, Plus, RefreshCw, ScrollText, Search } from "lucide-react";
 import { useCan } from "../../../auth";
 import { INVENTORY_PERMISSIONS } from "../../../auth/permissions";
 import { toast } from "../../shared/Toast";
@@ -13,96 +16,317 @@ import {
   inventoryErrorMessage,
   inventoryService,
   type InventoryLookups,
+  type Paginated,
   type StockCount,
-  type StockCountLine,
   type Warehouse,
 } from "../../../services/inventoryService";
 import { flattenTree } from "./CategoriesPage";
-import { EmptyBlock, Field, LoadingBlock, Modal, PageHeader, PrimaryButton, SearchBox, SecondaryButton, inputClass } from "./ui";
+import { DocToolbar, type ToolbarItem } from "./DocToolbar";
+import { printReport } from "./printReport";
+import { EmptyBlock, Field, IconButton, LoadingBlock, Modal, PrimaryButton, SecondaryButton, inputClass } from "./ui";
+
+const PER_PAGE = 100;
+
+type CountsPage = Paginated<StockCount> & { summary?: { count: number; variance_value: string | null } };
+
+const daysBefore = (day: string, n: number) => {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+};
+
+export const StockCountStatus: React.FC<{ status: StockCount["status"] }> = ({ status }) => (
+  <span className={`px-2 py-0.5 rounded-md text-[11px] font-black whitespace-nowrap ${status === "posted" ? "bg-green-500/15 text-green-400" : "bg-slate-500/15 text-slate-300"}`}>
+    {status === "posted" ? "مثبّت" : "مسودة"}
+  </span>
+);
 
 export const StockCountsPage: React.FC = () => {
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const canManage = useCan(INVENTORY_PERMISSIONS.COUNTS_MANAGE);
-  const [counts, setCounts] = useState<StockCount[] | null>(null);
+  const [today, setToday] = useState("");
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [lookups, setLookups] = useState<InventoryLookups | null>(null);
+  const [result, setResult] = useState<CountsPage | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState(0);
   const [creating, setCreating] = useState(false);
-  const [openId, setOpenId] = useState<number | null>(null);
+  const [printing, setPrinting] = useState(false);
+  const [searchInput, setSearchInput] = useState(params.get("q") ?? "");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
+  const seq = useRef(0);
 
-  const load = useCallback(() => {
+  const legacyOpen = Number(params.get("open")) || null;
+
+  useEffect(() => {
     inventoryService
-      .counts({ per_page: 50 })
-      .then((p) => setCounts(p.data))
-      .catch((e) => toast.error("تعذّر تحميل أوراق الجرد", inventoryErrorMessage(e)));
+      .documentsMeta()
+      .then((m) => setToday(m.accounting_today))
+      .catch((e) => toast.error("تعذّر تحميل البيانات", inventoryErrorMessage(e)));
+    inventoryService
+      .warehouses()
+      .then((w) => setWarehouses(w.filter((x) => x.is_active)))
+      .catch(() => undefined);
+    inventoryService.lookups().then(setLookups).catch(() => undefined);
   }, []);
+
+  const filters = useMemo(
+    () => ({
+      from: params.has("from") ? params.get("from")! : today ? daysBefore(today, 30) : "",
+      to: params.has("to") ? params.get("to")! : today,
+      wh: params.get("wh") ?? "",
+      q: params.get("q") ?? "",
+    }),
+    [params, today],
+  );
+
+  const setFilter = (key: "from" | "to" | "wh" | "q", value: string) => {
+    setParams(
+      (p) => {
+        const next = new URLSearchParams(p);
+        if (key === "from" || key === "to" || value) next.set(key, value);
+        else next.delete(key);
+        return next;
+      },
+      { replace: true },
+    );
+    setPage(1);
+  };
+
+  useEffect(() => {
+    const t = setTimeout(() => searchInput.trim() !== filters.q && setFilter("q", searchInput.trim()), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
+
+  const query = useCallback(
+    (p: number, perPage = PER_PAGE) =>
+      inventoryService.counts({
+        page: p,
+        per_page: perPage,
+        from: filters.from || undefined,
+        to: filters.to || undefined,
+        warehouse_id: filters.wh || undefined,
+        search: filters.q || undefined,
+      }),
+    [filters],
+  );
+
+  const load = useCallback(async () => {
+    if (!today) return;
+    const n = ++seq.current;
+    setLoading(true);
+    try {
+      const data = await query(page);
+      if (n !== seq.current) return;
+      setResult(data);
+      setSelected((s) => Math.min(s, Math.max(data.data.length - 1, 0)));
+    } catch (e) {
+      if (n === seq.current) toast.error("تعذّر تحميل أوراق الجرد", inventoryErrorMessage(e));
+    } finally {
+      if (n === seq.current) setLoading(false);
+    }
+  }, [today, query, page]);
 
   useEffect(() => {
     load();
-    inventoryService.warehouses().then((w) => setWarehouses(w.filter((x) => x.is_active && x.type === "standard"))).catch(() => undefined);
-    inventoryService.lookups().then(setLookups).catch(() => undefined);
   }, [load]);
 
-  return (
-    <div className="space-y-6" dir="rtl">
-      <PageHeader
-        title="الجرد الفعلي"
-        subtitle="عدّ ما في المخزن فعلاً ومقارنته بالرصيد المسجّل. الترحيل يسوّي الفروق ويجعل الاستهلاك الفعلي في التحليلات حقيقياً."
-        action={
-          canManage && (
-            <PrimaryButton onClick={() => setCreating(true)} disabled={warehouses.length === 0}>
-              <Plus size={18} /> ورقة جرد جديدة
-            </PrimaryButton>
-          )
-        }
-      />
+  const rows = result?.data ?? [];
+  const current = rows[selected] ?? null;
+  const offset = ((result?.current_page ?? 1) - 1) * PER_PAGE;
+  const summaryValue = result?.summary?.variance_value;
+  // الخادم يعيد قيمة الفروق null لمن لا يملك صلاحية رؤية التكاليف.
+  const costs = summaryValue !== null && summaryValue !== undefined;
 
-      {!counts ? (
+  const select = (i: number) => {
+    const idx = Math.max(0, Math.min(i, rows.length - 1));
+    setSelected(idx);
+    tableRef.current?.querySelector<HTMLElement>(`[data-index="${idx}"]`)?.scrollIntoView({ block: "nearest" });
+  };
+
+  const open = (c: StockCount | null) => c && navigate(`/inventory/counts/${c.id}`);
+
+  const printStatement = async () => {
+    setPrinting(true);
+    try {
+      const all: StockCount[] = [];
+      let p = 1;
+      let last = 1;
+      do {
+        const r = await query(p, 200);
+        all.push(...r.data);
+        last = r.last_page;
+        p++;
+      } while (p <= last && p <= 25);
+      printReport({
+        title: "كشف أوراق الجرد",
+        filters: [
+          ["من تاريخ", filters.from || "—"],
+          ["إلى تاريخ", filters.to || "—"],
+          ["المخزن", warehouses.find((w) => String(w.id) === filters.wh)?.name ?? "الكل"],
+          ...(filters.q ? ([["بحث", filters.q]] as [string, string][]) : []),
+        ],
+        columns: [
+          { label: "م", num: true },
+          { label: "رقم الحركة" },
+          { label: "تاريخ الحركة" },
+          { label: "اسم المخزن" },
+          { label: "عدد الأصناف", num: true },
+          ...(costs ? [{ label: "قيمة الفروق (₪)", num: true }] : []),
+          { label: "الحالة" },
+          { label: "ملاحظات" },
+        ],
+        rows: all.map((c, i) => [
+          i + 1,
+          c.number,
+          c.day,
+          c.warehouse?.name,
+          c.counted_lines_count ?? 0,
+          ...(costs ? [c.status === "posted" ? fmtNum(c.variance_value, 2) : null] : []),
+          c.status === "posted" ? "مثبّت" : "مسودة",
+          c.notes,
+        ]),
+        totals: [
+          ["عدد الأوراق", String(result?.summary?.count ?? all.length)],
+          ...(costs ? ([["إجمالي قيمة الفروق (₪)", fmtNum(summaryValue, 2)]] as [string, string][]) : []),
+        ],
+        landscape: true,
+      });
+    } catch (e) {
+      toast.error("تعذّرت طباعة الكشف", inventoryErrorMessage(e));
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  const items: ToolbarItem[] = [
+    { id: "new", label: "جديد", icon: Plus, keys: "F3", tone: "primary", hidden: !canManage, disabled: warehouses.length === 0, onClick: () => setCreating(true) },
+    { id: "open", label: "فتح الورقة", icon: ExternalLink, keys: "F11", disabled: !current, onClick: () => open(current) },
+    "sep",
+    { id: "statement", label: "طباعة الكشف", icon: ScrollText, keys: "Ctrl+P", disabled: rows.length === 0, loading: printing, onClick: printStatement },
+    "sep",
+    { id: "first", label: "الأول", icon: ChevronFirst, keys: "Alt+Home", disabled: rows.length === 0, onClick: () => select(0) },
+    { id: "prev", label: "السابق", icon: ChevronRight, keys: "Alt+PageUp", disabled: selected <= 0, onClick: () => select(selected - 1) },
+    { id: "next", label: "التالي", icon: ChevronLeft, keys: "Alt+PageDown", disabled: selected >= rows.length - 1, onClick: () => select(selected + 1) },
+    { id: "last", label: "الأخير", icon: ChevronLast, keys: "Alt+End", disabled: rows.length === 0, onClick: () => select(rows.length - 1) },
+    "sep",
+    { id: "search", label: "بحث", icon: Search, keys: "Ctrl+F", onClick: () => searchRef.current?.focus() },
+    { id: "reload", label: "إعادة تحميل", icon: RefreshCw, keys: "F8", onClick: load },
+    { id: "exit", label: "خروج", icon: LogOut, keys: "Esc", onClick: () => navigate("/inventory/dashboard") },
+  ];
+
+  const onTableKey = (e: React.KeyboardEvent) => {
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      select(selected + (e.key === "ArrowDown" ? 1 : -1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      open(current);
+    }
+  };
+
+  if (legacyOpen) return <Navigate to={`/inventory/counts/${legacyOpen}`} replace />;
+
+  return (
+    <div className="space-y-4" dir="rtl">
+      <DocToolbar items={items} shortcutsEnabled={!creating} title="الجرد" />
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2">
+        <Field label="من تاريخ">
+          <input type="date" className={inputClass} value={filters.from} max={filters.to || undefined} onChange={(e) => setFilter("from", e.target.value)} dir="ltr" />
+        </Field>
+        <Field label="إلى تاريخ">
+          <input type="date" className={inputClass} value={filters.to} min={filters.from || undefined} onChange={(e) => setFilter("to", e.target.value)} dir="ltr" />
+        </Field>
+        <Field label="المخزن">
+          <select className={inputClass} value={filters.wh} onChange={(e) => setFilter("wh", e.target.value)}>
+            <option value="">كل المخازن</option>
+            {warehouses.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="بحث">
+          <input
+            ref={searchRef}
+            className={inputClass}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && searchInput) {
+                e.preventDefault();
+                e.stopPropagation();
+                setSearchInput("");
+              } else if (e.key === "Enter" || e.key === "ArrowDown") {
+                e.preventDefault();
+                tableRef.current?.focus();
+              }
+            }}
+            placeholder="رقم الحركة أو الملاحظات..."
+          />
+        </Field>
+      </div>
+
+      {!today || (loading && !result) ? (
         <LoadingBlock />
-      ) : counts.length === 0 ? (
-        <EmptyBlock icon={ClipboardCheck} text="لا توجد أوراق جرد بعد" />
+      ) : rows.length === 0 ? (
+        <EmptyBlock icon={ClipboardCheck} text="لا توجد أوراق جرد في هذه الفترة" />
       ) : (
-        <div className="bg-slate-900 rounded-2xl border border-white/5 overflow-x-auto">
-          <table className="w-full text-sm min-w-[720px]">
-            <thead>
-              <tr className="text-slate-500 text-xs font-black border-b border-white/5">
-                <th className="text-right p-4">الرقم</th>
-                <th className="text-right p-4">المخزن</th>
-                <th className="text-right p-4">الحالة</th>
-                <th className="text-right p-4">المعدود</th>
-                <th className="text-right p-4">تاريخ الجرد</th>
-                <th className="text-right p-4">قيمة الفروق (₪)</th>
-                <th className="text-right p-4">بواسطة</th>
+        <div
+          ref={tableRef}
+          tabIndex={0}
+          onKeyDown={onTableKey}
+          aria-label="أوراق الجرد — الأسهم للاختيار وEnter لفتح الورقة"
+          className={`rounded-xl border border-white/10 overflow-auto custom-scrollbar max-h-[62vh] bg-slate-900 focus:outline-none focus:ring-2 focus:ring-red-600/50 transition-opacity ${loading ? "opacity-60" : ""}`}
+        >
+          <table className="w-full border-collapse text-sm min-w-[900px]">
+            <thead className="sticky top-0 z-10">
+              <tr>
+                {["م", "رقم الحركة", "تاريخ الحركة", "اسم المخزن", "عدد الأصناف", ...(costs ? ["قيمة الفروق"] : []), "الحالة", "ملاحظات"].map((h) => (
+                  <th key={h} scope="col" className="bg-slate-800 text-slate-400 text-[11px] font-black px-2 py-2 border border-white/10 text-right whitespace-nowrap">
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {counts.map((c) => (
+              {rows.map((c, i) => (
                 <tr
                   key={c.id}
-                  onClick={() => setOpenId(c.id)}
-                  onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setOpenId(c.id)}
-                  tabIndex={0}
-                  role="button"
-                  aria-label={`ورقة الجرد ${c.number}`}
-                  className="border-b border-white/5 last:border-0 hover:bg-white/[0.03] cursor-pointer focus:outline-none focus:bg-white/[0.05]"
+                  data-index={i}
+                  aria-selected={i === selected}
+                  onClick={() => setSelected(i)}
+                  onDoubleClick={() => open(c)}
+                  className={`cursor-pointer ${i === selected ? "bg-red-600/15" : "hover:bg-white/5"}`}
                 >
-                  <td className="p-4">
+                  <td className="border border-white/10 px-2 py-1.5 text-slate-500 tabular-nums">{offset + i + 1}</td>
+                  <td className="border border-white/10 px-2 py-1.5">
                     <bdi className="font-mono text-xs font-bold text-white">{c.number}</bdi>
                   </td>
-                  <td className="p-4 text-slate-300">{c.warehouse?.name}</td>
-                  <td className="p-4">
-                    <span
-                      className={`px-2 py-0.5 rounded-md text-[11px] font-black ${c.status === "posted" ? "bg-green-500/15 text-green-400" : "bg-slate-500/15 text-slate-300"}`}
-                    >
-                      {c.status === "posted" ? "مرحّل" : "مسودة"}
-                    </span>
+                  <td className="border border-white/10 px-2 py-1.5 text-slate-300 tabular-nums whitespace-nowrap">{c.day}</td>
+                  <td className="border border-white/10 px-2 py-1.5 text-slate-300">{c.warehouse?.name}</td>
+                  <td className="border border-white/10 px-2 py-1.5 text-slate-300 tabular-nums">
+                    {c.counted_lines_count ?? 0}
+                    {c.status === "draft" && <span className="text-[11px] text-slate-500"> / {c.lines_count}</span>}
                   </td>
-                  <td className="p-4 text-slate-400 tabular-nums">
-                    {c.counted_lines_count} / {c.lines_count}
+                  {costs && (
+                    <td className={`border border-white/10 px-2 py-1.5 tabular-nums text-left font-bold ${Number(c.variance_value) < 0 ? "text-red-400" : "text-slate-300"}`}>
+                      {c.status === "posted" ? fmtNum(c.variance_value, 2) : ""}
+                    </td>
+                  )}
+                  <td className="border border-white/10 px-2 py-1.5">
+                    <StockCountStatus status={c.status} />
                   </td>
-                  <td className="p-4 text-slate-300 tabular-nums">{c.count_date ?? "—"}</td>
-                  <td className={`p-4 tabular-nums font-bold ${Number(c.variance_value) < 0 ? "text-red-400" : "text-slate-300"}`}>
-                    {c.status === "posted" ? fmtNum(c.variance_value, 2) : "—"}
+                  <td className="border border-white/10 px-2 py-1.5 text-slate-400 max-w-[280px] truncate" title={c.notes ?? undefined}>
+                    {c.notes}
                   </td>
-                  <td className="p-4 text-xs text-slate-400">{c.poster?.name ?? c.creator?.name ?? "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -110,31 +334,54 @@ export const StockCountsPage: React.FC = () => {
         </div>
       )}
 
+      <div className="sticky bottom-0 -mx-4 md:-mx-6 -mb-4 md:-mb-6 px-4 md:px-6 py-2.5 bg-slate-950/95 backdrop-blur border-t border-white/5 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm font-bold text-slate-400">
+        <span>
+          عدد الأوراق: <span className="text-white tabular-nums">{result?.summary?.count ?? 0}</span>
+        </span>
+        {costs && (
+          <span>
+            إجمالي قيمة الفروق: <span className={`tabular-nums ${Number(summaryValue) < 0 ? "text-red-400" : "text-white"}`}>{fmtNum(summaryValue, 2)} ₪</span>
+          </span>
+        )}
+        {result && result.last_page > 1 && (
+          <span className="flex items-center gap-1.5 mr-auto">
+            <span className="text-xs">
+              صفحة {result.current_page} من {result.last_page}
+            </span>
+            <IconButton label="الصفحة السابقة" disabled={page <= 1 || loading} onClick={() => setPage((p) => p - 1)}>
+              <ChevronRight size={16} />
+            </IconButton>
+            <IconButton label="الصفحة التالية" disabled={page >= result.last_page || loading} onClick={() => setPage((p) => p + 1)}>
+              <ChevronLeft size={16} />
+            </IconButton>
+          </span>
+        )}
+      </div>
+
       {creating && (
         <NewCountModal
           warehouses={warehouses}
           lookups={lookups}
+          defaultWarehouse={filters.wh ? Number(filters.wh) : undefined}
           onClose={() => setCreating(false)}
-          onCreated={(c) => {
-            setCreating(false);
-            load();
-            setOpenId(c.id);
-          }}
+          onCreated={(c) => navigate(`/inventory/counts/${c.id}`)}
         />
       )}
-      {openId !== null && <CountSheetModal id={openId} onClose={() => setOpenId(null)} onChanged={load} />}
     </div>
   );
 };
 
-const NewCountModal: React.FC<{
+/** ورقة جرد جديدة: المخزن، وتصنيف اختياري (فارغ = كل الأصناف المخزنية النشطة)، وملاحظات. */
+export const NewCountModal: React.FC<{
   warehouses: Warehouse[];
   lookups: InventoryLookups | null;
+  defaultWarehouse?: number;
   onClose: () => void;
   onCreated: (c: StockCount) => void;
-}> = ({ warehouses, lookups, onClose, onCreated }) => {
-  const [warehouseId, setWarehouseId] = useState<number | "">(warehouses.length === 1 ? warehouses[0].id : "");
+}> = ({ warehouses, lookups, defaultWarehouse, onClose, onCreated }) => {
+  const [warehouseId, setWarehouseId] = useState<number | "">(defaultWarehouse ?? (warehouses.length === 1 ? warehouses[0].id : ""));
   const [categoryId, setCategoryId] = useState<number | "">("");
+  const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const tree = useMemo(() => flattenTree(lookups?.categories ?? []), [lookups]);
 
@@ -145,10 +392,11 @@ const NewCountModal: React.FC<{
     }
     setSaving(true);
     try {
-      onCreated(await inventoryService.createCount({ warehouse_id: warehouseId, category_id: categoryId === "" ? null : categoryId }));
+      const c = await inventoryService.createCount({ warehouse_id: warehouseId, category_id: categoryId === "" ? null : categoryId, notes: notes.trim() || null });
+      toast.success(`أُنشئت ورقة الجرد ${c.number}`);
+      onCreated(c);
     } catch (e) {
       toast.error("تعذّر إنشاء ورقة الجرد", inventoryErrorMessage(e));
-    } finally {
       setSaving(false);
     }
   };
@@ -168,7 +416,7 @@ const NewCountModal: React.FC<{
     >
       <div className="space-y-4">
         <Field label="المخزن" required>
-          <select className={inputClass} value={warehouseId} onChange={(e) => setWarehouseId(e.target.value ? Number(e.target.value) : "")}>
+          <select className={inputClass} value={warehouseId} onChange={(e) => setWarehouseId(e.target.value ? Number(e.target.value) : "")} autoFocus>
             <option value="">— اختر —</option>
             {warehouses.map((w) => (
               <option key={w.id} value={w.id}>
@@ -188,230 +436,10 @@ const NewCountModal: React.FC<{
             ))}
           </select>
         </Field>
+        <Field label="ملاحظات" hint="مثلاً: الرفوف 1–4، أو اسم العدّاد (يمكن فتح أكثر من ورقة للمخزن ودمجها).">
+          <input className={inputClass} value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={1000} />
+        </Field>
       </div>
-    </Modal>
-  );
-};
-
-interface Entry {
-  unitId: number | "";
-  quantity: string;
-}
-
-const CountSheetModal: React.FC<{ id: number; onClose: () => void; onChanged: () => void }> = ({ id, onClose, onChanged }) => {
-  const canManage = useCan(INVENTORY_PERMISSIONS.COUNTS_MANAGE);
-  const canPost = useCan(INVENTORY_PERMISSIONS.COUNTS_POST);
-  const [count, setCount] = useState<StockCount | null>(null);
-  const [entries, setEntries] = useState<Record<number, Entry>>({});
-  const [search, setSearch] = useState("");
-  const [busy, setBusy] = useState<"save" | "post" | "delete" | null>(null);
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
-
-  const apply = (c: StockCount) => {
-    setCount(c);
-    const next: Record<number, Entry> = {};
-    for (const l of c.lines ?? []) {
-      next[l.stock_item_id] = {
-        unitId: l.unit_id ?? l.stock_item?.base_unit_id ?? "",
-        quantity: l.entered_quantity !== null ? String(Number(l.entered_quantity)) : "",
-      };
-    }
-    setEntries(next);
-  };
-
-  useEffect(() => {
-    inventoryService
-      .count(id)
-      .then(apply)
-      .catch((e) => {
-        toast.error("تعذّر تحميل ورقة الجرد", inventoryErrorMessage(e));
-        closeRef.current();
-      });
-  }, [id]);
-
-  const draft = count?.status === "draft";
-  const editable = draft && canManage;
-  const term = search.trim();
-  const lines = (count?.lines ?? []).filter((l) => !term || l.stock_item?.name.includes(term) || l.stock_item?.code.includes(term));
-
-  const payload = () =>
-    (count?.lines ?? []).map((l) => {
-      const e = entries[l.stock_item_id];
-      return {
-        stock_item_id: l.stock_item_id,
-        unit_id: !e || e.unitId === "" ? null : e.unitId,
-        entered_quantity: e && e.quantity !== "" ? Number(e.quantity) : null,
-      };
-    });
-
-  const save = async (andPost: boolean) => {
-    if (!count) return;
-    if (andPost && !window.confirm("ترحيل الجرد يسجّل تسويات لكل الأصناف المعدودة ولا يمكن تعديله بعدها. متابعة؟")) return;
-    setBusy(andPost ? "post" : "save");
-    try {
-      let c = await inventoryService.saveCount(count.id, { notes: count.notes, lines: payload() });
-      if (andPost) {
-        c = await inventoryService.postCount(count.id);
-        toast.success("تم ترحيل الجرد وتسوية الفروق");
-      } else {
-        toast.success("تم حفظ المعدود");
-      }
-      apply(c);
-      onChanged();
-    } catch (e) {
-      toast.error("تعذّرت العملية", inventoryErrorMessage(e));
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const remove = async () => {
-    if (!count || !window.confirm(`حذف ورقة الجرد ${count.number}؟`)) return;
-    setBusy("delete");
-    try {
-      await inventoryService.deleteCount(count.id);
-      onChanged();
-      onClose();
-    } catch (e) {
-      toast.error("تعذّر الحذف", inventoryErrorMessage(e));
-      setBusy(null);
-    }
-  };
-
-  const unitOptions = (l: StockCountLine) => [
-    { id: l.stock_item?.base_unit_id ?? 0, name: l.stock_item?.base_unit?.name ?? "", factor: 1 },
-    ...(l.stock_item?.units ?? []).map((u) => ({ id: u.unit_id, name: u.unit?.name ?? "", factor: Number(u.factor) })),
-  ];
-
-  /** الفرق التقديري قبل الترحيل = المعدود بالوحدة الأساسية − الرصيد المسجّل عند إنشاء الورقة. */
-  const previewVariance = (l: StockCountLine): number | null => {
-    const e = entries[l.stock_item_id];
-    if (!e || e.quantity === "") return null;
-    const factor = unitOptions(l).find((u) => u.id === e.unitId)?.factor ?? 1;
-    return Number(e.quantity) * factor - Number(l.expected_quantity);
-  };
-
-  return (
-    <Modal
-      wide
-      title={count ? `جرد ${count.warehouse?.name ?? ""} — ${count.number}` : "ورقة الجرد"}
-      onClose={onClose}
-      footer={
-        count && (
-          <>
-            {count.status === "posted" && count.costs_visible && (
-              <span className="text-sm font-bold text-slate-400 self-center ml-auto">
-                قيمة الفروق:{" "}
-                <span className={`tabular-nums ${Number(count.variance_value) < 0 ? "text-red-400" : "text-white"}`}>{fmtNum(count.variance_value, 2)} ₪</span>
-              </span>
-            )}
-            {editable && (
-              <>
-                <SecondaryButton onClick={remove} disabled={busy !== null}>
-                  <Trash2 size={15} className="inline ml-1" /> حذف
-                </SecondaryButton>
-                <SecondaryButton onClick={() => save(false)} disabled={busy !== null}>
-                  {busy === "save" ? "جارٍ الحفظ..." : "حفظ المعدود"}
-                </SecondaryButton>
-              </>
-            )}
-            {draft && canPost && (
-              <PrimaryButton onClick={() => save(true)} loading={busy === "post"} disabled={busy !== null}>
-                <Send size={15} /> ترحيل الجرد
-              </PrimaryButton>
-            )}
-          </>
-        )
-      }
-    >
-      {!count ? (
-        <LoadingBlock />
-      ) : (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <SearchBox value={search} onChange={setSearch} placeholder="بحث في الأصناف..." />
-            <p className="text-[11px] text-slate-500 font-semibold">
-              {draft
-                ? "اترك الكمية فارغة للصنف الذي لم يُعدّ — لا تُسجَّل له تسوية. الفرق النهائي يُحسب لحظة الترحيل."
-                : `رُحّل في ${count.count_date ?? ""} بواسطة ${count.poster?.name ?? "—"}.`}
-            </p>
-          </div>
-          <div className="bg-slate-900 rounded-2xl border border-white/5 overflow-x-auto max-h-[60vh] overflow-y-auto custom-scrollbar">
-            <table className="w-full text-sm min-w-[720px]">
-              <thead className="sticky top-0 bg-slate-900">
-                <tr className="text-slate-500 text-xs font-black border-b border-white/5">
-                  <th className="text-right p-3">الصنف</th>
-                  <th className="text-right p-3">المسجّل</th>
-                  <th className="text-right p-3">المعدود</th>
-                  <th className="text-right p-3">الفرق</th>
-                  {!draft && count.costs_visible && <th className="text-right p-3">قيمة الفرق (₪)</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((l) => {
-                  const e = entries[l.stock_item_id] ?? { unitId: "", quantity: "" };
-                  const variance = draft ? previewVariance(l) : l.variance_quantity !== null ? Number(l.variance_quantity) : null;
-                  const unit = l.stock_item?.base_unit?.name ?? "";
-                  return (
-                    <tr key={l.id} className="border-b border-white/5 last:border-0">
-                      <td className="p-3">
-                        <span className="font-bold text-white">{l.stock_item?.name}</span>
-                        <bdi className="block text-[11px] text-slate-500 font-mono">{l.stock_item?.code}</bdi>
-                      </td>
-                      <td className="p-3 text-slate-300 tabular-nums whitespace-nowrap">
-                        {fmtNum(l.expected_quantity)} <span className="text-xs text-slate-500">{unit}</span>
-                      </td>
-                      <td className="p-3">
-                        {editable ? (
-                          <div className="flex gap-1.5 min-w-[220px]">
-                            <input
-                              type="number"
-                              min={0}
-                              step="any"
-                              className={`${inputClass} !py-2`}
-                              value={e.quantity}
-                              onChange={(ev) => setEntries((s) => ({ ...s, [l.stock_item_id]: { ...e, quantity: ev.target.value } }))}
-                              dir="ltr"
-                              aria-label={`المعدود من ${l.stock_item?.name ?? ""}`}
-                            />
-                            <select
-                              className={`${inputClass} !py-2 !w-28`}
-                              value={e.unitId}
-                              onChange={(ev) => setEntries((s) => ({ ...s, [l.stock_item_id]: { ...e, unitId: Number(ev.target.value) } }))}
-                              aria-label="الوحدة"
-                            >
-                              {unitOptions(l).map((u) => (
-                                <option key={u.id} value={u.id}>
-                                  {u.name}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        ) : (
-                          <span className="tabular-nums text-slate-200">
-                            {l.counted_quantity !== null ? `${fmtNum(l.counted_quantity)} ${unit}` : <span className="text-slate-500">لم يُعدّ</span>}
-                          </span>
-                        )}
-                      </td>
-                      <td
-                        className={`p-3 font-bold tabular-nums whitespace-nowrap ${variance === null ? "text-slate-500" : variance < 0 ? "text-red-400" : variance > 0 ? "text-green-400" : "text-slate-300"}`}
-                      >
-                        {variance === null ? "—" : `${variance > 0 ? "+" : ""}${fmtNum(variance)} ${unit}`}
-                      </td>
-                      {!draft && count.costs_visible && (
-                        <td className={`p-3 tabular-nums ${Number(l.variance_value) < 0 ? "text-red-400" : "text-slate-300"}`}>
-                          {l.variance_value !== null ? fmtNum(l.variance_value, 2) : "—"}
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
     </Modal>
   );
 };

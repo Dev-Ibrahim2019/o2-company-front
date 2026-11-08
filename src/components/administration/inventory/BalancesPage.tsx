@@ -5,7 +5,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Scale, ChevronRight, ChevronLeft, AlertTriangle } from "lucide-react";
+import { Plus, Scale, ChevronRight, ChevronLeft, AlertTriangle, FileBarChart } from "lucide-react";
 import { useCan } from "../../../auth";
 import { INVENTORY_PERMISSIONS } from "../../../auth/permissions";
 import { toast } from "../../shared/Toast";
@@ -20,7 +20,7 @@ import {
 } from "../../../services/inventoryService";
 import { flattenTree } from "./CategoriesPage";
 import { OpeningBalanceModal } from "./OpeningBalanceModal";
-import { EmptyBlock, IconButton, LoadingBlock, PageHeader, PrimaryButton, SearchBox, Toggle, inputClass } from "./ui";
+import { EmptyBlock, IconButton, LoadingBlock, PageHeader, PrimaryButton, SecondaryButton, SearchBox, Toggle, inputClass } from "./ui";
 
 interface Filters {
   search: string;
@@ -99,11 +99,16 @@ export const BalancesPage: React.FC = () => {
         title="أرصدة المخزون"
         subtitle="الرصيد ومتوسط التكلفة المرجّح لكل صنف في كل مخزن. الرصيد لا يتغيّر إلا عبر حركة مسجّلة."
         action={
-          canOpen && (
-            <PrimaryButton onClick={() => setOpeningOpen(true)} disabled={warehouses.length === 0}>
-              <Plus size={18} /> رصيد أول المدة
-            </PrimaryButton>
-          )
+          <div className="flex flex-wrap gap-2">
+            <SecondaryButton onClick={() => navigate("/inventory/balances/report")} className="flex items-center gap-2">
+              <FileBarChart size={18} /> الأرصدة في تاريخ
+            </SecondaryButton>
+            {canOpen && (
+              <PrimaryButton onClick={() => setOpeningOpen(true)} disabled={warehouses.length === 0}>
+                <Plus size={18} /> رصيد أول المدة
+              </PrimaryButton>
+            )}
+          </div>
         }
       />
 

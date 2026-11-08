@@ -85,6 +85,8 @@ export const StockItemsPage: React.FC = () => {
         type: filters.type || undefined,
         category_id: filters.categoryId || undefined,
         is_active: filters.status === "" ? undefined : Number(filters.status),
+        // الرصيد الإجمالي للصنف في مخازن المستخدم (بالوحدة الأساسية).
+        with_stock: 1,
       });
       if (seq === requestSeq.current) setResult(data);
     } catch (e) {
@@ -190,6 +192,7 @@ export const StockItemsPage: React.FC = () => {
                 <th className="text-right p-4">النوع</th>
                 <th className="text-right p-4">الوحدة الأساسية</th>
                 <th className="text-right p-4">التصنيفات</th>
+                <th className="text-right p-4">الرصيد الإجمالي</th>
                 <th className="text-right p-4">مخزون الأمان</th>
                 <th className="text-right p-4">الحالة</th>
                 <th className="p-4 w-32">
@@ -218,6 +221,15 @@ export const StockItemsPage: React.FC = () => {
                   </td>
                   <td className="p-4 text-slate-300">{it.base_unit?.name ?? "—"}</td>
                   <td className="p-4 text-slate-400 text-xs">{it.categories?.map((c) => c.name).join("، ") || "—"}</td>
+                  <td className={`p-4 tabular-nums font-bold ${it.is_stored && Number(it.total_quantity ?? 0) < Number(it.safety_stock) ? "text-amber-300" : "text-slate-200"}`}>
+                    {it.is_stored ? (
+                      <>
+                        {qty(it.total_quantity ?? "0")} <span className="text-[11px] text-slate-500 font-semibold">{it.base_unit?.name}</span>
+                      </>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className="p-4 text-slate-300 tabular-nums">{it.is_stored ? qty(it.safety_stock) : "—"}</td>
                   <td className="p-4">
                     <StatusBadge active={it.is_active} />

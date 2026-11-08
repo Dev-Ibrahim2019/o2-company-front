@@ -155,7 +155,7 @@ export const OpeningBalanceModal: React.FC<Props> = ({ warehouses, defaultWareho
         </div>
 
         <p className="text-[11px] text-slate-500 font-semibold">
-          كل سطر يُسجَّل كحركة وارد تحدد متوسط تكلفة الصنف في المخزن. التصحيح لاحقاً يكون بعكس الحركة من سجل حركة الصنف.
+          كل سطر يُسجَّل كحركة وارد تحدد متوسط تكلفة الصنف في المخزن. التصحيح لاحقاً يكون بعكس الحركة من كرت الصنف.
         </p>
 
         <div className="space-y-3">

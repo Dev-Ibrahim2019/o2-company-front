@@ -1,5 +1,6 @@
 /**
- * StockItemFormModal.tsx — إنشاء/تعديل صنف مخزني.
+ * StockItemFormModal.tsx — إنشاء/تعديل صنف مخزني، في تبويبات للبيانات الموجودة فعلاً:
+ * المعلومات العامة، الوحدات، بيانات الشراء، رصيد الصنف (للقراءة، للصنف المحفوظ)، ملاحظات.
  *
  * قواعد مرآة للخادم (StockItemService) — الخادم هو الحَكَم، الواجهة تمنع الخطأ مبكراً فقط:
  *  - المنتج النهائي والصنف غير الخاضع للمخزون: ربط إلزامي بصنف بيع غير مربوط بصنف آخر.
@@ -10,14 +11,17 @@
  */
 
 import React, { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Plus, Trash2, Link2, Lock, Loader2 } from "lucide-react";
 import { toast } from "../../shared/Toast";
 import {
+  fmtNum,
   inventoryService,
   inventoryErrorMessage,
   SOLD_TYPES,
   type InventoryLookups,
   type SaleItem,
+  type StockBalanceRow,
   type StockItem,
   type StockItemPayload,
   type StockItemType,
@@ -72,10 +76,21 @@ const EMPTY: Form = {
   default_warehouse_id: "",
 };
 
+type Tab = "general" | "units" | "purchase" | "stock" | "notes";
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: "general", label: "المعلومات العامة" },
+  { id: "units", label: "الوحدات" },
+  { id: "purchase", label: "بيانات الشراء" },
+  { id: "stock", label: "رصيد الصنف" },
+  { id: "notes", label: "ملاحظات" },
+];
+
 const saleItemLabel = (s: Pick<SaleItem, "name" | "name_ar" | "code">) => `${s.name_ar || s.name} (${s.code})`;
 
 export const StockItemFormModal: React.FC<Props> = ({ lookups, itemId, onClose, onSaved }) => {
   const [form, setForm] = useState<Form>(EMPTY);
+  const [tab, setTab] = useState<Tab>("general");
   const [loading, setLoading] = useState(itemId !== null);
   const [saving, setSaving] = useState(false);
   const [hasMovements, setHasMovements] = useState(false);
@@ -170,19 +185,23 @@ export const StockItemFormModal: React.FC<Props> = ({ lookups, itemId, onClose, 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSold && !form.item_id) {
+      setTab("general");
       toast.warning("اختر صنف البيع المرتبط", "المنتج النهائي والصنف غير الخاضع للمخزون يُربطان إلزامياً بصنف من قائمة البيع.");
       return;
     }
     if (form.base_unit_id === "") {
+      setTab("general");
       toast.warning("اختر الوحدة الأساسية");
       return;
     }
     const units = form.units.filter((u) => u.unit_id !== "" && u.factor !== "");
     if (units.some((u) => u.unit_id === form.base_unit_id)) {
+      setTab("units");
       toast.warning("الوحدة الأساسية لا تُضاف ضمن الوحدات البديلة");
       return;
     }
     if (new Set(units.map((u) => u.unit_id)).size !== units.length) {
+      setTab("units");
       toast.warning("وحدة مكرّرة في الوحدات البديلة");
       return;
     }
@@ -220,6 +239,8 @@ export const StockItemFormModal: React.FC<Props> = ({ lookups, itemId, onClose, 
     }
   };
 
+  const tabs = TABS.filter((t) => t.id !== "stock" || (itemId !== null && form.is_stored));
+
   return (
     <Modal
       wide
@@ -239,7 +260,7 @@ export const StockItemFormModal: React.FC<Props> = ({ lookups, itemId, onClose, 
           <Loader2 size={30} className="text-red-500 animate-spin" />
         </div>
       ) : (
-        <form id="stock-item-form" onSubmit={submit} className="space-y-5">
+        <form id="stock-item-form" onSubmit={submit} onInvalidCapture={() => setTab("general")} className="space-y-5">
           {hasMovements && (
             <div className="flex items-center gap-2 p-3 bg-amber-500/10 text-amber-300 rounded-xl text-xs font-bold border border-amber-500/20">
               <Lock size={14} className="shrink-0" />
@@ -247,167 +268,173 @@ export const StockItemFormModal: React.FC<Props> = ({ lookups, itemId, onClose, 
             </div>
           )}
 
-          {/* ── النوع ── */}
-          <fieldset>
-            <legend className="text-xs font-black text-slate-400 tracking-wider mb-1.5">
-              نوع الصنف <span className="text-red-500">*</span>
-            </legend>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {lookups.types.map((t) => (
-                <button
-                  key={t.value}
-                  type="button"
-                  disabled={hasMovements && t.value !== form.type}
-                  aria-pressed={form.type === t.value}
-                  onClick={() => changeType(t.value)}
-                  className={`p-2.5 rounded-xl text-sm font-bold border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                    form.type === t.value
-                      ? "bg-red-600/20 text-red-300 border-red-600/40"
-                      : "bg-slate-800 text-slate-400 border-white/5 hover:border-white/15"
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-
-          {/* ── صنف البيع المرتبط ── */}
-          {isSold && (
-            <div className="space-y-2 p-4 rounded-2xl bg-slate-800/50 border border-white/5">
-              <p className="text-xs font-black text-slate-400 flex items-center gap-1.5">
-                <Link2 size={14} /> صنف البيع المرتبط <span className="text-red-500">*</span>
-              </p>
-              {form.item_id && linked ? (
-                <div className="flex items-center justify-between gap-2 p-3 bg-slate-900 rounded-xl border border-green-600/30">
-                  <span className="text-sm font-bold text-green-300">{saleItemLabel(linked)}</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      set("item_id", null);
-                      setLinked(null);
-                    }}
-                    className="text-xs font-bold text-slate-400 hover:text-white"
-                  >
-                    تغيير
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <input
-                    className={inputClass}
-                    value={saleSearch}
-                    onChange={(e) => setSaleSearch(e.target.value)}
-                    placeholder="ابحث باسم أو كود صنف البيع..."
-                    aria-label="بحث صنف البيع"
-                  />
-                  <div className="max-h-44 overflow-y-auto custom-scrollbar rounded-xl border border-white/5 divide-y divide-white/5">
-                    {saleLoading ? (
-                      <p className="p-3 text-xs text-slate-500 font-bold">جارٍ البحث...</p>
-                    ) : saleResults.length === 0 ? (
-                      <p className="p-3 text-xs text-slate-500 font-bold">لا توجد أصناف بيع غير مربوطة مطابقة</p>
-                    ) : (
-                      saleResults.map((s) => (
-                        <button
-                          key={s.id}
-                          type="button"
-                          onClick={() => {
-                            setLinked(s);
-                            setForm((f) => ({ ...f, item_id: s.id, name: f.name || s.name_ar || s.name }));
-                          }}
-                          className="w-full text-right p-2.5 text-sm text-slate-300 hover:bg-white/5 flex items-center justify-between gap-2"
-                        >
-                          <span className="font-bold">{s.name_ar || s.name}</span>
-                          <bdi className="text-xs text-slate-500 font-mono">{s.code}</bdi>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                  <p className="text-[11px] text-slate-500 font-semibold">تظهر فقط أصناف البيع غير المربوطة بصنف مخزني.</p>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* ── البيانات الأساسية ── */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="اسم الصنف" required={!isSold} hint={isSold ? "يُؤخذ من صنف البيع إن تُرك فارغاً." : undefined}>
-              <input
-                className={inputClass}
-                value={form.name}
-                onChange={(e) => set("name", e.target.value)}
-                required={!isSold}
-                placeholder="مثال: لحم بقري مفروم"
-              />
-            </Field>
-            <Field label="الاسم بالإنجليزية">
-              <input
-                className={inputClass}
-                value={form.name_en}
-                onChange={(e) => set("name_en", e.target.value)}
-                dir="ltr"
-                placeholder="Minced beef"
-              />
-            </Field>
-            <Field label="الكود" hint={itemId === null ? "يُولَّد تلقائياً إن تُرك فارغاً." : undefined}>
-              <input className={inputClass} value={form.code} onChange={(e) => set("code", e.target.value)} dir="ltr" />
-            </Field>
-            <Field
-              label="الوحدة الأساسية"
-              required
-              hint={hasMovements ? "مقفلة لوجود حركات." : "وحدة الحساب والتخزين؛ كل الكميات تُحوَّل إليها."}
-            >
-              <select
-                className={inputClass}
-                value={form.base_unit_id}
-                onChange={(e) => set("base_unit_id", e.target.value ? Number(e.target.value) : "")}
-                disabled={hasMovements}
-                required
+          <div role="tablist" aria-label="أقسام الصنف" className="flex flex-wrap gap-1 border-b border-white/5 pb-2">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                id={`item-tab-${t.id}`}
+                aria-selected={tab === t.id}
+                aria-controls={`item-panel-${t.id}`}
+                onClick={() => setTab(t.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black transition-colors ${
+                  tab === t.id ? "bg-red-600 text-white" : "bg-slate-800 text-slate-400 hover:text-white"
+                }`}
               >
-                <option value="">— اختر —</option>
-                {lookups.units
-                  .filter((u) => u.is_active || u.id === form.base_unit_id)
-                  .map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                      {u.symbol ? ` (${u.symbol})` : ""}
-                    </option>
-                  ))}
-              </select>
-            </Field>
-            <Field label="مخزون الأمان" hint={form.base_unit_id ? `بالوحدة الأساسية (${unitName(form.base_unit_id)})` : undefined}>
-              <input
-                className={inputClass}
-                type="number"
-                min={0}
-                step="any"
-                value={form.safety_stock}
-                onChange={(e) => set("safety_stock", e.target.value)}
-                dir="ltr"
-              />
-            </Field>
-            <Field label="الباركود">
-              <input className={inputClass} value={form.barcode} onChange={(e) => set("barcode", e.target.value)} dir="ltr" />
-            </Field>
-            <Field label="كود المورّد">
-              <input
-                className={inputClass}
-                value={form.supplier_code}
-                onChange={(e) => set("supplier_code", e.target.value)}
-                dir="ltr"
-              />
-            </Field>
+                {t.label}
+                {t.id === "units" && form.units.length > 0 && <span className="mr-1 opacity-70">({form.units.length})</span>}
+              </button>
+            ))}
           </div>
 
-          {/* ── الوحدات البديلة ── */}
-          <div className="space-y-2">
+          {/* ══ المعلومات العامة ══ */}
+          <div role="tabpanel" id="item-panel-general" aria-labelledby="item-tab-general" hidden={tab !== "general"} className="space-y-5">
+            <fieldset>
+              <legend className="text-xs font-black text-slate-400 tracking-wider mb-1.5">
+                نوع الصنف <span className="text-red-500">*</span>
+              </legend>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {lookups.types.map((t) => (
+                  <button
+                    key={t.value}
+                    type="button"
+                    disabled={hasMovements && t.value !== form.type}
+                    aria-pressed={form.type === t.value}
+                    onClick={() => changeType(t.value)}
+                    className={`p-2.5 rounded-xl text-sm font-bold border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                      form.type === t.value ? "bg-red-600/20 text-red-300 border-red-600/40" : "bg-slate-800 text-slate-400 border-white/5 hover:border-white/15"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
+            {isSold && (
+              <div className="space-y-2 p-4 rounded-2xl bg-slate-800/50 border border-white/5">
+                <p className="text-xs font-black text-slate-400 flex items-center gap-1.5">
+                  <Link2 size={14} /> صنف البيع المرتبط <span className="text-red-500">*</span>
+                </p>
+                {form.item_id && linked ? (
+                  <div className="flex items-center justify-between gap-2 p-3 bg-slate-900 rounded-xl border border-green-600/30">
+                    <span className="text-sm font-bold text-green-300">{saleItemLabel(linked)}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        set("item_id", null);
+                        setLinked(null);
+                      }}
+                      className="text-xs font-bold text-slate-400 hover:text-white"
+                    >
+                      تغيير
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <input className={inputClass} value={saleSearch} onChange={(e) => setSaleSearch(e.target.value)} placeholder="ابحث باسم أو كود صنف البيع..." aria-label="بحث صنف البيع" />
+                    <div className="max-h-44 overflow-y-auto custom-scrollbar rounded-xl border border-white/5 divide-y divide-white/5">
+                      {saleLoading ? (
+                        <p className="p-3 text-xs text-slate-500 font-bold">جارٍ البحث...</p>
+                      ) : saleResults.length === 0 ? (
+                        <p className="p-3 text-xs text-slate-500 font-bold">لا توجد أصناف بيع غير مربوطة مطابقة</p>
+                      ) : (
+                        saleResults.map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => {
+                              setLinked(s);
+                              setForm((f) => ({ ...f, item_id: s.id, name: f.name || s.name_ar || s.name }));
+                            }}
+                            className="w-full text-right p-2.5 text-sm text-slate-300 hover:bg-white/5 flex items-center justify-between gap-2"
+                          >
+                            <span className="font-bold">{s.name_ar || s.name}</span>
+                            <bdi className="text-xs text-slate-500 font-mono">{s.code}</bdi>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-semibold">تظهر فقط أصناف البيع غير المربوطة بصنف مخزني.</p>
+                  </>
+                )}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="اسم الصنف" required={!isSold} hint={isSold ? "يُؤخذ من صنف البيع إن تُرك فارغاً." : undefined}>
+                <input className={inputClass} value={form.name} onChange={(e) => set("name", e.target.value)} required={!isSold} placeholder="مثال: لحم بقري مفروم" />
+              </Field>
+              <Field label="الاسم بالإنجليزية">
+                <input className={inputClass} value={form.name_en} onChange={(e) => set("name_en", e.target.value)} dir="ltr" placeholder="Minced beef" />
+              </Field>
+              <Field label="رقم الصنف (الكود)" hint={itemId === null ? "يُولَّد تلقائياً إن تُرك فارغاً." : undefined}>
+                <input className={inputClass} value={form.code} onChange={(e) => set("code", e.target.value)} dir="ltr" />
+              </Field>
+              <Field label="الباركود">
+                <input className={inputClass} value={form.barcode} onChange={(e) => set("barcode", e.target.value)} dir="ltr" />
+              </Field>
+              <Field label="الوحدة الأساسية" required hint={hasMovements ? "مقفلة لوجود حركات." : "وحدة الحساب والتخزين؛ كل الكميات تُحوَّل إليها."}>
+                <select className={inputClass} value={form.base_unit_id} onChange={(e) => set("base_unit_id", e.target.value ? Number(e.target.value) : "")} disabled={hasMovements} required>
+                  <option value="">— اختر —</option>
+                  {lookups.units
+                    .filter((u) => u.is_active || u.id === form.base_unit_id)
+                    .map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                        {u.symbol ? ` (${u.symbol})` : ""}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-black text-slate-400 tracking-wider">التصنيفات</p>
+              {categoryTree.length === 0 ? (
+                <p className="text-xs text-slate-500 font-semibold">لا توجد تصنيفات. أنشئها من شاشة التصنيفات.</p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {categoryTree.map(({ category: c, depth }) => {
+                    const on = form.category_ids.includes(c.id);
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => toggleCategory(c.id)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                          on ? "bg-green-600/20 text-green-300 border-green-600/40" : "bg-slate-800 text-slate-400 border-white/5 hover:border-white/15"
+                        }`}
+                      >
+                        {depth > 0 && <span className="text-slate-600">{"›".repeat(depth)} </span>}
+                        {c.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Toggle
+                checked={form.is_stored}
+                onChange={(v) => set("is_stored", v)}
+                disabled={form.type === "raw" || form.type === "non_stock"}
+                label={form.type === "raw" ? "يُخزَّن (إلزامي للمادة الخام)" : form.type === "non_stock" ? "لا يُخزَّن" : "يُخزَّن"}
+              />
+              <Toggle checked={form.is_active} onChange={(v) => set("is_active", v)} label="نشط" />
+            </div>
+          </div>
+
+          {/* ══ الوحدات ══ */}
+          <div role="tabpanel" id="item-panel-units" aria-labelledby="item-tab-units" hidden={tab !== "units"} className="space-y-2">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-black text-slate-400 tracking-wider">الوحدات البديلة</p>
-              <button
-                type="button"
-                onClick={() => set("units", [...form.units, { unit_id: "", factor: "" }])}
-                className="flex items-center gap-1 text-xs font-bold text-red-400 hover:text-red-300"
-              >
+              <p className="text-xs font-black text-slate-400 tracking-wider">
+                الوحدات البديلة — الوحدة الأساسية: <span className="text-slate-200">{unitName(form.base_unit_id) || "—"}</span>
+              </p>
+              <button type="button" onClick={() => set("units", [...form.units, { unit_id: "", factor: "" }])} className="flex items-center gap-1 text-xs font-bold text-red-400 hover:text-red-300">
                 <Plus size={14} /> إضافة وحدة
               </button>
             </div>
@@ -421,12 +448,7 @@ export const StockItemFormModal: React.FC<Props> = ({ lookups, itemId, onClose, 
                     className={`${inputClass} !w-auto flex-1 min-w-[120px]`}
                     aria-label="الوحدة البديلة"
                     value={u.unit_id}
-                    onChange={(e) =>
-                      set(
-                        "units",
-                        form.units.map((x, j) => (j === i ? { ...x, unit_id: e.target.value ? Number(e.target.value) : "" } : x)),
-                      )
-                    }
+                    onChange={(e) => set("units", form.units.map((x, j) => (j === i ? { ...x, unit_id: e.target.value ? Number(e.target.value) : "" } : x)))}
                   >
                     <option value="">— الوحدة —</option>
                     {activeUnits
@@ -462,88 +484,131 @@ export const StockItemFormModal: React.FC<Props> = ({ lookups, itemId, onClose, 
             )}
           </div>
 
-          {/* ── الشراء والتخزين ── */}
-          {form.is_stored && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="وحدة الشراء" hint="الوحدة الافتراضية في مستندات الاستلام (كرتونة، شوال...).">
-                <select
-                  className={inputClass}
-                  value={form.purchase_unit_id}
-                  onChange={(e) => set("purchase_unit_id", e.target.value ? Number(e.target.value) : "")}
-                >
-                  <option value="">الوحدة الأساسية</option>
-                  {form.units
-                    .filter((u) => u.unit_id !== "")
-                    .map((u) => (
-                      <option key={u.unit_id} value={u.unit_id}>
-                        {unitName(u.unit_id)}
-                      </option>
-                    ))}
-                </select>
-              </Field>
-              <Field label="المخزن الافتراضي" hint="يُقترح تلقائياً عند الاستلام.">
-                <select
-                  className={inputClass}
-                  value={form.default_warehouse_id}
-                  onChange={(e) => set("default_warehouse_id", e.target.value ? Number(e.target.value) : "")}
-                >
-                  <option value="">— بلا —</option>
-                  {warehouses.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name}
+          {/* ══ بيانات الشراء ══ */}
+          <div role="tabpanel" id="item-panel-purchase" aria-labelledby="item-tab-purchase" hidden={tab !== "purchase"} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="وحدة الشراء" hint={form.is_stored ? "الوحدة الافتراضية في مستندات الاستلام (كرتونة، شوال...)." : "للأصناف المخزّنة فقط."}>
+              <select className={inputClass} value={form.purchase_unit_id} disabled={!form.is_stored} onChange={(e) => set("purchase_unit_id", e.target.value ? Number(e.target.value) : "")}>
+                <option value="">الوحدة الأساسية</option>
+                {form.units
+                  .filter((u) => u.unit_id !== "")
+                  .map((u) => (
+                    <option key={u.unit_id} value={u.unit_id}>
+                      {unitName(u.unit_id)}
                     </option>
                   ))}
-                </select>
-              </Field>
+              </select>
+            </Field>
+            <Field label="المخزن الافتراضي" hint="يُقترح تلقائياً عند الاستلام.">
+              <select className={inputClass} value={form.default_warehouse_id} disabled={!form.is_stored} onChange={(e) => set("default_warehouse_id", e.target.value ? Number(e.target.value) : "")}>
+                <option value="">— بلا —</option>
+                {warehouses.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="كود المورّد">
+              <input className={inputClass} value={form.supplier_code} onChange={(e) => set("supplier_code", e.target.value)} dir="ltr" />
+            </Field>
+            <Field label="مخزون الأمان (الحد الأدنى)" hint={form.base_unit_id ? `بالوحدة الأساسية (${unitName(form.base_unit_id)})` : undefined}>
+              <input className={inputClass} type="number" min={0} step="any" value={form.safety_stock} onChange={(e) => set("safety_stock", e.target.value)} dir="ltr" />
+            </Field>
+            <p className="sm:col-span-2 text-[11px] text-slate-500 font-semibold">أسعار المورّدين وروابطهم تُدار من زر "الموردون" في فهرس الأصناف.</p>
+          </div>
+
+          {/* ══ رصيد الصنف ══ */}
+          {itemId !== null && tab === "stock" && (
+            <div role="tabpanel" id="item-panel-stock" aria-labelledby="item-tab-stock">
+              <ItemStockTab itemId={itemId} />
             </div>
           )}
 
-          {/* ── التصنيفات ── */}
-          <div className="space-y-2">
-            <p className="text-xs font-black text-slate-400 tracking-wider">التصنيفات</p>
-            {categoryTree.length === 0 ? (
-              <p className="text-xs text-slate-500 font-semibold">لا توجد تصنيفات. أنشئها من شاشة التصنيفات.</p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {categoryTree.map(({ category: c, depth }) => {
-                  const on = form.category_ids.includes(c.id);
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() => toggleCategory(c.id)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
-                        on
-                          ? "bg-green-600/20 text-green-300 border-green-600/40"
-                          : "bg-slate-800 text-slate-400 border-white/5 hover:border-white/15"
-                      }`}
-                    >
-                      {depth > 0 && <span className="text-slate-600">{"›".repeat(depth)} </span>}
-                      {c.name}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+          {/* ══ ملاحظات ══ */}
+          <div role="tabpanel" id="item-panel-notes" aria-labelledby="item-tab-notes" hidden={tab !== "notes"}>
+            <Field label="ملاحظات">
+              <textarea className={`${inputClass} min-h-[140px]`} value={form.notes} onChange={(e) => set("notes", e.target.value)} />
+            </Field>
           </div>
-
-          {/* ── الخيارات ── */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Toggle
-              checked={form.is_stored}
-              onChange={(v) => set("is_stored", v)}
-              disabled={form.type === "raw" || form.type === "non_stock"}
-              label={form.type === "raw" ? "يُخزَّن (إلزامي للمادة الخام)" : form.type === "non_stock" ? "لا يُخزَّن" : "يُخزَّن"}
-            />
-            <Toggle checked={form.is_active} onChange={(v) => set("is_active", v)} label="نشط" />
-          </div>
-
-          <Field label="ملاحظات">
-            <textarea className={`${inputClass} min-h-[70px]`} value={form.notes} onChange={(e) => set("notes", e.target.value)} />
-          </Field>
         </form>
       )}
     </Modal>
+  );
+};
+
+/** رصيد الصنف في كل مخزن يراه المستخدم (للقراءة)، مع رابط كرت الصنف. */
+const ItemStockTab: React.FC<{ itemId: number }> = ({ itemId }) => {
+  const [rows, setRows] = useState<StockBalanceRow[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    inventoryService
+      .balances({ stock_item_id: itemId, per_page: 100 })
+      .then((r) => !cancelled && setRows(r.data))
+      .catch((e) => {
+        if (!cancelled) {
+          setRows([]);
+          toast.error("تعذّر تحميل الرصيد", inventoryErrorMessage(e));
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [itemId]);
+
+  if (!rows) return <Loader2 size={24} className="mx-auto my-6 text-red-500 animate-spin" />;
+  if (rows.length === 0) return <p className="text-sm text-slate-500 font-bold p-4">لا رصيد لهذا الصنف في مخازنك.</p>;
+
+  const totalQty = rows.reduce((s, r) => s + Number(r.quantity), 0);
+  const costs = rows.every((r) => r.value !== null);
+  const totalValue = rows.reduce((s, r) => s + Number(r.value ?? 0), 0);
+  return (
+    <div className="rounded-xl border border-white/10 overflow-x-auto">
+      <table className="w-full border-collapse text-sm min-w-[480px]">
+        <thead>
+          <tr>
+            {["المخزن", "الكمية", ...(costs ? ["متوسط التكلفة", "القيمة"] : []), ""].map((h, i) => (
+              <th key={i} className="bg-slate-800 text-slate-400 text-[11px] font-black px-2 py-2 border border-white/10 text-right">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.warehouse_id}>
+              <td className="border border-white/10 px-2 py-1.5 text-slate-200">{r.warehouse_name}</td>
+              <td className={`border border-white/10 px-2 py-1.5 tabular-nums ${r.below_safety ? "text-amber-300 font-bold" : "text-slate-200"}`}>
+                {fmtNum(r.quantity)} <span className="text-xs text-slate-500">{r.base_unit}</span>
+              </td>
+              {costs && (
+                <>
+                  <td className="border border-white/10 px-2 py-1.5 tabular-nums text-slate-300">{fmtNum(r.avg_cost, 4)}</td>
+                  <td className="border border-white/10 px-2 py-1.5 tabular-nums text-slate-300">{fmtNum(r.value, 2)}</td>
+                </>
+              )}
+              <td className="border border-white/10 px-2 py-1.5">
+                <Link to={`/inventory/kardex?warehouse_id=${r.warehouse_id}&stock_item_id=${r.stock_item_id}`} className="text-xs text-sky-300 hover:underline">
+                  كرت الصنف
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td className="border border-white/10 px-2 py-1.5 font-black text-slate-300">الإجمالي</td>
+            <td className="border border-white/10 px-2 py-1.5 font-black tabular-nums text-white">{fmtNum(totalQty)}</td>
+            {costs && (
+              <>
+                <td className="border border-white/10" />
+                <td className="border border-white/10 px-2 py-1.5 font-black tabular-nums text-white">{fmtNum(totalValue, 2)}</td>
+              </>
+            )}
+            <td className="border border-white/10" />
+          </tr>
+        </tfoot>
+      </table>
+    </div>
   );
 };
