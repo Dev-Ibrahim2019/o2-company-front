@@ -86,9 +86,11 @@ export const MovementEntryPage: React.FC = () => {
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<Line[]>(() => [emptyLine()]);
   const [busy, setBusy] = useState<"draft" | "post" | null>(null);
+  const [allowNegative, setAllowNegative] = useState(false);
 
   useEffect(() => {
     inventoryService.documentsMeta().then(setMeta).catch((e) => toast.error("تعذّر تحميل البيانات", inventoryErrorMessage(e)));
+    inventoryService.settings().then((s) => setAllowNegative(Boolean(s.allow_negative_stock))).catch(() => undefined);
     inventoryService.warehouses().then(setWarehouses).catch((e) => toast.error("تعذّر تحميل المخازن", inventoryErrorMessage(e)));
   }, []);
 
@@ -171,7 +173,9 @@ export const MovementEntryPage: React.FC = () => {
   const lineError = (l: Line): string | null => {
     if (l.inputError) return l.inputError;
     if (!l.item || !l.stock) return null;
-    if (isWaste && parseQty(l.quantity) * factorOf(l) > Number(l.stock.qty) + 1e-9) return `الكمية أكبر من الرصيد (${fmtNum(Number(l.stock.qty) / factorOf(l))})`;
+    // مع السماح بالرصيد السالب لا يُمنع الهالك الأكبر من الرصيد — يُرحَّل ويصبح الرصيد سالباً.
+    if (isWaste && !allowNegative && parseQty(l.quantity) * factorOf(l) > Number(l.stock.qty) + 1e-9)
+      return `الكمية أكبر من الرصيد (${fmtNum(Number(l.stock.qty) / factorOf(l))})`;
     return null;
   };
 
@@ -347,7 +351,10 @@ export const MovementEntryPage: React.FC = () => {
 
       <p className="text-[11px] text-slate-500 font-semibold">
         {isOpening && "رصيد أول المدة يُسجَّل حركةً مرحّلة فوراً بالسعر المُدخل لكل وحدة؛ تصحيحه بعكس السطر من كرت الصنف."}
-        {isWaste && "الهالك يخرج بمتوسط تكلفة المخزن ولا يتجاوز رصيده (حسب إعداد الرصيد السالب). يُحفظ مسودة ثم يُرحَّل."}
+        {isWaste &&
+          (allowNegative
+            ? "الهالك يخرج بمتوسط تكلفة المخزن، ويُرحَّل ولو تجاوز الرصيد (يصبح سالباً). يُحفظ مسودة ثم يُرحَّل."
+            : "الهالك يخرج بمتوسط تكلفة المخزن ولا يتجاوز رصيده (الرصيد السالب ممنوع في الإعدادات). يُحفظ مسودة ثم يُرحَّل.")}
         {isReceipt && "استلام بلا فاتورة مشتريات — الاستلام العادي يتم بفاتورة المشتريات."}
       </p>
 

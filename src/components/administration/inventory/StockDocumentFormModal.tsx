@@ -32,7 +32,7 @@ export const DOCUMENT_TITLES: Record<StockDocumentType, string> = {
 
 const HINTS: Record<StockDocumentType, string> = {
   receipt: "الكمية والتكلفة بالوحدة المختارة.",
-  transfer: "الصرف لا يتجاوز رصيد مخزن المصدر.",
+  transfer: "إن تجاوزت الكمية رصيد المصدر يُرفض الترحيل، إلا إذا كان «السماح بالرصيد السالب» مفعّلاً في الإعدادات.",
   waste: "يخرج بمتوسط التكلفة الحالي، مع سبب لكل سطر.",
 };
 

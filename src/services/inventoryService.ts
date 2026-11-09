@@ -476,7 +476,8 @@ export interface StockCount {
   id: number;
   number: string;
   warehouse_id: number;
-  status: "draft" | "posted";
+  /** reversed: جرد معتمد عُكست تسوياته (من صفحة الأقسام). */
+  status: "draft" | "posted" | "reversed";
   kind?: "full" | "daily";
   business_day?: string | null;
   count_date: string | null;

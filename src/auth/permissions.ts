@@ -201,6 +201,8 @@ export const INVENTORY_PERMISSIONS = {
   RECIPES_MANAGE: "inventory.recipes.manage",
   COUNTS_MANAGE: "inventory.counts.manage",
   COUNTS_POST: "inventory.counts.post",
+  // عكس جرد معتمد — تُعكس تسوياته (migration 2027_03_12_000001)
+  COUNTS_REVERSE: "inventory.counts.reverse",
   ANALYTICS_VIEW: "inventory.analytics.view",
   // لوحة المخازن المستقلة (migration 2027_03_07_000001) — تفصيل ITEMS_MANAGE
   ITEMS_CREATE: "inventory.items.create",

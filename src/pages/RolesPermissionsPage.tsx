@@ -152,6 +152,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   [INVENTORY_PERMISSIONS.RECIPES_MANAGE]: "إدارة الوصفات",
   [INVENTORY_PERMISSIONS.COUNTS_MANAGE]: "إنشاء أوراق الجرد وإدخال المعدود",
   [INVENTORY_PERMISSIONS.COUNTS_POST]: "ترحيل الجرد وتسوية الفروق",
+  [INVENTORY_PERMISSIONS.COUNTS_REVERSE]: "عكس جرد معتمد (عكس تسوياته)",
   [INVENTORY_PERMISSIONS.ANALYTICS_VIEW]: "عرض تحليلات المخزون",
 };
 

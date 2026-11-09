@@ -27,6 +27,7 @@ import {
   Receipt,
   Ruler,
   Scale,
+  Store,
   Warehouse,
   X,
 } from "lucide-react";
@@ -41,7 +42,8 @@ interface NavItem {
   to: string;
   icon: React.ElementType;
   label: string;
-  permission?: string;
+  /** صلاحية واحدة، أو قائمة يكفي أي منها. */
+  permission?: string | string[];
   /** مطابقة تامة للرابط: لشاشة لها شاشة فرعية بعنصر مستقل في القائمة (الأرصدة ← التقرير، الأصناف ← الشجرة). */
   exact?: boolean;
 }
@@ -93,6 +95,12 @@ const NAV: { title: string; items: NavItem[] }[] = [
     items: [
       { to: "/inventory/warehouses", icon: Warehouse, label: "المخازن" },
       { to: "/inventory/analytics", icon: BarChart3, label: "التحليلات", permission: INVENTORY_PERMISSIONS.ANALYTICS_VIEW },
+      {
+        to: "/inventory/departments",
+        icon: Store,
+        label: "الأقسام",
+        permission: [INVENTORY_PERMISSIONS.ANALYTICS_VIEW, INVENTORY_PERMISSIONS.COUNTS_MANAGE],
+      },
     ],
   },
 ];
@@ -106,7 +114,8 @@ export const InventoryLayout: React.FC = () => {
   // الدرج على الجوال يُغلق عند التنقل
   useEffect(() => setDrawerOpen(false), [location.pathname]);
 
-  const sections = NAV.map((s) => ({ ...s, items: s.items.filter((i) => !i.permission || hasPermission(i.permission)) })).filter(
+  const allowed = (p: NavItem["permission"]) => !p || (Array.isArray(p) ? p.some((x) => hasPermission(x)) : hasPermission(p));
+  const sections = NAV.map((s) => ({ ...s, items: s.items.filter((i) => allowed(i.permission)) })).filter(
     (s) => s.items.length > 0,
   );
 

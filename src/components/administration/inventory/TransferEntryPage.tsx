@@ -136,6 +136,8 @@ export const TransferEntryPage: React.FC = () => {
   const [referenceNo, setReferenceNo] = useState("");
   const [destination, setDestination] = useState("");
   const [notes, setNotes] = useState("");
+  // إعداد "السماح بالرصيد السالب": مفعّل = الكمية الأكبر من الرصيد تحذير فقط، والترحيل يمشي والرصيد يصير سالباً.
+  const [allowNegative, setAllowNegative] = useState(false);
   const [quantitiesOnly, setQuantitiesOnly] = useState(false);
   const [lines, setLines] = useState<Line[]>(() => [emptyLine()]);
   const [busy, setBusy] = useState<"draft" | "post" | "delete" | "duplicate" | "receive" | "nav" | null>(null);
@@ -161,6 +163,7 @@ export const TransferEntryPage: React.FC = () => {
   useEffect(() => {
     inventoryService.documentsMeta().then(setMeta).catch((e) => toast.error("تعذّر تحميل البيانات", inventoryErrorMessage(e)));
     inventoryService.warehouses().then(setWarehouses).catch((e) => toast.error("تعذّر تحميل المخازن", inventoryErrorMessage(e)));
+    inventoryService.settings().then((s) => setAllowNegative(Boolean(s.allow_negative_stock))).catch(() => undefined);
   }, []);
 
   // المستند الجديد يبدأ باليوم المحاسبي ووقت الآن من الخادم.
@@ -285,7 +288,9 @@ export const TransferEntryPage: React.FC = () => {
           const need = requested.get(l.item.id) ?? 0;
           const first = firstRow.get(l.item.id) ?? i;
           if (balance !== null && qty > 0 && need > balance + EPS) {
-            error = `الكمية أكبر من الرصيد المتاح (${fmtNum(balance / factor)} ${unitName})${first < i ? " — مع سطر سابق لنفس الصنف" : ""}`;
+            const msg = `الكمية أكبر من الرصيد المتاح (${fmtNum(balance / factor)} ${unitName})${first < i ? " — مع سطر سابق لنفس الصنف" : ""}`;
+            if (allowNegative) warning = `${msg} — سيُرحَّل ويصبح الرصيد ${fmtNum((balance - need) / factor)} ${unitName}`;
+            else error = msg;
           } else if (l.toWarehouseId !== "" && l.toWarehouseId === warehouseId) {
             error = "مخزن الوجهة هو مخزن المصدر نفسه";
           } else if (first < i) {
@@ -295,7 +300,7 @@ export const TransferEntryPage: React.FC = () => {
         return [l.key, { factor, unitName, available: balance !== null ? balance / factor : null, price, total, error, warning }];
       }),
     );
-  }, [lines, doc, warehouseId]);
+  }, [lines, doc, warehouseId, allowNegative]);
 
   const costsVisible = doc ? doc.costs_visible : filled.every((l) => !l.stock || l.stock.avg_cost !== null);
   const showPrices = costsVisible && !quantitiesOnly;

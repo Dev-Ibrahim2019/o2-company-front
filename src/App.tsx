@@ -91,6 +91,8 @@ import { CountSheetPage } from "./components/administration/inventory/CountSheet
 import { RecipesPage } from "./components/administration/inventory/RecipesPage";
 import { StockCountsPage } from "./components/administration/inventory/StockCountsPage";
 import { InventoryAnalyticsPage } from "./components/administration/inventory/InventoryAnalyticsPage";
+import { DepartmentsListPage } from "./components/administration/inventory/departments/DepartmentsListPage";
+import { DepartmentDetailPage } from "./components/administration/inventory/departments/DepartmentDetailPage";
 import { INVENTORY_PERMISSIONS } from "./auth/permissions";
 import {
   CrmRouteGuard,
@@ -568,8 +570,11 @@ function AppRoutes() {
           <Route path="counts" element={<StockCountsPage />} />
           <Route path="counts/:id" element={<RemountOnNavigate><CountSheetPage /></RemountOnNavigate>} />
           <Route path="analytics" element={<InventoryAnalyticsPage />} />
+          {/* الأقسام: مبيعات واستهلاك وجرد كل قسم (التقارير بصلاحية التحليلات، والجرد بصلاحية الجرد — يفرضها الخادم). */}
+          <Route path="departments" element={<DepartmentsListPage />} />
+          <Route path="departments/:id" element={<DepartmentDetailPage />} />
           {/* قسم الإنتاج والجودة والدفعات أُلغي — الروابط القديمة تعود للرئيسية بدل صفحة فارغة. */}
-          {["batches", "productivity", "shawarma", "departments", "quality-reports", "breakdowns", "production", "skewers", "showroom-sales"].map((p) => (
+          {["batches", "productivity", "shawarma", "quality-reports", "breakdowns", "production", "skewers", "showroom-sales"].map((p) => (
             <Route key={p} path={p} element={<Navigate to="/inventory/dashboard" replace />} />
           ))}
         </Route>

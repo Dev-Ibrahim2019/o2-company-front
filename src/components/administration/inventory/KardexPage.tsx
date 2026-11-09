@@ -6,11 +6,15 @@
  * والحساب المقابل. "مراجعة أصل الحركة" (Enter أو F11) يفتح المستند. الحركات لا تُعدَّل؛ التصحيح بحركة عكسية
  * (يدوياً لأرصدة أول المدة فقط). الحالة (المخزن، الصنف، الفترة، الصفحة) في الرابط.
  * غير مدعوم في النظام: رقم التشغيلة/السيريال (Lot/Serial) والتكلفة الإضافية على الحركة.
+ *
+ * حركات "استهلاك بيع" المتتالية تُعرض في سطر ملخص واحد قابل للفتح (kardexGroups.ts)، ضمن الصفحة الحالية فقط.
+ * أسطر التفصيل حركات عادية (تحديد، مراجعة أصل، عكس)؛ سطر الملخص نفسه لا يُراجَع ولا يُعكس. الطباعة والعدّاد
+ * بالحركات الفعلية دون تجميع.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronLeft, ChevronRight, ExternalLink, History, LogOut, Printer, RefreshCw, Undo2 } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, History, LogOut, Printer, RefreshCw, Undo2 } from "lucide-react";
 import { useCan } from "../../../auth";
 import { INVENTORY_PERMISSIONS } from "../../../auth/permissions";
 import { toast } from "../../shared/Toast";
@@ -25,6 +29,7 @@ import {
   type Warehouse,
 } from "../../../services/inventoryService";
 import { DocToolbar, type ToolbarItem } from "./DocToolbar";
+import { groupSaleRuns, summarizeSaleRun } from "./kardexGroups";
 import { OpeningDetailModal } from "./MovementsPage";
 import { StockItemPicker } from "./StockItemPicker";
 import { printReport } from "./printReport";
@@ -44,6 +49,9 @@ const SummaryCard: React.FC<{ label: string; value: string; sub?: string; tone?:
 
 const td = "border border-white/10 px-2 py-1.5";
 
+/** سطر معروض في الجدول: حركة (ومنها أسطر تفصيل مجموعة مفتوحة)، أو ملخص مجموعة "استهلاك بيع". */
+type Line = { kind: "row"; key: string; row: KardexRow; groupKey?: string } | { kind: "group"; key: string; rows: KardexRow[] };
+
 export const KardexPage: React.FC = () => {
   const navigate = useNavigate();
   const canReverse = useCan(INVENTORY_PERMISSIONS.MOVEMENTS_REVERSE);
@@ -58,7 +66,9 @@ export const KardexPage: React.FC = () => {
   const [data, setData] = useState<Kardex | null>(null);
   const [pickedItem, setPickedItem] = useState<Pick<StockItem, "id" | "name" | "code"> | null>(null);
   const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState(0);
+  // التحديد بمفتاح السطر لا برقمه: فتح مجموعة أو إغلاقها يزيح أرقام الأسطر.
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [reversing, setReversing] = useState<KardexRow | null>(null);
   const [opening, setOpening] = useState<number | null>(null);
   const [printing, setPrinting] = useState(false);
@@ -118,7 +128,6 @@ export const KardexPage: React.FC = () => {
       const k = await fetchKardex(page);
       if (seq !== requestSeq.current) return;
       setData(k);
-      setSelected((s) => Math.min(s, Math.max(k.rows.length - 1, 0)));
       setPickedItem({ id: k.item.id, name: k.item.name, code: k.item.code });
     } catch (e) {
       if (seq === requestSeq.current) {
@@ -134,8 +143,25 @@ export const KardexPage: React.FC = () => {
     load();
   }, [load]);
 
-  const rows = data?.rows ?? [];
-  const current = rows[selected] ?? null;
+  const rows = useMemo(() => data?.rows ?? [], [data]);
+  const entries = useMemo(() => groupSaleRuns(rows), [rows]);
+  const lines = useMemo<Line[]>(
+    () =>
+      entries.flatMap((e): Line[] =>
+        e.kind === "row"
+          ? [{ kind: "row", key: `m${e.row.id}`, row: e.row }]
+          : [
+              { kind: "group", key: e.key, rows: e.rows },
+              ...(expanded.has(e.key) ? e.rows.map((r): Line => ({ kind: "row", key: `m${r.id}`, row: r, groupKey: e.key })) : []),
+            ],
+      ),
+    [entries, expanded],
+  );
+  // سطر محدد اختفى (إعادة تحميل، صفحة أخرى) ← أول سطر.
+  const selectedIndex = Math.max(0, lines.findIndex((l) => l.key === selectedKey));
+  const selectedLine = lines[selectedIndex] ?? null;
+  const current = selectedLine?.kind === "row" ? selectedLine.row : null;
+  const groupSelected = selectedLine?.kind === "group";
   const unit = data?.item.base_unit ?? "";
   const costs = Boolean(data?.costs_visible);
 
@@ -147,9 +173,21 @@ export const KardexPage: React.FC = () => {
   };
 
   const select = (i: number) => {
-    const idx = Math.max(0, Math.min(i, rows.length - 1));
-    setSelected(idx);
-    tableRef.current?.querySelector<HTMLElement>(`[data-index="${idx}"]`)?.scrollIntoView({ block: "nearest" });
+    const line = lines[Math.max(0, Math.min(i, lines.length - 1))];
+    if (!line) return;
+    setSelectedKey(line.key);
+    tableRef.current?.querySelector<HTMLElement>(`[data-key="${line.key}"]`)?.scrollIntoView({ block: "nearest" });
+  };
+
+  /** فتح مجموعة أو إغلاقها؛ عند الإغلاق ينتقل التحديد من سطر تفصيل إلى الملخص نفسه. */
+  const toggleGroup = (key: string, open?: boolean) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (open ?? !prev.has(key)) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+    setSelectedKey(key);
   };
 
   const printCard = async () => {
@@ -211,8 +249,26 @@ export const KardexPage: React.FC = () => {
   };
 
   const items: ToolbarItem[] = [
-    { id: "source", label: "مراجعة أصل الحركة", icon: ExternalLink, keys: "F11", disabled: !current?.source, onClick: () => openSource(current) },
-    { id: "reverse", label: "عكس الحركة", icon: Undo2, keys: "F4", tone: "danger", hidden: !canReverse, disabled: !current?.can_reverse, hint: "لأرصدة أول المدة فقط", onClick: () => current && setReversing(current) },
+    {
+      id: "source",
+      label: "مراجعة أصل الحركة",
+      icon: ExternalLink,
+      keys: "F11",
+      disabled: !current?.source,
+      hint: groupSelected ? "سطر مجمّع — افتحه واختر حركة" : undefined,
+      onClick: () => openSource(current),
+    },
+    {
+      id: "reverse",
+      label: "عكس الحركة",
+      icon: Undo2,
+      keys: "F4",
+      tone: "danger",
+      hidden: !canReverse,
+      disabled: !current?.can_reverse,
+      hint: groupSelected ? "سطر مجمّع — افتحه واختر حركة" : "لأرصدة أول المدة فقط",
+      onClick: () => current && setReversing(current),
+    },
     "sep",
     { id: "print", label: "طباعة الكرت", icon: Printer, keys: "Ctrl+P", disabled: !data || rows.length === 0, loading: printing, onClick: printCard },
     { id: "reload", label: "إعادة تحميل", icon: RefreshCw, keys: "F8", disabled: !itemId, onClick: load },
@@ -221,13 +277,118 @@ export const KardexPage: React.FC = () => {
 
   const onTableKey = (e: React.KeyboardEvent) => {
     if (e.ctrlKey || e.altKey || e.metaKey) return;
+    const line = selectedLine;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
-      select(selected + (e.key === "ArrowDown" ? 1 : -1));
+      select(selectedIndex + (e.key === "ArrowDown" ? 1 : -1));
+    } else if (line?.kind === "group" && (e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      toggleGroup(line.key);
+    } else if (line?.kind === "group" && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      // RTL: ← يفتح (للأمام)، → يغلق
+      e.preventDefault();
+      toggleGroup(line.key, e.key === "ArrowLeft");
+    } else if (line?.kind === "row" && line.groupKey && e.key === "ArrowRight") {
+      e.preventDefault();
+      toggleGroup(line.groupKey, false);
     } else if (e.key === "Enter") {
       e.preventDefault();
       openSource(current);
     }
+  };
+
+  const movementRow = (r: KardexRow, key: string, child: boolean) => {
+    const isSelected = key === selectedLine?.key;
+    return (
+      <tr
+        key={key}
+        data-key={key}
+        aria-selected={isSelected}
+        onClick={() => setSelectedKey(key)}
+        onDoubleClick={() => openSource(r)}
+        className={`cursor-pointer ${isSelected ? "bg-red-600/15" : child ? "bg-slate-950/30 hover:bg-white/5" : "hover:bg-white/5"} ${r.is_reversed ? "opacity-60" : ""}`}
+      >
+        <td className={`${td} ${child ? "pr-6 border-r-2 border-r-red-500/40" : ""}`}>
+          <bdi className="font-mono text-xs font-bold text-white">{r.number}</bdi>
+          {r.reversal_of_id && <span className="block text-[10px] text-amber-300 font-bold">عكس #{r.reversal_of_id}</span>}
+          {r.is_reversed && <span className="block text-[10px] text-slate-500 font-bold">معكوسة</span>}
+        </td>
+        <td className={`${td} text-slate-300 whitespace-nowrap`}>{r.warehouse?.name}</td>
+        <td className={`${td} whitespace-nowrap tabular-nums`}>
+          <span className="text-slate-200">{r.accounting_day}</span>
+          <span className="text-[11px] text-slate-500 mr-1.5">{timeOf(r.occurred_at)}</span>
+        </td>
+        {costs && <td className={`${td} tabular-nums text-left text-slate-300`}>{fmtNum(r.unit_cost, 4)}</td>}
+        <td className={`${td} tabular-nums text-left font-bold text-green-400`}>{Number(r.quantity_in) ? fmtNum(r.quantity_in) : ""}</td>
+        <td className={`${td} tabular-nums text-left font-bold text-red-400`}>{Number(r.quantity_out) ? fmtNum(r.quantity_out) : ""}</td>
+        <td className={`${td} tabular-nums text-left font-black ${Number(r.running_quantity) < 0 ? "text-red-400" : "text-white"}`}>{fmtNum(r.running_quantity)}</td>
+        <td className={`${td} text-xs text-slate-400 max-w-[260px]`}>
+          <span className="block font-bold text-slate-300">{r.type_label}</span>
+          <span className="block truncate" title={r.description}>
+            {r.description !== r.type_label ? r.description : ""}
+          </span>
+          {r.entered_unit && r.entered_quantity && (
+            <span className="block">
+              أُدخل: {fmtNum(r.entered_quantity)} {r.entered_unit}
+            </span>
+          )}
+        </td>
+        <td className={`${td} text-slate-300`}>{r.account_name ?? ""}</td>
+      </tr>
+    );
+  };
+
+  const groupRow = (key: string, groupRows: KardexRow[]) => {
+    const s = summarizeSaleRun(groupRows);
+    const open = expanded.has(key);
+    const isSelected = key === selectedLine?.key;
+    return (
+      <tr
+        key={key}
+        data-key={key}
+        aria-selected={isSelected}
+        aria-expanded={open}
+        title={open ? "اضغط لإغلاق التفاصيل" : "اضغط لعرض حركات المجموعة"}
+        onClick={() => toggleGroup(key)}
+        className={`cursor-pointer ${isSelected ? "bg-red-600/15" : "bg-slate-800/50 hover:bg-slate-800"}`}
+      >
+        <td className={td}>
+          <span className="font-bold text-xs text-white whitespace-nowrap">استهلاك بيع ({s.orders} طلب)</span>
+          {s.movements !== s.orders && <span className="block text-[10px] text-slate-500 font-bold">{s.movements} حركة</span>}
+        </td>
+        <td className={`${td} text-slate-300 whitespace-nowrap`}>{s.warehouse ?? <span className="text-slate-500">عدة مخازن</span>}</td>
+        <td className={`${td} whitespace-nowrap tabular-nums`}>
+          {s.firstDay === s.lastDay ? (
+            <>
+              <span className="text-slate-200">{s.firstDay}</span>
+              <bdi dir="ltr" className="text-[11px] text-slate-500 mr-1.5">
+                {timeOf(s.firstAt)}–{timeOf(s.lastAt)}
+              </bdi>
+            </>
+          ) : (
+            <span className="text-slate-200">
+              {s.firstDay} <span className="text-slate-500 text-[11px]">إلى</span> {s.lastDay}
+            </span>
+          )}
+        </td>
+        {costs && (
+          <td className={`${td} tabular-nums text-left text-slate-300`} title={s.uniformCost ? undefined : "متوسط مرجّح بالكمية الصادرة"}>
+            {fmtNum(s.unitCost, 4)}
+            {!s.uniformCost && <span className="block text-[10px] text-slate-500">متوسط</span>}
+          </td>
+        )}
+        <td className={`${td} tabular-nums text-left font-bold text-green-400`}>{s.quantityIn ? fmtNum(s.quantityIn) : ""}</td>
+        <td className={`${td} tabular-nums text-left font-bold text-red-400`}>{fmtNum(s.quantityOut)}</td>
+        <td className={`${td} tabular-nums text-left font-black ${Number(s.runningQuantity) < 0 ? "text-red-400" : "text-white"}`}>{fmtNum(s.runningQuantity)}</td>
+        <td className={`${td} text-xs`}>
+          <span className="flex items-center gap-1.5 font-bold text-slate-300">
+            {open ? <ChevronDown size={14} className="text-slate-400 shrink-0" /> : <ChevronLeft size={14} className="text-slate-400 shrink-0" />}
+            استهلاك بيع - إجمالي
+          </span>
+        </td>
+        <td className={`${td} text-slate-300`}>{s.account ?? ""}</td>
+      </tr>
+    );
   };
 
   return (
@@ -289,7 +450,7 @@ export const KardexPage: React.FC = () => {
               ref={tableRef}
               tabIndex={0}
               onKeyDown={onTableKey}
-              aria-label="حركات الصنف — الأسهم للاختيار وEnter لمراجعة أصل الحركة"
+              aria-label="حركات الصنف — الأسهم للاختيار، Enter لمراجعة أصل الحركة أو لفتح سطر استهلاك البيع المجمّع"
               className={`rounded-xl border border-white/10 overflow-auto custom-scrollbar max-h-[60vh] bg-slate-900 focus:outline-none focus:ring-2 focus:ring-red-600/50 transition-opacity ${loading ? "opacity-60" : ""}`}
             >
               <table className="w-full border-collapse text-sm min-w-[1080px]">
@@ -302,45 +463,7 @@ export const KardexPage: React.FC = () => {
                     ))}
                   </tr>
                 </thead>
-                <tbody>
-                  {rows.map((r, i) => (
-                    <tr
-                      key={r.id}
-                      data-index={i}
-                      aria-selected={i === selected}
-                      onClick={() => setSelected(i)}
-                      onDoubleClick={() => openSource(r)}
-                      className={`cursor-pointer ${i === selected ? "bg-red-600/15" : "hover:bg-white/5"} ${r.is_reversed ? "opacity-60" : ""}`}
-                    >
-                      <td className={td}>
-                        <bdi className="font-mono text-xs font-bold text-white">{r.number}</bdi>
-                        {r.reversal_of_id && <span className="block text-[10px] text-amber-300 font-bold">عكس #{r.reversal_of_id}</span>}
-                        {r.is_reversed && <span className="block text-[10px] text-slate-500 font-bold">معكوسة</span>}
-                      </td>
-                      <td className={`${td} text-slate-300 whitespace-nowrap`}>{r.warehouse?.name}</td>
-                      <td className={`${td} whitespace-nowrap tabular-nums`}>
-                        <span className="text-slate-200">{r.accounting_day}</span>
-                        <span className="text-[11px] text-slate-500 mr-1.5">{timeOf(r.occurred_at)}</span>
-                      </td>
-                      {costs && <td className={`${td} tabular-nums text-left text-slate-300`}>{fmtNum(r.unit_cost, 4)}</td>}
-                      <td className={`${td} tabular-nums text-left font-bold text-green-400`}>{Number(r.quantity_in) ? fmtNum(r.quantity_in) : ""}</td>
-                      <td className={`${td} tabular-nums text-left font-bold text-red-400`}>{Number(r.quantity_out) ? fmtNum(r.quantity_out) : ""}</td>
-                      <td className={`${td} tabular-nums text-left font-black ${Number(r.running_quantity) < 0 ? "text-red-400" : "text-white"}`}>{fmtNum(r.running_quantity)}</td>
-                      <td className={`${td} text-xs text-slate-400 max-w-[260px]`}>
-                        <span className="block font-bold text-slate-300">{r.type_label}</span>
-                        <span className="block truncate" title={r.description}>
-                          {r.description !== r.type_label ? r.description : ""}
-                        </span>
-                        {r.entered_unit && r.entered_quantity && (
-                          <span className="block">
-                            أُدخل: {fmtNum(r.entered_quantity)} {r.entered_unit}
-                          </span>
-                        )}
-                      </td>
-                      <td className={`${td} text-slate-300`}>{r.account_name ?? ""}</td>
-                    </tr>
-                  ))}
-                </tbody>
+                <tbody>{lines.map((l) => (l.kind === "group" ? groupRow(l.key, l.rows) : movementRow(l.row, l.key, Boolean(l.groupKey))))}</tbody>
               </table>
             </div>
           )}

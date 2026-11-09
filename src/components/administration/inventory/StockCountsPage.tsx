@@ -36,8 +36,12 @@ const daysBefore = (day: string, n: number) => {
 };
 
 export const StockCountStatus: React.FC<{ status: StockCount["status"] }> = ({ status }) => (
-  <span className={`px-2 py-0.5 rounded-md text-[11px] font-black whitespace-nowrap ${status === "posted" ? "bg-green-500/15 text-green-400" : "bg-slate-500/15 text-slate-300"}`}>
-    {status === "posted" ? "مثبّت" : "مسودة"}
+  <span
+    className={`px-2 py-0.5 rounded-md text-[11px] font-black whitespace-nowrap ${
+      status === "posted" ? "bg-green-500/15 text-green-400" : status === "reversed" ? "bg-amber-500/15 text-amber-300" : "bg-slate-500/15 text-slate-300"
+    }`}
+  >
+    {status === "posted" ? "مثبّت" : status === "reversed" ? "معكوس" : "مسودة"}
   </span>
 );
 
@@ -186,8 +190,8 @@ export const StockCountsPage: React.FC = () => {
           c.day,
           c.warehouse?.name,
           c.counted_lines_count ?? 0,
-          ...(costs ? [c.status === "posted" ? fmtNum(c.variance_value, 2) : null] : []),
-          c.status === "posted" ? "مثبّت" : "مسودة",
+          ...(costs ? [c.status !== "draft" ? fmtNum(c.variance_value, 2) : null] : []),
+          c.status === "posted" ? "مثبّت" : c.status === "reversed" ? "معكوس" : "مسودة",
           c.notes,
         ]),
         totals: [
@@ -318,7 +322,7 @@ export const StockCountsPage: React.FC = () => {
                   </td>
                   {costs && (
                     <td className={`border border-white/10 px-2 py-1.5 tabular-nums text-left font-bold ${Number(c.variance_value) < 0 ? "text-red-400" : "text-slate-300"}`}>
-                      {c.status === "posted" ? fmtNum(c.variance_value, 2) : ""}
+                      {c.status !== "draft" ? fmtNum(c.variance_value, 2) : ""}
                     </td>
                   )}
                   <td className="border border-white/10 px-2 py-1.5">
