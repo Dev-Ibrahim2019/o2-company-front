@@ -53,6 +53,8 @@ import { DocumentStatusBadge } from "./StockDocumentsPage";
 import { ReceiptStatusBadge, ReverseModal } from "./TransfersPage";
 import { printTransferVoucher } from "./printTransferVoucher";
 import { LoadingBlock, inputClass } from "./ui";
+import { LayerAllocationModal } from "./LayerAllocationModal";
+import type { LayerAllocation } from "../../../services/layersService";
 
 /* ── السطر ── */
 
@@ -69,6 +71,15 @@ interface Line {
   inputError: string | null;
   /** قيمة السطر المرحّلة (المستند المرحّل). */
   postedCost: string | null;
+  /** التحديد المعيّن: توزيع السطر على الدفعات بالوحدة الأساسية (null = الأقدم أولاً عند الترحيل). */
+  allocations: LayerAllocation[] | null;
+}
+
+/** توزيع السطر من المستند: المسودة (draft_allocations) أو المرحّل (layer_allocations). */
+function layerRows(l: unknown): LayerAllocation[] | null {
+  const line = l as { draft_allocations?: { layer_id: number; quantity: string }[]; layer_allocations?: { layer_id: number; quantity: string }[] };
+  const rows = line.draft_allocations?.length ? line.draft_allocations : line.layer_allocations;
+  return rows?.length ? rows.map((a) => ({ layer_id: a.layer_id, quantity: Number(a.quantity) })) : null;
 }
 
 let nextKey = 1;
@@ -83,6 +94,7 @@ const emptyLine = (toWarehouseId: number | "" = ""): Line => ({
   toWarehouseId,
   inputError: null,
   postedCost: null,
+  allocations: null,
 });
 
 const EPS = 1e-9;
@@ -138,6 +150,8 @@ export const TransferEntryPage: React.FC = () => {
   const [notes, setNotes] = useState("");
   // إعداد "السماح بالرصيد السالب": مفعّل = الكمية الأكبر من الرصيد تحذير فقط، والترحيل يمشي والرصيد يصير سالباً.
   const [allowNegative, setAllowNegative] = useState(false);
+  // نافذة التحديد المعيّن (توزيع السطر على الدفعات).
+  const [layerLine, setLayerLine] = useState<number | null>(null);
   const [quantitiesOnly, setQuantitiesOnly] = useState(false);
   const [lines, setLines] = useState<Line[]>(() => [emptyLine()]);
   const [busy, setBusy] = useState<"draft" | "post" | "delete" | "duplicate" | "receive" | "nav" | null>(null);
@@ -211,6 +225,8 @@ export const TransferEntryPage: React.FC = () => {
           quantity: String(Number(l.quantity)),
           notes: l.notes ?? "",
           postedCost: l.posted_cost ?? null,
+          // توزيع المسودة على الدفعات، أو ما خرج فعلاً من الدفعات بعد الترحيل.
+          allocations: layerRows(l),
         }),
       );
       setLines(d.status === "draft" ? [...loaded, emptyLine(d.to_warehouse_id ?? "")] : loaded);
@@ -421,6 +437,7 @@ export const TransferEntryPage: React.FC = () => {
         unit_id: l.unitId === "" ? null : l.unitId,
         quantity: parseQty(l.quantity),
         notes: l.notes.trim() || null,
+        allocations: l.allocations,
       })),
     };
   };
@@ -777,7 +794,7 @@ export const TransferEntryPage: React.FC = () => {
                       className={gridInput}
                       value={l.unitId}
                       disabled={!editable || !l.stock}
-                      onChange={(e) => edit(l.key, { unitId: Number(e.target.value) })}
+                      onChange={(e) => edit(l.key, { unitId: Number(e.target.value), allocations: null })}
                       data-row={row}
                       data-col={C.unit}
                       aria-label={`وحدة السطر ${row + 1}`}
@@ -794,6 +811,17 @@ export const TransferEntryPage: React.FC = () => {
                 <td className={gridTd}>
                   <div className={`${gridText} justify-end tabular-nums ${c.error && c.available !== null ? "text-red-400 font-bold" : "text-slate-300"}`}>
                     {l.loading ? <Loader2 size={14} className="animate-spin text-slate-500" /> : l.item && c.available !== null ? fmtNum(c.available) : ""}
+                    {l.item && warehouseId !== "" && (
+                      <button
+                        type="button"
+                        onClick={() => setLayerLine(l.key)}
+                        title={l.allocations ? "موزّع يدوياً على الدفعات" : "الأقدم أولاً — اضغط لاختيار الدفعات"}
+                        aria-label={`دفعات ${l.item.name}`}
+                        className={`ms-1.5 px-1.5 rounded text-[10px] font-black ${l.allocations ? "bg-sky-600/20 text-sky-300" : "bg-white/5 text-slate-500 hover:text-white"}`}
+                      >
+                        {l.allocations ? "يدوي" : "دفعات"}
+                      </button>
+                    )}
                   </div>
                 </td>
                 <td className={gridTd}>
@@ -804,7 +832,7 @@ export const TransferEntryPage: React.FC = () => {
                       dir="ltr"
                       value={l.quantity}
                       disabled={!editable}
-                      onChange={(e) => edit(l.key, { quantity: e.target.value })}
+                      onChange={(e) => edit(l.key, { quantity: e.target.value, allocations: null })}
                       data-row={row}
                       data-col={C.qty}
                       aria-label={`الكمية المحولة — السطر ${row + 1}`}
@@ -878,6 +906,29 @@ export const TransferEntryPage: React.FC = () => {
           );
         })}
       </ExcelGrid>
+
+      {(() => {
+        const l = lines.find((x) => x.key === layerLine);
+        if (!l || !l.item || warehouseId === "") return null;
+        const c = calcs.get(l.key);
+        return (
+          <LayerAllocationModal
+            itemId={l.item.id}
+            itemName={l.item.name}
+            warehouseId={warehouseId}
+            factor={c?.factor ?? 1}
+            unitName={c?.unitName ?? ""}
+            quantity={parseQty(l.quantity)}
+            value={l.allocations}
+            readOnly={!editable}
+            onApply={(allocations) => {
+              edit(l.key, { allocations });
+              setLayerLine(null);
+            }}
+            onClose={() => setLayerLine(null)}
+          />
+        );
+      })()}
 
       {editable && (
         <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="أدوات الأسطر">

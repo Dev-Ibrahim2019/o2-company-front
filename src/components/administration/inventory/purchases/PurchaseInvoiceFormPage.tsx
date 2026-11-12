@@ -34,6 +34,7 @@ import { Field, LoadingBlock, Modal, PrimaryButton, SecondaryButton, inputClass 
 import { ItemSearch, cellInput, useGridNavigation } from "../gridEntry";
 import { PurchaseStatusBadge } from "./PurchaseStatusBadge";
 import { PayBillModal } from "./PayBillModal";
+import { PurchaseLayersPanel } from "./PurchaseLayersPanel";
 import { printPurchaseInvoice } from "./printPurchaseInvoice";
 
 interface Line {
@@ -48,6 +49,8 @@ interface Line {
   taxRate: string;
   description: string;
   accountId: number | "";
+  /** سطر مصاريف (نقل، جمارك...) يُحمَّل على تكلفة الأصناف بنسبة قيمتها. */
+  allocateToStock: boolean;
 }
 
 let nextKey = 1;
@@ -63,6 +66,7 @@ const emptyLine = (kind: "stock" | "expense" = "stock", taxRate = "0"): Line => 
   taxRate,
   description: "",
   accountId: "",
+  allocateToStock: false,
 });
 
 /** ترتيب خانات سطر الصنف لـ Enter. */
@@ -162,6 +166,7 @@ export const PurchaseInvoiceFormPage: React.FC = () => {
           taxRate: String(Number(l.tax_rate)),
           description: l.description,
           accountId: l.account_id ?? "",
+          allocateToStock: Boolean((l as { allocate_to_stock?: boolean }).allocate_to_stock),
           unitId: l.unit_id ?? "",
         };
         if (l.line_kind !== "stock" || !l.stock_item) return base;
@@ -399,6 +404,7 @@ export const PurchaseInvoiceFormPage: React.FC = () => {
               kind: "expense" as const,
               description: l.description.trim(),
               account_id: l.accountId === "" ? null : l.accountId,
+              allocate_to_stock: l.allocateToStock,
               unit_price: Number(l.unitPrice) || 0,
               tax_rate: Number(l.taxRate) || 0,
             },
@@ -697,6 +703,16 @@ export const PurchaseInvoiceFormPage: React.FC = () => {
                               </option>
                             ))}
                           </select>
+                          <label className="mt-1 flex items-center gap-1.5 text-[11px] font-bold text-slate-400 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="accent-red-600"
+                              checked={l.allocateToStock}
+                              disabled={!editable}
+                              onChange={(e) => edit(l.key, { allocateToStock: e.target.checked })}
+                            />
+                            يُحمَّل على تكلفة الأصناف (بنسبة قيمتها)
+                          </label>
                         </td>
                         <td className="p-2">
                           <input className={cellInput} type="number" min={0} step="any" dir="ltr" value={l.unitPrice} disabled={!editable} onChange={(e) => edit(l.key, { unitPrice: e.target.value })} data-key={l.key} data-col="price" aria-label={`مبلغ السطر ${n}`} />
@@ -913,6 +929,10 @@ export const PurchaseInvoiceFormPage: React.FC = () => {
             <textarea className={`${inputClass} min-h-[70px]`} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} autoFocus />
           </Field>
         </Modal>
+      )}
+
+      {bill && bill.status !== "draft" && bill.stock_document_id && (
+        <PurchaseLayersPanel billId={bill.id} canReturn={Boolean(bill.can?.return)} canAdjust={Boolean(bill.can?.adjust_cost)} onChanged={() => hydrate(bill)} />
       )}
 
       {paying && bill && (

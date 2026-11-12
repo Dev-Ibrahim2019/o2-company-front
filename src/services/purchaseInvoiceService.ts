@@ -83,7 +83,7 @@ export interface PurchaseBill {
   reverser?: Named | null;
   prev_id?: number | null;
   next_id?: number | null;
-  can?: { edit: boolean; post: boolean; reverse: boolean; pay: boolean };
+  can?: { edit: boolean; post: boolean; reverse: boolean; pay: boolean; return?: boolean; adjust_cost?: boolean };
 }
 
 export interface PurchaseListResponse {

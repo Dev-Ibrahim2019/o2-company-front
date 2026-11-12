@@ -93,6 +93,7 @@ import { StockCountsPage } from "./components/administration/inventory/StockCoun
 import { InventoryAnalyticsPage } from "./components/administration/inventory/InventoryAnalyticsPage";
 import { DepartmentsListPage } from "./components/administration/inventory/departments/DepartmentsListPage";
 import { DepartmentDetailPage } from "./components/administration/inventory/departments/DepartmentDetailPage";
+import { LayersReportPage } from "./components/administration/inventory/LayersReportPage";
 import { INVENTORY_PERMISSIONS } from "./auth/permissions";
 import {
   CrmRouteGuard,
@@ -573,6 +574,8 @@ function AppRoutes() {
           {/* الأقسام: مبيعات واستهلاك وجرد كل قسم (التقارير بصلاحية التحليلات، والجرد بصلاحية الجرد — يفرضها الخادم). */}
           <Route path="departments" element={<DepartmentsListPage />} />
           <Route path="departments/:id" element={<DepartmentDetailPage />} />
+          {/* تقارير الدفعات (Cost Layers): دفعات صنف، تتبّع دفعة، تكلفة الصرف، فحص المطابقة. */}
+          <Route path="layers" element={<LayersReportPage />} />
           {/* قسم الإنتاج والجودة والدفعات أُلغي — الروابط القديمة تعود للرئيسية بدل صفحة فارغة. */}
           {["batches", "productivity", "shawarma", "quality-reports", "breakdowns", "production", "skewers", "showroom-sales"].map((p) => (
             <Route key={p} path={p} element={<Navigate to="/inventory/dashboard" replace />} />

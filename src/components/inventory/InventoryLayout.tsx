@@ -1,33 +1,39 @@
 /**
  * InventoryLayout.tsx — لوحة المخازن المستقلة (/inventory/*).
- * سايدبار وهيدر للمخازن فقط بنفس تصميم AdminLayout. الصفحات نفسها من administration/inventory
- * (لا تكرار). زر "لوحة الإدارة" يظهر لأصحاب الأدوار الإدارية فقط؛ أمين المخزن لا يراه.
+ * سايدبار وهيدر للمخازن فقط. الصفحات نفسها من administration/inventory (لا تكرار).
+ * زر "لوحة الإدارة" يظهر لأصحاب الأدوار الإدارية فقط؛ أمين المخزن لا يراه.
+ *
+ * القائمة مرتّبة حسب دورة العمل: الرئيسية ← ① المشتريات ← ② الصرف ← ③ الجرد والهالك ← ④ التقارير
+ * ← ⑤ الإعدادات الأساسية (مطويّة افتراضياً). التعريف كله في مصفوفة NAV_GROUPS؛ الصلاحيات كما هي.
+ * العنصر النشط = أطول رابط يطابق المسار الحالي، فالشاشات الفرعية (/purchases/12، /balances/report،
+ * /movements/new) تُبرز عنصرها الأب، و/items/tree يُبرز "شجرة الأصناف" لا "الأصناف".
  */
 
-import React, { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
-import { AnimatePresence, motion } from "framer-motion";
+import React, { useEffect, useRef, useState } from "react";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   Activity,
   ArrowLeftRight,
   BarChart3,
   BookOpen,
   Boxes,
+  ChevronDown,
   ClipboardCheck,
-  FileBarChart,
   FolderTree,
   History,
+  Layers,
   LayoutDashboard,
   LayoutGrid,
   ListTree,
   Menu,
-  PackagePlus,
-  PackageX,
   Power,
   Receipt,
   Ruler,
   Scale,
   Store,
+  Trash2,
+  Truck,
   Warehouse,
   X,
 } from "lucide-react";
@@ -44,57 +50,72 @@ interface NavItem {
   label: string;
   /** صلاحية واحدة، أو قائمة يكفي أي منها. */
   permission?: string | string[];
-  /** مطابقة تامة للرابط: لشاشة لها شاشة فرعية بعنصر مستقل في القائمة (الأرصدة ← التقرير، الأصناف ← الشجرة). */
-  exact?: boolean;
 }
 
-const NAV: { title: string; items: NavItem[] }[] = [
+interface NavGroup {
+  id: string;
+  /** رقم المرحلة في دورة العمل. مجموعة بلا عنوان (الرئيسية) لا تُطوى. */
+  step?: number;
+  title?: string;
+  /** مطويّة افتراضياً ما لم يغيّرها المستخدم. */
+  defaultCollapsed?: boolean;
+  items: NavItem[];
+}
+
+const NAV_GROUPS: NavGroup[] = [
   {
-    title: "",
+    id: "home",
     items: [{ to: "/inventory/dashboard", icon: LayoutDashboard, label: "الرئيسية" }],
   },
   {
-    title: "الأرصدة والحركات",
+    id: "purchases",
+    step: 1,
+    title: "المشتريات (التوريد)",
     items: [
-      { to: "/inventory/balances", icon: Scale, label: "أرصدة المخزون", exact: true },
-      { to: "/inventory/movements", icon: Activity, label: "الحركات المخزنية" },
-      { to: "/inventory/kardex", icon: History, label: "كرت الصنف" },
-      { to: "/inventory/balances/report", icon: FileBarChart, label: "أرصدة المخازن في تاريخ" },
+      { to: "/inventory/purchases", icon: Receipt, label: "فواتير المشتريات", permission: INVENTORY_PERMISSIONS.PURCHASES_VIEW },
+      { to: "/inventory/receipts", icon: Truck, label: "استلام مشتريات" },
     ],
   },
   {
-    title: "الصرفيات",
+    id: "issue",
+    step: 2,
+    title: "الصرف",
     items: [{ to: "/inventory/transfers", icon: ArrowLeftRight, label: "صرفيات الأصناف" }],
   },
   {
-    title: "الأصناف",
+    id: "counts",
+    step: 3,
+    title: "الجرد والهالك",
     items: [
-      { to: "/inventory/items", icon: Boxes, label: "فهرس الأصناف", exact: true },
+      { to: "/inventory/counts", icon: ClipboardCheck, label: "الجرد" },
+      { to: "/inventory/waste", icon: Trash2, label: "الهالك" },
+    ],
+  },
+  {
+    id: "reports",
+    step: 4,
+    title: "التقارير",
+    items: [
+      // يشمل /inventory/balances/report (الأرصدة في تاريخ) — زرّه داخل صفحة الأرصدة.
+      { to: "/inventory/balances", icon: Scale, label: "أرصدة المخزون" },
+      { to: "/inventory/movements", icon: Activity, label: "الحركات المخزنية" },
+      { to: "/inventory/kardex", icon: History, label: "كرت الصنف" },
+      { to: "/inventory/layers", icon: Layers, label: "تقارير الدفعات" },
+      { to: "/inventory/analytics", icon: BarChart3, label: "التحليلات", permission: INVENTORY_PERMISSIONS.ANALYTICS_VIEW },
+    ],
+  },
+  {
+    id: "settings",
+    step: 5,
+    title: "الإعدادات الأساسية",
+    defaultCollapsed: true,
+    items: [
+      { to: "/inventory/items", icon: Boxes, label: "الأصناف" },
       { to: "/inventory/items/tree", icon: ListTree, label: "شجرة الأصناف" },
       { to: "/inventory/categories", icon: FolderTree, label: "التصنيفات" },
       { to: "/inventory/units", icon: Ruler, label: "الوحدات" },
       { to: "/inventory/recipes", icon: BookOpen, label: "الوصفات" },
-    ],
-  },
-  {
-    title: "الجرد والهالك",
-    items: [
-      { to: "/inventory/counts", icon: ClipboardCheck, label: "الجرد" },
-      { to: "/inventory/waste", icon: PackageX, label: "الهالك" },
-    ],
-  },
-  {
-    title: "المشتريات",
-    items: [
-      { to: "/inventory/purchases", icon: Receipt, label: "فواتير المشتريات", permission: INVENTORY_PERMISSIONS.PURCHASES_VIEW },
-      { to: "/inventory/receipts", icon: PackagePlus, label: "استلام مشتريات" },
-    ],
-  },
-  {
-    title: "أخرى",
-    items: [
       { to: "/inventory/warehouses", icon: Warehouse, label: "المخازن" },
-      { to: "/inventory/analytics", icon: BarChart3, label: "التحليلات", permission: INVENTORY_PERMISSIONS.ANALYTICS_VIEW },
       {
         to: "/inventory/departments",
         icon: Store,
@@ -105,19 +126,107 @@ const NAV: { title: string; items: NavItem[] }[] = [
   },
 ];
 
+/** حالة طيّ المجموعات التي اختارها المستخدم: { [groupId]: collapsed }. */
+const NAV_STORAGE_KEY = "o2.inventory.nav.collapsed";
+
+const readCollapsed = (): Record<string, boolean> => {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(NAV_STORAGE_KEY) ?? "null");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, boolean>) : {};
+  } catch {
+    return {};
+  }
+};
+
+const writeCollapsed = (value: Record<string, boolean>) => {
+  try {
+    localStorage.setItem(NAV_STORAGE_KEY, JSON.stringify(value));
+  } catch {
+    /* التخزين غير متاح (وضع خاص مثلاً): يبقى الطيّ لهذه الجلسة فقط */
+  }
+};
+
+const NavRow: React.FC<{ item: NavItem; active: boolean }> = ({ item: { to, icon: Icon, label }, active }) => (
+  <li>
+    <Link
+      to={to}
+      aria-current={active ? "page" : undefined}
+      className={`relative flex items-center gap-3 h-[42px] pr-4 pl-3 rounded-xl text-sm outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--o2-brand) ${
+        active ? "bg-red-600/10 text-white font-black" : "text-slate-400 font-semibold hover:bg-white/5 hover:text-white"
+      }`}
+    >
+      {active && <span aria-hidden="true" className="absolute right-0 top-2 bottom-2 w-1 rounded-l-full bg-red-600" />}
+      <Icon size={18} className={`shrink-0 ${active ? "text-red-400" : ""}`} />
+      <span className="truncate">{label}</span>
+    </Link>
+  </li>
+);
+
 export const InventoryLayout: React.FC = () => {
   const { user, logout, hasPermission, hasRole } = useAuth();
   const location = useLocation();
+  const reduceMotion = useReducedMotion();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(readCollapsed);
+  /** مجموعة الصفحة الحالية تُفتح تلقائياً؛ إن طواها المستخدم بنفسه نحترم ذلك حتى ينتقل لمجموعة أخرى. */
+  const [dismissed, setDismissed] = useState<string | null>(null);
   const canSwitchToAdmin = INVENTORY_ADMIN_SWITCH_ROLES.some((r) => hasRole(r));
 
   // الدرج على الجوال يُغلق عند التنقل
   useEffect(() => setDrawerOpen(false), [location.pathname]);
 
   const allowed = (p: NavItem["permission"]) => !p || (Array.isArray(p) ? p.some((x) => hasPermission(x)) : hasPermission(p));
-  const sections = NAV.map((s) => ({ ...s, items: s.items.filter((i) => allowed(i.permission)) })).filter(
-    (s) => s.items.length > 0,
+  const groups = NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => allowed(i.permission)) })).filter(
+    (g) => g.items.length > 0,
   );
+
+  // أطول رابط يطابق المسار = العنصر النشط (يغطي الشاشات الفرعية).
+  const pathname = location.pathname.replace(/\/+$/, "");
+  const active = ((): { to: string; groupId: string } | null => {
+    let best: { to: string; groupId: string } | null = null;
+    for (const g of groups) {
+      for (const i of g.items) {
+        if ((pathname === i.to || pathname.startsWith(`${i.to}/`)) && (!best || i.to.length > best.to.length)) {
+          best = { to: i.to, groupId: g.id };
+        }
+      }
+    }
+    return best;
+  })();
+  const activeGroupId = active?.groupId ?? null;
+
+  useEffect(() => setDismissed(null), [activeGroupId]);
+
+  // إبقاء العنصر النشط ظاهراً في القائمة (بعد انتهاء حركة فتح المجموعة، وعند فتح الدرج على الجوال).
+  const navRef = useRef<HTMLElement>(null);
+  const activeTo = active?.to;
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      // تمرير القائمة نفسها فقط (scrollIntoView قد يحرّك حاويات أخرى والدرج مخفي جانبياً)
+      const nav = navRef.current;
+      const el = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+      if (!nav || !el) return;
+      const n = nav.getBoundingClientRect();
+      const r = el.getBoundingClientRect();
+      if (r.top < n.top) nav.scrollTop -= n.top - r.top + 8;
+      else if (r.bottom > n.bottom) nav.scrollTop += r.bottom - n.bottom + 8;
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [activeTo, drawerOpen]);
+
+  const isOpen = (g: NavGroup) => {
+    if (!g.title) return true;
+    if (g.id === activeGroupId && dismissed !== g.id) return true;
+    return !(collapsed[g.id] ?? g.defaultCollapsed ?? false);
+  };
+
+  const toggleGroup = (g: NavGroup) => {
+    const willOpen = !isOpen(g);
+    const next = { ...collapsed, [g.id]: !willOpen };
+    setCollapsed(next);
+    writeCollapsed(next);
+    setDismissed(!willOpen && g.id === activeGroupId ? g.id : null);
+  };
 
   return (
     <div className="flex h-screen bg-slate-950 overflow-hidden text-slate-100 font-['Tajawal']" dir="rtl">
@@ -134,7 +243,7 @@ export const InventoryLayout: React.FC = () => {
       </AnimatePresence>
 
       <aside
-        className={`fixed top-0 right-0 h-full w-64 bg-slate-900 border-l border-white/5 flex flex-col p-4 shadow-2xl transition-transform duration-300 z-50 ${
+        className={`fixed top-0 right-0 h-full w-64 bg-slate-900 border-l border-white/5 flex flex-col shadow-2xl transition-transform duration-300 z-50 ${
           drawerOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0"
         }`}
       >
@@ -146,7 +255,7 @@ export const InventoryLayout: React.FC = () => {
           <X size={18} />
         </button>
 
-        <div className="mb-6 flex items-center gap-3 px-4">
+        <div className="shrink-0 flex items-center gap-3 px-6 pt-5 pb-4">
           <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-red-900/20 shrink-0">
             <Warehouse size={20} />
           </div>
@@ -156,34 +265,68 @@ export const InventoryLayout: React.FC = () => {
           </div>
         </div>
 
-        <nav className="flex-1 space-y-4 overflow-y-auto custom-scrollbar" aria-label="قائمة المخازن">
-          {sections.map((section) => (
-            <div key={section.title || "home"} className="space-y-1">
-              {section.title && (
-                <p className="px-4 pb-1 text-[10px] font-black text-slate-500 uppercase tracking-widest">{section.title}</p>
-              )}
-              {section.items.map(({ to, icon: Icon, label, exact }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  end={exact}
-                  className={({ isActive }) =>
-                    `w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-200 ${
-                      isActive
-                        ? "bg-red-600 text-white shadow-lg shadow-red-900/30"
-                        : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
-                    }`
-                  }
+        <nav ref={navRef} className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-3 pb-3" aria-label="قائمة المخازن">
+          {groups.map((g, idx) => {
+            if (!g.title) {
+              return (
+                <ul key={g.id} className="space-y-1">
+                  {g.items.map((item) => (
+                    <NavRow key={item.to} item={item} active={item.to === active?.to} />
+                  ))}
+                </ul>
+              );
+            }
+            const open = isOpen(g);
+            const holdsActive = g.id === activeGroupId;
+            const panelId = `inventory-nav-${g.id}`;
+            return (
+              <div key={g.id} className={idx > 0 ? "mt-3 pt-3 border-t border-white/5" : ""}>
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(g)}
+                  aria-expanded={open}
+                  aria-controls={panelId}
+                  className="w-full flex items-center gap-2.5 h-8 px-2 rounded-lg text-slate-500 hover:text-white outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--o2-brand)"
                 >
-                  <Icon size={18} />
-                  <span className="font-semibold text-sm whitespace-nowrap overflow-hidden">{label}</span>
-                </NavLink>
-              ))}
-            </div>
-          ))}
+                  <span
+                    className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black tabular-nums shrink-0 ${
+                      holdsActive ? "bg-red-600 text-white" : "bg-white/5 text-slate-400"
+                    }`}
+                  >
+                    {g.step}
+                  </span>
+                  <span className="flex-1 min-w-0 text-start text-[11px] font-bold tracking-wide truncate">{g.title}</span>
+                  {!open && <span className="text-[10px] font-bold tabular-nums text-slate-500">{g.items.length}</span>}
+                  <ChevronDown
+                    size={14}
+                    aria-hidden="true"
+                    className={`shrink-0 transition-transform duration-200 motion-reduce:transition-none ${open ? "" : "rotate-90"}`}
+                  />
+                </button>
+                <AnimatePresence initial={false}>
+                  {open && (
+                    <motion.ul
+                      key="items"
+                      id={panelId}
+                      aria-label={g.title}
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: reduceMotion ? 0 : 0.2, ease: "easeOut" }}
+                      className="overflow-hidden space-y-1 pt-1"
+                    >
+                      {g.items.map((item) => (
+                        <NavRow key={item.to} item={item} active={item.to === active?.to} />
+                      ))}
+                    </motion.ul>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })}
         </nav>
 
-        <div className="mt-auto border-t border-white/5 pt-4 space-y-2">
+        <div className="shrink-0 border-t border-white/5 p-4 space-y-2">
           <ThemeToggle />
           <div className="px-4 py-1">
             <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">

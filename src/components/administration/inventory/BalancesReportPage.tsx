@@ -310,7 +310,16 @@ export const BalancesReportPage: React.FC = () => {
             </thead>
             <tbody>
               {table.rows.map((r, i) => (
-                <tr key={i} className="hover:bg-white/5">
+                <tr
+                  key={i}
+                  className={`hover:bg-white/5 ${data?.rows[i]?.stock_item_id ? "cursor-pointer" : ""}`}
+                  title={data?.rows[i]?.stock_item_id ? "اضغط لتفصيل دفعات الصنف" : undefined}
+                  onClick={() => {
+                    // تفصيل الصنف: دفعاته (الفاتورة، المورّد، التاريخ، الوارد، المتبقي، السعر، القيمة).
+                    const row = data?.rows[i];
+                    if (row?.stock_item_id) navigate(`/inventory/layers?item=${row.stock_item_id}${row.warehouse_id ? `&warehouse=${row.warehouse_id}` : ""}`);
+                  }}
+                >
                   {r.map((v, j) => (
                     <td key={j} className={table.columns[j]?.num ? `${num} text-slate-200` : `${td} ${j <= 2 ? "text-white" : "text-slate-300"}`}>
                       {v ?? ""}

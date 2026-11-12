@@ -27,6 +27,8 @@ import { DocToolbar, type ToolbarItem } from "./DocToolbar";
 import { ExcelGrid, ItemCodeCell, ItemNameCell, gridInput, gridTd, gridText, useExcelGridNav, type GridColumn } from "./ExcelGrid";
 import { parseQty } from "./TransferEntryPage";
 import { inputClass } from "./ui";
+import { LayerAllocationModal } from "./LayerAllocationModal";
+import type { LayerAllocation } from "../../../services/layersService";
 
 type EntryType = "opening" | "waste" | "receipt" | "transfer";
 
@@ -48,10 +50,12 @@ interface Line {
   price: string;
   reason: string;
   inputError: string | null;
+  /** الهالك: توزيع السطر على الدفعات بالوحدة الأساسية (null = الأقدم أولاً عند الترحيل). */
+  allocations: LayerAllocation[] | null;
 }
 
 let nextKey = 1;
-const emptyLine = (): Line => ({ key: nextKey++, item: null, stock: null, loading: false, unitId: "", quantity: "", price: "", reason: "", inputError: null });
+const emptyLine = (): Line => ({ key: nextKey++, item: null, stock: null, loading: false, unitId: "", quantity: "", price: "", reason: "", inputError: null, allocations: null });
 
 const C = { code: 1, name: 2, unit: 3, qty: 5, price: 6, reason: 8 } as const;
 
@@ -87,6 +91,7 @@ export const MovementEntryPage: React.FC = () => {
   const [lines, setLines] = useState<Line[]>(() => [emptyLine()]);
   const [busy, setBusy] = useState<"draft" | "post" | null>(null);
   const [allowNegative, setAllowNegative] = useState(false);
+  const [layerLine, setLayerLine] = useState<number | null>(null);
 
   useEffect(() => {
     inventoryService.documentsMeta().then(setMeta).catch((e) => toast.error("تعذّر تحميل البيانات", inventoryErrorMessage(e)));
@@ -222,6 +227,7 @@ export const MovementEntryPage: React.FC = () => {
             quantity: parseQty(l.quantity),
             unit_cost: isReceipt ? parseQty(l.price) : null,
             waste_reason: isWaste ? l.reason : null,
+            allocations: isWaste ? l.allocations : null,
           })),
         });
         if (post) {
@@ -382,7 +388,7 @@ export const MovementEntryPage: React.FC = () => {
                 </td>
                 <td className={gridTd}>
                   {l.item && (
-                    <select className={gridInput} value={l.unitId} disabled={!l.stock} onChange={(e) => update(l.key, { unitId: Number(e.target.value) })} data-row={row} data-col={C.unit} aria-label={`وحدة السطر ${row + 1}`}>
+                    <select className={gridInput} value={l.unitId} disabled={!l.stock} onChange={(e) => update(l.key, { unitId: Number(e.target.value), allocations: null })} data-row={row} data-col={C.unit} aria-label={`وحدة السطر ${row + 1}`}>
                       {l.stock?.units.map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.name}
@@ -393,11 +399,24 @@ export const MovementEntryPage: React.FC = () => {
                   )}
                 </td>
                 <td className={gridTd}>
-                  <div className={`${gridText} text-slate-400`}>{l.item ? warehouse?.name : ""}</div>
+                  <div className={`${gridText} text-slate-400`}>
+                    {l.item ? warehouse?.name : ""}
+                    {isWaste && l.item && warehouseId !== "" && (
+                      <button
+                        type="button"
+                        onClick={() => setLayerLine(l.key)}
+                        title={l.allocations ? "موزّع يدوياً على الدفعات" : "الأقدم أولاً — اضغط لاختيار الدفعات"}
+                        aria-label={`دفعات ${l.item.name}`}
+                        className={`ms-1.5 px-1.5 rounded text-[10px] font-black ${l.allocations ? "bg-sky-600/20 text-sky-300" : "bg-white/5 text-slate-500 hover:text-white"}`}
+                      >
+                        {l.allocations ? "يدوي" : "دفعات"}
+                      </button>
+                    )}
+                  </div>
                 </td>
                 <td className={gridTd}>
                   {l.item && (
-                    <input className={`${gridInput} text-left tabular-nums`} inputMode="decimal" dir="ltr" value={l.quantity} onChange={(e) => update(l.key, { quantity: e.target.value })} data-row={row} data-col={C.qty} aria-label={`الكمية — السطر ${row + 1}`} />
+                    <input className={`${gridInput} text-left tabular-nums`} inputMode="decimal" dir="ltr" value={l.quantity} onChange={(e) => update(l.key, { quantity: e.target.value, allocations: null })} data-row={row} data-col={C.qty} aria-label={`الكمية — السطر ${row + 1}`} />
                   )}
                 </td>
                 <td className={gridTd}>
@@ -440,6 +459,27 @@ export const MovementEntryPage: React.FC = () => {
           );
         })}
       </ExcelGrid>
+
+      {(() => {
+        const l = lines.find((x) => x.key === layerLine);
+        if (!l || !l.item || warehouseId === "") return null;
+        return (
+          <LayerAllocationModal
+            itemId={l.item.id}
+            itemName={l.item.name}
+            warehouseId={Number(warehouseId)}
+            factor={factorOf(l)}
+            unitName={l.stock?.units.find((u) => u.id === l.unitId)?.name ?? l.stock?.unit ?? ""}
+            quantity={parseQty(l.quantity)}
+            value={l.allocations}
+            onApply={(allocations) => {
+              update(l.key, { allocations });
+              setLayerLine(null);
+            }}
+            onClose={() => setLayerLine(null)}
+          />
+        );
+      })()}
 
       <div className="flex flex-wrap items-center gap-1.5">
         <button

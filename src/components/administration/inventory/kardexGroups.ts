@@ -12,7 +12,9 @@ import type { KardexRow } from "../../../services/inventoryService";
 export type KardexEntry = { kind: "row"; row: KardexRow } | { kind: "group"; key: string; rows: KardexRow[] };
 
 /** حركة استهلاك بيع أصلية (لا عكسها). */
-export const isSaleConsumption = (r: KardexRow) => r.type === "sale" && r.reversal_of_id === null;
+// حركة تصحيح التكلفة (كمية صفر — تسوية نقص أو سعر) لا تُجمَّع مع الاستهلاك.
+export const isSaleConsumption = (r: KardexRow) =>
+  r.type === "sale" && r.reversal_of_id === null && !(r as KardexRow & { is_cost_adjustment?: boolean }).is_cost_adjustment;
 
 export function groupSaleRuns(rows: KardexRow[]): KardexEntry[] {
   const out: KardexEntry[] = [];
