@@ -41,6 +41,27 @@
   --o2-info: #3b82f6;
   --o2-info-soft: rgba(59, 130, 246, 0.10);
 
+  /* ── سلّم الكثافة (واجهات الإدارة المضغوطة) — المصدر الوحيد للأحجام والمسافات.
+     يُطبَّق عبر .o2-compact (أسفل الملف) وعبر مكوّنات ui.tsx المشتركة. */
+  --o2-fs-2xs: 10.5px; /* الشارات */
+  --o2-fs-xs: 11px; /* رؤوس الأعمدة والتسميات */
+  --o2-fs-sm: 12.5px; /* خلايا الجدول، الحقول، الأزرار */
+  --o2-fs-base: 13px; /* النص الأساسي */
+  --o2-fs-lg: 16px; /* عنوان الصفحة */
+  --o2-leading: 1.45;
+  --o2-sp-1: 4px;
+  --o2-sp-2: 6px;
+  --o2-sp-3: 8px;
+  --o2-sp-4: 12px;
+  --o2-sp-5: 16px;
+  --o2-control-h: 32px;
+  --o2-control-px: 10px;
+  --o2-radius-control: 6px;
+  --o2-radius-card: 8px;
+  --o2-table-head-bg: var(--o2-surface-muted);
+  --o2-row-divider: color-mix(in srgb, var(--o2-border) 60%, transparent);
+  --o2-row-hover: color-mix(in srgb, var(--o2-text) 4%, transparent);
+
   /* ── Call Center design-system palette (design/tokens.ts `colors`) ──────────
      Extends the same --o2-* mechanism above with the full neutral/brand/semantic
      scale that the call-center module's inline styles reference. Dark values
@@ -1141,4 +1162,172 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .o2-slot-ready { animation: none; box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.45); }
   .o2-slot-released-closed { animation-timing-function: steps(1, end); }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   الكثافة المضغوطة لواجهات الإدارة — تعتمد على سلّم --o2-fs-* / --o2-sp-* في :root.
+
+   1) مكوّنات مشتركة (طبقة components): .o2-control للحقول، .o2-btn للأزرار،
+      .o2-page-title/.o2-page-subtitle لرأس الصفحة. تستعملها ui.tsx، وأي أداة
+      Tailwind تمرّرها الصفحة (pr-10، !w-auto…) تتقدّم عليها كالمعتاد.
+   2) النطاق .o2-compact (يوضع على منطقة المحتوى في التخطيط): يعيد تعريف متغيرات
+      Tailwind داخل النطاق — أدوات text-sm/text-xs/rounded-* تقرأ var(--text-sm)
+      و var(--radius-xl) فتتبع السلّم في كل الشاشات دون تعديلها واحدة واحدة.
+   3) قواعد الجداول والفلاتر والشارات: خارج أي طبقة عمداً لتتقدّم على أدوات
+      الصفحات، ومحصورة بأنماط ضيّقة: خلايا p-3/p-4 الواسعة فقط، وتستثني شبكات
+      الإدخال (ExcelGrid = table.border-collapse) التي لها تصميمها الخاص.
+   لا تغيّر أي لون: الألوان كلها من متغيرات الثيم القائمة (داكن/فاتح).
+   ══════════════════════════════════════════════════════════════════════════ */
+@layer components {
+  .o2-control {
+    min-height: var(--o2-control-h);
+    padding: var(--o2-sp-2) var(--o2-control-px);
+    font-size: var(--o2-fs-sm);
+    line-height: var(--o2-leading);
+    border-radius: var(--o2-radius-control);
+  }
+
+  :is(input, select).o2-control {
+    height: var(--o2-control-h);
+    padding-block: 0;
+  }
+
+  .o2-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--o2-sp-2);
+    flex-shrink: 0;
+    height: var(--o2-control-h);
+    padding-inline: var(--o2-control-px);
+    font-size: var(--o2-fs-sm);
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+    border-radius: var(--o2-radius-control);
+  }
+
+  .o2-page-title {
+    font-size: var(--o2-fs-lg);
+    font-weight: 700;
+    line-height: 1.35;
+  }
+
+  .o2-page-subtitle {
+    font-size: 12px;
+    line-height: var(--o2-leading);
+  }
+
+  /* حشوة منطقة المحتوى متغيّرٌ واحد تتبعه الأشرطة الملتصقة بحوافّها:
+     o2-bleed-t (شريط أدوات المستند أعلى الصفحة) و o2-bleed-b (شريط الإجماليات أسفلها). */
+  .o2-page {
+    --o2-page-pad: var(--o2-sp-4);
+    padding: var(--o2-page-pad);
+  }
+
+  @media (min-width: 768px) {
+    .o2-page {
+      --o2-page-pad: var(--o2-sp-5);
+    }
+  }
+
+  .o2-bleed-t,
+  .o2-bleed-b {
+    margin-inline: calc(-1 * var(--o2-page-pad, 16px));
+    padding-inline: var(--o2-page-pad, 16px);
+  }
+
+  .o2-bleed-t {
+    margin-top: calc(-1 * var(--o2-page-pad, 16px));
+  }
+
+  .o2-bleed-b {
+    margin-bottom: calc(-1 * var(--o2-page-pad, 16px));
+  }
+}
+
+.o2-compact {
+  font-size: var(--o2-fs-base);
+  line-height: var(--o2-leading);
+  --text-xs: var(--o2-fs-xs);
+  --text-xs--line-height: var(--o2-leading);
+  --text-sm: var(--o2-fs-sm);
+  --text-sm--line-height: var(--o2-leading);
+  --text-base: var(--o2-fs-base);
+  --text-base--line-height: var(--o2-leading);
+  --radius-lg: var(--o2-radius-control);
+  --radius-xl: var(--o2-radius-control);
+  --radius-2xl: var(--o2-radius-card);
+  --radius-3xl: 12px;
+}
+
+/* إيقاع أقسام الصفحة (العنوان ← الفلاتر ← الجدول): 12px أياً كانت space-y في الصفحة */
+.o2-compact .o2-page > :is(.space-y-4, .space-y-5, .space-y-6) > :not(:last-child, .o2-bleed-b) {
+  margin-block-end: var(--o2-sp-4);
+}
+
+/* صف الفلاتر = صف ملتفّ يضم حقولاً مباشرة */
+.o2-compact .flex-wrap:has(> select, > input) {
+  gap: var(--o2-sp-3);
+}
+
+/* الجداول (عدا شبكات الإدخال) */
+.o2-compact table:not(.border-collapse) {
+  font-variant-numeric: tabular-nums;
+}
+
+.o2-compact table:not(.border-collapse) > thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.o2-compact table:not(.border-collapse) > thead th {
+  background-color: var(--o2-table-head-bg);
+  border-bottom: 1px solid var(--o2-border);
+  font-size: var(--o2-fs-xs);
+  font-weight: 600;
+}
+
+.o2-compact table:not(.border-collapse) > :is(thead, tbody, tfoot) > tr > :is(th, td):is(.p-3, .p-4, .p-5, .px-4, .px-5, .px-6, .py-3, .py-4) {
+  padding: var(--o2-sp-2) var(--o2-control-px);
+}
+
+.o2-compact table:not(.border-collapse) > tbody > tr:not(:last-child) > td {
+  border-bottom: 1px solid var(--o2-row-divider);
+}
+
+.o2-compact table:not(.border-collapse) > tbody > tr:hover {
+  background-color: var(--o2-row-hover);
+}
+
+/* جدول القائمة الرئيسي في الصفحة: يتمرّر داخلياً حتى يبقى رأسه ثابتاً والترقيم ظاهراً */
+@media screen {
+  .o2-compact .o2-page > * > .overflow-x-auto:has(> table:not(.border-collapse)) {
+    max-height: max(320px, calc(100dvh - 200px));
+    overflow: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--o2-border) transparent;
+  }
+}
+
+/* أزرار الأيقونات داخل صفوف الجداول (⋮، تعديل…) أصغر حتى لا ترفع ارتفاع الصف عن ~34px */
+.o2-compact table:not(.border-collapse) td .o2-icon-btn {
+  width: 22px;
+  height: 22px;
+}
+
+/* الشارات (مرحّل، مسودة…) — نمطها الموحّد في الصفحات: px-2 py-0.5 rounded-md text-[11px] */
+.o2-compact .rounded-md.py-0\.5[class~="text-[11px]"] {
+  font-size: var(--o2-fs-2xs);
+}
+
+/* تركيز لوحة المفاتيح واضح على الأزرار والروابط والصفوف القابلة للنقر */
+.o2-compact :is(button, a[href], [role="button"], summary):focus-visible {
+  outline: 2px solid var(--o2-brand-text);
+  outline-offset: 2px;
+}
+
+.o2-compact tr[tabindex]:focus-visible {
+  outline-offset: -2px;
 }

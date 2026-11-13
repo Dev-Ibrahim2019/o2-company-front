@@ -7,6 +7,9 @@
  * ← ⑤ الإعدادات الأساسية (مطويّة افتراضياً). التعريف كله في مصفوفة NAV_GROUPS؛ الصلاحيات كما هي.
  * العنصر النشط = أطول رابط يطابق المسار الحالي، فالشاشات الفرعية (/purchases/12، /balances/report،
  * /movements/new) تُبرز عنصرها الأب، و/items/tree يُبرز "شجرة الأصناف" لا "الأصناف".
+ *
+ * على سطح المكتب تُطوى القائمة إلى شريط أيقونات (زر الهيدر، ويُحفظ الاختيار). عمود الأيقونات ثابت
+ * الموضع في الوضعين، فالطيّ حركة عرض فقط تختفي معها النصوص تدريجياً، والمؤشّر النشط ينزلق بين العناصر.
  */
 
 import React, { useEffect, useRef, useState } from "react";
@@ -26,12 +29,16 @@ import {
   LayoutDashboard,
   LayoutGrid,
   ListTree,
+  LogOut,
   Menu,
-  Power,
+  Moon,
+  PanelRightClose,
+  PanelRightOpen,
   Receipt,
   Ruler,
   Scale,
   Store,
+  Sun,
   Trash2,
   Truck,
   Warehouse,
@@ -39,7 +46,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../auth";
 import { INVENTORY_PERMISSIONS, ROLES } from "../../auth/permissions";
-import { ThemeToggle } from "../shared/ThemeToggle";
+import { useTheme } from "../../theme";
 
 /** من يرى زر الرجوع للوحة الإدارة (نفس ADMIN_ROLES في App.tsx). */
 export const INVENTORY_ADMIN_SWITCH_ROLES: string[] = [ROLES.SUPER_ADMIN, ROLES.ACCOUNTANT, ROLES.BRANCH_MANAGER];
@@ -128,6 +135,8 @@ const NAV_GROUPS: NavGroup[] = [
 
 /** حالة طيّ المجموعات التي اختارها المستخدم: { [groupId]: collapsed }. */
 const NAV_STORAGE_KEY = "o2.inventory.nav.collapsed";
+/** وضع شريط الأيقونات على سطح المكتب: "1" مطويّ. */
+const RAIL_STORAGE_KEY = "o2.inventory.nav.rail";
 
 const readCollapsed = (): Record<string, boolean> => {
   try {
@@ -138,42 +147,121 @@ const readCollapsed = (): Record<string, boolean> => {
   }
 };
 
-const writeCollapsed = (value: Record<string, boolean>) => {
+const readRail = (): boolean => {
   try {
-    localStorage.setItem(NAV_STORAGE_KEY, JSON.stringify(value));
+    return localStorage.getItem(RAIL_STORAGE_KEY) === "1";
   } catch {
-    /* التخزين غير متاح (وضع خاص مثلاً): يبقى الطيّ لهذه الجلسة فقط */
+    return false;
   }
 };
 
-const NavRow: React.FC<{ item: NavItem; active: boolean }> = ({ item: { to, icon: Icon, label }, active }) => (
+/** التخزين قد يكون غير متاح (وضع خاص مثلاً): يبقى الاختيار لهذه الجلسة فقط. */
+const store = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* تجاهل */
+  }
+};
+
+const DESKTOP_QUERY = "(min-width: 1024px)";
+
+/** شريط الأيقونات لسطح المكتب فقط؛ درج الجوال يبقى كاملاً دائماً. */
+const useIsDesktop = () => {
+  const [isDesktop, setIsDesktop] = useState(() => window.matchMedia(DESKTOP_QUERY).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(DESKTOP_QUERY);
+    const onChange = () => setIsDesktop(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return isDesktop;
+};
+
+/** عرض الشريط المطويّ — يطابق lg:w-16 و lg:mr-16 أدناه؛ التلميح يظهر بجانبه. */
+const RAIL_WIDTH = 64;
+
+type HintHandlers = Pick<React.HTMLAttributes<HTMLElement>, "onMouseEnter" | "onMouseLeave" | "onFocus" | "onBlur">;
+
+const NavRow: React.FC<{ item: NavItem; active: boolean; rail: boolean; reduceMotion: boolean; hint: HintHandlers }> = ({
+  item: { to, icon: Icon, label },
+  active,
+  rail,
+  reduceMotion,
+  hint,
+}) => (
   <li>
     <Link
       to={to}
       aria-current={active ? "page" : undefined}
-      className={`relative flex items-center gap-3 h-[42px] pr-4 pl-3 rounded-xl text-sm outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--o2-brand) ${
-        active ? "bg-red-600/10 text-white font-black" : "text-slate-400 font-semibold hover:bg-white/5 hover:text-white"
+      {...hint}
+      className={`relative flex items-center gap-3 h-10 lg:h-9.5 pr-3.5 pl-2 rounded-lg overflow-hidden whitespace-nowrap text-[13.5px] outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--o2-brand) ${
+        active ? "text-white font-bold" : "text-slate-400 font-medium hover:bg-white/5 hover:text-white"
       }`}
     >
-      {active && <span aria-hidden="true" className="absolute right-0 top-2 bottom-2 w-1 rounded-l-full bg-red-600" />}
-      <Icon size={18} className={`shrink-0 ${active ? "text-red-400" : ""}`} />
-      <span className="truncate">{label}</span>
+      {active && (
+        // مؤشّر واحد مشترك (layoutId) ينزلق من العنصر السابق إلى الجديد عند التنقل
+        <motion.span
+          layoutId="inventory-nav-active"
+          aria-hidden="true"
+          // tween محدود المدة (لا spring): المجموعة المطويّة تنتظر انتهاء هذه الحركة قبل أن تختفي
+          transition={reduceMotion ? { duration: 0 } : { type: "tween", duration: 0.22, ease: [0.2, 0, 0, 1] }}
+          className="absolute inset-0 rounded-lg bg-red-600/10"
+        >
+          <span className="absolute right-0 top-2 bottom-2 w-[3px] rounded-l-full bg-red-600" />
+        </motion.span>
+      )}
+      <Icon size={18} className={`relative shrink-0 ${active ? "text-red-400" : ""}`} />
+      <span className={`relative truncate transition-opacity duration-150 ${rail ? "opacity-0" : "opacity-100"}`}>{label}</span>
     </Link>
   </li>
 );
 
+const FooterButton: React.FC<{ label: string; onClick: () => void; danger?: boolean; hint: HintHandlers; children: React.ReactNode }> = ({
+  label,
+  onClick,
+  danger,
+  hint,
+  children,
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    aria-label={label}
+    title={label}
+    {...hint}
+    className={`w-8 h-8 shrink-0 flex items-center justify-center rounded-lg outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--o2-brand) ${
+      danger ? "text-red-400 hover:bg-red-500/10" : "text-slate-400 hover:text-white hover:bg-white/5"
+    }`}
+  >
+    {children}
+  </button>
+);
+
 export const InventoryLayout: React.FC = () => {
   const { user, logout, hasPermission, hasRole } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const location = useLocation();
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = Boolean(useReducedMotion());
+  const isDesktop = useIsDesktop();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [railPref, setRailPref] = useState(readRail);
+  const rail = railPref && isDesktop;
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(readCollapsed);
   /** مجموعة الصفحة الحالية تُفتح تلقائياً؛ إن طواها المستخدم بنفسه نحترم ذلك حتى ينتقل لمجموعة أخرى. */
   const [dismissed, setDismissed] = useState<string | null>(null);
+  /** تلميح الاسم بجانب الأيقونة في الشريط المطويّ. */
+  const [hint, setHint] = useState<{ label: string; top: number } | null>(null);
   const canSwitchToAdmin = INVENTORY_ADMIN_SWITCH_ROLES.some((r) => hasRole(r));
+  const roleLabel = canSwitchToAdmin ? "الإدارة العامة" : "أمين مخزن";
+  const themeLabel = theme === "dark" ? "الوضع الفاتح" : "الوضع الداكن";
 
-  // الدرج على الجوال يُغلق عند التنقل
-  useEffect(() => setDrawerOpen(false), [location.pathname]);
+  // الدرج على الجوال يُغلق عند التنقل، والتلميح يختفي
+  useEffect(() => {
+    setDrawerOpen(false);
+    setHint(null);
+  }, [location.pathname]);
+  useEffect(() => setHint(null), [rail]);
 
   const allowed = (p: NavItem["permission"]) => !p || (Array.isArray(p) ? p.some((x) => hasPermission(x)) : hasPermission(p));
   const groups = NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => allowed(i.permission)) })).filter(
@@ -224,9 +312,32 @@ export const InventoryLayout: React.FC = () => {
     const willOpen = !isOpen(g);
     const next = { ...collapsed, [g.id]: !willOpen };
     setCollapsed(next);
-    writeCollapsed(next);
+    store(NAV_STORAGE_KEY, JSON.stringify(next));
     setDismissed(!willOpen && g.id === activeGroupId ? g.id : null);
   };
+
+  const toggleRail = () => {
+    const next = !railPref;
+    setRailPref(next);
+    store(RAIL_STORAGE_KEY, next ? "1" : "0");
+  };
+
+  const hideHint = () => setHint(null);
+  const hintProps = (label: string): HintHandlers => {
+    if (!rail) return {};
+    const show = (e: React.SyntheticEvent<HTMLElement>) => {
+      const r = e.currentTarget.getBoundingClientRect();
+      setHint({ label, top: r.top + r.height / 2 });
+    };
+    return { onMouseEnter: show, onFocus: show, onMouseLeave: hideHint, onBlur: hideHint };
+  };
+
+  const fade = `transition-opacity duration-150 ${rail ? "opacity-0" : "opacity-100"}`;
+  const avatar = (
+    <span className="w-8 h-8 shrink-0 rounded-full bg-red-600/10 text-red-400 text-[12px] font-black flex items-center justify-center uppercase">
+      {user?.name?.trim().charAt(0) || "؟"}
+    </span>
+  );
 
   return (
     <div className="flex h-screen bg-slate-950 overflow-hidden text-slate-100 font-['Tajawal']" dir="rtl">
@@ -243,35 +354,41 @@ export const InventoryLayout: React.FC = () => {
       </AnimatePresence>
 
       <aside
-        className={`fixed top-0 right-0 h-full w-64 bg-slate-900 border-l border-white/5 flex flex-col shadow-2xl transition-transform duration-300 z-50 ${
+        className={`fixed top-0 right-0 h-full w-64 ${rail ? "lg:w-16" : "lg:w-60"} bg-slate-900 border-l border-white/5 flex flex-col shadow-2xl lg:shadow-none transition-[width,translate] duration-200 ease-out motion-reduce:transition-none z-50 ${
           drawerOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0"
         }`}
       >
-        <button
-          onClick={() => setDrawerOpen(false)}
-          className="lg:hidden absolute left-3 top-4 p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
-          aria-label="إغلاق القائمة"
-        >
-          <X size={18} />
-        </button>
-
-        <div className="shrink-0 flex items-center gap-3 px-6 pt-5 pb-4">
-          <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-red-900/20 shrink-0">
-            <Warehouse size={20} />
+        {/* الشعار بارتفاع الهيدر (44px) — خط علوي واحد عبر الشاشة */}
+        <div className="shrink-0 h-11 flex items-center gap-2.5 pr-4 pl-2 border-b border-white/5 overflow-hidden whitespace-nowrap">
+          <div className="w-8 h-8 shrink-0 bg-red-600 rounded-lg flex items-center justify-center text-white shadow-md shadow-red-900/30">
+            <Warehouse size={16} />
           </div>
-          <div className="min-w-0">
-            <h1 className="text-lg font-black text-white tracking-tight leading-tight">RestoMaster</h1>
-            <p className="text-[11px] font-bold text-slate-500">لوحة المخازن</p>
+          <div className={`min-w-0 flex-1 leading-tight ${fade}`}>
+            <p className="text-[14px] font-black text-white tracking-tight">RestoMaster</p>
+            <p className="text-[10.5px] font-bold text-slate-500">لوحة المخازن</p>
           </div>
+          <button
+            onClick={() => setDrawerOpen(false)}
+            className="lg:hidden w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-white/5"
+            aria-label="إغلاق القائمة"
+          >
+            <X size={16} />
+          </button>
         </div>
 
-        <nav ref={navRef} className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-3 pb-3" aria-label="قائمة المخازن">
+        <motion.nav
+          ref={navRef}
+          layoutScroll
+          onScroll={hideHint}
+          className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-2 ${rail ? "scrollbar-hide" : "custom-scrollbar"}`}
+          aria-label="قائمة المخازن"
+        >
           {groups.map((g, idx) => {
             if (!g.title) {
               return (
-                <ul key={g.id} className="space-y-1">
+                <ul key={g.id} className="space-y-0.5">
                   {g.items.map((item) => (
-                    <NavRow key={item.to} item={item} active={item.to === active?.to} />
+                    <NavRow key={item.to} item={item} active={item.to === active?.to} rail={rail} reduceMotion={reduceMotion} hint={hintProps(item.label)} />
                   ))}
                 </ul>
               );
@@ -280,28 +397,32 @@ export const InventoryLayout: React.FC = () => {
             const holdsActive = g.id === activeGroupId;
             const panelId = `inventory-nav-${g.id}`;
             return (
-              <div key={g.id} className={idx > 0 ? "mt-3 pt-3 border-t border-white/5" : ""}>
+              <div key={g.id} className={idx > 0 ? "mt-2 pt-2 border-t border-white/5" : ""}>
                 <button
                   type="button"
                   onClick={() => toggleGroup(g)}
                   aria-expanded={open}
                   aria-controls={panelId}
-                  className="w-full flex items-center gap-2.5 h-8 px-2 rounded-lg text-slate-500 hover:text-white outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--o2-brand)"
+                  aria-label={rail ? g.title : undefined}
+                  {...hintProps(g.title)}
+                  className="w-full flex items-center gap-3 h-8 pr-3.5 pl-2 rounded-md overflow-hidden whitespace-nowrap text-slate-500 hover:text-white outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--o2-brand)"
                 >
                   <span
-                    className={`w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black tabular-nums shrink-0 ${
-                      holdsActive ? "bg-red-600 text-white" : "bg-white/5 text-slate-400"
+                    className={`w-[18px] h-[18px] shrink-0 rounded flex items-center justify-center text-[10px] font-black tabular-nums transition-colors ${
+                      holdsActive ? "bg-red-600 text-white" : "bg-white/10 text-slate-400"
                     }`}
                   >
                     {g.step}
                   </span>
-                  <span className="flex-1 min-w-0 text-start text-[11px] font-bold tracking-wide truncate">{g.title}</span>
-                  {!open && <span className="text-[10px] font-bold tabular-nums text-slate-500">{g.items.length}</span>}
-                  <ChevronDown
-                    size={14}
-                    aria-hidden="true"
-                    className={`shrink-0 transition-transform duration-200 motion-reduce:transition-none ${open ? "" : "rotate-90"}`}
-                  />
+                  <span className={`flex-1 min-w-0 flex items-center gap-2 ${fade}`}>
+                    <span className="flex-1 min-w-0 text-start text-[11px] font-bold tracking-wide truncate">{g.title}</span>
+                    {!open && <span className="text-[10.5px] font-bold tabular-nums">{g.items.length}</span>}
+                    <ChevronDown
+                      size={13}
+                      aria-hidden="true"
+                      className={`shrink-0 transition-transform duration-200 motion-reduce:transition-none ${open ? "" : "rotate-90"}`}
+                    />
+                  </span>
                 </button>
                 <AnimatePresence initial={false}>
                   {open && (
@@ -312,11 +433,11 @@ export const InventoryLayout: React.FC = () => {
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: "auto", opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: reduceMotion ? 0 : 0.2, ease: "easeOut" }}
-                      className="overflow-hidden space-y-1 pt-1"
+                      transition={{ duration: reduceMotion ? 0 : 0.18, ease: [0.2, 0, 0, 1] }}
+                      className="overflow-hidden space-y-0.5 pt-0.5"
                     >
                       {g.items.map((item) => (
-                        <NavRow key={item.to} item={item} active={item.to === active?.to} />
+                        <NavRow key={item.to} item={item} active={item.to === active?.to} rail={rail} reduceMotion={reduceMotion} hint={hintProps(item.label)} />
                       ))}
                     </motion.ul>
                   )}
@@ -324,53 +445,92 @@ export const InventoryLayout: React.FC = () => {
               </div>
             );
           })}
-        </nav>
+        </motion.nav>
 
-        <div className="shrink-0 border-t border-white/5 p-4 space-y-2">
-          <ThemeToggle />
-          <div className="px-4 py-1">
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-              {canSwitchToAdmin ? "الإدارة العامة" : "أمين مخزن"}
-            </p>
-            <p className="text-sm font-black text-slate-100 truncate">{user?.name}</p>
-          </div>
-          <button
-            onClick={() => logout()}
-            className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
-          >
-            <Power size={20} />
-            <span className="font-semibold text-sm">تسجيل الخروج</span>
-          </button>
+        <div className="shrink-0 border-t border-white/5 p-2">
+          {rail ? (
+            <div className="flex flex-col items-center gap-1">
+              <span {...hintProps(`${user?.name ?? ""} · ${roleLabel}`)}>{avatar}</span>
+              <FooterButton label={themeLabel} onClick={toggleTheme} hint={hintProps(themeLabel)}>
+                {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+              </FooterButton>
+              <FooterButton label="تسجيل الخروج" danger onClick={() => logout()} hint={hintProps("تسجيل الخروج")}>
+                <LogOut size={16} />
+              </FooterButton>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2.5 pr-1">
+              {avatar}
+              <div className="min-w-0 flex-1 leading-tight">
+                <p className="text-[12.5px] font-bold text-slate-100 truncate">{user?.name}</p>
+                <p className="text-[10.5px] font-semibold text-slate-500 truncate">{roleLabel}</p>
+              </div>
+              <FooterButton label={themeLabel} onClick={toggleTheme} hint={{}}>
+                {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+              </FooterButton>
+              <FooterButton label="تسجيل الخروج" danger onClick={() => logout()} hint={{}}>
+                <LogOut size={16} />
+              </FooterButton>
+            </div>
+          )}
         </div>
       </aside>
 
-      <main className="flex-1 h-full overflow-hidden lg:mr-64">
+      {rail && hint && (
+        <div
+          role="tooltip"
+          className="fixed z-[60] pointer-events-none -translate-y-1/2 px-2.5 py-1 rounded-md bg-slate-800 border border-white/10 text-[12.5px] font-bold text-white shadow-lg whitespace-nowrap"
+          style={{ top: hint.top, right: RAIL_WIDTH + 8 }}
+        >
+          {hint.label}
+        </div>
+      )}
+
+      {/* o2-compact: كثافة واجهات الإدارة (خطوط ومسافات من سلّم index.css) على المحتوى فقط؛ السايدبار له مقاساته. */}
+      <main
+        className={`o2-compact flex-1 h-full overflow-hidden transition-[margin] duration-200 ease-out motion-reduce:transition-none ${
+          rail ? "lg:mr-16" : "lg:mr-60"
+        }`}
+      >
         <div className="h-full flex flex-col">
-          <header className="flex items-center justify-between gap-3 px-4 py-3 border-b border-white/5 bg-slate-900/50">
-            <div className="flex items-center gap-3 min-w-0">
-              <button
-                onClick={() => setDrawerOpen(true)}
-                className="lg:hidden p-2 bg-slate-800 rounded-xl text-slate-400 hover:text-white transition-all"
-                aria-label="فتح القائمة"
-              >
-                <Menu size={20} />
-              </button>
+          <header className="shrink-0 h-11 flex items-center justify-between gap-3 px-3 border-b border-white/5 bg-slate-900/50">
+            <div className="flex items-center gap-2 min-w-0">
+              {isDesktop ? (
+                <button
+                  onClick={toggleRail}
+                  aria-label={rail ? "توسيع القائمة الجانبية" : "طيّ القائمة الجانبية"}
+                  title={rail ? "توسيع القائمة الجانبية" : "طيّ القائمة الجانبية"}
+                  aria-expanded={!rail}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+                >
+                  {rail ? <PanelRightOpen size={17} /> : <PanelRightClose size={17} />}
+                </button>
+              ) : (
+                <button
+                  onClick={() => setDrawerOpen(true)}
+                  aria-label="فتح القائمة"
+                  aria-expanded={drawerOpen}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+                >
+                  <Menu size={18} />
+                </button>
+              )}
               <div className="flex items-center gap-2 min-w-0">
-                <Warehouse size={18} className="text-amber-400 shrink-0" />
+                <Warehouse size={16} className="text-amber-400 shrink-0" />
                 <span className="text-sm font-black text-white truncate">لوحة المخازن</span>
               </div>
             </div>
             {canSwitchToAdmin && (
               <NavLink
                 to="/admin/dashboard"
-                className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 text-sm font-bold transition-colors shrink-0"
+                className="o2-btn bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors"
               >
-                <LayoutGrid size={16} />
+                <LayoutGrid size={15} />
                 <span>لوحة الإدارة</span>
               </NavLink>
             )}
           </header>
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6">
+          <div className="o2-page flex-1 overflow-y-auto custom-scrollbar">
             <Outlet />
           </div>
         </div>

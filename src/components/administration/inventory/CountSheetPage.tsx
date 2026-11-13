@@ -564,7 +564,7 @@ export const CountSheetPage: React.FC = () => {
         )}
       </ExcelGrid>
 
-      <footer className="sticky bottom-0 -mx-4 md:-mx-6 -mb-4 md:-mb-6 px-4 md:px-6 py-2.5 bg-slate-950/95 backdrop-blur border-t border-white/5 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm font-bold text-slate-400">
+      <footer className="sticky bottom-0 o2-bleed-b py-2.5 bg-slate-950/95 backdrop-blur border-t border-white/5 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm font-bold text-slate-400">
         <span>
           عدد الأصناف: <span className="text-white tabular-nums">{lines.length}</span>
         </span>

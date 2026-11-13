@@ -6,18 +6,19 @@
 import React from "react";
 import { Loader2, X, Search } from "lucide-react";
 
+/** الحجم والحشوة والاستدارة من .o2-control (سلّم الكثافة في index.css)؛ هنا الألوان فقط. */
 export const inputClass =
-  "w-full px-4 py-3 bg-slate-800 border border-white/10 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-red-600 placeholder:text-slate-600 disabled:opacity-50";
+  "o2-control w-full bg-slate-800 border border-white/10 text-white outline-none focus:ring-2 focus:ring-red-600 placeholder:text-slate-600 disabled:opacity-50";
 
 export const PageHeader: React.FC<{ title: string; subtitle: string; action?: React.ReactNode }> = ({
   title,
   subtitle,
   action,
 }) => (
-  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-    <div>
-      <h1 className="text-2xl font-black text-white">{title}</h1>
-      <p className="text-sm text-slate-500 mt-1 font-semibold">{subtitle}</p>
+  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
+    <div className="min-w-0">
+      <h1 className="o2-page-title text-white">{title}</h1>
+      <p className="o2-page-subtitle text-slate-500 mt-0.5 font-medium">{subtitle}</p>
     </div>
     {action}
   </div>
@@ -33,7 +34,7 @@ export const PrimaryButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElemen
   <button
     {...rest}
     disabled={disabled || loading}
-    className={`flex items-center justify-center gap-2 px-5 py-2.5 bg-red-600 text-white rounded-xl font-bold text-sm hover:bg-red-700 transition-colors shadow-lg shadow-red-900/20 disabled:opacity-50 ${className}`}
+    className={`o2-btn bg-red-600 text-white hover:bg-red-700 transition-colors shadow-sm shadow-red-900/20 disabled:opacity-50 ${className}`}
   >
     {loading && <Loader2 size={16} className="animate-spin" />}
     {children}
@@ -44,7 +45,7 @@ export const SecondaryButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElem
   <button
     type="button"
     {...rest}
-    className={`px-5 py-2.5 bg-slate-800 text-slate-300 rounded-xl font-bold text-sm hover:bg-slate-700 transition-colors disabled:opacity-50 ${className}`}
+    className={`o2-btn bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors disabled:opacity-50 ${className}`}
   />
 );
 
@@ -71,7 +72,7 @@ export const Field: React.FC<{ label: string; required?: boolean; hint?: string;
   hint,
   children,
 }) => (
-  <label className="block space-y-1.5">
+  <label className="block space-y-1">
     <span className="text-xs font-black text-slate-400 tracking-wider flex items-center gap-1">
       {label}
       {required && <span className="text-red-500">*</span>}
@@ -121,8 +122,8 @@ export const Modal: React.FC<{
       aria-label={title}
       className={`bg-slate-900 border border-white/10 rounded-3xl w-full ${xwide ? "max-w-[1200px]" : wide ? "max-w-3xl" : "max-w-lg"} max-h-[92vh] flex flex-col shadow-2xl`}
     >
-      <div className="flex items-center justify-between p-5 border-b border-white/5">
-        <h2 className="text-lg font-black text-white">{title}</h2>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+        <h2 className="text-[15px] font-bold text-white">{title}</h2>
         <button
           type="button"
           onClick={onClose}
@@ -132,8 +133,8 @@ export const Modal: React.FC<{
           <X size={18} />
         </button>
       </div>
-      <div className="p-5 overflow-y-auto custom-scrollbar space-y-4">{children}</div>
-      {footer && <div className="p-5 border-t border-white/5 flex flex-wrap gap-2 justify-end">{footer}</div>}
+      <div className="p-4 overflow-y-auto custom-scrollbar space-y-3">{children}</div>
+      {footer && <div className="px-4 py-3 border-t border-white/5 flex flex-wrap gap-2 justify-end">{footer}</div>}
     </div>
   </div>
 );
@@ -149,8 +150,8 @@ export const StatusBadge: React.FC<{ active: boolean }> = ({ active }) => (
 );
 
 export const LoadingBlock: React.FC = () => (
-  <div className="flex items-center justify-center p-16">
-    <Loader2 size={36} className="text-red-500 animate-spin" />
+  <div className="flex items-center justify-center p-10">
+    <Loader2 size={28} className="text-red-500 animate-spin" />
   </div>
 );
 
@@ -159,8 +160,8 @@ export const EmptyBlock: React.FC<{ icon: React.ElementType; text: string; actio
   text,
   action,
 }) => (
-  <div className="text-center p-16 bg-slate-900 rounded-2xl border border-white/5">
-    <Icon size={48} className="mx-auto text-slate-700 mb-3" />
+  <div className="text-center p-10 bg-slate-900 rounded-2xl border border-white/5">
+    <Icon size={40} className="mx-auto text-slate-700 mb-3" />
     <p className="text-slate-500 font-bold">{text}</p>
     {action && <div className="mt-4 flex justify-center">{action}</div>}
   </div>
@@ -174,7 +175,7 @@ export const IconButton: React.FC<
     title={label}
     aria-label={label}
     {...rest}
-    className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+    className={`o2-icon-btn w-8 h-8 flex items-center justify-center rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
       tone === "danger"
         ? "bg-red-600/10 text-red-400 hover:bg-red-600/20"
         : "bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700"

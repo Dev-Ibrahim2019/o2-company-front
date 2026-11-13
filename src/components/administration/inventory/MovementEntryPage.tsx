@@ -494,7 +494,7 @@ export const MovementEntryPage: React.FC = () => {
         <span className="text-[11px] text-slate-500 font-semibold mr-2">Enter: رقم الصنف ← الكمية ← {isWaste ? "السبب" : priceEditable ? "السعر" : ""} ← سطر جديد</span>
       </div>
 
-      <footer className="sticky bottom-0 -mx-4 md:-mx-6 -mb-4 md:-mb-6 px-4 md:px-6 py-2.5 bg-slate-950/95 backdrop-blur border-t border-white/5 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm font-bold text-slate-400">
+      <footer className="sticky bottom-0 o2-bleed-b py-2.5 bg-slate-950/95 backdrop-blur border-t border-white/5 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm font-bold text-slate-400">
         <span>
           النوع: <span className="text-white">{TYPE_LABELS[type]}</span>
         </span>

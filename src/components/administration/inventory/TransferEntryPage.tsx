@@ -941,7 +941,7 @@ export const TransferEntryPage: React.FC = () => {
       )}
 
       {/* التذييل */}
-      <footer className="sticky bottom-0 -mx-4 md:-mx-6 -mb-4 md:-mb-6 px-4 md:px-6 py-2 bg-slate-950/95 backdrop-blur border-t border-white/5">
+      <footer className="sticky bottom-0 o2-bleed-b py-2 bg-slate-950/95 backdrop-blur border-t border-white/5">
         <dl className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-x-4 gap-y-1 text-xs">
           <FooterItem label="رقم الحركة" value={<bdi className="font-mono">{doc?.number ?? "—"}</bdi>} />
           <FooterItem label="اسم المستخدم" value={doc?.creator?.name ?? user?.name ?? "—"} />

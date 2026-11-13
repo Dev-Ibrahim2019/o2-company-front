@@ -288,7 +288,7 @@ export const PurchaseInvoicesPage: React.FC = () => {
                       <MoreVertical size={16} />
                     </IconButton>
                     {menuId === b.id && (
-                      <div role="menu" className="absolute left-3 top-12 z-20 w-44 bg-slate-900 border border-white/10 rounded-xl shadow-2xl py-1 text-sm">
+                      <div role="menu" className="absolute left-3 top-full z-20 w-44 bg-slate-900 border border-white/10 rounded-xl shadow-2xl py-1 text-sm">
                         <MenuItem icon={Eye} label="عرض" onClick={() => open(b)} />
                         {b.is_inventory && canCreate && <MenuItem icon={Copy} label="تكرار" onClick={() => duplicate(b)} />}
                         <MenuItem icon={Printer} label="طباعة" onClick={() => print(b)} />
